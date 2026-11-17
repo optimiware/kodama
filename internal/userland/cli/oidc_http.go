@@ -14,8 +14,8 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/fault"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/fault"
 )
 
 // DefaultOIDCMaxBodyBytes bounds one OAuth/OIDC response body. A body of
@@ -58,7 +58,7 @@ var _ OIDCClient = (*HTTPOIDCClient)(nil)
 // Move the request body to the form body. Validate that the request names the
 // exact endpoint and carries the RFC-defined members for its grant type.
 
-// Discover reads the one unauthenticated Kodama discovery route. The document
+// Discover reads the one unauthenticated Kodema discovery route. The document
 // must be strictly decodable and its api_url must share the configured API
 // URL's origin; a document bound to another API origin is refused.
 func (client *HTTPOIDCClient) Discover(ctx context.Context, discoveryURL string) (api.DiscoveryDocument, error) {
@@ -67,7 +67,7 @@ func (client *HTTPOIDCClient) Discover(ctx context.Context, discoveryURL string)
 		return api.DiscoveryDocument{}, err
 	}
 	if !strings.HasSuffix(parsed.Path, api.DiscoveryPath) {
-		return api.DiscoveryDocument{}, fault.New(fault.InvalidInput, "the discovery URL is not the fixed Kodama route")
+		return api.DiscoveryDocument{}, fault.New(fault.InvalidInput, "the discovery URL is not the fixed Kodema route")
 	}
 	apiURL := strings.TrimSuffix(discoveryURL, api.DiscoveryPath)
 	if strings.TrimRight(apiURL, "/") == "" {

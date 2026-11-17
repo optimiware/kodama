@@ -1,3 +1,3 @@
 package flow
 
-import _ "kodama/internal/shell/secret"
+import _ "kodema/internal/shell/secret"

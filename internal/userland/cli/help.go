@@ -17,7 +17,7 @@ var helpTopics = map[string]commandHelp{
 	"login": {
 		usage:   "kodactl login [--device | --no-browser]",
 		summary: "Sign in via OIDC and persist a human session",
-		description: `Discovers the Kodama OAuth/OIDC configuration from /.well-known/kodama-configuration
+		description: `Discovers the Kodema OAuth/OIDC configuration from /.well-known/kodema-configuration
 and signs in using browser PKCE or the headless RFC 8628 device flow.
 
 Flags:
@@ -41,7 +41,7 @@ Flags:
 	"whoami": {
 		usage:   "kodactl whoami [--offline]",
 		summary: "Show current principal identity, kind, scope, and roles",
-		description: `Displays the caller's Kodama principal identity (oidc-<hash>), kind, tenant,
+		description: `Displays the caller's Kodema principal identity (oidc-<hash>), kind, tenant,
 project, and roles. Queries principal.whoami on the server; a failed query is an
 error. --offline derives oidc-<hash> from the saved session / JWT claims instead.
 
@@ -63,11 +63,11 @@ Flags:
 	"inbox": {
 		usage:   "kodactl inbox [--project <id>]",
 		summary: "List pending request approvals, waiting tasks, and failed tasks",
-		description: `Queries task.inbox for the project (defaulting to --project or KODAMA_PROJECT)
+		description: `Queries task.inbox for the project (defaulting to --project or KODEMA_PROJECT)
 and renders a table of actionable items (KIND, TASK, EXECUTION, ACTION, PROMPT/SUMMARY).
 
 Flags:
-  --project <id>   Project ID (defaults to global --project or KODAMA_PROJECT)`,
+  --project <id>   Project ID (defaults to global --project or KODEMA_PROJECT)`,
 	},
 	"approve": {
 		usage:   "kodactl approve <execution-id> [--action <id>] [--comment <text>] [--output <k=v>]",
@@ -109,7 +109,7 @@ Flags:
 		description: `Invokes task.create with an auto-generated idempotency key.
 
 Flags:
-  --project <id>       Project ID (defaults to global --project or KODAMA_PROJECT)
+  --project <id>       Project ID (defaults to global --project or KODEMA_PROJECT)
   --title <text>       Task title (required)
   --description <text> Optional task description
   --pipeline <id>      Optional selected pipeline ID
@@ -121,7 +121,7 @@ Flags:
 		description: `Invokes task.create_and_start with an auto-generated idempotency key.
 
 Flags:
-  --project <id>       Project ID (defaults to global --project or KODAMA_PROJECT)
+  --project <id>       Project ID (defaults to global --project or KODEMA_PROJECT)
   --title <text>       Task title (required)
   --pipeline <id>      Pipeline ID to run (required)
   --description <text> Optional task description
@@ -130,7 +130,7 @@ Flags:
 	"task list": {
 		usage:       "kodactl task list [--project <id>]",
 		summary:     "List tasks in a project",
-		description: `Lists tasks for --project (or KODAMA_PROJECT).`,
+		description: `Lists tasks for --project (or KODEMA_PROJECT).`,
 	},
 	"task show": {
 		usage:       "kodactl task show <task-id>",
@@ -168,7 +168,7 @@ Zero-hash principal derivation:
 	"member list": {
 		usage:       "kodactl member list [--project <id>]",
 		summary:     "List project memberships and versions",
-		description: `Invokes membership.list for --project (or KODAMA_PROJECT).`,
+		description: `Invokes membership.list for --project (or KODEMA_PROJECT).`,
 	},
 	"member grant": {
 		usage:   "kodactl member grant [<principal-or-subject>] [--subject <sub> | --github <login>] [--project <id>] --role <role>[,<role>...]",
@@ -198,7 +198,7 @@ and --ca-file TLS trust, and writes non-empty JSON-RPC responses as single lines
 A request that cannot be delivered is answered with a JSON-RPC error; the bridge keeps running.`,
 	},
 	"mcp install": {
-		usage:   "kodactl mcp install [claude|cursor|codex] [--name kodama] [--config-file <path>] [--local] [--print]",
+		usage:   "kodactl mcp install [claude|cursor|codex] [--name kodema] [--config-file <path>] [--local] [--print]",
 		summary: "Print or install the kodactl MCP server entry for an AI coding tool",
 		description: `Configures an MCP client to invoke 'kodactl --url <url> [--ca-file <path>] mcp stdio'.
 
@@ -208,7 +208,7 @@ Targets:
   codex    ~/.codex/config.toml
 
 Flags:
-  --name <name>          MCP server name (default: kodama)
+  --name <name>          MCP server name (default: kodema)
   --config-file <path>   Explicit config file path to update
   --local                Write .mcp.json in current directory (claude target only)
   --print                Print configuration snippet to stdout without writing files`,
@@ -229,7 +229,7 @@ id and the outcome go to stderr. Exits 0 when the execution succeeded and 1 when
 was cancelled, or stopped at a request that waits for a human ('kodactl inbox', 'kodactl approve').
 
 Flags:
-  --project <id>   Project ID (defaults to global --project or KODAMA_PROJECT)
+  --project <id>   Project ID (defaults to global --project or KODEMA_PROJECT)
   --input <k=v>    Pipeline input key=value pair (repeatable)`,
 	},
 	"inspect": {
@@ -244,7 +244,7 @@ Flags:
 	},
 	"call": {
 		usage:       "kodactl call <operation> [--input=<json>] [--expected-version=<n>] [--idempotency-key=<k>]",
-		summary:     "Invoke any registered Kodama API operation directly",
+		summary:     "Invoke any registered Kodema API operation directly",
 		description: `Dispatches a raw public operation envelope over the configured REST client.`,
 	},
 	"helper": {
@@ -293,13 +293,13 @@ Commands:
   help        Show help for kodactl or a command
 
 Global Flags:
-  --server, --server-url, --url <url>   Kodama server URL ($KODAMA_SERVER / $KODAMA_URL)
-  --ca-file <path>                      PEM CA bundle for TLS trust ($KODAMA_CA_FILE)
-  --project <id>                        Default project ID ($KODAMA_PROJECT)
-  --output <table|json>                 Output format ($KODAMA_OUTPUT)
-  --session, --session-file <path>      Human session file ($KODAMA_SESSION)
-  --credential-file <path>              Mounted execution token file ($KODAMA_CREDENTIAL_FILE)
-  --config <path>                       Configuration file ($KODAMA_CONFIG)
+  --server, --server-url, --url <url>   Kodema server URL ($KODEMA_SERVER / $KODEMA_URL)
+  --ca-file <path>                      PEM CA bundle for TLS trust ($KODEMA_CA_FILE)
+  --project <id>                        Default project ID ($KODEMA_PROJECT)
+  --output <table|json>                 Output format ($KODEMA_OUTPUT)
+  --session, --session-file <path>      Human session file ($KODEMA_SESSION)
+  --credential-file <path>              Mounted execution token file ($KODEMA_CREDENTIAL_FILE)
+  --config <path>                       Configuration file ($KODEMA_CONFIG)
   -h, --help                            Show help and exit
 
 Run 'kodactl help <command>' for details on a specific command.

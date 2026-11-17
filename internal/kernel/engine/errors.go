@@ -9,7 +9,7 @@ package engine
 import (
 	"errors"
 
-	"github.com/optimiware/kodama/internal/fault"
+	"github.com/optimiware/kodema/internal/fault"
 )
 
 // ErrNotPrepared reports that a runtime has no resource for a stable workload

@@ -9,7 +9,7 @@ expected_base=$(cat "$W49_INPUTS/expected_base")
 target_ref=$(cat "$W49_INPUTS/target_ref")
 test -n "$expected_base"
 test -n "$target_ref"
-test "$(cat "$W49_WORKSPACE/execution-marker")" = "$KODAMA_EXECUTION"
+test "$(cat "$W49_WORKSPACE/execution-marker")" = "$KODEMA_EXECUTION"
 test "$(cat "$W49_WORKSPACE/run-marker")" = "$SMOKE_RUN_MARKER"
 
 candidate=$(cat "$W49_OUTPUTS/test/candidate")

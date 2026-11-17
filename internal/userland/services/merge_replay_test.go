@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/userland/services"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/userland/services"
 )
 
 // assignedMergeRequest is one exact assignment-keyed merge request.

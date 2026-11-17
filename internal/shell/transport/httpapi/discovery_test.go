@@ -23,9 +23,9 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/shell/transport/httpapi"
-	"github.com/optimiware/kodama/internal/shell/transport/mcp"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/shell/transport/httpapi"
+	"github.com/optimiware/kodema/internal/shell/transport/mcp"
 )
 
 // discoveryFixture returns one canonical valid discovery document. The api_url
@@ -34,14 +34,14 @@ import (
 func discoveryFixture() api.DiscoveryDocument {
 	return api.DiscoveryDocument{
 		Issuer:                      "https://auth.example.com",
-		ClientID:                    "kodama-cli",
-		Audience:                    "kodama",
+		ClientID:                    "kodema-cli",
+		Audience:                    "kodema",
 		AuthorizationEndpoint:       "https://auth.example.com/authorize",
 		TokenEndpoint:               "https://auth.example.com/token",
 		DeviceAuthorizationEndpoint: "https://auth.example.com/device",
 		RevocationEndpoint:          "https://auth.example.com/revoke",
 		Scopes:                      []string{"openid", "profile", "email", "offline_access"},
-		APIURL:                      "https://api.example.com/kodama&cli",
+		APIURL:                      "https://api.example.com/kodema&cli",
 	}
 }
 
@@ -161,7 +161,7 @@ func TestDiscoveryServesProviderDocument(t *testing.T) {
 	if strings.Contains(string(body), `\u0026`) {
 		t.Fatalf("body HTML-escaped a public URL character: %s", truncateBody(body))
 	}
-	if !bytes.Contains(body, []byte("kodama&cli")) {
+	if !bytes.Contains(body, []byte("kodema&cli")) {
 		t.Fatalf("body = %s; want the unescaped api_url", truncateBody(body))
 	}
 

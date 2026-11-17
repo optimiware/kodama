@@ -6,7 +6,7 @@ package services
 //
 // The served public edge is real (PostgreSQL, NATS, the real operation
 // handlers); these scenarios isolate adapter convergence with a scripted
-// merge/rebase effect boundary. The concrete effects and the `kodama services`
+// merge/rebase effect boundary. The concrete effects and the `kodema services`
 // entry are proven separately by
 // TestMergeCoordinatorRealGitMergesAssignedCandidate.
 //
@@ -34,10 +34,10 @@ import (
 
 	"go.yaml.in/yaml/v3"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/id"
-	serviceadapter "github.com/optimiware/kodama/internal/userland/services"
-	"github.com/optimiware/kodama/test/support/factory"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/id"
+	serviceadapter "github.com/optimiware/kodema/internal/userland/services"
+	"github.com/optimiware/kodema/test/support/factory"
 )
 
 const (

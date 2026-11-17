@@ -7,9 +7,9 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/shell/store"
-	storepg "github.com/optimiware/kodama/internal/shell/store/postgres"
-	pgtest "github.com/optimiware/kodama/test/support/infrastructure/postgres"
+	"github.com/optimiware/kodema/internal/shell/store"
+	storepg "github.com/optimiware/kodema/internal/shell/store/postgres"
+	pgtest "github.com/optimiware/kodema/test/support/infrastructure/postgres"
 )
 
 // TestMigrationsApplyOnEmptyDatabase applies the migration set to an empty
@@ -78,7 +78,7 @@ func TestMigrationReRunIsNoOpAndRewriteRefused(t *testing.T) {
 		t.Fatalf("ledger entries = %d, err=%v; want %d", len(ledger), err, storepgMigrations())
 	}
 	if _, err := pgtest.ExecSQL(ctx, shard.Admin(),
-		`UPDATE kodama_test_meta.kodama_schema_migrations SET checksum = 'sha256:deadbeef' WHERE name = '0002_tables.sql'`); err != nil {
+		`UPDATE kodema_test_meta.kodema_schema_migrations SET checksum = 'sha256:deadbeef' WHERE name = '0002_tables.sql'`); err != nil {
 		t.Fatalf("tamper ledger: %v", err)
 	}
 	if _, err := runner.Apply(ctx, 0); !errors.Is(err, pgtest.ErrAppliedMigrationRewritten) {

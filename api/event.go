@@ -369,7 +369,7 @@ func validateEventTypeFilter(types []string) error {
 }
 
 // parseEventSubject mirrors the Shell's scope-qualified subject shape
-// kodama.v1.<tenant>.<project|_>.events and returns its scope tokens.
+// kodema.v1.<tenant>.<project|_>.events and returns its scope tokens.
 func parseEventSubject(subject string) (tenant, project string, err error) {
 	if subject == "" {
 		return "", "", invalid("event subscribe subject is empty")
@@ -378,7 +378,7 @@ func parseEventSubject(subject string) (tenant, project string, err error) {
 		return "", "", invalid("event subscribe subject %q is a wildcard", subject)
 	}
 	tokens := strings.Split(subject, ".")
-	if len(tokens) != 5 || tokens[0] != "kodama" || tokens[1] != "v1" || tokens[4] != "events" {
+	if len(tokens) != 5 || tokens[0] != "kodema" || tokens[1] != "v1" || tokens[4] != "events" {
 		return "", "", invalid("event subscribe subject %q is not scope-qualified", subject)
 	}
 	if !validID(tokens[2]) {

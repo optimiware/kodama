@@ -78,7 +78,7 @@ type loopbackSession struct {
 // delivered once, and every later request is refused.
 func (session *loopbackSession) handle(writer http.ResponseWriter, request *http.Request) {
 	if request.Method != http.MethodGet || request.URL.Path != OAuthCallbackPath || request.Host != session.address {
-		writeCallbackPage(writer, http.StatusBadRequest, "This is not the Kodama login callback.")
+		writeCallbackPage(writer, http.StatusBadRequest, "This is not the Kodema login callback.")
 		return
 	}
 	if !session.delivered.CompareAndSwap(false, true) {
@@ -92,7 +92,7 @@ func (session *loopbackSession) handle(writer http.ResponseWriter, request *http
 		Error:            query.Get("error"),
 		ErrorDescription: query.Get("error_description"),
 	}
-	writeCallbackPage(writer, http.StatusOK, "Kodama login received. You may close this window.")
+	writeCallbackPage(writer, http.StatusOK, "Kodema login received. You may close this window.")
 	// Stop accepting new connections; the current one may still serve the
 	// refusal page for a replayed callback.
 	_ = session.listener.Close()

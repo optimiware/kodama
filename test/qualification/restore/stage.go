@@ -4,7 +4,7 @@ package restorequal
 //
 // The live-stage rules in docs/tasks/finish-plan.md allow exactly one
 // destructive restore shape: an RDB backup restored into a new database
-// explicitly named kodama-restore-<run-id> on the existing instance, never into
+// explicitly named kodema-restore-<run-id> on the existing instance, never into
 // the managed database, and dropping only that exact run-created database
 // afterwards.
 //
@@ -43,19 +43,19 @@ var (
 )
 
 // RestoreDatabasePrefix prefixes every generated drill database name.
-const RestoreDatabasePrefix = "kodama-restore-"
+const RestoreDatabasePrefix = "kodema-restore-"
 
 // DatabaseCredentialEnvName names the environment variable an executor reads
 // for the restored database connection. Only the name is ever planned or
 // recorded.
-const DatabaseCredentialEnvName = "KODAMA_Q03_RESTORE_DATABASE_URL"
+const DatabaseCredentialEnvName = "KODEMA_Q03_RESTORE_DATABASE_URL"
 
 // SCWEnvNames are the environment variable names the Scaleway CLI reads its
 // credentials from. The planner records names only; it never carries a value.
 var SCWEnvNames = []string{"SCW_ACCESS_KEY", "SCW_SECRET_KEY"}
 
 var (
-	restoreDatabasePattern = regexp.MustCompile(`^kodama-restore-[a-z0-9]{6,32}$`)
+	restoreDatabasePattern = regexp.MustCompile(`^kodema-restore-[a-z0-9]{6,32}$`)
 	runIDPattern           = regexp.MustCompile(`^[a-z0-9]{6,32}$`)
 	backupIDPattern        = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$`)
 	instanceIDPattern      = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
@@ -90,7 +90,7 @@ type DestinationRequest struct {
 //
 //   - database-name must be present; the Scaleway CLI otherwise defaults to the
 //     source database;
-//   - it must match ^kodama-restore-[a-z0-9]{6,32}$ (a generated run ID);
+//   - it must match ^kodema-restore-[a-z0-9]{6,32}$ (a generated run ID);
 //   - it must differ from the source and managed database names;
 //   - the observed database listing must be supplied (nil is not an observation);
 //   - it must target the same UUID instance as the source.

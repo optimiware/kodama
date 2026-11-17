@@ -9,12 +9,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/kernel"
-	"github.com/optimiware/kodama/internal/kernel/engine"
-	driverkube "github.com/optimiware/kodama/internal/shell/app/drivers/kube"
-	runtimekube "github.com/optimiware/kodama/internal/shell/runtime/kube"
-	"github.com/optimiware/kodama/test/support/infrastructure/harness"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/kernel"
+	"github.com/optimiware/kodema/internal/kernel/engine"
+	driverkube "github.com/optimiware/kodema/internal/shell/app/drivers/kube"
+	runtimekube "github.com/optimiware/kodema/internal/shell/runtime/kube"
+	"github.com/optimiware/kodema/test/support/infrastructure/harness"
 )
 
 // podRunningTimeout bounds the wait for the workload pod to be scheduled and
@@ -192,7 +192,7 @@ func TestFreshAdapterAdoptsRunningJob(t *testing.T) {
 		Cluster:   client,
 		Namespace: fx.Namespace,
 		TenantID:  fx.Tenant,
-		KodamaURL: testKodamaURL,
+		KodemaURL: testKodemaURL,
 		Policy: runtimekube.Policy{
 			CPURequest:    "50m",
 			CPULimit:      "200m",

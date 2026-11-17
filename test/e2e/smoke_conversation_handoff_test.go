@@ -8,17 +8,17 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
+	"github.com/optimiware/kodema/api"
 
-	"github.com/optimiware/kodama/test/e2e/internal/harness"
-	"github.com/optimiware/kodama/test/e2e/internal/smoke"
+	"github.com/optimiware/kodema/test/e2e/internal/harness"
+	"github.com/optimiware/kodema/test/e2e/internal/smoke"
 )
 
 // testReleaseSmokeConversationHandoff is S3. A live task action waits for an
 // unplanned decision; the engineer asks the assigned reviewer with an ordinary
 // durable reference the product accepts without Git; the reviewer answers from
 // its own inbox; the cancelled execution is replaced by a distinct fresh
-// execution whose /kodama/task.json carries the answer and whose workspace does
+// execution whose /kodema/task.json carries the answer and whose workspace does
 // not inherit the cancelled attempt's scratch.
 func testReleaseSmokeConversationHandoff(t *testing.T, instance *live, names smoke.Names, probe string, recordScenario bool) api.ExecutionInspectResult {
 	t.Helper()

@@ -7,23 +7,23 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/kernel/engine"
-	"github.com/optimiware/kodama/internal/shell/log"
-	"github.com/optimiware/kodama/internal/shell/secret"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
-	"github.com/optimiware/kodama/internal/shell/workspace"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/kernel/engine"
+	"github.com/optimiware/kodema/internal/shell/log"
+	"github.com/optimiware/kodema/internal/shell/secret"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
+	"github.com/optimiware/kodema/internal/shell/workspace"
 )
 
 // TestWorkspacePathRules proves preparation is confined to the immutable
-// /kodama roots, refuses traversal and reserved names, and never writes into
+// /kodema roots, refuses traversal and reserved names, and never writes into
 // the writable workspace.
 func TestWorkspacePathRules(t *testing.T) {
 	valid := []string{
-		"/kodama/inputs/source",
-		"/kodama/outputs/build/artifact",
-		"/kodama/task.json",
-		"/kodama/secrets/DB_PASSWORD",
+		"/kodema/inputs/source",
+		"/kodema/outputs/build/artifact",
+		"/kodema/task.json",
+		"/kodema/secrets/DB_PASSWORD",
 	}
 	for _, path := range valid {
 		if err := workspace.ValidatePath(path); err != nil {
@@ -34,12 +34,12 @@ func TestWorkspacePathRules(t *testing.T) {
 		"",
 		"relative/path",
 		"/workspace/scratch",
-		"/kodama/inputs/../escape",
-		"/kodama//inputs/source",
-		"/kodama/inputs/",
-		"/kodama/inputs/source/",
-		"/kodama/inputs/source\x00",
-		"/kodama/secrets/KODAMA_TOKEN",
+		"/kodema/inputs/../escape",
+		"/kodema//inputs/source",
+		"/kodema/inputs/",
+		"/kodema/inputs/source/",
+		"/kodema/inputs/source\x00",
+		"/kodema/secrets/KODEMA_TOKEN",
 		"/etc/passwd",
 	}
 	for _, path := range invalid {
@@ -47,30 +47,30 @@ func TestWorkspacePathRules(t *testing.T) {
 			t.Errorf("ValidatePath(%q) = nil; want refusal", path)
 		}
 	}
-	if !workspace.IsReservedPath("/kodama/secrets/KODAMA_TOKEN") {
-		t.Error("KODAMA_TOKEN mount path is not reserved")
+	if !workspace.IsReservedPath("/kodema/secrets/KODEMA_TOKEN") {
+		t.Error("KODEMA_TOKEN mount path is not reserved")
 	}
-	if workspace.IsReservedPath("/kodama/secrets/DB_PASSWORD") {
+	if workspace.IsReservedPath("/kodema/secrets/DB_PASSWORD") {
 		t.Error("ordinary secret mount path is reserved")
 	}
 
 	inputPath, err := workspace.InputPath(id.InputKey("source"))
-	if err != nil || inputPath != "/kodama/inputs/source" {
-		t.Errorf("InputPath = %q, %v; want /kodama/inputs/source", inputPath, err)
+	if err != nil || inputPath != "/kodema/inputs/source" {
+		t.Errorf("InputPath = %q, %v; want /kodema/inputs/source", inputPath, err)
 	}
 	if _, err := workspace.InputPath(id.InputKey("../escape")); err == nil {
 		t.Error("InputPath accepted an invalid key")
 	}
 	outputPath, err := workspace.OutputPath(id.ActionName("build"), id.OutputKey("artifact"))
-	if err != nil || outputPath != "/kodama/outputs/build/artifact" {
-		t.Errorf("OutputPath = %q, %v; want /kodama/outputs/build/artifact", outputPath, err)
+	if err != nil || outputPath != "/kodema/outputs/build/artifact" {
+		t.Errorf("OutputPath = %q, %v; want /kodema/outputs/build/artifact", outputPath, err)
 	}
 	if _, err := workspace.OutputPath(id.ActionName("../escape"), id.OutputKey("artifact")); err == nil {
 		t.Error("OutputPath accepted an invalid action name")
 	}
 	secretPath, err := workspace.SecretPath(id.SecretName("DB_PASSWORD"))
-	if err != nil || secretPath != "/kodama/secrets/DB_PASSWORD" {
-		t.Errorf("SecretPath = %q, %v; want /kodama/secrets/DB_PASSWORD", secretPath, err)
+	if err != nil || secretPath != "/kodema/secrets/DB_PASSWORD" {
+		t.Errorf("SecretPath = %q, %v; want /kodema/secrets/DB_PASSWORD", secretPath, err)
 	}
 	if _, err := workspace.SecretPath(id.SecretName(id.SecretTokenName)); err == nil {
 		t.Error("SecretPath accepted the reserved credential name")
@@ -84,8 +84,8 @@ func TestWorkspaceMaterializationValidation(t *testing.T) {
 	valid := workspace.Materialization{
 		WorkspaceID: id.WorkspaceID("ws-1"),
 		Files: []workspace.File{
-			{Path: "/kodama/inputs/source", Data: []byte("input"), Mode: 0o444},
-			{Path: "/kodama/task.json", Data: []byte(`{"id":"task-1"}`), Mode: 0o444},
+			{Path: "/kodema/inputs/source", Data: []byte("input"), Mode: 0o444},
+			{Path: "/kodema/task.json", Data: []byte(`{"id":"task-1"}`), Mode: 0o444},
 		},
 		Secrets: []engine.SecretValue{
 			{Name: id.SecretName("DB_PASSWORD"), Value: "secret-value"},
@@ -103,13 +103,13 @@ func TestWorkspaceMaterializationValidation(t *testing.T) {
 	}{
 		{"empty workspace", func(m *workspace.Materialization) { m.WorkspaceID = "" }},
 		{"duplicate file path", func(m *workspace.Materialization) {
-			m.Files = append(m.Files, workspace.File{Path: "/kodama/inputs/source", Data: []byte("again")})
+			m.Files = append(m.Files, workspace.File{Path: "/kodema/inputs/source", Data: []byte("again")})
 		}},
 		{"workspace write", func(m *workspace.Materialization) {
 			m.Files = append(m.Files, workspace.File{Path: "/workspace/scratch", Data: []byte("x")})
 		}},
 		{"credential path in files", func(m *workspace.Materialization) {
-			m.Files = append(m.Files, workspace.File{Path: "/kodama/secrets/KODAMA_TOKEN", Data: []byte("x")})
+			m.Files = append(m.Files, workspace.File{Path: "/kodema/secrets/KODEMA_TOKEN", Data: []byte("x")})
 		}},
 		{"symlink file mode", func(m *workspace.Materialization) {
 			m.Files[0].Mode = 0o444 | os.ModeSymlink
@@ -118,10 +118,10 @@ func TestWorkspaceMaterializationValidation(t *testing.T) {
 			m.Files[0].Mode = 0o444 | os.ModeDevice | os.ModeCharDevice
 		}},
 		{"directory prefix collision", func(m *workspace.Materialization) {
-			m.Files = append(m.Files, workspace.File{Path: "/kodama/inputs/source/child", Data: []byte("x")})
+			m.Files = append(m.Files, workspace.File{Path: "/kodema/inputs/source/child", Data: []byte("x")})
 		}},
 		{"file and secret collision", func(m *workspace.Materialization) {
-			m.Files = append(m.Files, workspace.File{Path: "/kodama/secrets/DB_PASSWORD", Data: []byte("x")})
+			m.Files = append(m.Files, workspace.File{Path: "/kodema/secrets/DB_PASSWORD", Data: []byte("x")})
 		}},
 		{"empty credential", func(m *workspace.Materialization) {
 			m.Credential = ""
@@ -343,8 +343,8 @@ func TestSecretResolutionRules(t *testing.T) {
 	}
 
 	path, err := secret.MountPath(id.SecretName("DB_PASSWORD"))
-	if err != nil || path != "/kodama/secrets/DB_PASSWORD" {
-		t.Errorf("MountPath = %q, %v; want /kodama/secrets/DB_PASSWORD", path, err)
+	if err != nil || path != "/kodema/secrets/DB_PASSWORD" {
+		t.Errorf("MountPath = %q, %v; want /kodema/secrets/DB_PASSWORD", path, err)
 	}
 	if _, err := secret.MountPath(id.SecretName(id.SecretTokenName)); err == nil {
 		t.Error("MountPath accepted the reserved credential name")

@@ -7,13 +7,13 @@ import (
 	"strings"
 	"testing"
 
-	runtimepodman "github.com/optimiware/kodama/internal/shell/runtime/podman"
-	"github.com/optimiware/kodama/test/support/factory"
+	runtimepodman "github.com/optimiware/kodema/internal/shell/runtime/podman"
+	"github.com/optimiware/kodema/test/support/factory"
 )
 
-// TestOutputsStagedUntilSuccess proves the KODAMA.md rule that declared
+// TestOutputsStagedUntilSuccess proves the KODEMA.md rule that declared
 // values remain staged until runtime-confirmed success and a failure discards
-// them (KODAMA.md line 100, AC 12):
+// them (KODEMA.md line 100, AC 12):
 //
 //   - an action submits its declared output through the mounted execution
 //     credential and then exits non-zero;
@@ -25,7 +25,7 @@ import (
 //     left in the durable staging columns;
 //   - the following action that consumes that output is cancelled before it is
 //     ever activated: no launch intent, no container, and no materialized
-//     /kodama/outputs/<action>/ directory in any workload activation root.
+//     /kodema/outputs/<action>/ directory in any workload activation root.
 //
 // The positive promotion path is covered by TestAdmissionParity; this test is
 // the failing-path counterpart that would fail if staged outputs were published
@@ -61,8 +61,8 @@ func TestOutputsStagedUntilSuccess(t *testing.T) {
 				Name:  "consume",
 				Image: harness.Image.Reference,
 				Commands: []string{
-					"test -f /kodama/outputs/produce/artifact",
-					"FINAL=$(cat /kodama/outputs/produce/artifact)",
+					"test -f /kodema/outputs/produce/artifact",
+					"FINAL=$(cat /kodema/outputs/produce/artifact)",
 				},
 			},
 		},
@@ -139,7 +139,7 @@ func TestOutputsStagedUntilSuccess(t *testing.T) {
 		t.Fatalf("cancelled action had containers %v", containers)
 	}
 
-	// Corroborating filesystem evidence: no /kodama/outputs/produce/ was
+	// Corroborating filesystem evidence: no /kodema/outputs/produce/ was
 	// materialized into any workload root, so the consumer never received the
 	// discarded value. The adapter removes the workload root during settlement,
 	// so an empty result is not independent proof by itself; the durable row,

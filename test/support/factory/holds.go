@@ -26,7 +26,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/optimiware/kodama/internal/shell/store"
+	"github.com/optimiware/kodema/internal/shell/store"
 )
 
 // holdTables is the closed set of tables the race tests may hold. A hold on any
@@ -129,7 +129,7 @@ func (h *Harness) holdRows(ctx context.Context, targets ...holdTarget) (*RowHold
 		return nil, cause
 	}
 	if _, err := tx.Exec(ctx,
-		`SELECT set_config('kodama.tenant_id', $1, true), set_config('kodama.project_id', $2, true)`,
+		`SELECT set_config('kodema.tenant_id', $1, true), set_config('kodema.project_id', $2, true)`,
 		string(h.TenantID), string(h.ProjectID)); err != nil {
 		return rollback(fmt.Errorf("factory: establish row-hold scope: %w", err))
 	}

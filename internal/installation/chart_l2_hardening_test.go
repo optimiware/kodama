@@ -16,22 +16,22 @@ import (
 	"testing"
 )
 
-// productionOIDCNames is the exact set cmd/kodama/production.go refuses to
+// productionOIDCNames is the exact set cmd/kodema/production.go refuses to
 // start without.
 var productionOIDCNames = []string{
-	"KODAMA_OIDC_ISSUER",
-	"KODAMA_OIDC_AUDIENCE",
-	"KODAMA_OIDC_JWKS_URL",
-	"KODAMA_OIDC_TENANT_CLAIM",
+	"KODEMA_OIDC_ISSUER",
+	"KODEMA_OIDC_AUDIENCE",
+	"KODEMA_OIDC_JWKS_URL",
+	"KODEMA_OIDC_TENANT_CLAIM",
 }
 
-// schemaPath resolves values.schema.json inside the kodama chart.
+// schemaPath resolves values.schema.json inside the kodema chart.
 func schemaPath(t *testing.T) string {
 	t.Helper()
 	return chartPath(t, "values.schema.json")
 }
 
-// chartSchema loads the kodama chart schema.
+// chartSchema loads the kodema chart schema.
 func chartSchema(t *testing.T) map[string]any {
 	t.Helper()
 	return objectAt(t, loadJSON(t, schemaPath(t)), "schema")
@@ -128,8 +128,8 @@ func TestProductionOIDCAndKMSRequiredBySchema(t *testing.T) {
 	const (
 		awsAnnotation = "eks.amazonaws.com/role-arn"
 		gcpAnnotation = "iam.gke.io/gcp-service-account"
-		awsRole       = "arn:aws:iam::123456789012:role/kodama"
-		gcpAccount    = "kodama@demo-project.iam.gserviceaccount.com"
+		awsRole       = "arn:aws:iam::123456789012:role/kodema"
+		gcpAccount    = "kodema@demo-project.iam.gserviceaccount.com"
 	)
 	for _, testCase := range []struct {
 		name    string
@@ -164,7 +164,7 @@ func TestProductionOIDCAndKMSRequiredBySchema(t *testing.T) {
 	for _, profile := range []string{"development", "test"} {
 		values := fqdnValues([]any{})
 		values["environment"] = profile
-		delete(extraEnvOf(values), "KODAMA_OIDC_ISSUER")
+		delete(extraEnvOf(values), "KODEMA_OIDC_ISSUER")
 		delete(values["secrets"].(map[string]any), "kmsCredentials")
 		if err := validateAgainstSchema(schema, values, "values"); err != nil {
 			t.Errorf("schema refused a %s profile without production-only inputs: %v", profile, err)
@@ -178,16 +178,16 @@ func TestProductionOIDCAndKMSRequiredBySchema(t *testing.T) {
 
 // TestProductionOIDCValuesMustBeNonEmpty pins the non-empty half of the
 // production OIDC contract. A check that the key merely exists lets
-// `KODAMA_OIDC_ISSUER: ""` render an empty environment value and fail later
+// `KODEMA_OIDC_ISSUER: ""` render an empty environment value and fail later
 // at runtime. An empty issuer, audience, JWKS URL, tenant
 // claim, or discovery client id must be a named configuration refusal instead.
 func TestProductionOIDCValuesMustBeNonEmpty(t *testing.T) {
 	schema := chartSchema(t)
 	names := append([]string{
-		"KODAMA_DISCOVERY_ISSUER",
-		"KODAMA_DISCOVERY_CLIENT_ID",
-		"KODAMA_OIDC_SUBJECT_CLAIM",
-		"KODAMA_OIDC_PROJECT_CLAIM",
+		"KODEMA_DISCOVERY_ISSUER",
+		"KODEMA_DISCOVERY_CLIENT_ID",
+		"KODEMA_OIDC_SUBJECT_CLAIM",
+		"KODEMA_OIDC_PROJECT_CLAIM",
 	}, productionOIDCNames...)
 	for _, name := range names {
 		values := extraEnvValues(map[string]any{name: ""})
@@ -211,7 +211,7 @@ func TestProductionOIDCValuesMustBeNonEmpty(t *testing.T) {
 }
 
 // TestDeploymentRequiresDatabaseCAVolume pins the database CA mount: the
-// server verifies the provider certificate with /etc/kodama/pg-ca/ca.crt, so
+// server verifies the provider certificate with /etc/kodema/pg-ca/ca.crt, so
 // a missing Secret must stop the pod instead of starting it without a root.
 func TestDeploymentRequiresDatabaseCAVolume(t *testing.T) {
 	deployment := readText(t, chartPath(t, "templates", "deployment.yaml"))
@@ -316,11 +316,11 @@ func TestDeploymentSecretKeyReferencesTable(t *testing.T) {
 		name string
 		key  string
 	}{
-		{"KODAMA_DATABASE_URL", "database_url"},
-		{"KODAMA_CONTROLLER_DATABASE_URL", "controller_url"},
-		{"KODAMA_PUBLISHER_DATABASE_URL", "publisher_url"},
-		{"KODAMA_AUTH_DATABASE_URL", "auth_url"},
-		{"KODAMA_NATS_URL", "nats_url"},
+		{"KODEMA_DATABASE_URL", "database_url"},
+		{"KODEMA_CONTROLLER_DATABASE_URL", "controller_url"},
+		{"KODEMA_PUBLISHER_DATABASE_URL", "publisher_url"},
+		{"KODEMA_AUTH_DATABASE_URL", "auth_url"},
+		{"KODEMA_NATS_URL", "nats_url"},
 	}
 	for _, reference := range references {
 		block := envEntryByName(deployment, reference.name)
@@ -337,11 +337,11 @@ func TestDeploymentSecretKeyReferencesTable(t *testing.T) {
 	}
 
 	fixed := map[string]string{
-		"KODAMA_NATS_CA_FILE":   "/etc/kodama/broker-tls/ca.crt",
-		"KODAMA_NATS_CERT_FILE": "/etc/kodama/broker-tls/tls.crt",
-		"KODAMA_NATS_KEY_FILE":  "/etc/kodama/broker-tls/tls.key",
-		"KODAMA_TLS_DIR":        "/etc/kodama/tls",
-		"KODAMA_KEY_BLOBS_DIR":  "/etc/kodama/keys",
+		"KODEMA_NATS_CA_FILE":   "/etc/kodema/broker-tls/ca.crt",
+		"KODEMA_NATS_CERT_FILE": "/etc/kodema/broker-tls/tls.crt",
+		"KODEMA_NATS_KEY_FILE":  "/etc/kodema/broker-tls/tls.key",
+		"KODEMA_TLS_DIR":        "/etc/kodema/tls",
+		"KODEMA_KEY_BLOBS_DIR":  "/etc/kodema/keys",
 	}
 	for name, path := range fixed {
 		block := envEntryByName(deployment, name)
@@ -447,8 +447,8 @@ func TestStackNATSImagePinnedByTagAndDigest(t *testing.T) {
 	}
 }
 
-// TestRecreateStrategyClearsRollingUpdate pins the kodama Deployment's
-// strategy block. The kodama Deployment is Recreate (a controller upgrade
+// TestRecreateStrategyClearsRollingUpdate pins the kodema Deployment's
+// strategy block. The kodema Deployment is Recreate (a controller upgrade
 // must never overlap two pods), and `rollingUpdate: null` keeps the submitted
 // object free of the field. It does not, however, switch an
 // existing API-server-defaulted RollingUpdate Deployment to Recreate under Helm

@@ -49,10 +49,10 @@ func repoRoot(t *testing.T) string {
 	}
 }
 
-// chartPath resolves one path inside deploy/charts/kodama.
+// chartPath resolves one path inside deploy/charts/kodema.
 func chartPath(t *testing.T, parts ...string) string {
 	t.Helper()
-	all := append([]string{repoRoot(t), "deploy", "charts", "kodama"}, parts...)
+	all := append([]string{repoRoot(t), "deploy", "charts", "kodema"}, parts...)
 	return filepath.Join(all...)
 }
 

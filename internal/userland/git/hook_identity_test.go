@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	git "github.com/optimiware/kodama/internal/userland/git"
+	git "github.com/optimiware/kodema/internal/userland/git"
 )
 
 func TestHookPreReceiveRejectsMissingOrMalformedSourceEvent(t *testing.T) {

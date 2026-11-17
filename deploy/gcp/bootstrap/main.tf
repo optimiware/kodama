@@ -26,7 +26,7 @@ resource "google_storage_bucket" "tofu_state" {
   }
 
   labels = {
-    app        = "kodama"
+    app        = "kodema"
     component  = "tofu-state"
     managed-by = "opentofu"
   }

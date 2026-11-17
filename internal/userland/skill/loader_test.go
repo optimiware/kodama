@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/userland/skill"
+	"github.com/optimiware/kodema/internal/userland/skill"
 )
 
 func mustName(t *testing.T, value string) skill.Name {

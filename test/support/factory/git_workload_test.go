@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/test/support/infrastructure/messaging"
+	"github.com/optimiware/kodema/test/support/infrastructure/messaging"
 )
 
 // TestGitWorkloadUsesPinnedFixtureImage pins the workload image identity: the
@@ -52,10 +52,10 @@ func TestGitWorkloadUsesPinnedFixtureImage(t *testing.T) {
 	if first.Repository == second.Repository {
 		t.Fatalf("two fixtures share the registry repository %q", first.Repository)
 	}
-	if !strings.HasPrefix(first.LocalTag, "localhost/kodama-fixture-") {
+	if !strings.HasPrefix(first.LocalTag, "localhost/kodema-fixture-") {
 		t.Fatalf("workload local tag %q is outside the fixture image namespace", first.LocalTag)
 	}
-	if !strings.HasPrefix(first.Repository, "kodama/fixture-") {
+	if !strings.HasPrefix(first.Repository, "kodema/fixture-") {
 		t.Fatalf("workload repository %q is outside the fixture image namespace", first.Repository)
 	}
 	if first.Marker == second.Marker {
@@ -77,7 +77,7 @@ func TestGitWorkloadUsesPinnedFixtureImage(t *testing.T) {
 		if name == pinned.Reference || name == pinned.Tag || name == messaging.FixtureBaseTag {
 			t.Fatalf("cleanup would remove the shared base %q", name)
 		}
-		if !strings.Contains(name, "kodama/fixture-") && !strings.HasPrefix(name, "localhost/kodama-fixture-") {
+		if !strings.Contains(name, "kodema/fixture-") && !strings.HasPrefix(name, "localhost/kodema-fixture-") {
 			t.Fatalf("cleanup name %q is outside the fixture image namespace", name)
 		}
 	}
@@ -126,7 +126,7 @@ func TestGitWorkloadAuthenticationDoesNotPersistCredentials(t *testing.T) {
 	joined := strings.Join(commands, "\n")
 
 	required := []string{
-		"--config-env=http.extraHeader=KODAMA_GIT_AUTHORIZATION",
+		"--config-env=http.extraHeader=KODEMA_GIT_AUTHORIZATION",
 		"http.followRedirects=false",
 		"GIT_SSL_CAINFO=",
 		"--cacert",
@@ -162,7 +162,7 @@ func TestGitWorkloadAuthenticationDoesNotPersistCredentials(t *testing.T) {
 			t.Fatalf("authored workload commands contain unsafe control %q:\n%s", value, joined)
 		}
 	}
-	if strings.Contains(joined, "KODAMA_TOKEN=") {
+	if strings.Contains(joined, "KODEMA_TOKEN=") {
 		t.Fatalf("authored workload commands assign a token value:\n%s", joined)
 	}
 	if strings.Contains(joined, "Authorization: Basic ") && !strings.Contains(joined, "Authorization: Basic $(printf") {
@@ -182,7 +182,7 @@ func TestGitWorkloadAuthenticationDoesNotPersistCredentials(t *testing.T) {
 		},
 		{
 			name: "url credentials",
-			spec: workloadGitSpec{URL: "https://kodama:secret@host.containers.internal:41000/repository.git", CAPEM: ca, WorkRef: GitWorkloadRef, Directory: "/workspace/repository"},
+			spec: workloadGitSpec{URL: "https://kodema:secret@host.containers.internal:41000/repository.git", CAPEM: ca, WorkRef: GitWorkloadRef, Directory: "/workspace/repository"},
 		},
 		{
 			name: "protected ref",
@@ -265,7 +265,7 @@ func TestGitWorkloadCleanupRunsAfterShellAndOwnedNamesOnly(t *testing.T) {
 // token or its Basic encoding.
 func TestGitWorkloadScanFailsClosedOnCredentialLeak(t *testing.T) {
 	const token = "i04-g6b-scan-token-0123456789abcdef"
-	basic := base64.StdEncoding.EncodeToString([]byte("kodama:" + token))
+	basic := base64.StdEncoding.EncodeToString([]byte("kodema:" + token))
 	if basic == token {
 		t.Fatalf("the test token has no Basic encoding")
 	}
@@ -300,7 +300,7 @@ func TestGitWorkloadScanFailsClosedOnCredentialLeak(t *testing.T) {
 			name: "raw token in clone URL",
 			leak: func(t *testing.T, workspace, repository string) {
 				writeScanFile(t, filepath.Join(repository, ".git", "config"),
-					"[remote \"origin\"]\n\turl = https://kodama:"+token+
+					"[remote \"origin\"]\n\turl = https://kodema:"+token+
 						"@host.containers.internal:41000/project-i04/web.git\n")
 			},
 			wantFailure: true,
@@ -396,7 +396,7 @@ func TestGitWorkloadCAHeredocTerminatesWithoutTrailingNewline(t *testing.T) {
 	if err != nil {
 		t.Fatalf("author workload commands with a certificate lacking a trailing newline: %v", err)
 	}
-	if !strings.HasSuffix(commands[0], "\nKODAMA_WORKLOAD_CA") {
+	if !strings.HasSuffix(commands[0], "\nKODEMA_WORKLOAD_CA") {
 		t.Fatalf("the CA heredoc terminator is not on its own line: %q", commands[0])
 	}
 }
@@ -435,7 +435,7 @@ func availableScanShells(t *testing.T) []scanShell {
 func newScanWorkspace(t *testing.T, token string) (tokenPath, workspace, repository string) {
 	t.Helper()
 	root := t.TempDir()
-	tokenPath = filepath.Join(root, "kodama", "secrets", "KODAMA_TOKEN")
+	tokenPath = filepath.Join(root, "kodema", "secrets", "KODEMA_TOKEN")
 	writeScanFile(t, tokenPath, token+"\n")
 	workspace = filepath.Join(root, "workspace")
 	repository = filepath.Join(workspace, "git-workload-repository")

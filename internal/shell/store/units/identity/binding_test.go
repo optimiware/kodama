@@ -6,12 +6,12 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/shell/authorize"
-	"github.com/optimiware/kodama/internal/shell/event"
-	"github.com/optimiware/kodama/internal/shell/resource"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/shell/authorize"
+	"github.com/optimiware/kodema/internal/shell/event"
+	"github.com/optimiware/kodema/internal/shell/resource"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
 )
 
 func (h *harness) seedResource(scope tenancy.Scope, resourceID string) {
@@ -46,7 +46,7 @@ func (h *harness) registerUnit(scope tenancy.Scope, actor, bindingID, resourceID
 			Operations:       []resource.Operation{resource.OperationGitRefUpdate},
 			ReportableEvents: []string{"git.ref.updated"},
 			Version:          1,
-			Metadata:         map[string]string{"repo": "kodama", "owner": "team"},
+			Metadata:         map[string]string{"repo": "kodema", "owner": "team"},
 		},
 		Receipt:   h.receipt(scope, id.PrincipalID(actor), "resource.binding.register", "caller-"+bindingID, resource.BindingResult{Version: 1}),
 		Audit:     []event.Audit{h.audit(scope, id.PrincipalID(actor), "resource.binding.register")},
@@ -147,8 +147,8 @@ func TestUpdateBindingStaleVersionLeavesNoPartialState(t *testing.T) {
 	if binding.Version != 1 {
 		t.Fatalf("binding version = %d; want untouched 1", binding.Version)
 	}
-	if got := binding.Metadata["repo"]; got != "kodama" {
-		t.Fatalf("binding metadata repo = %q; want untouched kodama", got)
+	if got := binding.Metadata["repo"]; got != "kodema" {
+		t.Fatalf("binding metadata repo = %q; want untouched kodema", got)
 	}
 	if got := len(h.store.Events(scope)); got != 1 {
 		t.Fatalf("event rows = %d; want only the registration event", got)

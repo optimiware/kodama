@@ -18,8 +18,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/installation"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/installation"
 )
 
 // The exact literal spellings the installation document accepts.
@@ -32,7 +32,7 @@ const (
 	scwLegacyAdapterLiteral = "scaleway-kms"
 	scwLegacyKeyRefLiteral  = "scaleway-kms:key-id"
 
-	scwForeignKeyRefLiteral = "gcp-kms:projects/kodama/locations/europe-west1/keyRings/kodama"
+	scwForeignKeyRefLiteral = "gcp-kms:projects/kodema/locations/europe-west1/keyRings/kodema"
 )
 
 // scwProductionDocument renders a complete production composition with the
@@ -45,9 +45,9 @@ func scwProductionDocument(keys, keyRef string) string {
 		"messaging = nats",
 		"runtime = kubernetes",
 		"keys = " + keys,
-		"database_url = postgres://kodama@database:5432/kodama?sslmode=verify-full",
+		"database_url = postgres://kodema@database:5432/kodema?sslmode=verify-full",
 		"nats_url = tls://nats:4222",
-		"public_url = https://kodama.example",
+		"public_url = https://kodema.example",
 		"key_ref = " + keyRef,
 	}, "\n") + "\n"
 }

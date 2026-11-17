@@ -19,15 +19,15 @@ var ErrInvalidName = errors.New("invalid name")
 // Reserved environment names are supplied by the Shell as unshadowable context
 // and cannot be declared by a pipeline or action.
 const (
-	EnvURL       = "KODAMA_URL"
-	EnvExecution = "KODAMA_EXECUTION"
-	EnvAction    = "KODAMA_ACTION"
-	EnvTask      = "KODAMA_TASK"
+	EnvURL       = "KODEMA_URL"
+	EnvExecution = "KODEMA_EXECUTION"
+	EnvAction    = "KODEMA_ACTION"
+	EnvTask      = "KODEMA_TASK"
 )
 
 // SecretTokenName is the reserved execution-credential mount name. Stored
 // secrets cannot shadow it.
-const SecretTokenName = "KODAMA_TOKEN"
+const SecretTokenName = "KODEMA_TOKEN"
 
 // ActionName is the lowercase slug that names an action inside a pipeline.
 type ActionName string
@@ -135,7 +135,7 @@ func ParseActionName(value string) (ActionName, error) {
 }
 
 // ParseEnvName validates a literal environment variable name and rejects the
-// reserved Kodama context names.
+// reserved Kodema context names.
 func ParseEnvName(value string) (EnvName, error) {
 	if !validEnvName(value) {
 		return "", invalidName("environment name", value)

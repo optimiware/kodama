@@ -21,7 +21,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/test/support/factory"
+	"github.com/optimiware/kodema/test/support/factory"
 )
 
 // TestPushBrokerDownStartAndRestartRescan proves broker-independent push starts

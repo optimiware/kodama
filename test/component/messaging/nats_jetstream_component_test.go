@@ -11,15 +11,15 @@ import (
 	natsgo "github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	natsdriver "github.com/optimiware/kodama/internal/shell/app/drivers/nats"
-	broker "github.com/optimiware/kodama/internal/shell/integration/nats"
-	"github.com/optimiware/kodama/internal/shell/service"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
-	"github.com/optimiware/kodama/internal/shell/token"
-	"github.com/optimiware/kodama/test/support/infrastructure/harness"
-	support "github.com/optimiware/kodama/test/support/infrastructure/messaging"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	natsdriver "github.com/optimiware/kodema/internal/shell/app/drivers/nats"
+	broker "github.com/optimiware/kodema/internal/shell/integration/nats"
+	"github.com/optimiware/kodema/internal/shell/service"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
+	"github.com/optimiware/kodema/internal/shell/token"
+	"github.com/optimiware/kodema/test/support/infrastructure/harness"
+	support "github.com/optimiware/kodema/test/support/infrastructure/messaging"
 )
 
 // TestJetStreamDedupeAndSubjectLayout proves the real broker stores one
@@ -72,7 +72,7 @@ func TestJetStreamDedupeAndSubjectLayout(t *testing.T) {
 	if len(messages) != 2 {
 		t.Fatalf("fetched %d event messages; want 2", len(messages))
 	}
-	wantSubjects := []string{"kodama.v1.tenant-a.project-1.events", "kodama.v1.tenant-a._.events"}
+	wantSubjects := []string{"kodema.v1.tenant-a.project-1.events", "kodema.v1.tenant-a._.events"}
 	wantIDs := []id.EventID{"evt-1", "evt-2"}
 	for index, message := range messages {
 		if message.Subject != wantSubjects[index] {
@@ -115,11 +115,11 @@ func TestJetStreamDedupeAndSubjectLayout(t *testing.T) {
 	}
 
 	// Wildcard and mixed-scope subscriptions are refused before any dial.
-	if err := broker.Subject("kodama.v1.tenant-a.*.events").Validate(); err == nil {
+	if err := broker.Subject("kodema.v1.tenant-a.*.events").Validate(); err == nil {
 		t.Fatal("wildcard subject accepted; want refusal")
 	}
 	client := instance.DialDriver(t, instance.DriverConfig("conn-wildcard"))
-	if _, err := client.Subscribe(ctx, broker.Subject("kodama.v1.tenant-a.>.events"), func(context.Context, []byte) error { return nil }); err == nil {
+	if _, err := client.Subscribe(ctx, broker.Subject("kodema.v1.tenant-a.>.events"), func(context.Context, []byte) error { return nil }); err == nil {
 		t.Fatal("wildcard subscription accepted; want refusal")
 	}
 	tenantDirectory, tenantCredential, _ := serviceIdentity("service-tenant", tenantScope())

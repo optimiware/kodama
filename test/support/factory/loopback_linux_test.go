@@ -9,7 +9,7 @@ import (
 	"testing"
 	"unsafe"
 
-	"github.com/optimiware/kodama/test/support/infrastructure/harness"
+	"github.com/optimiware/kodema/test/support/infrastructure/harness"
 )
 
 // ensureLoopback makes loopback routable for a loopback-only test.
@@ -20,18 +20,18 @@ import (
 // standard loopback interface through the ordinary SIOCSIFFLAGS ioctl. It
 // touches no other interface, address or route; on a routed host the probe
 // succeeds and no ioctl runs. If the process lacks CAP_NET_ADMIN the shared
-// infrastructure policy applies: skip unless KODAMA_REQUIRE_INFRA=1.
+// infrastructure policy applies: skip unless KODEMA_REQUIRE_INFRA=1.
 func ensureLoopback(t testing.TB) {
 	t.Helper()
 	if loopbackUsable() {
 		return
 	}
 	if err := enableLoopback(); err != nil {
-		harness.SkipOrFail(t, os.Getenv("KODAMA_REQUIRE_INFRA") == "1",
+		harness.SkipOrFail(t, os.Getenv("KODEMA_REQUIRE_INFRA") == "1",
 			fmt.Errorf("loopback is unusable and could not be enabled: %w", err))
 	}
 	if !loopbackUsable() {
-		harness.SkipOrFail(t, os.Getenv("KODAMA_REQUIRE_INFRA") == "1",
+		harness.SkipOrFail(t, os.Getenv("KODEMA_REQUIRE_INFRA") == "1",
 			fmt.Errorf("loopback is still unusable after enabling the interface"))
 	}
 }

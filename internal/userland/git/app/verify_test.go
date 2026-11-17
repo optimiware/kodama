@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/client"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/client"
 )
 
 type fakeTransport struct {

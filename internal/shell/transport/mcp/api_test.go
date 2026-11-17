@@ -49,9 +49,9 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/shell/transport/mcp"
-	"github.com/optimiware/kodama/internal/shell/transport/ops"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/shell/transport/mcp"
+	"github.com/optimiware/kodema/internal/shell/transport/ops"
 )
 
 type fakeRouter struct {
@@ -180,7 +180,7 @@ func newEdge(t *testing.T, router *fakeRouter) *mcp.Edge {
 	t.Helper()
 	edge, err := mcp.NewEdge(mcp.Config{
 		Router:     router,
-		ServerInfo: api.MCPImplementation{Name: "kodama", Version: "test"},
+		ServerInfo: api.MCPImplementation{Name: "kodema", Version: "test"},
 	})
 	if err != nil {
 		t.Fatalf("mcp.NewEdge: %v", err)

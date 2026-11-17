@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/userland/services"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/userland/services"
 )
 
 // uncertainMergeFixture builds an adapter whose single assignment already

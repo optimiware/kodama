@@ -4,7 +4,7 @@ package factory
 //
 // WithGitService selects one optional host-only Git smart-HTTP service beside
 // the existing factory composition. The service is composed exactly like the
-// production `kodama git serve` process: the public file-credential transport,
+// production `kodema git serve` process: the public file-credential transport,
 // the real verification client, the shared actor-handle registry, the strict
 // repository-to-resource mapping and the product Run entry point. It owns real
 // tenant storage, a real receive journal, the real native hooks and a private
@@ -33,13 +33,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/client"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/userland/git"
-	gitapp "github.com/optimiware/kodama/internal/userland/git/app"
-	"github.com/optimiware/kodama/internal/userland/git/app/actors"
-	"github.com/optimiware/kodama/internal/userland/git/app/native"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/client"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/userland/git"
+	gitapp "github.com/optimiware/kodema/internal/userland/git/app"
+	"github.com/optimiware/kodema/internal/userland/git/app/actors"
+	"github.com/optimiware/kodema/internal/userland/git/app/native"
 )
 
 // ErrHookSocketPathTooLong reports a fixture hook socket path beyond the
@@ -95,7 +95,7 @@ const (
 	gitServiceStartupTimeout = 5 * time.Minute
 	gitCredentialFileMode    = 0o600
 	gitRepositoryDirectory   = 0o700
-	gitSocketDirectoryPrefix = "kodama-i04-git-"
+	gitSocketDirectoryPrefix = "kodema-i04-git-"
 )
 
 // WithGitService enables the optional host Git composition. It also selects

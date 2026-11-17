@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/fault"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/fault"
 )
 
 // TestTaskInboxServesThePublicPageLimit proves the served composition accepts

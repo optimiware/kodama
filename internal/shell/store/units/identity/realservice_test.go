@@ -9,16 +9,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/shell/authorize"
-	shellidentity "github.com/optimiware/kodama/internal/shell/identity"
-	"github.com/optimiware/kodama/internal/shell/receipt"
-	"github.com/optimiware/kodama/internal/shell/resource"
-	"github.com/optimiware/kodama/internal/shell/service"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
-	tenancyadmin "github.com/optimiware/kodama/internal/shell/tenancy/admin"
-	"github.com/optimiware/kodama/internal/shell/token"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/shell/authorize"
+	shellidentity "github.com/optimiware/kodema/internal/shell/identity"
+	"github.com/optimiware/kodema/internal/shell/receipt"
+	"github.com/optimiware/kodema/internal/shell/resource"
+	"github.com/optimiware/kodema/internal/shell/service"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
+	tenancyadmin "github.com/optimiware/kodema/internal/shell/tenancy/admin"
+	"github.com/optimiware/kodema/internal/shell/token"
 )
 
 // The real-service tests drive the actual capability services (their real
@@ -493,7 +493,7 @@ func TestRealResourceBindingLifecycle(t *testing.T) {
 		TrustedOrigins:   []string{"https://git.example"},
 		Operations:       []resource.Operation{resource.OperationGitRefUpdate},
 		ReportableEvents: []string{"git.ref.updated"},
-		Metadata:         map[string]string{"repo": "kodama"},
+		Metadata:         map[string]string{"repo": "kodema"},
 		CallerKey:        "caller-binding-register",
 		Content:          requestContent("binding-register"),
 	})
@@ -520,7 +520,7 @@ func TestRealResourceBindingLifecycle(t *testing.T) {
 		TrustedOrigins:   []string{"https://git.example"},
 		Operations:       []resource.Operation{resource.OperationGitRefUpdate},
 		ReportableEvents: []string{"git.ref.updated"},
-		Metadata:         map[string]string{"repo": "kodama", "owner": "team"},
+		Metadata:         map[string]string{"repo": "kodema", "owner": "team"},
 		ExpectedVersion:  1,
 		CallerKey:        "caller-binding-update",
 		Content:          requestContent("binding-update"),

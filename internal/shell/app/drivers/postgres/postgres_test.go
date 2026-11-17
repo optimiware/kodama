@@ -19,8 +19,8 @@ import (
 
 	"github.com/jackc/pgx/v5/pgconn"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/shell/store/postgres"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/shell/store/postgres"
 )
 
 // fakeTag is a statement result.
@@ -446,8 +446,8 @@ func TestEnsureDatabaseValidatesTheNameBeforeConnecting(t *testing.T) {
 // connection URL nor its password reaches the error.
 func TestEnsureDatabaseConnectionErrorIsSecretFree(t *testing.T) {
 	const password = "SENTINEL-MAINTENANCE-PASS"
-	connString := "postgres://kodama_admin:" + password + "@127.0.0.1:1/postgres?sslmode=disable&connect_timeout=1"
-	err := EnsureDatabase(context.Background(), connString, "kodama")
+	connString := "postgres://kodema_admin:" + password + "@127.0.0.1:1/postgres?sslmode=disable&connect_timeout=1"
+	err := EnsureDatabase(context.Background(), connString, "kodema")
 	if err == nil {
 		t.Fatal("an unreachable maintenance database was accepted")
 	}
@@ -463,8 +463,8 @@ func TestEnsureDatabaseConnectionErrorIsSecretFree(t *testing.T) {
 }
 
 // TestParsePoolConfigHonoursTheDSNTLSQueryOptions proves the wrapper hands the
-// configured DSN's TLS options to pgx unchanged. The `kodama migrate` and
-// `kodama bootstrap-admin` one-shot commands connect through this constructor
+// configured DSN's TLS options to pgx unchanged. The `kodema migrate` and
+// `kodema bootstrap-admin` one-shot commands connect through this constructor
 // with exactly the DSN their Secret supplies, so an ignored, trimmed or
 // downgraded sslmode/sslrootcert would silently weaken their connection.
 func TestParsePoolConfigHonoursTheDSNTLSQueryOptions(t *testing.T) {
@@ -480,7 +480,7 @@ func TestParsePoolConfigHonoursTheDSNTLSQueryOptions(t *testing.T) {
 	}
 
 	t.Run("verify-full loads the configured root and verifies the host", func(t *testing.T) {
-		parsed, err := parsePoolConfig("postgres://kodama_admin:" + password + "@database:5432/kodama?sslmode=verify-full&sslrootcert=" + caPath)
+		parsed, err := parsePoolConfig("postgres://kodema_admin:" + password + "@database:5432/kodema?sslmode=verify-full&sslrootcert=" + caPath)
 		if err != nil {
 			t.Fatalf("parsePoolConfig: %v", err)
 		}
@@ -497,7 +497,7 @@ func TestParsePoolConfigHonoursTheDSNTLSQueryOptions(t *testing.T) {
 	})
 
 	t.Run("verify-ca keeps chain verification", func(t *testing.T) {
-		parsed, err := parsePoolConfig("postgres://kodama_admin:" + password + "@database:5432/kodama?sslmode=verify-ca&sslrootcert=" + caPath)
+		parsed, err := parsePoolConfig("postgres://kodema_admin:" + password + "@database:5432/kodema?sslmode=verify-ca&sslrootcert=" + caPath)
 		if err != nil {
 			t.Fatalf("parsePoolConfig: %v", err)
 		}
@@ -511,7 +511,7 @@ func TestParsePoolConfigHonoursTheDSNTLSQueryOptions(t *testing.T) {
 	})
 
 	t.Run("disable is passed through, not upgraded", func(t *testing.T) {
-		parsed, err := parsePoolConfig("postgres://kodama_admin:" + password + "@database:5432/kodama?sslmode=disable")
+		parsed, err := parsePoolConfig("postgres://kodema_admin:" + password + "@database:5432/kodema?sslmode=disable")
 		if err != nil {
 			t.Fatalf("parsePoolConfig: %v", err)
 		}
@@ -521,7 +521,7 @@ func TestParsePoolConfigHonoursTheDSNTLSQueryOptions(t *testing.T) {
 	})
 
 	t.Run("unreadable root is a secret-free invalid input", func(t *testing.T) {
-		dsn := "postgres://kodama_admin:" + password + "@database:5432/kodama?sslmode=verify-full&sslrootcert=/nonexistent/ca.crt"
+		dsn := "postgres://kodema_admin:" + password + "@database:5432/kodema?sslmode=verify-full&sslrootcert=/nonexistent/ca.crt"
 		_, err := parsePoolConfig(dsn)
 		if class, ok := fault.ClassOf(err); !ok || class != fault.InvalidInput {
 			t.Fatalf("class = %v (found=%v); want invalid_input (%v)", class, ok, err)
@@ -542,8 +542,8 @@ func TestParsePoolConfigHonoursTheDSNTLSQueryOptions(t *testing.T) {
 func TestParsePoolConfigNeverRendersTheParserCause(t *testing.T) {
 	const sentinel = "SENTINEL-PARSE-PASSWORD"
 	for _, dsn := range []string{
-		"postgres://kodama_admin:" + sentinel + "@database:notaport/kodama",
-		"postgres://kodama_admin:" + sentinel + "@database:5432/kodama?sslmode=bogus-mode",
+		"postgres://kodema_admin:" + sentinel + "@database:notaport/kodema",
+		"postgres://kodema_admin:" + sentinel + "@database:5432/kodema?sslmode=bogus-mode",
 	} {
 		t.Run(dsn, func(t *testing.T) {
 			_, err := parsePoolConfig(dsn)
@@ -578,7 +578,7 @@ func selfSignedCAPEM(t *testing.T) []byte {
 	}
 	template := &x509.Certificate{
 		SerialNumber:          big.NewInt(1),
-		Subject:               pkix.Name{CommonName: "kodama-pg-test-ca"},
+		Subject:               pkix.Name{CommonName: "kodema-pg-test-ca"},
 		NotBefore:             time.Now().Add(-time.Hour),
 		NotAfter:              time.Now().Add(time.Hour),
 		IsCA:                  true,

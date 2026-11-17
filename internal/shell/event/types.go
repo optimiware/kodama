@@ -15,9 +15,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
 )
 
 // Type is one stable event type.
@@ -412,7 +412,7 @@ func (grant SubscribeGrant) scope() (tenancy.Scope, error) {
 }
 
 // parseScopeQualifiedEventSubject mirrors the declared event subject shape:
-// kodama.v1.<tenant>.<project|_>.events. A wildcard or an empty/extra token is
+// kodema.v1.<tenant>.<project|_>.events. A wildcard or an empty/extra token is
 // refused, and "_" is the tenant-wide project placeholder.
 func parseScopeQualifiedEventSubject(subject string) (tenancy.Scope, error) {
 	if subject == "" {
@@ -422,7 +422,7 @@ func parseScopeQualifiedEventSubject(subject string) (tenancy.Scope, error) {
 		return tenancy.Scope{}, fault.New(fault.InvalidInput, fmt.Sprintf("event subscribe subject %q is a wildcard", subject))
 	}
 	tokens := strings.Split(subject, ".")
-	if len(tokens) != 5 || tokens[0] != "kodama" || tokens[1] != "v1" || tokens[4] != "events" {
+	if len(tokens) != 5 || tokens[0] != "kodema" || tokens[1] != "v1" || tokens[4] != "events" {
 		return tenancy.Scope{}, fault.New(fault.InvalidInput, fmt.Sprintf("event subscribe subject %q is not scope-qualified", subject))
 	}
 	tenantID, err := id.ParseTenantID(tokens[2])

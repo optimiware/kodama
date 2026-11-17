@@ -1,11 +1,11 @@
 {
   "version": 1,
   "roles": {
-    "runtime": "kodama_runtime",
-    "owner": "kodama_owner",
-    "controller": "kodama_controller",
-    "publisher": "kodama_publisher",
-    "auth": "kodama_auth"
+    "runtime": "kodema_runtime",
+    "owner": "kodema_owner",
+    "controller": "kodema_controller",
+    "publisher": "kodema_publisher",
+    "auth": "kodema_auth"
   },
   "migration": {
     "pattern": "^\\d{4}_[a-z0-9_]+\\.sql$",
@@ -13,19 +13,19 @@
   },
   "role_attributes": [
     {
-      "name": "kodama_controller",
+      "name": "kodema_controller",
       "nobypassrls": true,
       "noinherit": true,
       "memberships": []
     },
     {
-      "name": "kodama_publisher",
+      "name": "kodema_publisher",
       "nobypassrls": true,
       "noinherit": true,
       "memberships": []
     },
     {
-      "name": "kodama_auth",
+      "name": "kodema_auth",
       "nobypassrls": true,
       "noinherit": true,
       "memberships": []
@@ -33,86 +33,86 @@
   ],
   "policies": [
     {
-      "role": "kodama_controller",
+      "role": "kodema_controller",
       "table": "executions",
       "command": "select",
       "using": "any"
     },
     {
-      "role": "kodama_controller",
+      "role": "kodema_controller",
       "table": "executions",
       "command": "update",
       "using": "scope_matches_txn_scope",
       "with_check": "scope_matches_txn_scope"
     },
     {
-      "role": "kodama_controller",
+      "role": "kodema_controller",
       "table": "actions",
       "command": "select",
       "using": "any"
     },
     {
-      "role": "kodama_controller",
+      "role": "kodema_controller",
       "table": "actions",
       "command": "insert",
       "using": "scope_matches_txn_scope",
       "with_check": "scope_matches_txn_scope"
     },
     {
-      "role": "kodama_controller",
+      "role": "kodema_controller",
       "table": "actions",
       "command": "update",
       "using": "scope_matches_txn_scope",
       "with_check": "scope_matches_txn_scope"
     },
     {
-      "role": "kodama_controller",
+      "role": "kodema_controller",
       "table": "cleanup",
       "command": "select",
       "using": "any"
     },
     {
-      "role": "kodama_controller",
+      "role": "kodema_controller",
       "table": "cleanup",
       "command": "insert",
       "using": "scope_matches_txn_scope",
       "with_check": "scope_matches_txn_scope"
     },
     {
-      "role": "kodama_controller",
+      "role": "kodema_controller",
       "table": "cleanup",
       "command": "update",
       "using": "scope_matches_txn_scope",
       "with_check": "scope_matches_txn_scope"
     },
     {
-      "role": "kodama_controller",
+      "role": "kodema_controller",
       "table": "events",
       "command": "select",
       "using": "any"
     },
     {
-      "role": "kodama_controller",
+      "role": "kodema_controller",
       "table": "events",
       "command": "insert",
       "using": "scope_matches_txn_scope",
       "with_check": "scope_matches_txn_scope"
     },
     {
-      "role": "kodama_controller",
+      "role": "kodema_controller",
       "table": "audit",
       "command": "insert",
       "using": "scope_matches_txn_scope",
       "with_check": "scope_matches_txn_scope"
     },
     {
-      "role": "kodama_publisher",
+      "role": "kodema_publisher",
       "table": "events",
       "command": "select",
       "using": "any"
     },
     {
-      "role": "kodama_publisher",
+      "role": "kodema_publisher",
       "table": "events",
       "command": "update",
       "using": "any",
@@ -124,14 +124,14 @@
       ]
     },
     {
-      "role": "kodama_auth",
+      "role": "kodema_auth",
       "table": "executions",
       "command": "select",
       "using": "exact_row",
       "column": "id"
     },
     {
-      "role": "kodama_auth",
+      "role": "kodema_auth",
       "table": "services",
       "command": "select",
       "using": "exact_row",
@@ -636,7 +636,7 @@
   ],
   "grants": [
     {
-      "role": "kodama_controller",
+      "role": "kodema_controller",
       "table": "executions",
       "operations": [
         "select",
@@ -644,7 +644,7 @@
       ]
     },
     {
-      "role": "kodama_controller",
+      "role": "kodema_controller",
       "table": "actions",
       "operations": [
         "select",
@@ -653,7 +653,7 @@
       ]
     },
     {
-      "role": "kodama_controller",
+      "role": "kodema_controller",
       "table": "cleanup",
       "operations": [
         "select",
@@ -662,7 +662,7 @@
       ]
     },
     {
-      "role": "kodama_controller",
+      "role": "kodema_controller",
       "table": "events",
       "operations": [
         "select",
@@ -670,14 +670,14 @@
       ]
     },
     {
-      "role": "kodama_controller",
+      "role": "kodema_controller",
       "table": "audit",
       "operations": [
         "insert"
       ]
     },
     {
-      "role": "kodama_publisher",
+      "role": "kodema_publisher",
       "table": "events",
       "operations": [
         "select",
@@ -688,7 +688,7 @@
       ]
     },
     {
-      "role": "kodama_auth",
+      "role": "kodema_auth",
       "table": "executions",
       "operations": [
         "select"
@@ -701,7 +701,7 @@
       ]
     },
     {
-      "role": "kodama_auth",
+      "role": "kodema_auth",
       "table": "services",
       "operations": [
         "select"

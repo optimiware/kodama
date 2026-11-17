@@ -3,8 +3,8 @@ package task_test
 import (
 	"testing"
 
-	"github.com/optimiware/kodama/internal/shell/task"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
+	"github.com/optimiware/kodema/internal/shell/task"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
 )
 
 // TestDispatchRequiresPredecessorStopEvidence proves a queued execution is

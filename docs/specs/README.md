@@ -1,6 +1,6 @@
 # Detailed specifications
 
-These specs refine [KODAMA.md](../../KODAMA.md) into implementation contracts. **MUST** identifies a required invariant; **SHOULD** identifies an implementation default that needs a recorded reason to change. Named types and methods describe required semantics; the contract tasks freeze the exact compiling Go declarations before parallel implementation.
+These specs refine [KODEMA.md](../../KODEMA.md) into implementation contracts. **MUST** identifies a required invariant; **SHOULD** identifies an implementation default that needs a recorded reason to change. Named types and methods describe required semantics; the contract tasks freeze the exact compiling Go declarations before parallel implementation.
 
 | Spec | Scope | Main acceptance criteria |
 |---|---|---|
@@ -45,4 +45,4 @@ The product does not specify all encoding and API details. Resolve these in the 
 | Supported Podman/Kubernetes/NATS/OIDC/registry/KMS versions | C02 | Pinned client dependencies and fixture API versions |
 | OpenAI-compatible subset, MCP version, native-agent provider/tool interface | C03 | Explicit supported subset and deterministic protocol fixtures |
 
-These decisions may narrow syntax to a documented v2 contract but may not add pipeline expressions, DAGs, artifact entities, command-over-NATS, or another execution engine. A product ambiguity that cannot be resolved without changing `KODAMA.md` is a blocker for the affected bundle.
+These decisions may narrow syntax to a documented v2 contract but may not add pipeline expressions, DAGs, artifact entities, command-over-NATS, or another execution engine. A product ambiguity that cannot be resolved without changing `KODEMA.md` is a blocker for the affected bundle.

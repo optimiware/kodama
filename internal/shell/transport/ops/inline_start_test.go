@@ -10,12 +10,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/shell/authorize"
-	"github.com/optimiware/kodama/internal/shell/transport/httpapi"
-	"github.com/optimiware/kodama/internal/shell/transport/mcp"
-	"github.com/optimiware/kodama/internal/shell/transport/ops"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/shell/authorize"
+	"github.com/optimiware/kodema/internal/shell/transport/httpapi"
+	"github.com/optimiware/kodema/internal/shell/transport/mcp"
+	"github.com/optimiware/kodema/internal/shell/transport/ops"
 )
 
 // publicPipelineStartCodec validates the pipeline.start input with the declared
@@ -185,7 +185,7 @@ func TestInlineStartExclusiveSelectionRefusedAtBothEdges(t *testing.T) {
 	}
 	mcpEdge, err := mcp.NewEdge(mcp.Config{
 		Router:     h.router,
-		ServerInfo: api.MCPImplementation{Name: "kodama", Version: "test"},
+		ServerInfo: api.MCPImplementation{Name: "kodema", Version: "test"},
 	})
 	if err != nil {
 		t.Fatalf("mcp.NewEdge: %v", err)
@@ -298,7 +298,7 @@ func TestInlineStartRESTAndMCPParity(t *testing.T) {
 
 	mcpEdge, err := mcp.NewEdge(mcp.Config{
 		Router:     h.router,
-		ServerInfo: api.MCPImplementation{Name: "kodama", Version: "test"},
+		ServerInfo: api.MCPImplementation{Name: "kodema", Version: "test"},
 	})
 	if err != nil {
 		t.Fatalf("mcp.NewEdge: %v", err)

@@ -6,8 +6,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/userland/git"
-	recoveryfix "github.com/optimiware/kodama/test/support/boundaries/recovery"
+	"github.com/optimiware/kodema/internal/userland/git"
+	recoveryfix "github.com/optimiware/kodema/test/support/boundaries/recovery"
 )
 
 // TestRefusedPushLeavesRefsAndObjectStoreIdentical proves that a push refused

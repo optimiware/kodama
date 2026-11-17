@@ -7,23 +7,23 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/kernel"
-	"github.com/optimiware/kodama/internal/shell/task"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/kernel"
+	"github.com/optimiware/kodema/internal/shell/task"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
 )
 
 // requirePresentEmptyConversation asserts the admission input the task service
 // hands to pipeline.Admit for a task-bound execution with zero messages. The
 // value is the present JSON empty array: non-nil so the pipeline snapshot
 // distinguishes it from an absent (nil, task-free) conversation and workspace
-// materialization writes /kodama/task.json, and valid JSON so a workload can
+// materialization writes /kodema/task.json, and valid JSON so a workload can
 // parse that file. Every non-empty conversation is a JSON array of messages, so
 // the empty array is the consistent encoding rather than zero bytes.
 func requirePresentEmptyConversation(t *testing.T, label string, conversation []byte) {
 	t.Helper()
 	if conversation == nil {
-		t.Fatalf("%s admitted a nil task conversation for a task-bound execution with zero messages; want the present JSON empty array so /kodama/task.json exists", label)
+		t.Fatalf("%s admitted a nil task conversation for a task-bound execution with zero messages; want the present JSON empty array so /kodema/task.json exists", label)
 	}
 	if string(conversation) != "[]" {
 		t.Fatalf("%s admitted conversation = %q; want the present JSON empty array %q of a zero-message task", label, conversation, "[]")
@@ -60,7 +60,7 @@ func requireAdmittedMetadata(t *testing.T, label string, raw []byte, want map[st
 // of the fake admission keeps the conversation present as the JSON empty
 // array. This is the value the execution store and the activation
 // materialization consume, so a nil here is the reported missing
-// /kodama/task.json and zero bytes would be an unparseable task file.
+// /kodema/task.json and zero bytes would be an unparseable task file.
 func requireAdmittedSnapshotConversation(t *testing.T, label string, snapshot interface {
 	HasConversation() bool
 	ConversationBytes() []byte
@@ -80,7 +80,7 @@ func requireAdmittedSnapshotConversation(t *testing.T, label string, snapshot in
 // task whose conversation has zero messages must hand admission the present
 // JSON empty array ([]), not nil and not zero bytes. nil is reserved for a
 // task-free execution, and a task-bound execution with nil bytes materializes
-// no /kodama/task.json while KODAMA_TASK is still set; zero bytes would
+// no /kodema/task.json while KODEMA_TASK is still set; zero bytes would
 // materialize an empty, unparseable task file.
 func TestStartAdmitsPresentEmptyConversation(t *testing.T) {
 	env := newTestEnv(t)

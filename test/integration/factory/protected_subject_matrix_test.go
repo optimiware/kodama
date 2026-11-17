@@ -35,9 +35,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/userland/git"
-	"github.com/optimiware/kodama/test/support/factory"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/userland/git"
+	"github.com/optimiware/kodema/test/support/factory"
 )
 
 // TestProtectedFactoryRejectsMismatchedApprovalSubject proves every canonical
@@ -209,7 +209,7 @@ func assertProtectedSubjectRefusal(t *testing.T, evidence protectedSubjectEviden
 	if evidence.finished.State != "failed" {
 		t.Fatalf("execution state = %q after the refused protected push; want failed", evidence.finished.State)
 	}
-	if evidence.pushError == "" || !containsAll(evidence.pushError, "kodama git: update rejected") {
+	if evidence.pushError == "" || !containsAll(evidence.pushError, "kodema git: update rejected") {
 		t.Fatalf("protected push did not reach the managed hook: %q", evidence.pushError)
 	}
 	if !evidence.controlPushed {

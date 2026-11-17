@@ -9,8 +9,8 @@
 # installation again. The release workflow runs it before anything is pushed.
 #
 # The installation uses its own prefix, state directory and port set, so it
-# runs beside a real local installation. Set a KODAMA_LOCAL_*_PORT variable to
-# move one port, and KODAMA_LOCAL_PODMAN_SOCKET to name the Podman API socket.
+# runs beside a real local installation. Set a KODEMA_LOCAL_*_PORT variable to
+# move one port, and KODEMA_LOCAL_PODMAN_SOCKET to name the Podman API socket.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -30,29 +30,29 @@ done
 podman image exists "$image" || die "image ${image} is not in the local image store"
 
 work="$(mktemp -d)"
-export KODAMA_LOCAL_PREFIX="release-smoke-$$"
-export KODAMA_LOCAL_TENANT="tenant-smoke"
-export KODAMA_LOCAL_STATE_DIR="${work}/state"
-export KODAMA_LOCAL_KODAMA_IMAGE="$image"
-export KODAMA_LOCAL_HTTPS_PORT="${KODAMA_LOCAL_HTTPS_PORT:-38443}"
-export KODAMA_LOCAL_OIDC_PORT="${KODAMA_LOCAL_OIDC_PORT:-38444}"
-export KODAMA_LOCAL_GIT_PORT="${KODAMA_LOCAL_GIT_PORT:-38081}"
-export KODAMA_LOCAL_GIT_HTTPS_PORT="${KODAMA_LOCAL_GIT_HTTPS_PORT:-38445}"
-export KODAMA_LOCAL_POSTGRES_PORT="${KODAMA_LOCAL_POSTGRES_PORT:-35432}"
-export KODAMA_LOCAL_NATS_PORT="${KODAMA_LOCAL_NATS_PORT:-34222}"
-export KODAMA_LOCAL_NATS_MONITOR_PORT="${KODAMA_LOCAL_NATS_MONITOR_PORT:-38222}"
-export KODAMA_LOCAL_OAUTH_UPSTREAM_PORT="${KODAMA_LOCAL_OAUTH_UPSTREAM_PORT:-38181}"
-unset KODAMA_LOCAL_PROJECT KODAMA_LOCAL_GIT_RESOURCES
+export KODEMA_LOCAL_PREFIX="release-smoke-$$"
+export KODEMA_LOCAL_TENANT="tenant-smoke"
+export KODEMA_LOCAL_STATE_DIR="${work}/state"
+export KODEMA_LOCAL_KODEMA_IMAGE="$image"
+export KODEMA_LOCAL_HTTPS_PORT="${KODEMA_LOCAL_HTTPS_PORT:-38443}"
+export KODEMA_LOCAL_OIDC_PORT="${KODEMA_LOCAL_OIDC_PORT:-38444}"
+export KODEMA_LOCAL_GIT_PORT="${KODEMA_LOCAL_GIT_PORT:-38081}"
+export KODEMA_LOCAL_GIT_HTTPS_PORT="${KODEMA_LOCAL_GIT_HTTPS_PORT:-38445}"
+export KODEMA_LOCAL_POSTGRES_PORT="${KODEMA_LOCAL_POSTGRES_PORT:-35432}"
+export KODEMA_LOCAL_NATS_PORT="${KODEMA_LOCAL_NATS_PORT:-34222}"
+export KODEMA_LOCAL_NATS_MONITOR_PORT="${KODEMA_LOCAL_NATS_MONITOR_PORT:-38222}"
+export KODEMA_LOCAL_OAUTH_UPSTREAM_PORT="${KODEMA_LOCAL_OAUTH_UPSTREAM_PORT:-38181}"
+unset KODEMA_LOCAL_PROJECT KODEMA_LOCAL_GIT_RESOURCES
 
-state="$KODAMA_LOCAL_STATE_DIR"
-url="https://localhost:${KODAMA_LOCAL_HTTPS_PORT}"
-project="$KODAMA_LOCAL_TENANT"
+state="$KODEMA_LOCAL_STATE_DIR"
+url="https://localhost:${KODEMA_LOCAL_HTTPS_PORT}"
+project="$KODEMA_LOCAL_TENANT"
 
 cleanup() {
   status=$?
   if [[ $status -ne 0 ]]; then
     log "failed; the last server output follows"
-    podman logs --tail 30 "${KODAMA_LOCAL_PREFIX}-server" >&2 2>/dev/null || true
+    podman logs --tail 30 "${KODEMA_LOCAL_PREFIX}-server" >&2 2>/dev/null || true
   fi
   "${repo_root}/deploy/podman/down.sh" --purge >"${work}/down.log" 2>&1 ||
     { log "the installation could not be removed:"; tail -n 5 "${work}/down.log" >&2; }
@@ -61,7 +61,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-log "installing ${image} as ${KODAMA_LOCAL_PREFIX}"
+log "installing ${image} as ${KODEMA_LOCAL_PREFIX}"
 "${repo_root}/deploy/podman/install.sh" >"${work}/install.log" 2>&1 ||
   { tail -n 25 "${work}/install.log" >&2; die "the installation failed"; }
 

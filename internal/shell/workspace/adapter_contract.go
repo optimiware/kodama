@@ -17,21 +17,21 @@ import (
 	"os"
 	"strings"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/kernel/engine"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/kernel/engine"
 )
 
 // Immutable preparation roots and the reserved credential mount path.
 const (
 	// InputRoot holds admitted input string bytes.
-	InputRoot = "/kodama/inputs"
+	InputRoot = "/kodema/inputs"
 	// OutputRoot holds earlier succeeded action outputs.
-	OutputRoot = "/kodama/outputs"
+	OutputRoot = "/kodema/outputs"
 	// TaskPath is the admitted task snapshot file. It is absent when task-free.
-	TaskPath = "/kodama/task.json"
+	TaskPath = "/kodema/task.json"
 	// SecretRoot holds declared activation-time secret values.
-	SecretRoot = "/kodama/secrets"
+	SecretRoot = "/kodema/secrets"
 	// ReservedCredentialPath is the sole mutable mounted credential file. A
 	// stored secret declaration can never shadow it.
 	ReservedCredentialPath = SecretRoot + "/" + id.SecretTokenName
@@ -41,7 +41,7 @@ const (
 
 // ValidatePath checks one materialized file path against the confined root
 // rules. It refuses relative paths, empty paths, control bytes, trailing
-// separators, empty or dot segments, any path outside the /kodama roots and the
+// separators, empty or dot segments, any path outside the /kodema roots and the
 // reserved credential mount.
 func ValidatePath(path string) error {
 	if path == "" {
@@ -75,7 +75,7 @@ func ValidatePath(path string) error {
 			return nil
 		}
 	}
-	return fault.New(fault.InvalidInput, "materialized path is outside the /kodama roots")
+	return fault.New(fault.InvalidInput, "materialized path is outside the /kodema roots")
 }
 
 // IsReservedPath reports whether the path is the reserved execution-credential
@@ -214,7 +214,7 @@ func (materialization Materialization) Validate() error {
 }
 
 // pathsCollide reports whether one materialized path equals another or is a
-// directory prefix of it. "/kodama/inputs/a" collides with "/kodama/inputs/a/b"
+// directory prefix of it. "/kodema/inputs/a" collides with "/kodema/inputs/a/b"
 // because the first would have to be both a file and a directory.
 func pathsCollide(left, right string) bool {
 	if left == right {

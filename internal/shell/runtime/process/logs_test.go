@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/kernel/engine"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/kernel/engine"
 )
 
 // TestLogsAreOrderedBoundedAndRedacted proves a read returns ordered identified

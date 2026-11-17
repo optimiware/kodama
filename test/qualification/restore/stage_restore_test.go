@@ -25,8 +25,8 @@ func TestStageRDBRestore(t *testing.T) {
 		t.Fatalf("NewRunID: %v", err)
 	}
 	destination := validDestinationRequest()
-	destination.Destination.DatabaseName = "kodama-restore-" + runID
-	destination.ExistingDatabases = []string{"kodama-managed", "kodama-source", "postgres"}
+	destination.Destination.DatabaseName = "kodema-restore-" + runID
+	destination.ExistingDatabases = []string{"kodema-managed", "kodema-source", "postgres"}
 
 	// The empty database-name default is the dangerous case: the CLI would
 	// restore into the source database.
@@ -74,7 +74,7 @@ func TestStageRDBRestore(t *testing.T) {
 	}
 	verifier := &fakeStageVerifier{
 		instance:  StageInstanceStatus{Status: "ready", Ready: true, BackupRetention: 30 * 24 * time.Hour},
-		databases: []string{"kodama-managed", "kodama-source", "postgres", destination.Destination.DatabaseName},
+		databases: []string{"kodema-managed", "kodema-source", "postgres", destination.Destination.DatabaseName},
 	}
 	verified, err := VerifyStageRestore(context.Background(), verifier, destination.Destination, DefaultObjectives().PostgreSQLRecovery)
 	if err != nil || verified.Outcome != OutcomeConfirmed || !verified.MeetsPostgreSQLRecovery {
@@ -102,7 +102,7 @@ func TestStageRDBRestore(t *testing.T) {
 	if err != nil || dropAccepted != OutcomeAccepted {
 		t.Fatalf("stage drop acceptance = %v, %v; want accepted, nil", dropAccepted, err)
 	}
-	verifier.databases = []string{"kodama-managed", "kodama-source", "postgres"}
+	verifier.databases = []string{"kodema-managed", "kodema-source", "postgres"}
 	if dropConfirmed, err := VerifyStageDrop(context.Background(), verifier, created); err != nil || dropConfirmed != OutcomeConfirmed {
 		t.Fatalf("stage drop verification = %v, %v; want confirmed, nil", dropConfirmed, err)
 	}

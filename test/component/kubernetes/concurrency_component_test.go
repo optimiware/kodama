@@ -8,7 +8,7 @@ package kubernetesconformance
 // four independent Kind clients over one shared fake provider at a barrier, so
 // cluster closes and dead-owner sweeps overlap. It proves the deletion path
 // never selects another client's cluster, never touches the protected
-// kodama-probe cluster or a live foreign cluster, and always names a private
+// kodema-probe cluster or a live foreign cluster, and always names a private
 // kubeconfig instead of the ambient host kubeconfig.
 
 import (
@@ -21,8 +21,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/optimiware/kodama/test/support/infrastructure/harness"
-	kubesupport "github.com/optimiware/kodama/test/support/infrastructure/kubernetes"
+	"github.com/optimiware/kodema/test/support/infrastructure/harness"
+	kubesupport "github.com/optimiware/kodema/test/support/infrastructure/kubernetes"
 )
 
 const isolationKindVersionOutput = "kind v0.33.0 go1.26.7 linux/amd64\n"

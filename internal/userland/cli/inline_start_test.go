@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/userland/cli"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/userland/cli"
 )
 
 // TestRunCallForwardsInlinePipelineStart pins that the CLI's generic call

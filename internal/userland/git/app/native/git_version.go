@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/optimiware/kodama/internal/userland/git"
+	"github.com/optimiware/kodema/internal/userland/git"
 )
 
 // MinimumGitVersion is the oldest native Git the service accepts. Git 2.44.0
@@ -75,15 +75,15 @@ func RequireGitVersion(ctx context.Context, executor git.CommandExecutor) error 
 		return fmt.Errorf("probe Git version: %w", err)
 	}
 	if result.ExitCode != 0 {
-		return fmt.Errorf("git --version failed with exit code %d: %s; Kodama requires Git %s or newer",
+		return fmt.Errorf("git --version failed with exit code %d: %s; Kodema requires Git %s or newer",
 			result.ExitCode, strings.TrimSpace(string(result.Stderr)), MinimumGitVersion)
 	}
 	version, err := parseGitVersion(result.Stdout)
 	if err != nil {
-		return fmt.Errorf("%w; Kodama requires Git %s or newer", err, MinimumGitVersion)
+		return fmt.Errorf("%w; Kodema requires Git %s or newer", err, MinimumGitVersion)
 	}
 	if !version.atLeast(minimumGitVersion) {
-		return fmt.Errorf("git version %s is unsupported: Kodama requires Git %s or newer", version, MinimumGitVersion)
+		return fmt.Errorf("git version %s is unsupported: Kodema requires Git %s or newer", version, MinimumGitVersion)
 	}
 	return nil
 }

@@ -6,8 +6,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/kernel/engine"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/kernel/engine"
 )
 
 // Secrets is a deterministic secret-delivery fake. It records only the declared

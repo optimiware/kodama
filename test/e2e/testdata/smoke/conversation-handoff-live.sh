@@ -15,8 +15,8 @@ ready=${SMOKE_READY_MARKER:?}
 project=${SMOKE_PROJECT:?}
 ready_key=${SMOKE_READY_KEY:?}
 workspace=${SMOKE_WORKSPACE:-/workspace}
-task_file=${SMOKE_TASK_FILE:-/kodama/task.json}
-token_file=${SMOKE_TOKEN_PATH:-/kodama/secrets/KODAMA_TOKEN}
+task_file=${SMOKE_TASK_FILE:-/kodema/task.json}
+token_file=${SMOKE_TOKEN_PATH:-/kodema/secrets/KODEMA_TOKEN}
 scratch=$workspace/e1-scratch
 test -f "$task_file"
 if python3 - "$answer" "$task_file" <<'PY'
@@ -50,12 +50,12 @@ printf '%s\n' "$ready"
 # token is read from its file into a curl config on stdin, never argv.
 test -r "$token_file"
 body=$(printf '{"input":{"project_id":"%s","type":"observation.custom","subject_id":"%s","correlation_id":"%s"},"idempotency_key":"%s"}' \
-	"$project" "$ready" "${KODAMA_EXECUTION:?}" "$ready_key")
+	"$project" "$ready" "${KODEMA_EXECUTION:?}" "$ready_key")
 status=$(printf 'header = "Authorization: Bearer %s"\n' "$(cat "$token_file")" | \
 	curl -sS --noproxy '*' --max-time 20 -X POST -K - \
 		-H 'Content-Type: application/json' -H 'Accept: application/json' \
 		--data "$body" -o "$workspace/handoff-ready.json" -w '%{http_code}' \
-		"${KODAMA_URL:?}/api/v1/projects/${project}/events")
+		"${KODEMA_URL:?}/api/v1/projects/${project}/events")
 if [ "$status" != 200 ]; then
 	printf 'w49-handoff: event.publish answered %s\n' "$status" >&2
 	cat "$workspace/handoff-ready.json" >&2 || true

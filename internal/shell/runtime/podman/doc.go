@@ -12,7 +12,7 @@
 // converges on one stable container.
 //
 // Preparation materializes the activation snapshot once, confined to
-// <root>/<workload>/kodama and bind-mounted read-only at /kodama, and attaches
+// <root>/<workload>/kodema and bind-mounted read-only at /kodema, and attaches
 // the execution's pre-existing retained workspace volume at /workspace. The
 // credential is the sole mutable mounted file and is replaced atomically by
 // RefreshCredential without restarting the container.

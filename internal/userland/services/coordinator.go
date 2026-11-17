@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/optimiware/kodama/internal/id"
+	"github.com/optimiware/kodema/internal/id"
 )
 
 // NewCoordinator validates a complete coordinator configuration. It starts no

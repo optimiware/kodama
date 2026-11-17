@@ -7,7 +7,7 @@
 #     test/qualification/production/run-stage.sh go test -race -tags=qualification \
 #     -count=1 ./test/qualification/production/...
 #
-# The script opens kubectl port-forwards to svc/kodama and svc/oauthsonas,
+# The script opens kubectl port-forwards to svc/kodema and svc/oauthsonas,
 # obtains the admin and developer tokens by capturing scripts/oauthsonas-token
 # stdout directly into exported variables, and runs the supplied command. It
 # never enables shell tracing, never dumps the environment, headers, bodies,
@@ -24,10 +24,10 @@
 #   Q02_API_URL           default https://127.0.0.1:${Q02_API_PORT}
 #   Q02_API_PORT          default 18443
 #   Q02_OAUTHSONAS_PORT   default the port in Q02_OAUTHSONAS_URL (8443)
-#   Q02_OAUTHSONAS_HOST   default oauthsonas.kodama-system.svc.cluster.local
+#   Q02_OAUTHSONAS_HOST   default oauthsonas.kodema-system.svc.cluster.local
 #   Q02_OAUTHSONAS_SERVICE default oauthsonas
-#   Q02_KODAMA_SERVICE    default kodama
-#   Q02_RELEASE_NAMESPACE default kodama-system
+#   Q02_KODEMA_SERVICE    default kodema
+#   Q02_RELEASE_NAMESPACE default kodema-system
 #   Q02_EVIDENCE_DIR      default $TMPDIR/oc/q02-evidence/<UTC timestamp>
 #   Q02_READY_ATTEMPTS    readiness poll attempts (default 120)
 #   Q02_READY_INTERVAL    seconds between readiness polls (default 0.25)
@@ -77,10 +77,10 @@ if (( ${#missing[@]} > 0 )); then
   die "missing required environment input(s): ${missing[*]}"
 fi
 
-release_namespace="${Q02_RELEASE_NAMESPACE:-kodama-system}"
-kodama_service="${Q02_KODAMA_SERVICE:-kodama}"
+release_namespace="${Q02_RELEASE_NAMESPACE:-kodema-system}"
+kodema_service="${Q02_KODEMA_SERVICE:-kodema}"
 oauth_service="${Q02_OAUTHSONAS_SERVICE:-oauthsonas}"
-oauth_host="${Q02_OAUTHSONAS_HOST:-oauthsonas.kodama-system.svc.cluster.local}"
+oauth_host="${Q02_OAUTHSONAS_HOST:-oauthsonas.kodema-system.svc.cluster.local}"
 api_port="${Q02_API_PORT:-18443}"
 # OAuthSonas keeps the issuer at https://<host>:8443 and scripts/oauthsonas-token
 # maps that host to the port-forward with curl --resolve, so the local port must
@@ -94,7 +94,7 @@ else
   die "Q02_OAUTHSONAS_URL must be https://host:port"
 fi
 oauth_port="${Q02_OAUTHSONAS_PORT:-$oauth_url_port}"
-tls_server_name="${Q02_TLS_SERVER_NAME:-kodama.kodama-system.svc.cluster.local}"
+tls_server_name="${Q02_TLS_SERVER_NAME:-kodema.kodema-system.svc.cluster.local}"
 admin_persona="${Q02_ADMIN_PERSONA:-admin}"
 developer_persona="${Q02_DEVELOPER_PERSONA:-developer}"
 second_admin_persona="${Q02_SECOND_ADMIN_PERSONA:-}"
@@ -108,12 +108,12 @@ cleanup_interval="${Q02_CLEANUP_INTERVAL:-0.1}"
 
 [[ "$Q02_KUBE_CONTEXT" != -* ]] || die "Q02_KUBE_CONTEXT must not look like a kubectl flag"
 [[ "$Q02_PROJECT_ID" =~ ^[A-Za-z0-9_-]+$ ]] || die "Q02_PROJECT_ID is not a bounded identity"
-[[ "$release_namespace" == "kodama-system" ]] || die "Q02_RELEASE_NAMESPACE must be kodama-system"
+[[ "$release_namespace" == "kodema-system" ]] || die "Q02_RELEASE_NAMESPACE must be kodema-system"
 [[ "$access_secret" =~ ^[a-z0-9.-]+$ ]] || die "Q02_ACCESS_CODE_SECRET is not a kubernetes Secret name"
 # Secret data keys may contain underscore (the stage key is access_code);
 # Secret names may not.
 [[ "$access_key" =~ ^[a-z0-9._-]+$ ]] || die "Q02_ACCESS_CODE_KEY is not a Secret data key"
-[[ "$kodama_service" =~ ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$ ]] || die "Q02_KODAMA_SERVICE is not a kubernetes service name"
+[[ "$kodema_service" =~ ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$ ]] || die "Q02_KODEMA_SERVICE is not a kubernetes service name"
 [[ "$oauth_service" =~ ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$ ]] || die "Q02_OAUTHSONAS_SERVICE is not a kubernetes service name"
 [[ "$api_port" =~ ^[0-9]+$ ]] && (( api_port >= 1 && api_port <= 65535 )) || die "Q02_API_PORT is not a port"
 [[ "$oauth_port" =~ ^[0-9]+$ ]] && (( oauth_port >= 1 && oauth_port <= 65535 )) || die "Q02_OAUTHSONAS_PORT is not a port"
@@ -206,13 +206,13 @@ wait_http() {
   die "the $name endpoint did not become ready through its port-forward"
 }
 
-start_forward "$kodama_service" "$api_port" "$work/kodama-port-forward.log"
+start_forward "$kodema_service" "$api_port" "$work/kodema-port-forward.log"
 start_forward "$oauth_service" "$oauth_port" "$work/oauthsonas-port-forward.log"
 
-# The kodama probe accepts 400: the edge decodes the request envelope before it
+# The kodema probe accepts 400: the edge decodes the request envelope before it
 # authenticates, so a bodyless probe is invalid_input rather than
 # unauthenticated. 400 still proves the verified TLS endpoint is reachable.
-wait_http "kodama" \
+wait_http "kodema" \
   "https://${tls_server_name}:${api_port}/api/v1/projects/${Q02_PROJECT_ID}/executions" \
   "${tls_server_name}:${api_port}:127.0.0.1" \
   '200|400|401|403|404'

@@ -1,6 +1,6 @@
 package restorequal
 
-// Q03 timeline tests. They pin the recovery objectives from KODAMA.md lines
+// Q03 timeline tests. They pin the recovery objectives from KODEMA.md lines
 // 515-517 and docs/specs/10-production.md §5: RPO ≤15 minutes, RTO ≤4 hours and
 // 30-day PostgreSQL recovery. The timeline builder takes an injected clock so
 // the exact and just-past boundaries are deterministic.

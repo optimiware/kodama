@@ -3,7 +3,7 @@ package app
 // Workload credential renewal in the Shell composition.
 //
 // A container execution credential is issued at activation with a TTL bounded
-// by the eight-hour maximum and the persisted action deadline (KODAMA.md
+// by the eight-hour maximum and the persisted action deadline (KODEMA.md
 // "Execution lifetime", S05 "Container activation"). A long-running action
 // therefore needs a renewal loop: while the execution is running, holds a live
 // committed credential inside the renewal margin and its current action
@@ -33,13 +33,13 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/shell/app/bridges"
-	"github.com/optimiware/kodama/internal/shell/receipt"
-	"github.com/optimiware/kodama/internal/shell/store"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
-	"github.com/optimiware/kodama/internal/shell/token"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/shell/app/bridges"
+	"github.com/optimiware/kodema/internal/shell/receipt"
+	"github.com/optimiware/kodema/internal/shell/store"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
+	"github.com/optimiware/kodema/internal/shell/token"
 )
 
 const (

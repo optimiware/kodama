@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/installation"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/installation"
 )
 
 // TestEnvironmentCompositions pins explicit composition: development uses
@@ -69,11 +69,11 @@ func TestProductionRequiredSettings(t *testing.T) {
 		{"empty NATS URL", func(c *installation.Config) { c.NATSURL = "" }},
 		{"empty key ref", func(c *installation.Config) { c.KeyRef = "" }},
 		{"empty public URL", func(c *installation.Config) { c.PublicURL = "" }},
-		{"http database URL", func(c *installation.Config) { c.DatabaseURL = "http://db/kodama" }},
+		{"http database URL", func(c *installation.Config) { c.DatabaseURL = "http://db/kodema" }},
 		{"http NATS URL", func(c *installation.Config) { c.NATSURL = "http://nats:4222" }},
 		{"plaintext production NATS URL", func(c *installation.Config) { c.NATSURL = "nats://nats.internal:4222" }},
-		{"production database without verify-full", func(c *installation.Config) { c.DatabaseURL = "postgres://db.internal/kodama" }},
-		{"http public URL", func(c *installation.Config) { c.PublicURL = "http://kodama.example" }},
+		{"production database without verify-full", func(c *installation.Config) { c.DatabaseURL = "postgres://db.internal/kodema" }},
+		{"http public URL", func(c *installation.Config) { c.PublicURL = "http://kodema.example" }},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -172,7 +172,7 @@ func TestPreflightKeyNameRule(t *testing.T) {
 		{name: "keyfile", adapter: installation.KeyKeyfile, ref: func(name string) string { return installation.KeyRefKeyfilePrefix + name }, template: validConfig(installation.EnvironmentTest)},
 		{name: "aws", adapter: installation.KeyAWSKMS, ref: func(name string) string { return installation.KeyRefAWSKMSPrefix + "alias/" + name }, template: validConfig(installation.EnvironmentProduction)},
 		{name: "gcp", adapter: installation.KeyGCPKMS, ref: func(name string) string {
-			return installation.KeyRefGCPKMSPrefix + "projects/kodama/locations/global/keyRings/kodama/cryptoKeys/" + name
+			return installation.KeyRefGCPKMSPrefix + "projects/kodema/locations/global/keyRings/kodema/cryptoKeys/" + name
 		}, template: validConfig(installation.EnvironmentProduction)},
 		{name: "scaleway", adapter: installation.KeyScalewayKMS, ref: func(name string) string { return installation.KeyRefScalewayKMSPrefix + name }, template: validConfig(installation.EnvironmentProduction)},
 	}
@@ -181,11 +181,11 @@ func TestPreflightKeyNameRule(t *testing.T) {
 		value string
 	}{
 		{name: "empty name", value: ""},
-		{name: "interior space", value: "alias/kodama key"},
-		{name: "interior tab", value: "alias/kodama\tkey"},
-		{name: "control byte", value: "alias/kodama\x01key"},
-		{name: "nul byte", value: "alias/kodama\x00key"},
-		{name: "del byte", value: "alias/kodama\x7fkey"},
+		{name: "interior space", value: "alias/kodema key"},
+		{name: "interior tab", value: "alias/kodema\tkey"},
+		{name: "control byte", value: "alias/kodema\x01key"},
+		{name: "nul byte", value: "alias/kodema\x00key"},
+		{name: "del byte", value: "alias/kodema\x7fkey"},
 	}
 	for _, family := range families {
 		// The template must start from the family it names.
@@ -233,10 +233,10 @@ func validConfig(environment installation.Environment) installation.Config {
 			Messaging:   installation.MessagingNATS,
 			Runtime:     installation.RuntimePodman,
 			Keys:        installation.KeyKeyfile,
-			DatabaseURL: "postgres://localhost/kodama",
+			DatabaseURL: "postgres://localhost/kodema",
 			NATSURL:     "nats://localhost:4222",
-			KeyRef:      "keyfile:kodama",
-			PublicURL:   "https://kodama.example",
+			KeyRef:      "keyfile:kodema",
+			PublicURL:   "https://kodema.example",
 		}
 	case installation.EnvironmentProduction:
 		return installation.Config{
@@ -245,10 +245,10 @@ func validConfig(environment installation.Environment) installation.Config {
 			Messaging:   installation.MessagingNATS,
 			Runtime:     installation.RuntimeKubernetes,
 			Keys:        installation.KeyAWSKMS,
-			DatabaseURL: "postgres://db.internal/kodama?sslmode=verify-full",
+			DatabaseURL: "postgres://db.internal/kodema?sslmode=verify-full",
 			NATSURL:     "tls://nats.internal:4222",
-			KeyRef:      "aws-kms:alias/kodama",
-			PublicURL:   "https://kodama.example",
+			KeyRef:      "aws-kms:alias/kodema",
+			PublicURL:   "https://kodema.example",
 		}
 	default:
 		return installation.Config{Environment: environment}
@@ -279,13 +279,13 @@ func withKeys(config installation.Config, keys installation.KeyAdapter) installa
 	case installation.KeyEphemeral:
 		config.KeyRef = installation.KeyRefEphemeralPrefix + "dev"
 	case installation.KeyKeyfile:
-		config.KeyRef = installation.KeyRefKeyfilePrefix + "kodama"
+		config.KeyRef = installation.KeyRefKeyfilePrefix + "kodema"
 	case installation.KeyAWSKMS:
-		config.KeyRef = installation.KeyRefAWSKMSPrefix + "alias/kodama"
+		config.KeyRef = installation.KeyRefAWSKMSPrefix + "alias/kodema"
 	case installation.KeyGCPKMS:
-		config.KeyRef = installation.KeyRefGCPKMSPrefix + "projects/kodama/locations/global/keyRings/kodama/cryptoKeys/kek"
+		config.KeyRef = installation.KeyRefGCPKMSPrefix + "projects/kodema/locations/global/keyRings/kodema/cryptoKeys/kek"
 	case installation.KeyScalewayKMS:
-		config.KeyRef = installation.KeyRefScalewayKMSPrefix + "fr-par/kodama"
+		config.KeyRef = installation.KeyRefScalewayKMSPrefix + "fr-par/kodema"
 	}
 	return config
 }

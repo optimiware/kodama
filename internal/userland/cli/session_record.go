@@ -10,8 +10,8 @@ import (
 	"io/fs"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/fault"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/fault"
 )
 
 // ParseSessionRecord strictly decodes one bounded durable session record. A

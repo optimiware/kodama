@@ -20,5 +20,5 @@ output "s3_endpoint" {
 
 output "state_key_template" {
   description = "Per-cluster state key template inside the bucket."
-  value       = "kodama/scw/${var.project_id}/${var.region}/<cluster_name>/infrastructure.tfstate"
+  value       = "kodema/scw/${var.project_id}/${var.region}/<cluster_name>/infrastructure.tfstate"
 }

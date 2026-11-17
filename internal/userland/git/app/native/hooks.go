@@ -12,7 +12,7 @@ import (
 
 // ErrForeignHook reports an existing hook script this installer did not write.
 // A foreign hook is never overwritten silently.
-var ErrForeignHook = errors.New("repository hook was not installed by kodama")
+var ErrForeignHook = errors.New("repository hook was not installed by kodema")
 
 // ErrHookSymlink reports a hooks directory or hook script path that is a
 // symbolic link. Following it would write the managed hooks outside the
@@ -20,7 +20,7 @@ var ErrForeignHook = errors.New("repository hook was not installed by kodama")
 var ErrHookSymlink = errors.New("repository hook path is a symbolic link")
 
 // managedMarker identifies a hook script this installer owns.
-const managedMarker = "# managed by kodama: native git hook callback"
+const managedMarker = "# managed by kodema: native git hook callback"
 
 // HookReport records exactly what InstallHooks did. It never contains a
 // credential or a ref name.
@@ -37,7 +37,7 @@ type HookReport struct {
 type HooksConfig struct {
 	// RepositoryPath is the bare repository directory.
 	RepositoryPath string
-	// BinaryPath is the absolute kodama binary the hook scripts exec.
+	// BinaryPath is the absolute kodema binary the hook scripts exec.
 	BinaryPath string
 }
 
@@ -52,7 +52,7 @@ type HooksConfig struct {
 // receive transaction and could leave a ref changed by a rejected push. The
 // batch design uses `pre-receive` to verify and journal the whole push without
 // any effect, native receive-pack as the atomic apply, and `post-receive` to
-// reconcile by observation. `kodama git hook update` still exists for explicit
+// reconcile by observation. `kodema git hook update` still exists for explicit
 // invocation but no installer writes it.
 func InstallHooks(config HooksConfig) (HookReport, error) {
 	if strings.TrimSpace(config.RepositoryPath) == "" {
@@ -71,10 +71,10 @@ func InstallHooks(config HooksConfig) (HookReport, error) {
 	}
 	binaryPath, err := filepath.Abs(config.BinaryPath)
 	if err != nil || strings.TrimSpace(config.BinaryPath) == "" {
-		return HookReport{}, fmt.Errorf("kodama binary path is empty or unresolvable")
+		return HookReport{}, fmt.Errorf("kodema binary path is empty or unresolvable")
 	}
 	if info, err := os.Stat(binaryPath); err != nil || info.IsDir() {
-		return HookReport{}, fmt.Errorf("kodama binary %q is not an executable file", binaryPath)
+		return HookReport{}, fmt.Errorf("kodema binary %q is not an executable file", binaryPath)
 	}
 
 	hooksDirectory := filepath.Join(repositoryPath, "hooks")
@@ -232,7 +232,7 @@ type BareRepositoryConfig struct {
 // InitBareRepository creates one bare repository with the minimal transport
 // configuration the smart-HTTP backend needs. It does NOT set
 // receive.denyDeletes or receive.denyNonFastForwards: ref policy belongs to
-// Kodama's ordered rules and the hook, never to git config.
+// Kodema's ordered rules and the hook, never to git config.
 func InitBareRepository(ctx context.Context, config BareRepositoryConfig) error {
 	if strings.TrimSpace(config.Path) == "" {
 		return fmt.Errorf("bare repository path is empty")

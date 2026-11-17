@@ -1,7 +1,7 @@
 name: Release
 
-# A change of the VERSION file on master publishes that version: the kodama
-# image and both Helm charts to GHCR, and a GitHub release with the kodama and
+# A change of the VERSION file on master publishes that version: the kodema
+# image and both Helm charts to GHCR, and a GitHub release with the kodema and
 # kodactl archives, the chart packages and SHA256SUMS. The workflow creates the
 # tag v<VERSION> itself. A development version (-dev) and a manual run build
 # everything and publish nothing, unless the manual run asks to publish from
@@ -36,9 +36,9 @@ jobs:
       contents: write
       packages: write
     env:
-      # The packages live under the repository name: ghcr.io/<owner>/kodama
+      # The packages live under the repository name: ghcr.io/<owner>/kodema
       # belongs to the archived v1 repository and this workflow cannot write it.
-      IMAGE_REPOSITORY: ghcr.io/${{ github.repository }}/kodama
+      IMAGE_REPOSITORY: ghcr.io/${{ github.repository }}/kodema
       CHART_REGISTRY: oci://ghcr.io/${{ github.repository }}/charts
       GH_TOKEN: ${{ github.token }}
       PUBLISH_INPUT: ${{ inputs.publish }}
@@ -115,7 +115,7 @@ jobs:
           ref="$(scripts/image build --repository "$IMAGE_REPOSITORY" --tag "$VERSION")"
           line="$(podman run --rm "$ref" version)"
           echo "$line"
-          [[ "$line" == "kodama ${VERSION} (revision ${GITHUB_SHA},"* ]] || { echo "::error::the image reports another version or revision"; exit 1; }
+          [[ "$line" == "kodema ${VERSION} (revision ${GITHUB_SHA},"* ]] || { echo "::error::the image reports another version or revision"; exit 1; }
           if [[ "$PUBLISH" != "true" ]]; then
             scripts/image build --repository "$IMAGE_REPOSITORY" --tag "${VERSION}-multiarch" --platforms linux/amd64,linux/arm64
           fi
@@ -132,7 +132,7 @@ jobs:
             [[ -S "$socket" ]] && break
             sleep 1
           done
-          KODAMA_LOCAL_PODMAN_SOCKET="$socket" scripts/release-smoke --image "${IMAGE_REPOSITORY}:${VERSION}"
+          KODEMA_LOCAL_PODMAN_SOCKET="$socket" scripts/release-smoke --image "${IMAGE_REPOSITORY}:${VERSION}"
 
       - name: Log in to GHCR
         if: env.PUBLISH == 'true'
@@ -154,8 +154,8 @@ jobs:
       - name: Push the charts
         if: env.PUBLISH == 'true'
         run: |
-          helm push "dist/kodama-${VERSION}.tgz" "$CHART_REGISTRY"
-          helm push "dist/kodama-stack-${VERSION}.tgz" "$CHART_REGISTRY"
+          helm push "dist/kodema-${VERSION}.tgz" "$CHART_REGISTRY"
+          helm push "dist/kodema-stack-${VERSION}.tgz" "$CHART_REGISTRY"
 
       - name: Publish the GitHub release
         if: env.PUBLISH == 'true'
@@ -170,9 +170,9 @@ jobs:
             echo "| Artifact | Reference |"
             echo "|---|---|"
             echo "| Image (\`linux/amd64\`, \`linux/arm64\`) | \`${IMAGE_REFERENCE}\` (${image_tags}) |"
-            echo "| Chart \`kodama\` | \`${CHART_REGISTRY}/kodama\` version \`${VERSION}\` |"
-            echo "| Chart \`kodama-stack\` | \`${CHART_REGISTRY}/kodama-stack\` version \`${VERSION}\` |"
-            echo "| \`kodama\` and \`kodactl\` | the archives below; verify with \`sha256sum --check SHA256SUMS\` |"
+            echo "| Chart \`kodema\` | \`${CHART_REGISTRY}/kodema\` version \`${VERSION}\` |"
+            echo "| Chart \`kodema-stack\` | \`${CHART_REGISTRY}/kodema-stack\` version \`${VERSION}\` |"
+            echo "| \`kodema\` and \`kodactl\` | the archives below; verify with \`sha256sum --check SHA256SUMS\` |"
             echo
             echo "Source revision: \`${GITHUB_SHA}\`. Changes and known limitations: [CHANGELOG.md](https://github.com/${GITHUB_REPOSITORY}/blob/v${VERSION}/CHANGELOG.md)."
           } >"${RUNNER_TEMP}/notes.md"
@@ -182,4 +182,4 @@ jobs:
           fi
           # Creates the tag v<VERSION> on this commit when it does not exist.
           gh release create "v${VERSION}" dist/* --target "$GITHUB_SHA" \
-            --title "Kodama ${VERSION}" --notes-file "${RUNNER_TEMP}/notes.md" "${flags[@]}"
+            --title "Kodema ${VERSION}" --notes-file "${RUNNER_TEMP}/notes.md" "${flags[@]}"

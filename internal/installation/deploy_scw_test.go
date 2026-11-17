@@ -115,7 +115,7 @@ func scwTerraformFiles(t *testing.T) map[string]string {
 // ownership decision: a Scaleway Managed Database creates every database as
 // _rdb_superadmin, and the bootstrap administrator is CREATEROLE/CREATEDB but
 // not superuser, so Terraform must not try to own the application database or
-// a privilege on it. `kodama migrate` creates the database as the
+// a privilege on it. `kodema migrate` creates the database as the
 // administrator through var.postgres_admin_database.
 func TestScwApplicationDatabaseNotOwnedByTerraform(t *testing.T) {
 	files := scwTerraformFiles(t)
@@ -155,7 +155,7 @@ func TestScwDescriptorPostgresContract(t *testing.T) {
 	vars := scwRead(t, "variables.tf")
 	database := scwBlock(t, vars, "variable", "postgres_database_name")
 	scwRequire(t, database, `type\s*=\s*string`, "postgres_database_name type")
-	scwRequire(t, database, `default\s*=\s*"kodama"`, "postgres_database_name default")
+	scwRequire(t, database, `default\s*=\s*"kodema"`, "postgres_database_name default")
 
 	admin := scwBlock(t, vars, "variable", "postgres_admin_database")
 	scwRequire(t, admin, `type\s*=\s*string`, "postgres_admin_database type")

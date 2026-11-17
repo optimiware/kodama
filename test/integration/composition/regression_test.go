@@ -8,7 +8,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/optimiware/kodama/api"
+	"github.com/optimiware/kodema/api"
 )
 
 // TestMCPToolsListAdvertisesFieldLevelSchemas pins that every one of the 58

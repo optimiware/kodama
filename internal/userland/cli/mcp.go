@@ -14,8 +14,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/client"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/client"
 )
 
 const maxMCPStdioMessageBytes = 4 << 20
@@ -249,7 +249,7 @@ func runMCPInstall(_ context.Context, config Config, args []string, ports Ports,
 
 	serverName := strings.TrimSpace(nameFlag)
 	if serverName == "" {
-		serverName = "kodama"
+		serverName = "kodema"
 	}
 	if strings.ContainsAny(serverName, " \t\r\n") {
 		return usage(ports.Err, fmt.Sprintf("invalid MCP server name %q", serverName))

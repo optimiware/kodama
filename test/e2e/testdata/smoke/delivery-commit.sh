@@ -15,7 +15,7 @@ test -n "$git_url"
 test -n "$expected_base"
 test -n "$work_ref"
 test -n "$SMOKE_IMAGE"
-test "$(cat /kodama/outputs/build/image)" = "$SMOKE_IMAGE"
+test "$(cat /kodema/outputs/build/image)" = "$SMOKE_IMAGE"
 
 repo=$W49_WORKSPACE/repo
 cd "$repo"
@@ -27,7 +27,7 @@ printf '%s\n' "$SMOKE_IMAGE" >deploy/image.txt
 # earlier delivery run, so the commit is never an empty no-op.
 printf '%s\n' "$SMOKE_COMMIT_MARKER" >deploy/run.txt
 git add -- deploy/image.txt deploy/run.txt
-git -c user.name=kodama -c user.email=kodama@example.invalid \
+git -c user.name=kodema -c user.email=kodema@example.invalid \
 	commit --quiet -m 'AC08 digest-pinned delivery candidate'
 candidate=$(git rev-parse HEAD)
 test "$candidate" != "$expected_base"

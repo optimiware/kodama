@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/kernel"
-	"github.com/optimiware/kodama/internal/kernel/engine"
+	"github.com/optimiware/kodema/internal/kernel"
+	"github.com/optimiware/kodema/internal/kernel/engine"
 )
 
 // cleanupBoundHarness seeds a terminal failed execution with a started workload

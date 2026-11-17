@@ -33,8 +33,8 @@ func checkTenantNetworkPolicyTemplate(body string) error {
 		return fmt.Errorf("network policy template has %d namespace fields, want exactly 1 per tenant policy", len(matches))
 	}
 	namespace := strings.TrimSpace(matches[0][1])
-	if namespace != "kodama-tenant-{{ $tenant }}" {
-		return fmt.Errorf("tenant policy namespace = %q, want kodama-tenant-{{ $tenant }}", namespace)
+	if namespace != "kodema-tenant-{{ $tenant }}" {
+		return fmt.Errorf("tenant policy namespace = %q, want kodema-tenant-{{ $tenant }}", namespace)
 	}
 	for line := range strings.SplitSeq(body, "\n") {
 		if strings.HasPrefix(strings.TrimSpace(line), "namespace:") && strings.Contains(line, ".Release.Namespace") {
@@ -52,11 +52,11 @@ func checkTenantNetworkPolicyTemplate(body string) error {
 	}
 
 	if got := strings.Count(body, "namespaceSelector:"); got < 3 {
-		return fmt.Errorf("tenant policy has %d namespaceSelector peers, want the Kodama, Git and DNS peers", got)
+		return fmt.Errorf("tenant policy has %d namespaceSelector peers, want the Kodema, Git and DNS peers", got)
 	}
-	kodamaPeer := regexp.MustCompile(`namespaceSelector:[ \t]*\r?\n[ \t]*matchLabels:[ \t]*\r?\n[ \t]*kubernetes\.io/metadata\.name:[ \t]*\{\{[ \t]*\$?\.Release\.Namespace[ \t]*\}\}`)
-	if matches := kodamaPeer.FindAllString(body, -1); len(matches) != 2 {
-		return fmt.Errorf("tenant policy has %d namespace-scoped Kodama allows, want ingress and egress", len(matches))
+	kodemaPeer := regexp.MustCompile(`namespaceSelector:[ \t]*\r?\n[ \t]*matchLabels:[ \t]*\r?\n[ \t]*kubernetes\.io/metadata\.name:[ \t]*\{\{[ \t]*\$?\.Release\.Namespace[ \t]*\}\}`)
+	if matches := kodemaPeer.FindAllString(body, -1); len(matches) != 2 {
+		return fmt.Errorf("tenant policy has %d namespace-scoped Kodema allows, want ingress and egress", len(matches))
 	}
 	if !regexp.MustCompile(`(?m)^[ \t]*kubernetes\.io/metadata\.name:[ \t]*git[ \t]*$`).MatchString(body) {
 		return fmt.Errorf("tenant policy does not scope the Git allow to a namespace")
@@ -67,7 +67,7 @@ func checkTenantNetworkPolicyTemplate(body string) error {
 	if !regexp.MustCompile(`(?m)^[ \t]*port:[ \t]*53[ \t]*$`).MatchString(body) {
 		return fmt.Errorf("tenant policy does not permit DNS port 53")
 	}
-	for _, gate := range []string{"permitKodama", "permitGit"} {
+	for _, gate := range []string{"permitKodema", "permitGit"} {
 		if !regexp.MustCompile(`if\s+\$?\.Values\.networkPolicy\.` + gate).MatchString(body) {
 			return fmt.Errorf("tenant policy is not gated by networkPolicy.%s", gate)
 		}
@@ -108,14 +108,14 @@ func TestTenantNetworkPoliciesAreNamespacedAndDefaultDeny(t *testing.T) {
 
 	// The tenant namespace naming must stay identical to namespaces.yaml.
 	namespaces := readText(t, chartPath(t, "templates", "namespaces.yaml"))
-	if !strings.Contains(namespaces, "kodama-tenant-{{ $tenant }}") {
-		t.Fatalf("namespaces.yaml no longer names tenants kodama-tenant-<tenant>")
+	if !strings.Contains(namespaces, "kodema-tenant-{{ $tenant }}") {
+		t.Fatalf("namespaces.yaml no longer names tenants kodema-tenant-<tenant>")
 	}
 }
 
 func TestTenantNetworkPolicyTemplateRejectsReleaseNamespace(t *testing.T) {
 	body := readText(t, chartPath(t, "templates", "networkpolicy.yaml"))
-	mutated := strings.Replace(body, "namespace: kodama-tenant-{{ $tenant }}", "namespace: {{ .Release.Namespace }}", 1)
+	mutated := strings.Replace(body, "namespace: kodema-tenant-{{ $tenant }}", "namespace: {{ .Release.Namespace }}", 1)
 	if mutated == body {
 		t.Fatal("test mutation did not change the tenant namespace")
 	}
@@ -225,7 +225,7 @@ func TestNetworkPolicySchemaRequiresDefaultDeny(t *testing.T) {
 	if defaultDeny["const"] != true {
 		t.Errorf("networkPolicy.defaultDeny const = %v, want true", defaultDeny["const"])
 	}
-	for _, name := range []string{"permitKodama", "permitGit"} {
+	for _, name := range []string{"permitKodema", "permitGit"} {
 		property := objectAt(t, policyProperties[name], "networkPolicy.properties."+name)
 		if property["type"] != "boolean" {
 			t.Errorf("networkPolicy.%s type = %v, want boolean", name, property["type"])

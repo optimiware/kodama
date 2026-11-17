@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	nativefix "github.com/optimiware/kodama/test/support/boundaries/native"
+	nativefix "github.com/optimiware/kodema/test/support/boundaries/native"
 )
 
 // The proposed policies below all parse. They differ only in whether the rule

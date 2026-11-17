@@ -49,9 +49,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/userland/git"
-	"github.com/optimiware/kodama/test/support/factory"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/userland/git"
+	"github.com/optimiware/kodema/test/support/factory"
 )
 
 const (
@@ -557,7 +557,7 @@ func reportReplaySecondVerification(t *testing.T, fixture *gitHarness, evidence 
 				Image:   fixture.Image.Reference,
 				Timeout: approvalContainerTimeout,
 				Commands: []string{
-					`test ! -e /kodama/task.json`,
+					`test ! -e /kodema/task.json`,
 					`while [ ! -e /workspace/release ]; do sleep 1; done`,
 				},
 			},

@@ -25,9 +25,9 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/fault"
-	driverkube "github.com/optimiware/kodama/internal/shell/app/drivers/kube"
-	runtimekube "github.com/optimiware/kodama/internal/shell/runtime/kube"
+	"github.com/optimiware/kodema/internal/fault"
+	driverkube "github.com/optimiware/kodema/internal/shell/app/drivers/kube"
+	runtimekube "github.com/optimiware/kodema/internal/shell/runtime/kube"
 )
 
 // suspendedJobDocument is a complete Job response carrying every piece of
@@ -35,7 +35,7 @@ import (
 func suspendedJobDocument() map[string]any {
 	return map[string]any{
 		"metadata": map[string]any{
-			"name":              "kodama-job-abc",
+			"name":              "kodema-job-abc",
 			"namespace":         testNamespace,
 			"uid":               "uid-abc",
 			"resourceVersion":   "51",
@@ -64,7 +64,7 @@ func suspendedJobDocument() map[string]any {
 // acknowledgment evidence.
 func TestSuspendJobPatchesOnlySuspendAndExpectedUID(t *testing.T) {
 	api := newAPI(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPatch || r.URL.Path != jobPath("kodama-job-abc") {
+		if r.Method != http.MethodPatch || r.URL.Path != jobPath("kodema-job-abc") {
 			t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
 		}
 		if contentType := r.Header.Get("Content-Type"); contentType != "application/merge-patch+json" {
@@ -74,7 +74,7 @@ func TestSuspendJobPatchesOnlySuspendAndExpectedUID(t *testing.T) {
 	})
 	cluster := newClusterFor(t, api)
 
-	job, err := cluster.SuspendJob(context.Background(), testNamespace, "kodama-job-abc", "uid-abc")
+	job, err := cluster.SuspendJob(context.Background(), testNamespace, "kodema-job-abc", "uid-abc")
 	if err != nil {
 		t.Fatalf("SuspendJob: %v", err)
 	}
@@ -121,7 +121,7 @@ func TestSuspendJobClearsFinishedJobTTLWithExplicitNull(t *testing.T) {
 	})
 	cluster := newClusterFor(t, api)
 
-	if _, err := cluster.SuspendJob(context.Background(), testNamespace, "kodama-job-abc", "uid-abc"); err != nil {
+	if _, err := cluster.SuspendJob(context.Background(), testNamespace, "kodema-job-abc", "uid-abc"); err != nil {
 		t.Fatalf("SuspendJob: %v", err)
 	}
 
@@ -174,7 +174,7 @@ func TestJobReadsDecodeFinishedJobTTL(t *testing.T) {
 			api := newAPI(t, func(w http.ResponseWriter, _ *http.Request) {
 				writeJSON(w, http.StatusOK, map[string]any{
 					"metadata": map[string]any{
-						"name":      "kodama-job-abc",
+						"name":      "kodema-job-abc",
 						"namespace": testNamespace,
 						"uid":       "uid-abc",
 					},
@@ -183,7 +183,7 @@ func TestJobReadsDecodeFinishedJobTTL(t *testing.T) {
 			})
 			cluster := newClusterFor(t, api)
 
-			job, err := cluster.GetJob(context.Background(), testNamespace, "kodama-job-abc")
+			job, err := cluster.GetJob(context.Background(), testNamespace, "kodema-job-abc")
 			if err != nil {
 				t.Fatalf("GetJob: %v", err)
 			}
@@ -208,7 +208,7 @@ func TestSuspendJobRejectsEmptyUIDBeforeRequest(t *testing.T) {
 		})
 		cluster := newClusterFor(t, api)
 
-		_, err := cluster.SuspendJob(context.Background(), testNamespace, "kodama-job-abc", uid)
+		_, err := cluster.SuspendJob(context.Background(), testNamespace, "kodema-job-abc", uid)
 		assertFaultClass(t, err, fault.InvalidInput)
 		if calls := api.callCount(); calls != 0 {
 			t.Fatalf("empty UID %q made %d API calls; want 0", uid, calls)
@@ -237,14 +237,14 @@ func TestSuspendJobPreservesFailureClassification(t *testing.T) {
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
 			api := newAPI(t, func(w http.ResponseWriter, r *http.Request) {
-				if r.Method != http.MethodPatch || r.URL.Path != jobPath("kodama-job-abc") {
+				if r.Method != http.MethodPatch || r.URL.Path != jobPath("kodema-job-abc") {
 					t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
 				}
 				writeJSON(w, testCase.status, map[string]any{"kind": "Status", "reason": "Failure"})
 			})
 			cluster := newClusterFor(t, api)
 
-			job, err := cluster.SuspendJob(context.Background(), testNamespace, "kodama-job-abc", "uid-abc")
+			job, err := cluster.SuspendJob(context.Background(), testNamespace, "kodema-job-abc", "uid-abc")
 			assertFaultClass(t, err, testCase.want)
 			if testCase.sentinel != nil && !errors.Is(err, testCase.sentinel) {
 				t.Fatalf("error %v does not wrap %v", err, testCase.sentinel)
@@ -269,9 +269,9 @@ func TestJobReadsPreserveSuspensionEvidence(t *testing.T) {
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == jobsPath():
 			writeJSON(w, http.StatusOK, map[string]any{"items": []any{suspendedJobDocument()}})
-		case r.Method == http.MethodGet && r.URL.Path == jobPath("kodama-job-abc"):
+		case r.Method == http.MethodGet && r.URL.Path == jobPath("kodema-job-abc"):
 			writeJSON(w, http.StatusOK, suspendedJobDocument())
-		case r.Method == http.MethodPatch && r.URL.Path == jobPath("kodama-job-abc"):
+		case r.Method == http.MethodPatch && r.URL.Path == jobPath("kodema-job-abc"):
 			writeJSON(w, http.StatusOK, suspendedJobDocument())
 		default:
 			t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
@@ -287,7 +287,7 @@ func TestJobReadsPreserveSuspensionEvidence(t *testing.T) {
 		{
 			name: "GET",
 			read: func() (runtimekube.Job, error) {
-				return cluster.GetJob(context.Background(), testNamespace, "kodama-job-abc")
+				return cluster.GetJob(context.Background(), testNamespace, "kodema-job-abc")
 			},
 		},
 		{
@@ -308,7 +308,7 @@ func TestJobReadsPreserveSuspensionEvidence(t *testing.T) {
 		{
 			name: "PATCH",
 			read: func() (runtimekube.Job, error) {
-				return cluster.SuspendJob(context.Background(), testNamespace, "kodama-job-abc", "uid-abc")
+				return cluster.SuspendJob(context.Background(), testNamespace, "kodema-job-abc", "uid-abc")
 			},
 		},
 	}
@@ -378,7 +378,7 @@ func TestJobTerminatingAbsentIsNotZero(t *testing.T) {
 			api := newAPI(t, func(w http.ResponseWriter, _ *http.Request) {
 				writeJSON(w, http.StatusOK, map[string]any{
 					"metadata": map[string]any{
-						"name":      "kodama-job-abc",
+						"name":      "kodema-job-abc",
 						"namespace": testNamespace,
 						"uid":       "uid-abc",
 					},
@@ -387,7 +387,7 @@ func TestJobTerminatingAbsentIsNotZero(t *testing.T) {
 			})
 			cluster := newClusterFor(t, api)
 
-			job, err := cluster.GetJob(context.Background(), testNamespace, "kodama-job-abc")
+			job, err := cluster.GetJob(context.Background(), testNamespace, "kodema-job-abc")
 			if err != nil {
 				t.Fatalf("GetJob: %v", err)
 			}

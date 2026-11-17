@@ -29,9 +29,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/shell/pipeline"
-	"github.com/optimiware/kodama/test/support/factory"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/shell/pipeline"
+	"github.com/optimiware/kodema/test/support/factory"
 )
 
 const (
@@ -212,7 +212,7 @@ actions:
     image: %s
     timeout: 10m
     commands:
-      - 'test "$(cat /kodama/inputs/commit)" = %s'
+      - 'test "$(cat /kodema/inputs/commit)" = %s'
       - "printf '%s\\n'"
 `, fixture.git.ProjectResourceID, admittedPipelineSvc, admittedPipelineRef,
 		action, fixture.Image.Reference, commit, marker)

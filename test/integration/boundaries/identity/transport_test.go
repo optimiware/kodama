@@ -17,10 +17,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/client"
-	"github.com/optimiware/kodama/internal/fault"
-	gitapp "github.com/optimiware/kodama/internal/userland/git/app"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/client"
+	"github.com/optimiware/kodema/internal/fault"
+	gitapp "github.com/optimiware/kodema/internal/userland/git/app"
 )
 
 type roundTripFunc func(*http.Request) (*http.Response, error)

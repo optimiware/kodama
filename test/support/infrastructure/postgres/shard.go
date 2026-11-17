@@ -4,7 +4,7 @@
 // It is test support code under test/, never product code. The server is the
 // pinned official image from the infrastructure harness, authenticated by trust
 // on the shard's private network only. Migrations and every conformance query
-// travel through the product wrapper (kodama/internal/shell/app/drivers/postgres);
+// travel through the product wrapper (kodema/internal/shell/app/drivers/postgres);
 // only the administrator bootstrap (role creation, CREATE DATABASE, the
 // migration ledger, catalog inspection and fixture seeding) uses a raw
 // superuser session because those operations are not part of the application
@@ -29,21 +29,21 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	pgdriver "github.com/optimiware/kodama/internal/shell/app/drivers/postgres"
-	"github.com/optimiware/kodama/test/support/infrastructure/harness"
+	pgdriver "github.com/optimiware/kodema/internal/shell/app/drivers/postgres"
+	"github.com/optimiware/kodema/test/support/infrastructure/harness"
 )
 
 // DatabaseName is the single application database created per shard. Roles are
 // cluster-scoped in PostgreSQL, so one fresh server per shard is what keeps the
 // role bootstrap deterministic.
-const DatabaseName = "kodama"
+const DatabaseName = "kodema"
 
 // EvidenceDirEnv names the PARENT directory the harness and this package write
 // evidence into. Each run resolves one unique child directory under it, so
 // concurrent runs sharing a parent never overwrite each other. When unset, the
 // parent is the ignored local scratch path <module root>/.harness/evidence/I02b
 // so no tracked source path is written.
-const EvidenceDirEnv = "KODAMA_EVIDENCE_DIR"
+const EvidenceDirEnv = "KODEMA_EVIDENCE_DIR"
 
 const (
 	evidenceRunPrefix    = "run-"
@@ -172,7 +172,7 @@ func (s *Shard) Owner() *pgdriver.DB { return s.owner }
 // Runtime returns a wrapper bound to the non-owner runtime role.
 func (s *Shard) Runtime(maxConns int32) *pgdriver.DB {
 	s.T.Helper()
-	return s.mustDB(s.Harness.Context(), "kodama_runtime", maxConns)
+	return s.mustDB(s.Harness.Context(), "kodema_runtime", maxConns)
 }
 
 // Role returns a wrapper bound to one declared non-owner role.
@@ -324,7 +324,7 @@ func (s *evidenceStore) runDir() string {
 
 var processEvidence = &evidenceStore{getenv: os.Getenv, setenv: os.Setenv}
 
-// evidenceParent returns the supplied evidence parent: KODAMA_EVIDENCE_DIR
+// evidenceParent returns the supplied evidence parent: KODEMA_EVIDENCE_DIR
 // when set, otherwise ignored local scratch <module root>/.harness/evidence/I02b.
 func evidenceParent(getenv func(string) string) string {
 	if dir := getenv(EvidenceDirEnv); dir != "" {
@@ -347,7 +347,7 @@ func fallbackEvidenceParent() string {
 			dir = parent
 		}
 	}
-	return filepath.Join(os.TempDir(), "kodama-i02b-evidence")
+	return filepath.Join(os.TempDir(), "kodema-i02b-evidence")
 }
 
 // newEvidenceRunDir creates a directory that is unique to this run and process.
@@ -365,7 +365,7 @@ func newEvidenceRunDir(parent string) string {
 }
 
 // EvidenceDir returns this process's run-unique evidence directory, creating it
-// on first use and publishing it through KODAMA_EVIDENCE_DIR so the harness
+// on first use and publishing it through KODEMA_EVIDENCE_DIR so the harness
 // records into the same run. Every call in one process returns the same path.
 func EvidenceDir() string { return processEvidence.runDir() }
 

@@ -25,6 +25,6 @@ resource "scaleway_rdb_instance" "main" {
 
 # The application database is not a Terraform resource: Scaleway creates every
 # database owned by its managed superadmin role, and the migration owner role
-# must own the application database. `kodama migrate` creates it as the
+# must own the application database. `kodema migrate` creates it as the
 # administrator (a maintenance connection to var.postgres_admin_database) and
 # hands it to the owner role.

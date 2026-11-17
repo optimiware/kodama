@@ -40,7 +40,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/optimiware/kodama/test/support/infrastructure/harness"
+	"github.com/optimiware/kodema/test/support/infrastructure/harness"
 )
 
 // Pinned kind release and node image. These are the single source of truth for
@@ -63,17 +63,17 @@ const (
 	NodeImageReference = NodeImage + "@" + NodeImageDigest
 
 	// ClusterPrefix scopes every cluster this suite creates.
-	ClusterPrefix = "kodama-t-"
+	ClusterPrefix = "kodema-t-"
 	// ProtectedCluster is an existing cluster that must never be touched.
-	ProtectedCluster = "kodama-probe"
+	ProtectedCluster = "kodema-probe"
 
 	// ProviderEnv selects the rootless Podman provider.
 	ProviderEnv = "KIND_EXPERIMENTAL_PROVIDER=podman"
 
 	// KindBinaryEnv overrides the kind binary path.
-	KindBinaryEnv = "KODAMA_KIND_BIN"
+	KindBinaryEnv = "KODEMA_KIND_BIN"
 	// KindCacheEnv overrides the download cache directory.
-	KindCacheEnv = "KODAMA_KIND_CACHE"
+	KindCacheEnv = "KODEMA_KIND_CACHE"
 
 	// StorageClassName is the StorageClass the pinned kind image provisions.
 	StorageClassName = "standard"
@@ -378,7 +378,7 @@ func (k *Kind) CreateCluster(ctx context.Context, options ClusterOptions) (*Clus
 	dir := options.Dir
 	ownedDir := false
 	if dir == "" {
-		created, err := os.MkdirTemp("", "kodama-kind-"+name+"-")
+		created, err := os.MkdirTemp("", "kodema-kind-"+name+"-")
 		if err != nil {
 			return nil, fmt.Errorf("kubesupport: create cluster directory: %w", err)
 		}
@@ -479,7 +479,7 @@ func (k *Kind) deleteClusterWithKubeconfig(ctx context.Context, name, kubeconfig
 		return err
 	}
 	if kubeconfigPath == "" {
-		dir, err := os.MkdirTemp("", "kodama-kind-kubeconfig-")
+		dir, err := os.MkdirTemp("", "kodema-kind-kubeconfig-")
 		if err != nil {
 			return fmt.Errorf("kubesupport: create private delete kubeconfig for %s: %w", name, err)
 		}
@@ -658,7 +658,7 @@ func defaultCacheDir() string {
 	if dir := strings.TrimSpace(os.Getenv(KindCacheEnv)); dir != "" {
 		return dir
 	}
-	return filepath.Join(os.TempDir(), "kodama-kind-cache")
+	return filepath.Join(os.TempDir(), "kodema-kind-cache")
 }
 
 // cachedBinaryPath is the pinned cache file for the current KindVersion.

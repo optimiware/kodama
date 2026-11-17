@@ -6,13 +6,13 @@ import (
 	"os"
 	"testing"
 
-	kubesupport "github.com/optimiware/kodama/test/support/infrastructure/kubernetes"
+	kubesupport "github.com/optimiware/kodema/test/support/infrastructure/kubernetes"
 )
 
 // TestMain installs kind-cluster signal cleanup and the next-run dead-owner
 // sweep. It never downloads kind during cleanup and never touches a cluster
-// outside the generated kodama-t-<pid>-<random> namespace, so the existing
-// kodama-probe cluster and concurrent shards survive.
+// outside the generated kodema-t-<pid>-<random> namespace, so the existing
+// kodema-probe cluster and concurrent shards survive.
 func TestMain(m *testing.M) {
 	os.Exit(kubesupport.Main(m))
 }

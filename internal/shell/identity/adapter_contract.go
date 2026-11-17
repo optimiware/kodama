@@ -21,7 +21,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
+	"github.com/optimiware/kodema/internal/fault"
 )
 
 // OAuthProtocol names the OAuth family used by one application client.

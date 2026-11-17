@@ -44,13 +44,13 @@ func TestHarnessLiveBrokerInputsAreOptionalAndValidated(t *testing.T) {
 	env[string(InputNATSURL)] = "tls://127.0.0.1:14222"
 	env[string(InputNATSCAFile)] = caPath
 	env[string(InputNATSTokenFile)] = tokenPath
-	env[string(InputNATSTLSServerName)] = "nats.kodama-system.svc.cluster.local"
+	env[string(InputNATSTLSServerName)] = "nats.kodema-system.svc.cluster.local"
 	config, err := LoadConfig(envGetter(env))
 	if err != nil {
 		t.Fatalf("valid broker inputs were refused: %v", err)
 	}
 	if config.NATSCAFile != caPath || config.NATSTokenFile != tokenPath ||
-		config.NATSTLSServerName != "nats.kodama-system.svc.cluster.local" {
+		config.NATSTLSServerName != "nats.kodema-system.svc.cluster.local" {
 		t.Fatalf("loaded broker inputs = %q/%q/%q", config.NATSCAFile, config.NATSTokenFile, config.NATSTLSServerName)
 	}
 	if missing := config.Missing(InputNATSURL, InputNATSCAFile, InputNATSTokenFile, InputNATSTLSServerName); !missing.Empty() {
@@ -163,7 +163,7 @@ func TestHarnessLiveBrokerInputsRefuseWrongInput(t *testing.T) {
 		{
 			name: "tls server name is a host and port",
 			mutate: func(env map[string]string) {
-				env[string(InputNATSTLSServerName)] = "nats.kodama-system.svc:4222"
+				env[string(InputNATSTLSServerName)] = "nats.kodema-system.svc:4222"
 			},
 			wants: "must be a plain DNS name",
 		},
@@ -234,12 +234,12 @@ func TestHarnessLiveBrokerTLSConfig(t *testing.T) {
 		t.Fatal("the broker CA bundle was not loaded")
 	}
 
-	config.NATSTLSServerName = "nats.kodama-system.svc.cluster.local"
+	config.NATSTLSServerName = "nats.kodema-system.svc.cluster.local"
 	tlsConfig, err = config.LiveBrokerTLS()
 	if err != nil {
 		t.Fatalf("TLS broker with an explicit name refused: %v", err)
 	}
-	if tlsConfig.ServerName != "nats.kodama-system.svc.cluster.local" {
+	if tlsConfig.ServerName != "nats.kodema-system.svc.cluster.local" {
 		t.Fatalf("broker TLS server name = %q; want the configured name", tlsConfig.ServerName)
 	}
 

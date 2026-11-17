@@ -10,10 +10,10 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/shell/app/drivers/mcphttp"
-	"github.com/optimiware/kodama/internal/shell/mcpproxy"
-	"github.com/optimiware/kodama/internal/shell/secret"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/shell/app/drivers/mcphttp"
+	"github.com/optimiware/kodema/internal/shell/mcpproxy"
+	"github.com/optimiware/kodema/internal/shell/secret"
 )
 
 func TestMCPStreamableHTTPCompliance(t *testing.T) {
@@ -121,7 +121,7 @@ func TestMCPStreamableHTTPCompliance(t *testing.T) {
 	t.Run("with RFC 9728 OAuth protected resource discovery", func(t *testing.T) {
 		environment := newTestEnvironment(t)
 		disc := discoveryTestConfig(discoveryTestIssuer)
-		disc.APIURL = "https://api.kodama.example:8443"
+		disc.APIURL = "https://api.kodema.example:8443"
 		environment.config.Discovery = disc
 		app := environment.startApp(t)
 		handler := app.Handler()
@@ -134,14 +134,14 @@ func TestMCPStreamableHTTPCompliance(t *testing.T) {
 		if unauthRec.Code != http.StatusUnauthorized {
 			t.Fatalf("unauthenticated MCP status = %d; want 401", unauthRec.Code)
 		}
-		wantHeader := `Bearer resource_metadata="https://api.kodama.example:8443/.well-known/oauth-protected-resource"`
+		wantHeader := `Bearer resource_metadata="https://api.kodema.example:8443/.well-known/oauth-protected-resource"`
 		if got := unauthRec.Header().Get("WWW-Authenticate"); got != wantHeader {
 			t.Fatalf("WWW-Authenticate = %q; want %q", got, wantHeader)
 		}
 
 		// The configured public API origin is the server's own; the request
 		// host, which a DNS-rebinding page controls, is not.
-		for origin, want := range map[string]int{"http://example.com": http.StatusForbidden, "https://api.kodama.example:8443": http.StatusOK} {
+		for origin, want := range map[string]int{"http://example.com": http.StatusForbidden, "https://api.kodema.example:8443": http.StatusOK} {
 			req := httptest.NewRequest(http.MethodPost, "/mcp", bytes.NewReader([]byte(`{"jsonrpc":"2.0","id":7,"method":"ping"}`)))
 			req.Header.Set("Origin", origin)
 			rec := httptest.NewRecorder()
@@ -163,7 +163,7 @@ func TestMCPStreamableHTTPCompliance(t *testing.T) {
 			t.Fatalf("decode metadata: %v", err)
 		}
 		wantMeta := api.OAuthProtectedResourceMetadata{
-			Resource:               "https://api.kodama.example:8443",
+			Resource:               "https://api.kodema.example:8443",
 			AuthorizationServers:   []string{discoveryTestIssuer},
 			BearerMethodsSupported: []string{"header"},
 		}

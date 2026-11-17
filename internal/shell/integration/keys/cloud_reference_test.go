@@ -10,9 +10,9 @@ package keys_test
 import (
 	"testing"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/shell/integration/keys"
-	"github.com/optimiware/kodama/internal/shell/secret"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/shell/integration/keys"
+	"github.com/optimiware/kodema/internal/shell/secret"
 )
 
 func requireInvalidReference(t *testing.T, err error) {
@@ -47,20 +47,20 @@ func TestAWSKeyReferenceParsing(t *testing.T) {
 		}
 	})
 	t.Run("arn alias", func(t *testing.T) {
-		parsed, err := keys.ParseAWSReference(secret.KeyRef("aws-kms:arn:aws:kms:ap-southeast-2:210987654321:alias/kodama-kek"))
+		parsed, err := keys.ParseAWSReference(secret.KeyRef("aws-kms:arn:aws:kms:ap-southeast-2:210987654321:alias/kodema-kek"))
 		if err != nil {
 			t.Fatalf("ParseAWSReference: %v", err)
 		}
-		if !parsed.ARN || parsed.Region != "ap-southeast-2" || parsed.Account != "210987654321" || parsed.Alias != "kodama-kek" || parsed.KeyID != "" {
+		if !parsed.ARN || parsed.Region != "ap-southeast-2" || parsed.Account != "210987654321" || parsed.Alias != "kodema-kek" || parsed.KeyID != "" {
 			t.Fatalf("parsed alias reference = %+v", parsed)
 		}
 	})
 	t.Run("configured-region alias", func(t *testing.T) {
-		parsed, err := keys.ParseAWSReference(secret.KeyRef("aws-kms:alias/kodama-kek"))
+		parsed, err := keys.ParseAWSReference(secret.KeyRef("aws-kms:alias/kodema-kek"))
 		if err != nil {
 			t.Fatalf("ParseAWSReference: %v", err)
 		}
-		if parsed.ARN || parsed.Region != "" || parsed.Alias != "kodama-kek" {
+		if parsed.ARN || parsed.Region != "" || parsed.Alias != "kodema-kek" {
 			t.Fatalf("parsed short alias reference = %+v", parsed)
 		}
 	})
@@ -94,7 +94,7 @@ func TestAWSReferenceConfiguredRegion(t *testing.T) {
 		}
 	}
 
-	alias, err := keys.ParseAWSReference(secret.KeyRef("aws-kms:alias/kodama-kek"))
+	alias, err := keys.ParseAWSReference(secret.KeyRef("aws-kms:alias/kodema-kek"))
 	if err != nil {
 		t.Fatalf("ParseAWSReference: %v", err)
 	}
@@ -109,20 +109,20 @@ func TestAWSReferenceConfiguredRegion(t *testing.T) {
 }
 
 func TestGCPKeyReferenceParsing(t *testing.T) {
-	parsed, err := keys.ParseGCPReference(secret.KeyRef("gcp-kms:projects/demo-project/locations/europe-west1/keyRings/kodama/cryptoKeys/kek"))
+	parsed, err := keys.ParseGCPReference(secret.KeyRef("gcp-kms:projects/demo-project/locations/europe-west1/keyRings/kodema/cryptoKeys/kek"))
 	if err != nil {
 		t.Fatalf("ParseGCPReference: %v", err)
 	}
 	if parsed.Project != "demo-project" || parsed.Location != "europe-west1" ||
-		parsed.KeyRing != "kodama" || parsed.CryptoKey != "kek" {
+		parsed.KeyRing != "kodema" || parsed.CryptoKey != "kek" {
 		t.Fatalf("parsed GCP reference = %+v", parsed)
 	}
 
 	for _, reference := range []string{
-		"gcp-kms:projects/demo-project/locations/europe-west1/keyRings/kodama",
-		"gcp-kms:projects/demo-project/locations/europe-west1/keyRings/kodama/cryptoKeys/kek/cryptoKeyVersions/1",
-		"gcp-kms:projects/demo-project/locations/../keyRings/kodama/cryptoKeys/kek",
-		"gcp-kms:projects/demo-project/locations/europe-west1/keyrings/kodama/cryptoKeys/kek",
+		"gcp-kms:projects/demo-project/locations/europe-west1/keyRings/kodema",
+		"gcp-kms:projects/demo-project/locations/europe-west1/keyRings/kodema/cryptoKeys/kek/cryptoKeyVersions/1",
+		"gcp-kms:projects/demo-project/locations/../keyRings/kodema/cryptoKeys/kek",
+		"gcp-kms:projects/demo-project/locations/europe-west1/keyrings/kodema/cryptoKeys/kek",
 	} {
 		t.Run("refused "+reference, func(t *testing.T) {
 			_, err := keys.ParseGCPReference(secret.KeyRef(reference))

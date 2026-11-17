@@ -9,36 +9,36 @@
 #
 # Modes (at least one required):
 #   --bootstrap-service   create/reconcile the `git` service account (and
-#                         optional `m2-responder` when KODAMA_STAGE_WITH_RESPONDER=1),
+#                         optional `m2-responder` when KODEMA_STAGE_WITH_RESPONDER=1),
 #                         issue or rotate its bounded credential into
-#                         Secret kodama-system/kodama-git-<tenant>, and
+#                         Secret kodema-system/kodema-git-<tenant>, and
 #                         register/reconcile the `git-admin` and run repository
 #                         bindings (`m2-repo-<run-id>`).
-#   --provision           exec into pod/kodama-git-<tenant>-0 to run
-#                         `kodama git provision-tenant` and
-#                         `kodama git provision-repository` for `smoke/<run-id>`.
+#   --provision           exec into pod/kodema-git-<tenant>-0 to run
+#                         `kodema git provision-tenant` and
+#                         `kodema git provision-repository` for `smoke/<run-id>`.
 #
 # Required inputs:
-#   KODAMA_STAGE_KUBE_CONTEXT       must be admin@kodama-stage-k8s
-#   KODAMA_STAGE_RUN_ID             bounded run identifier (^[a-z0-9][a-z0-9_-]{0,31}$)
+#   KODEMA_STAGE_KUBE_CONTEXT       must be admin@kodema-stage-k8s
+#   KODEMA_STAGE_RUN_ID             bounded run identifier (^[a-z0-9][a-z0-9_-]{0,31}$)
 #   (Plus for --bootstrap-service):
-#   KODAMA_STAGE_API_URL            https API origin on loopback
-#   KODAMA_STAGE_CA_FILE            installation CA bundle
-#   KODAMA_STAGE_ADMIN_TOKEN_FILE   mode 0600 admin bearer token file
+#   KODEMA_STAGE_API_URL            https API origin on loopback
+#   KODEMA_STAGE_CA_FILE            installation CA bundle
+#   KODEMA_STAGE_ADMIN_TOKEN_FILE   mode 0600 admin bearer token file
 #
 # Optional inputs:
-#   KODAMA_STAGE_PROJECT_ID         project id (default tenant-a)
-#   KODAMA_STAGE_TENANT_ID          tenant id (default $KODAMA_STAGE_PROJECT_ID)
-#   KODAMA_STAGE_RELEASE_NAMESPACE  must be kodama-system (default kodama-system)
-#   KODAMA_STAGE_GIT_PORT           local port-forward port for Git (default 18445)
-#   KODAMA_STAGE_WITH_RESPONDER     1 also reconciles service m2-responder and
-#                                   Secret kodama-service-m2-responder
-#   KODAMA_STAGE_ADMIN_BINDING      admin binding id (default git-admin; must be
+#   KODEMA_STAGE_PROJECT_ID         project id (default tenant-a)
+#   KODEMA_STAGE_TENANT_ID          tenant id (default $KODEMA_STAGE_PROJECT_ID)
+#   KODEMA_STAGE_RELEASE_NAMESPACE  must be kodema-system (default kodema-system)
+#   KODEMA_STAGE_GIT_PORT           local port-forward port for Git (default 18445)
+#   KODEMA_STAGE_WITH_RESPONDER     1 also reconciles service m2-responder and
+#                                   Secret kodema-service-m2-responder
+#   KODEMA_STAGE_ADMIN_BINDING      admin binding id (default git-admin; must be
 #                                   distinct per tenant, ids are installation
 #                                   unique)
-#   KODAMA_STAGE_ADMIN_RESOURCE     admin resource id (default git-admin; same
+#   KODEMA_STAGE_ADMIN_RESOURCE     admin resource id (default git-admin; same
 #                                   uniqueness rule)
-#   KODAMA_STAGE_GIT_SERVICE        service id for this tenant's Git credential
+#   KODEMA_STAGE_GIT_SERVICE        service id for this tenant's Git credential
 #                                   (default git; service ids are installation
 #                                   unique, so a second tenant needs its own)
 set -euo pipefail
@@ -70,40 +70,40 @@ done
 (( do_bootstrap == 1 || do_provision == 1 )) ||
 	die "specify --bootstrap-service and/or --provision"
 
-for forbidden in KODAMA_STAGE_ADMIN_TOKEN KODAMA_STAGE_TOKEN KODAMA_STAGE_BEARER; do
+for forbidden in KODEMA_STAGE_ADMIN_TOKEN KODEMA_STAGE_TOKEN KODEMA_STAGE_BEARER; do
 	if [[ -n "${!forbidden:-}" ]]; then
 		die "${forbidden} is refused; supply the administrator credential only as a 0600 file"
 	fi
 done
 
-kube_context="${KODAMA_STAGE_KUBE_CONTEXT:-}"
-run_id="${KODAMA_STAGE_RUN_ID:-}"
-project="${KODAMA_STAGE_PROJECT_ID:-tenant-a}"
-tenant="${KODAMA_STAGE_TENANT_ID:-$project}"
-release_ns="${KODAMA_STAGE_RELEASE_NAMESPACE:-kodama-system}"
-git_port="${KODAMA_STAGE_GIT_PORT:-18445}"
-with_responder="${KODAMA_STAGE_WITH_RESPONDER:-0}"
+kube_context="${KODEMA_STAGE_KUBE_CONTEXT:-}"
+run_id="${KODEMA_STAGE_RUN_ID:-}"
+project="${KODEMA_STAGE_PROJECT_ID:-tenant-a}"
+tenant="${KODEMA_STAGE_TENANT_ID:-$project}"
+release_ns="${KODEMA_STAGE_RELEASE_NAMESPACE:-kodema-system}"
+git_port="${KODEMA_STAGE_GIT_PORT:-18445}"
+with_responder="${KODEMA_STAGE_WITH_RESPONDER:-0}"
 
-[[ "$kube_context" == "admin@kodama-stage-k8s" ]] ||
-	die "KODAMA_STAGE_KUBE_CONTEXT must be admin@kodama-stage-k8s"
-[[ "$release_ns" == "kodama-system" ]] ||
-	die "KODAMA_STAGE_RELEASE_NAMESPACE must be kodama-system"
+[[ "$kube_context" == "admin@kodema-stage-k8s" ]] ||
+	die "KODEMA_STAGE_KUBE_CONTEXT must be admin@kodema-stage-k8s"
+[[ "$release_ns" == "kodema-system" ]] ||
+	die "KODEMA_STAGE_RELEASE_NAMESPACE must be kodema-system"
 [[ "$project" =~ ^[a-z0-9][a-z0-9_-]{0,40}$ ]] ||
-	die "KODAMA_STAGE_PROJECT_ID is not a bounded identity"
+	die "KODEMA_STAGE_PROJECT_ID is not a bounded identity"
 [[ "$tenant" =~ ^[a-z0-9][a-z0-9_-]{0,40}$ ]] ||
-	die "KODAMA_STAGE_TENANT_ID is not a bounded identity"
+	die "KODEMA_STAGE_TENANT_ID is not a bounded identity"
 [[ "$run_id" =~ ^[a-z0-9][a-z0-9_-]{0,31}$ ]] ||
-	die "KODAMA_STAGE_RUN_ID must match ^[a-z0-9][a-z0-9_-]{0,31}$"
+	die "KODEMA_STAGE_RUN_ID must match ^[a-z0-9][a-z0-9_-]{0,31}$"
 [[ "$git_port" =~ ^[0-9]+$ ]] && (( git_port >= 1024 && git_port <= 65535 )) ||
-	die "KODAMA_STAGE_GIT_PORT is not an unprivileged port"
+	die "KODEMA_STAGE_GIT_PORT is not an unprivileged port"
 [[ "$with_responder" == "0" || "$with_responder" == "1" ]] ||
-	die "KODAMA_STAGE_WITH_RESPONDER must be 0 or 1"
+	die "KODEMA_STAGE_WITH_RESPONDER must be 0 or 1"
 
 smoke_repo="smoke/${run_id}"
 smoke_resource="m2-repo-${run_id}"
 smoke_binding="m2-repo-${run_id}"
 git_host_origin="https://127.0.0.1:${git_port}"
-git_workload_origin="https://kodama-git-${tenant}.${release_ns}.svc.cluster.local:8443"
+git_workload_origin="https://kodema-git-${tenant}.${release_ns}.svc.cluster.local:8443"
 
 for tool in kubectl jq python3 mktemp stat sed head; do
 	command -v "$tool" >/dev/null 2>&1 || die "$tool is required"
@@ -127,19 +127,19 @@ trap 'exit 129' HUP
 
 if (( do_bootstrap == 1 )); then
 	command -v curl >/dev/null 2>&1 || die "curl is required for --bootstrap-service"
-	api_url="${KODAMA_STAGE_API_URL:-}"
-	ca_file="${KODAMA_STAGE_CA_FILE:-}"
-	token_file="${KODAMA_STAGE_ADMIN_TOKEN_FILE:-}"
-	[[ -n "$api_url" ]] || die "KODAMA_STAGE_API_URL is required for --bootstrap-service"
+	api_url="${KODEMA_STAGE_API_URL:-}"
+	ca_file="${KODEMA_STAGE_CA_FILE:-}"
+	token_file="${KODEMA_STAGE_ADMIN_TOKEN_FILE:-}"
+	[[ -n "$api_url" ]] || die "KODEMA_STAGE_API_URL is required for --bootstrap-service"
 	[[ "$api_url" =~ ^https://127\.0\.0\.1:[0-9]{1,5}/?$ ]] ||
-		die "KODAMA_STAGE_API_URL must be an https://127.0.0.1:<port> origin"
+		die "KODEMA_STAGE_API_URL must be an https://127.0.0.1:<port> origin"
 	api_base="${api_url%/}"
-	[[ -f "$ca_file" && -r "$ca_file" ]] || die "KODAMA_STAGE_CA_FILE is not readable"
+	[[ -f "$ca_file" && -r "$ca_file" ]] || die "KODEMA_STAGE_CA_FILE is not readable"
 	[[ -f "$token_file" && -r "$token_file" && -s "$token_file" ]] ||
-		die "KODAMA_STAGE_ADMIN_TOKEN_FILE is missing or empty"
+		die "KODEMA_STAGE_ADMIN_TOKEN_FILE is missing or empty"
 	token_mode="$(stat -c '%a' "$token_file" 2>/dev/null || true)"
 	[[ "$token_mode" == "600" ]] ||
-		die "KODAMA_STAGE_ADMIN_TOKEN_FILE must be mode 0600 (found ${token_mode:-unknown})"
+		die "KODEMA_STAGE_ADMIN_TOKEN_FILE must be mode 0600 (found ${token_mode:-unknown})"
 
 	{
 		umask 077
@@ -255,7 +255,7 @@ if (( do_bootstrap == 1 )); then
 		printf 'stage-git: reconciled service %s and Secret %s/%s\n' "$service" "$release_ns" "$secret_name"
 	}
 
-	git_service="${KODAMA_STAGE_GIT_SERVICE:-git}"
+	git_service="${KODEMA_STAGE_GIT_SERVICE:-git}"
 
 	reconcile_binding() {
 		local binding_id=$1 resource_id=$2
@@ -303,32 +303,32 @@ if (( do_bootstrap == 1 )); then
 	# Service ids are unique per installation, so a second tenant needs its own
 	# id (the Secret name stays per-tenant because it is mounted by that
 	# tenant's Git workload). Default keeps the historic "git" id.
-	reconcile_service_secret "$git_service" '["viewer"]' "kodama-git-${tenant}"
+	reconcile_service_secret "$git_service" '["viewer"]' "kodema-git-${tenant}"
 	if [[ "$with_responder" == "1" ]]; then
-		reconcile_service_secret "m2-responder" '["viewer"]' "kodama-service-m2-responder"
+		reconcile_service_secret "m2-responder" '["viewer"]' "kodema-service-m2-responder"
 	fi
 	# Resource and binding identities are installation unique (a foreign owner is
 	# the uniform not_found class), so a second tenant names its own admin pair.
-	admin_binding="${KODAMA_STAGE_ADMIN_BINDING:-git-admin}"
-	admin_resource="${KODAMA_STAGE_ADMIN_RESOURCE:-git-admin}"
+	admin_binding="${KODEMA_STAGE_ADMIN_BINDING:-git-admin}"
+	admin_resource="${KODEMA_STAGE_ADMIN_RESOURCE:-git-admin}"
 	reconcile_binding "$admin_binding" "$admin_resource"
 	reconcile_binding "$smoke_binding" "$smoke_resource"
 fi
 
 if (( do_provision == 1 )); then
-	pod="pod/kodama-git-${tenant}-0"
+	pod="pod/kodema-git-${tenant}-0"
 	kubectl --context "$kube_context" -n "$release_ns" wait --for=condition=Ready "$pod" --timeout=300s >/dev/null
 	kubectl --context "$kube_context" -n "$release_ns" exec "$pod" -c git -- \
-		kodama git provision-tenant \
+		kodema git provision-tenant \
 		--tenant "$tenant" \
-		--storage-root /var/lib/kodama/git/repos \
-		--journal-dir /var/lib/kodama/git/journal >/dev/null
+		--storage-root /var/lib/kodema/git/repos \
+		--journal-dir /var/lib/kodema/git/journal >/dev/null
 	printf 'stage-git: provisioned tenant %s admin repository in %s\n' "$tenant" "$pod"
 
 	prov_out="$(kubectl --context "$kube_context" -n "$release_ns" exec "$pod" -c git -- \
-		kodama git provision-repository \
+		kodema git provision-repository \
 		--tenant "$tenant" \
-		--storage-root /var/lib/kodama/git/repos \
+		--storage-root /var/lib/kodema/git/repos \
 		--repository "$smoke_repo" \
 		--resource "$smoke_resource")"
 	case "$prov_out" in

@@ -15,12 +15,12 @@ import (
 // packages. Test files may use the testkit, but production code must not.
 func TestEngineProductionImportsStayInsideKernel(t *testing.T) {
 	allowedProduct := map[string]bool{
-		"github.com/optimiware/kodama/internal/id":                true,
-		"github.com/optimiware/kodama/internal/fault":             true,
-		"github.com/optimiware/kodama/internal/kernel":            true,
-		"github.com/optimiware/kodama/internal/kernel/definition": true,
-		"github.com/optimiware/kodama/internal/kernel/flow":       true,
-		"github.com/optimiware/kodama/internal/kernel/script":     true,
+		"github.com/optimiware/kodema/internal/id":                true,
+		"github.com/optimiware/kodema/internal/fault":             true,
+		"github.com/optimiware/kodema/internal/kernel":            true,
+		"github.com/optimiware/kodema/internal/kernel/definition": true,
+		"github.com/optimiware/kodema/internal/kernel/flow":       true,
+		"github.com/optimiware/kodema/internal/kernel/script":     true,
 	}
 	forbiddenStdlib := map[string]bool{
 		"os/exec":      true,
@@ -51,7 +51,7 @@ func TestEngineProductionImportsStayInsideKernel(t *testing.T) {
 				t.Fatalf("unquote import in %s error = %v", path, err)
 			}
 			switch {
-			case strings.HasPrefix(importPath, "github.com/optimiware/kodama/"):
+			case strings.HasPrefix(importPath, "github.com/optimiware/kodema/"):
 				if !allowedProduct[importPath] {
 					t.Errorf("%s imports forbidden product package %q", path, importPath)
 				}

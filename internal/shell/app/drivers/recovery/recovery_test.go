@@ -88,10 +88,10 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/installation"
-	runtimepodman "github.com/optimiware/kodama/internal/shell/runtime/podman"
-	"github.com/optimiware/kodama/internal/shell/store"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/installation"
+	runtimepodman "github.com/optimiware/kodema/internal/shell/runtime/podman"
+	"github.com/optimiware/kodema/internal/shell/store"
 )
 
 // The installation ports are the only contract the drivers implement.
@@ -157,7 +157,7 @@ func TestDriversSuccess(t *testing.T) {
 			Executor:  fixture.executor,
 			Files:     fixture.files,
 			Container: "pg-container",
-			Database:  "kodama",
+			Database:  "kodema",
 			Root:      fixture.backupRoot,
 			Sources: []BackupSource{
 				{Name: "retained-logs", Root: fixture.retainedLogs},
@@ -193,7 +193,7 @@ func TestDriversSuccess(t *testing.T) {
 			t.Fatalf("executor calls = %d; want 1", len(got))
 		}
 		dumpRequest := fixture.executor.requests()[0]
-		wantArgv := []string{"pg_dump", "--format=custom", "--dbname", "kodama"}
+		wantArgv := []string{"pg_dump", "--format=custom", "--dbname", "kodema"}
 		if dumpRequest.Container != "pg-container" || !reflect.DeepEqual(dumpRequest.Argv, wantArgv) {
 			t.Fatalf("pg_dump request = %+v; want container pg-container argv %v", dumpRequest, wantArgv)
 		}
@@ -246,7 +246,7 @@ func TestDriversSuccess(t *testing.T) {
 			Executor:  fixture.executor,
 			Files:     fixture.files,
 			Container: "restore-pg",
-			Database:  "kodama",
+			Database:  "kodema",
 			Root:      fixture.backupRoot,
 			Targets: []RestoreTarget{
 				{Name: "retained-logs", Root: fixture.restoreLogs},
@@ -307,8 +307,8 @@ func TestDriversSuccess(t *testing.T) {
 			t.Fatalf("target precondition probes = %d; want 1 (required database roles)", len(probes))
 		}
 		wantProbeArgv := []string{
-			"psql", "--no-psqlrc", "--no-align", "--tuples-only", "--dbname", "kodama", "--command",
-			"SELECT rolname FROM pg_roles WHERE rolname IN ('kodama_owner', 'kodama_runtime', 'kodama_controller', 'kodama_publisher', 'kodama_auth') ORDER BY rolname",
+			"psql", "--no-psqlrc", "--no-align", "--tuples-only", "--dbname", "kodema", "--command",
+			"SELECT rolname FROM pg_roles WHERE rolname IN ('kodema_owner', 'kodema_runtime', 'kodema_controller', 'kodema_publisher', 'kodema_auth') ORDER BY rolname",
 		}
 		if probes[0].Container != "restore-pg" || !reflect.DeepEqual(probes[0].Argv, wantProbeArgv) {
 			t.Fatalf("role probe request = %+v; want container restore-pg argv %v", probes[0], wantProbeArgv)
@@ -317,7 +317,7 @@ func TestDriversSuccess(t *testing.T) {
 			t.Fatalf("role probe stdin = %q; want empty", probes[0].Stdin)
 		}
 		restoreRequest := requests[1]
-		wantRestoreArgv := []string{"pg_restore", "--clean", "--if-exists", "--dbname", "kodama"}
+		wantRestoreArgv := []string{"pg_restore", "--clean", "--if-exists", "--dbname", "kodema"}
 		if restoreRequest.Container != "restore-pg" || !reflect.DeepEqual(restoreRequest.Argv, wantRestoreArgv) {
 			t.Fatalf("pg_restore request = %+v; want container restore-pg argv %v", restoreRequest, wantRestoreArgv)
 		}
@@ -519,7 +519,7 @@ func TestBackupDriverRequiresDurableSources(t *testing.T) {
 				Executor:    fixture.executor,
 				Files:       fixture.files,
 				Container:   "pg-container",
-				Database:    "kodama",
+				Database:    "kodema",
 				Root:        fixture.backupRoot,
 				Sources:     testCase.sources,
 				NewIdentity: func() string { return "backup-1" },
@@ -1284,7 +1284,7 @@ func (fixture *testDriverFixture) newBackup(t *testing.T) *BackupDriver {
 		Executor:  fixture.executor,
 		Files:     fixture.files,
 		Container: "pg-container",
-		Database:  "kodama",
+		Database:  "kodema",
 		Root:      fixture.backupRoot,
 		Sources: []BackupSource{
 			{Name: "retained-logs", Root: fixture.retainedLogs},
@@ -1308,7 +1308,7 @@ func (fixture *testDriverFixture) newRestore(t *testing.T) *RestoreDriver {
 		Executor:  fixture.executor,
 		Files:     fixture.files,
 		Container: "restore-pg",
-		Database:  "kodama",
+		Database:  "kodema",
 		Root:      fixture.backupRoot,
 		Targets: []RestoreTarget{
 			{Name: "retained-logs", Root: fixture.restoreLogs},
@@ -1331,7 +1331,7 @@ func (fixture *testDriverFixture) newRestoreWithTargets(t *testing.T, targets []
 		Executor:  fixture.executor,
 		Files:     fixture.files,
 		Container: "restore-pg",
-		Database:  "kodama",
+		Database:  "kodema",
 		Root:      fixture.backupRoot,
 		Targets:   targets,
 		Services:  []string{"controller", "publisher"},

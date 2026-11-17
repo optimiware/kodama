@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/shell/pipeline"
+	"github.com/optimiware/kodema/internal/shell/pipeline"
 )
 
 const viteAcceptanceImage = "docker.io/library/node@sha256:8996bb5821d62a8fd9bb27c1cb07462f3fdce6e47d640c6a881ead0b064ce216"
@@ -57,7 +57,7 @@ func TestViteAcceptancePipelineParsesAndPinsTheImage(t *testing.T) {
 		"npm install --no-audit --no-fund",
 		"npx vite build",
 		"test -s /workspace/dist/index.html",
-		"KODAMA_VITE_OK",
+		"KODEMA_VITE_OK",
 		"npx vite --version",
 		"8.3.6",
 	} {

@@ -7,8 +7,8 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/optimiware/kodama/api"
-	gitapp "github.com/optimiware/kodama/internal/userland/git/app"
+	"github.com/optimiware/kodema/api"
+	gitapp "github.com/optimiware/kodema/internal/userland/git/app"
 )
 
 // fixedResultTransport answers every invocation with one fixed public result.

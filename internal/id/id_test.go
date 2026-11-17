@@ -31,8 +31,8 @@ func TestIDsAreDistinctNamedTypes(t *testing.T) {
 		if typ.Kind() != reflect.String {
 			t.Fatalf("%T: kind = %v, want string", value, typ.Kind())
 		}
-		if typ.PkgPath() != "github.com/optimiware/kodama/internal/id" {
-			t.Fatalf("%T: package = %q, want github.com/optimiware/kodama/internal/id", value, typ.PkgPath())
+		if typ.PkgPath() != "github.com/optimiware/kodema/internal/id" {
+			t.Fatalf("%T: package = %q, want github.com/optimiware/kodema/internal/id", value, typ.PkgPath())
 		}
 		if typ.Name() == "" {
 			t.Fatalf("%T: unnamed type; identities must be named types", value)

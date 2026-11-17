@@ -4,10 +4,10 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/shell/identity"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/shell/identity"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
 )
 
 // TestModelAndToolFamily pins the optional surfaces: the consumer-owned ports
@@ -155,7 +155,7 @@ func TestEventFamily(t *testing.T) {
 	}
 	var grant api.EventSubscribeResult
 	decodeResult(t, subscribed, &grant)
-	if len(grant.Subjects) != 1 || grant.Subjects[0] != "kodama.v1."+testTenant+"."+testProject+".events" {
+	if len(grant.Subjects) != 1 || grant.Subjects[0] != "kodema.v1."+testTenant+"."+testProject+".events" {
 		t.Fatalf("subscribe subjects = %+v", grant.Subjects)
 	}
 	if grant.Cursor == "" || grant.ExpiresAt.IsZero() {

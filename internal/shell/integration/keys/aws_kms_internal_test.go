@@ -21,15 +21,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/shell/secret"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/shell/secret"
 )
 
 const (
 	awsStubRegion = "eu-west-3"
 	awsStubKeyARN = "arn:aws:kms:eu-west-3:111122223333:key/1234abcd-12ab-34cd-56ef-1234567890ab"
 	awsStubRef    = "aws-kms:" + awsStubKeyARN
-	awsStubRole   = "arn:aws:iam::111122223333:role/kodama-kms"
+	awsStubRole   = "arn:aws:iam::111122223333:role/kodema-kms"
 	awsStubToken  = "stub-web-identity-token"
 )
 
@@ -51,11 +51,11 @@ func TestNewAWSKMSDefaultEndpointsArePinned(t *testing.T) {
 			kms: "https://kms.us-east-1.amazonaws.com", sts: "https://sts.us-east-1.amazonaws.com"},
 		{region: "ap-southeast-2", role: awsStubRole,
 			kms: "https://kms.ap-southeast-2.amazonaws.com", sts: "https://sts.ap-southeast-2.amazonaws.com"},
-		{region: "us-gov-west-1", role: "arn:aws-us-gov:iam::111122223333:role/kodama-kms",
+		{region: "us-gov-west-1", role: "arn:aws-us-gov:iam::111122223333:role/kodema-kms",
 			kms: "https://kms.us-gov-west-1.amazonaws.com", sts: "https://sts.us-gov-west-1.amazonaws.com"},
-		{region: "cn-north-1", role: "arn:aws-cn:iam::111122223333:role/kodama-kms",
+		{region: "cn-north-1", role: "arn:aws-cn:iam::111122223333:role/kodema-kms",
 			kms: "https://kms.cn-north-1.amazonaws.com.cn", sts: "https://sts.cn-north-1.amazonaws.com.cn"},
-		{region: "cn-northwest-1", role: "arn:aws-cn:iam::111122223333:role/kodama-kms",
+		{region: "cn-northwest-1", role: "arn:aws-cn:iam::111122223333:role/kodema-kms",
 			kms: "https://kms.cn-northwest-1.amazonaws.com.cn", sts: "https://sts.cn-northwest-1.amazonaws.com.cn"},
 	}
 	for _, testCase := range cases {
@@ -73,8 +73,8 @@ func TestNewAWSKMSDefaultEndpointsArePinned(t *testing.T) {
 		if client.stsEndpoint != testCase.sts {
 			t.Fatalf("%s default STS endpoint = %q; want %q", testCase.region, client.stsEndpoint, testCase.sts)
 		}
-		if client.sessionName != "kodama" {
-			t.Fatalf("default session name = %q; want kodama", client.sessionName)
+		if client.sessionName != "kodema" {
+			t.Fatalf("default session name = %q; want kodema", client.sessionName)
 		}
 		if client.cached != nil {
 			t.Fatal("a new client already holds credentials")
@@ -224,7 +224,7 @@ func TestAWSKMSChecksTheRegionBeforeAnyCredentialIO(t *testing.T) {
 	stub := newAWSStubClient(t)
 	for _, reference := range []string{
 		"aws-kms:arn:aws:kms:eu-west-1:111122223333:key/1234abcd-12ab-34cd-56ef-1234567890ab",
-		"aws-kms:arn:aws:kms:eu-west-1:111122223333:alias/kodama-kek",
+		"aws-kms:arn:aws:kms:eu-west-1:111122223333:alias/kodema-kek",
 		"aws-kms:alias/has space",
 		"aws-kms:not-a-reference",
 		"scw-kms:fr-par/3b4a80d8-53a7-4a88-9b39-f5eb1ad20ee9",
@@ -622,10 +622,10 @@ func TestAWSErrorTypeSanitising(t *testing.T) {
 // mutant that loosens one is caught independently of the constructor.
 func TestValidAWSRoleARNAndSessionName(t *testing.T) {
 	for role, want := range map[string]bool{
-		"arn:aws:iam::111122223333:role/kodama-kms":                 true,
-		"arn:aws-cn:iam::111122223333:role/kodama-kms":              true,
-		"arn:aws-us-gov:iam::111122223333:role/kodama-kms":          true,
-		"arn:aws:iam::111122223333:role/path/to/Kodama_KMS+=,.@-":   true,
+		"arn:aws:iam::111122223333:role/kodema-kms":                 true,
+		"arn:aws-cn:iam::111122223333:role/kodema-kms":              true,
+		"arn:aws-us-gov:iam::111122223333:role/kodema-kms":          true,
+		"arn:aws:iam::111122223333:role/path/to/Kodema_KMS+=,.@-":   true,
 		"arn:aws:iam::111122223333:role/" + strings.Repeat("a", 64): true,
 		"":                                                            false,
 		"arn:aws:iam::111122223333:role/":                             false,
@@ -653,7 +653,7 @@ func TestValidAWSRoleARNAndSessionName(t *testing.T) {
 		}
 	}
 	for name, want := range map[string]bool{
-		"kodama":                true,
+		"kodema":                true,
 		"ab":                    true,
 		"A_b+c=d,e.f@g-h9":      true,
 		strings.Repeat("s", 64): true,

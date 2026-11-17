@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 
-	runtimekube "github.com/optimiware/kodama/internal/shell/runtime/kube"
+	runtimekube "github.com/optimiware/kodema/internal/shell/runtime/kube"
 )
 
 // namespaceWire is the tenant namespace response subset.

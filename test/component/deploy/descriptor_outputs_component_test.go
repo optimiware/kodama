@@ -24,13 +24,13 @@
 // missing-output refusal is pinned by
 // test/component/deploy/aws_ca_component_test.go.
 //
-// The chart's kodama-kms-credentials Secret requirement follows the key
+// The chart's kodema-kms-credentials Secret requirement follows the key
 // adapter (a static Secret for scw-kms, a workload-identity ServiceAccount
 // annotation and no Secret for aws-kms and gcp-kms); the positive pins are in
 // kms_credential_mode_component_test.go, which also keeps the kms_credentials
 // output facts below and scwOnlyBootstrapSecret in use.
 //
-// The production entry selects the adapter from KODAMA_KEY_ADAPTER;
+// The production entry selects the adapter from KODEMA_KEY_ADAPTER;
 // TestProductionEntrySelectsEveryDeployedKeyAdapter pins that every adapter a
 // root deploys is one the entry and the shell both build.
 package deploy
@@ -244,16 +244,16 @@ func TestDeploymentDescriptorOutputsMatchCloudFacts(t *testing.T) {
 // TestProductionEntrySelectsEveryDeployedKeyAdapter pins that no root deploys a
 // key adapter the server cannot build: the production entry accepts the
 // adapter and the shell has a provider for it. The behaviour itself is covered
-// by cmd/kodama (TestBuildProductionSelectsTheKeyAdapter).
+// by cmd/kodema (TestBuildProductionSelectsTheKeyAdapter).
 func TestProductionEntrySelectsEveryDeployedKeyAdapter(t *testing.T) {
 	root := repoRoot(t)
-	entry := readRepoFile(t, root, "cmd/kodama/production.go")
+	entry := readRepoFile(t, root, "cmd/kodema/production.go")
 	shell := readRepoFile(t, root, "internal/shell/app/production.go")
 	constants := map[string]string{"scw-kms": "KeyScalewayKMS", "aws-kms": "KeyAWSKMS", "gcp-kms": "KeyGCPKMS"}
 
 	accepted := regexp.MustCompile(`(?m)^[ \t]*case ([^\n]*):\n[ \t]*return adapter, nil`).FindStringSubmatch(entry)
 	if accepted == nil {
-		t.Fatal("cmd/kodama/production.go has no key adapter selection that returns the accepted adapter")
+		t.Fatal("cmd/kodema/production.go has no key adapter selection that returns the accepted adapter")
 	}
 	for _, want := range expectedDeploymentFacts {
 		constant, ok := constants[want.keyAdapter]
@@ -261,17 +261,17 @@ func TestProductionEntrySelectsEveryDeployedKeyAdapter(t *testing.T) {
 			t.Fatalf("deploy/%s deploys key adapter %q, which this test does not know", want.cloud, want.keyAdapter)
 		}
 		if !strings.Contains(accepted[1], "installation."+constant) {
-			t.Errorf("cmd/kodama/production.go does not accept %s, which deploy/%s deploys", want.keyAdapter, want.cloud)
+			t.Errorf("cmd/kodema/production.go does not accept %s, which deploy/%s deploys", want.keyAdapter, want.cloud)
 		}
 		if !strings.Contains(entry, "case installation."+constant+":") {
-			t.Errorf("cmd/kodama/production.go builds no KMS client for %s", want.keyAdapter)
+			t.Errorf("cmd/kodema/production.go builds no KMS client for %s", want.keyAdapter)
 		}
 		if !strings.Contains(shell, "case installation."+constant+":") {
 			t.Errorf("internal/shell/app/production.go has no key provider for %s", want.keyAdapter)
 		}
 	}
 	if regexp.MustCompile(`(?m)Keys:[ \t]+installation\.Key[A-Za-z]+KMS`).MatchString(entry) {
-		t.Error("cmd/kodama/production.go hard-codes one key adapter instead of the selected one")
+		t.Error("cmd/kodema/production.go hard-codes one key adapter instead of the selected one")
 	}
 }
 

@@ -27,14 +27,14 @@ func TestReleaseVersionIsConsistent(t *testing.T) {
 		expression  string
 		description string
 	}{
-		{chartPath(t, "Chart.yaml"), `(?m)^version: ` + quoted + `$`, "kodama chart version"},
-		{chartPath(t, "Chart.yaml"), `(?m)^appVersion: "` + quoted + `"$`, "kodama chart appVersion"},
-		{chartPath(t, "values.yaml"), `(?m)^image:\n  repository: \S+\n  tag: "` + quoted + `"$`, "kodama chart default image tag"},
-		{stackChartPath(t, "Chart.yaml"), `(?m)^version: ` + quoted + `$`, "kodama-stack chart version"},
-		{stackChartPath(t, "Chart.yaml"), `(?m)^appVersion: "` + quoted + `"$`, "kodama-stack chart appVersion"},
-		{stackChartPath(t, "Chart.yaml"), `(?m)^  - name: kodama\n    version: "` + quoted + `"$`, "kodama-stack dependency on the kodama chart"},
-		{stackChartPath(t, "values.yaml"), `(?m)^  image:\n    repository: \S+\n    tag: "` + quoted + `"$`, "kodama-stack default image tag"},
-		{filepath.Join(root, "scripts", "lib", "deploy.sh"), `\$\{KODAMA_IMAGE_TAG:-` + quoted + `\}`, "deploy script default image tag"},
+		{chartPath(t, "Chart.yaml"), `(?m)^version: ` + quoted + `$`, "kodema chart version"},
+		{chartPath(t, "Chart.yaml"), `(?m)^appVersion: "` + quoted + `"$`, "kodema chart appVersion"},
+		{chartPath(t, "values.yaml"), `(?m)^image:\n  repository: \S+\n  tag: "` + quoted + `"$`, "kodema chart default image tag"},
+		{stackChartPath(t, "Chart.yaml"), `(?m)^version: ` + quoted + `$`, "kodema-stack chart version"},
+		{stackChartPath(t, "Chart.yaml"), `(?m)^appVersion: "` + quoted + `"$`, "kodema-stack chart appVersion"},
+		{stackChartPath(t, "Chart.yaml"), `(?m)^  - name: kodema\n    version: "` + quoted + `"$`, "kodema-stack dependency on the kodema chart"},
+		{stackChartPath(t, "values.yaml"), `(?m)^  image:\n    repository: \S+\n    tag: "` + quoted + `"$`, "kodema-stack default image tag"},
+		{filepath.Join(root, "scripts", "lib", "deploy.sh"), `\$\{KODEMA_IMAGE_TAG:-` + quoted + `\}`, "deploy script default image tag"},
 	} {
 		if !regexp.MustCompile(check.expression).MatchString(readText(t, check.path)) {
 			t.Errorf("%s does not carry VERSION %s (%s)", check.path, version, check.description)
@@ -50,8 +50,8 @@ func TestReleaseVersionIsConsistent(t *testing.T) {
 		expression string
 	}{
 		{filepath.Join(root, "README.md"), `git clone --branch v(\S+) `},
-		{filepath.Join(root, "README.md"), `kodama/kodama:([0-9A-Za-z.-]+)`},
-		{filepath.Join(root, "docs", "runbooks", "podman-quickstart.md"), `kodama/kodama:([0-9A-Za-z.-]+)`},
+		{filepath.Join(root, "README.md"), `kodema/kodema:([0-9A-Za-z.-]+)`},
+		{filepath.Join(root, "docs", "runbooks", "podman-quickstart.md"), `kodema/kodema:([0-9A-Za-z.-]+)`},
 	} {
 		matches := regexp.MustCompile(document.expression).FindAllStringSubmatch(readText(t, document.path), -1)
 		if len(matches) == 0 {

@@ -23,10 +23,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/client"
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/userland/cli"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/client"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/userland/cli"
 )
 
 func generateTestCAPEM(t *testing.T) []byte {
@@ -37,7 +37,7 @@ func generateTestCAPEM(t *testing.T) []byte {
 	}
 	template := &x509.Certificate{
 		SerialNumber:          big.NewInt(1),
-		Subject:               pkix.Name{CommonName: "kodama-test-ca"},
+		Subject:               pkix.Name{CommonName: "kodema-test-ca"},
 		NotBefore:             time.Now().Add(-time.Hour),
 		NotAfter:              time.Now().Add(time.Hour),
 		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageDigitalSignature,
@@ -188,14 +188,14 @@ func TestParseCABundleAndConfigCAFile(t *testing.T) {
 		}
 	}
 
-	cfg, err := cli.ParseConfig([]byte(`{"server_url":"https://kodama.example.com","ca_file":"/etc/kodama/ca.crt"}`))
+	cfg, err := cli.ParseConfig([]byte(`{"server_url":"https://kodema.example.com","ca_file":"/etc/kodema/ca.crt"}`))
 	if err != nil {
 		t.Fatalf("ParseConfig(ca_file): %v", err)
 	}
-	if cfg.CAFile != "/etc/kodama/ca.crt" {
-		t.Fatalf("CAFile = %q; want /etc/kodama/ca.crt", cfg.CAFile)
+	if cfg.CAFile != "/etc/kodema/ca.crt" {
+		t.Fatalf("CAFile = %q; want /etc/kodema/ca.crt", cfg.CAFile)
 	}
-	if err := (cli.Config{ServerURL: "https://kodama.example.com", CAFile: "   "}).Validate(); err == nil {
+	if err := (cli.Config{ServerURL: "https://kodema.example.com", CAFile: "   "}).Validate(); err == nil {
 		t.Fatal("Config.Validate accepted whitespace-only CAFile")
 	}
 }
@@ -479,8 +479,8 @@ func TestRunLogsWaitsForRetainedOutput(t *testing.T) {
 
 // TestRunInboxApproveAndReject pins Requirement 4.
 func TestRunInboxApproveAndReject(t *testing.T) {
-	t.Run("inbox table and KODAMA_PROJECT env fallback", func(t *testing.T) {
-		t.Setenv("KODAMA_PROJECT", "env-proj")
+	t.Run("inbox table and KODEMA_PROJECT env fallback", func(t *testing.T) {
+		t.Setenv("KODEMA_PROJECT", "env-proj")
 		transport := &scriptedTransport{respond: func(_ context.Context, _ int, inv api.Invocation) (api.Result, error) {
 			if inv.Operation != "task.inbox" {
 				t.Fatalf("operation = %s; want task.inbox", inv.Operation)
@@ -848,7 +848,7 @@ func TestRunTaskCommands(t *testing.T) {
 
 // TestWhoamiAndMemberZeroHashMagic pins Requirement 5 whoami and member grant/revoke/list.
 func TestWhoamiAndMemberZeroHashMagic(t *testing.T) {
-	const issuer = "https://dex.kodama.example"
+	const issuer = "https://dex.kodema.example"
 	const githubSubject = "github:octocat"
 	sum := sha256.Sum256([]byte(issuer + "\x00" + githubSubject))
 	wantOIDCID := "oidc-" + hex.EncodeToString(sum[:16])
@@ -893,7 +893,7 @@ func TestWhoamiAndMemberZeroHashMagic(t *testing.T) {
 	})
 
 	t.Run("member grant with --github discovers issuer, prints derived oidc ID, and grants roles", func(t *testing.T) {
-		oidc := &staticDiscoveryOIDC{doc: api.DiscoveryDocument{Issuer: issuer, APIURL: "https://kodama.example.com"}}
+		oidc := &staticDiscoveryOIDC{doc: api.DiscoveryDocument{Issuer: issuer, APIURL: "https://kodema.example.com"}}
 		transport := &scriptedTransport{respond: func(_ context.Context, _ int, inv api.Invocation) (api.Result, error) {
 			if inv.Operation != "membership.grant" {
 				t.Fatalf("op = %s; want membership.grant", inv.Operation)
@@ -955,7 +955,7 @@ func TestWhoamiAndMemberZeroHashMagic(t *testing.T) {
 	})
 
 	t.Run("member revoke without --expected-version looks up current version via membership.list", func(t *testing.T) {
-		oidc := &staticDiscoveryOIDC{doc: api.DiscoveryDocument{Issuer: issuer, APIURL: "https://kodama.example.com"}}
+		oidc := &staticDiscoveryOIDC{doc: api.DiscoveryDocument{Issuer: issuer, APIURL: "https://kodema.example.com"}}
 		transport := &scriptedTransport{respond: func(_ context.Context, idx int, inv api.Invocation) (api.Result, error) {
 			if idx == 0 {
 				if inv.Operation != "membership.list" {
@@ -1109,17 +1109,17 @@ func TestMCPStdioAndInstall(t *testing.T) {
 
 	t.Run("mcp install --print and isolated file merge for claude, cursor, and codex", func(t *testing.T) {
 		cfg := cli.Config{
-			ServerURL: "https://kodama.example.com",
-			CAFile:    "/etc/kodama/ca.pem",
+			ServerURL: "https://kodema.example.com",
+			CAFile:    "/etc/kodema/ca.pem",
 			Output:    cli.OutputTable,
 		}
 
 		// Print mode for codex (TOML)
 		ports, out, errOut := testPorts(nil)
-		if code := cli.RunWithDeps(context.Background(), cfg, []string{"mcp", "install", "codex", "--name", "kodama-prod", "--print"}, ports, cli.CommandDeps{}); code != cli.ExitSuccess {
+		if code := cli.RunWithDeps(context.Background(), cfg, []string{"mcp", "install", "codex", "--name", "kodema-prod", "--print"}, ports, cli.CommandDeps{}); code != cli.ExitSuccess {
 			t.Fatalf("codex --print exit = %d; stderr=%q", code, errOut.String())
 		}
-		wantTOML := "[mcp_servers.kodama-prod]\ncommand = \"kodactl\"\nargs = [\"--url\", \"https://kodama.example.com\", \"--ca-file\", \"/etc/kodama/ca.pem\", \"mcp\", \"stdio\"]\n"
+		wantTOML := "[mcp_servers.kodema-prod]\ncommand = \"kodactl\"\nargs = [\"--url\", \"https://kodema.example.com\", \"--ca-file\", \"/etc/kodema/ca.pem\", \"mcp\", \"stdio\"]\n"
 		if out.String() != wantTOML {
 			t.Fatalf("codex --print =\n%s\nwant:\n%s", out.String(), wantTOML)
 		}
@@ -1163,7 +1163,7 @@ func TestMCPStdioAndInstall(t *testing.T) {
 			}
 		}
 
-		// Verify ~/.claude.json preserved numStartups & existing server while adding kodama
+		// Verify ~/.claude.json preserved numStartups & existing server while adding kodema
 		claudeBytes, err := fs.ReadFile(fakeHome + "/.claude.json")
 		if err != nil {
 			t.Fatalf("read .claude.json: %v", err)
@@ -1176,12 +1176,12 @@ func TestMCPStdioAndInstall(t *testing.T) {
 			t.Fatalf("numStartups = %v; want preserved 3", claudeDoc["numStartups"])
 		}
 		servers := claudeDoc["mcpServers"].(map[string]any)
-		if servers["existing"] == nil || servers["kodama"] == nil {
-			t.Fatalf("mcpServers = %v; want both existing and kodama", servers)
+		if servers["existing"] == nil || servers["kodema"] == nil {
+			t.Fatalf("mcpServers = %v; want both existing and kodema", servers)
 		}
-		kodamaEntry := servers["kodama"].(map[string]any)
-		if kodamaEntry["command"] != "kodactl" {
-			t.Fatalf("command = %v", kodamaEntry["command"])
+		kodemaEntry := servers["kodema"].(map[string]any)
+		if kodemaEntry["command"] != "kodactl" {
+			t.Fatalf("command = %v", kodemaEntry["command"])
 		}
 
 		// Verify ~/.cursor/mcp.json and --config-file override
@@ -1189,7 +1189,7 @@ func TestMCPStdioAndInstall(t *testing.T) {
 			t.Fatalf("read .cursor/mcp.json: %v", err)
 		}
 		codexBytes, err := fs.ReadFile(fakeHome + "/.codex/config.toml")
-		if err != nil || !strings.Contains(string(codexBytes), "[mcp_servers.kodama]") {
+		if err != nil || !strings.Contains(string(codexBytes), "[mcp_servers.kodema]") {
 			t.Fatalf("read .codex/config.toml = %q, %v", string(codexBytes), err)
 		}
 
@@ -1204,7 +1204,7 @@ func TestMCPStdioAndInstall(t *testing.T) {
 		}
 
 		// Verify Codex TOML in-place replacement preserves surrounding sections.
-		fs.files[fakeHome+"/.codex/config.toml"] = []byte("model = \"gpt-5\"\n\n[mcp_servers.kodama] # managed\ncommand = \"old\"\nargs = []\n\n[mcp_servers.kodama.env]\nSTALE = \"1\"\n\n[mcp_servers.other] # keep\ncommand = \"keep\"\n")
+		fs.files[fakeHome+"/.codex/config.toml"] = []byte("model = \"gpt-5\"\n\n[mcp_servers.kodema] # managed\ncommand = \"old\"\nargs = []\n\n[mcp_servers.kodema.env]\nSTALE = \"1\"\n\n[mcp_servers.other] # keep\ncommand = \"keep\"\n")
 		if code := cli.RunWithDeps(context.Background(), cfg, []string{"mcp", "install", "codex"}, cli.Ports{
 			Files: fs, Out: &customOut, Err: &customErr,
 		}, deps); code != cli.ExitSuccess {
@@ -1216,7 +1216,7 @@ func TestMCPStdioAndInstall(t *testing.T) {
 			!strings.Contains(updatedTOML, "[mcp_servers.other] # keep\ncommand = \"keep\"\n") ||
 			strings.Contains(updatedTOML, `command = "old"`) ||
 			strings.Contains(updatedTOML, "STALE") ||
-			strings.Count(updatedTOML, `[mcp_servers.kodama`) != 1 {
+			strings.Count(updatedTOML, `[mcp_servers.kodema`) != 1 {
 			t.Fatalf("unexpected merged TOML:\n%s", updatedTOML)
 		}
 	})

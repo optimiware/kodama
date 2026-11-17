@@ -32,8 +32,8 @@ package resource
 import (
 	"fmt"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
 )
 
 // ResourceRow is the relational ownership row of one registered resource. Its

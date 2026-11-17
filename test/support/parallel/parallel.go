@@ -26,7 +26,7 @@ type Gate struct {
 	// fails every gated test instead of silently running with another bound.
 	Max int
 	// HostPoolEnv optionally names the launcher's pool size for the same
-	// resource (KODAMA_STACK_SLOTS or KODAMA_KIND_SLOTS). A smaller valid
+	// resource (KODEMA_STACK_SLOTS or KODEMA_KIND_SLOTS). A smaller valid
 	// value lowers Default, so a host sized for fewer concurrent stacks keeps
 	// that bound. An explicit Env value always wins.
 	HostPoolEnv string

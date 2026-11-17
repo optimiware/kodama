@@ -16,12 +16,12 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/installation"
-	recovery "github.com/optimiware/kodama/internal/shell/app/drivers/recovery"
-	"github.com/optimiware/kodama/test/support/infrastructure/harness"
-	recoverysupport "github.com/optimiware/kodama/test/support/infrastructure/recovery"
-	"github.com/optimiware/kodama/test/support/infrastructure/runtime"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/installation"
+	recovery "github.com/optimiware/kodema/internal/shell/app/drivers/recovery"
+	"github.com/optimiware/kodema/test/support/infrastructure/harness"
+	recoverysupport "github.com/optimiware/kodema/test/support/infrastructure/recovery"
+	"github.com/optimiware/kodema/test/support/infrastructure/runtime"
 )
 
 // TestMain installs the harness signal handler and the label-scoped orphan
@@ -143,10 +143,10 @@ func TestDurableRoundTrip(t *testing.T) {
 		columns   int
 		statement string
 	}{
-		{role: "kodama_runtime", columns: 1, statement: `SELECT count(*) FROM executions`},
-		{role: "kodama_controller", columns: 1, statement: `SELECT count(*) FROM executions`},
-		{role: "kodama_publisher", columns: 1, statement: `SELECT count(*) FROM events`},
-		{role: "kodama_auth", columns: 4, statement: `SELECT id, tenant_id, project_id, principal_id FROM executions ORDER BY id`},
+		{role: "kodema_runtime", columns: 1, statement: `SELECT count(*) FROM executions`},
+		{role: "kodema_controller", columns: 1, statement: `SELECT count(*) FROM executions`},
+		{role: "kodema_publisher", columns: 1, statement: `SELECT count(*) FROM events`},
+		{role: "kodema_auth", columns: 4, statement: `SELECT id, tenant_id, project_id, principal_id FROM executions ORDER BY id`},
 	}
 	for _, read := range roleReads {
 		want := recoverysupport.RoleRows(t, source.Postgres, read.role, read.columns, read.statement)
@@ -170,8 +170,8 @@ func TestDurableRoundTrip(t *testing.T) {
 		t.Fatalf("begin set-role probe: %v", err)
 	}
 	defer func() { _ = conn.Rollback(context.WithoutCancel(t.Context())) }()
-	if _, err := conn.Exec(t.Context(), `SET LOCAL ROLE kodama_runtime`); err != nil {
-		t.Fatalf("SET LOCAL ROLE kodama_runtime: %v", err)
+	if _, err := conn.Exec(t.Context(), `SET LOCAL ROLE kodema_runtime`); err != nil {
+		t.Fatalf("SET LOCAL ROLE kodema_runtime: %v", err)
 	}
 	rows, err := conn.Query(t.Context(), `SELECT count(*) FROM executions`)
 	if err != nil {

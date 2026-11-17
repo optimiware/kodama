@@ -13,7 +13,7 @@ import (
 const (
 	// DefaultInstanceName is the default stack instance name.
 	DefaultInstanceName = "default"
-	instanceMarkerName  = ".kodama-up"
+	instanceMarkerName  = ".kodema-up"
 	maxInstanceNameLen  = 48
 )
 
@@ -40,7 +40,7 @@ func ValidateInstanceName(name string) error {
 	return nil
 }
 
-// DefaultStateDir returns $HOME/.kodama/instances/<name>, which is shared into
+// DefaultStateDir returns $HOME/.kodema/instances/<name>, which is shared into
 // macOS Linux container VMs via virtiofs without extra configuration.
 func DefaultStateDir(homeDir, instanceName string) (string, error) {
 	if err := ValidateInstanceName(instanceName); err != nil {
@@ -50,7 +50,7 @@ func DefaultStateDir(homeDir, instanceName string) (string, error) {
 	if home == "" || !filepath.IsAbs(home) {
 		return "", errors.New("an absolute HOME directory is required to resolve the default state directory")
 	}
-	return filepath.Join(filepath.Clean(home), ".kodama", "instances", instanceName), nil
+	return filepath.Join(filepath.Clean(home), ".kodema", "instances", instanceName), nil
 }
 
 // ResolveStateDir resolves and validates the stack state directory. On darwin,
@@ -110,7 +110,7 @@ func ResolveStateDir(opts StateDirOptions) (string, error) {
 			if !isStrictSubpath(cleaned, cleanHome) {
 				return "", fmt.Errorf(
 					"refusing state directory %q outside %q on macOS: Linux container VMs share $HOME via virtiofs and bind-mounts under /tmp or /var/tmp fail with ENOENT; use %q or pass --allow-unshared-state-dir",
-					raw, cleanHome, filepath.Join(cleanHome, ".kodama", "instances", instance),
+					raw, cleanHome, filepath.Join(cleanHome, ".kodema", "instances", instance),
 				)
 			}
 		}
@@ -122,7 +122,7 @@ func ResolveStateDir(opts StateDirOptions) (string, error) {
 }
 
 // EnsureInstanceStateDir creates stateDir (mode 0700) and records or verifies
-// the .kodama-up ownership marker so another instance or an unrelated directory
+// the .kodema-up ownership marker so another instance or an unrelated directory
 // is never overwritten.
 func EnsureInstanceStateDir(stateDir, instanceName string) error {
 	if err := ValidateInstanceName(instanceName); err != nil {
@@ -142,7 +142,7 @@ func EnsureInstanceStateDir(stateDir, instanceName string) error {
 		if len(entries) > 0 {
 			recorded, ok := readInstanceMarker(markerPath)
 			if !ok || recorded != expected {
-				return fmt.Errorf("refusing state directory %q: non-empty directory does not belong to kodama instance %q", stateDir, instanceName)
+				return fmt.Errorf("refusing state directory %q: non-empty directory does not belong to kodema instance %q", stateDir, instanceName)
 			}
 		}
 	} else if os.IsNotExist(err) {
@@ -160,8 +160,8 @@ func EnsureInstanceStateDir(stateDir, instanceName string) error {
 	return nil
 }
 
-// PurgeInstanceStateDir deletes only known Kodama instance files and directories
-// inside stateDir after verifying the .kodama-up marker. If unknown files
+// PurgeInstanceStateDir deletes only known Kodema instance files and directories
+// inside stateDir after verifying the .kodema-up marker. If unknown files
 // remain, the marker is kept intact and an actionable error is returned.
 func PurgeInstanceStateDir(stateDir, instanceName string) error {
 	if err := ValidateInstanceName(instanceName); err != nil {
@@ -219,7 +219,7 @@ func PurgeInstanceStateDir(stateDir, instanceName string) error {
 	}
 	if len(unknown) > 0 {
 		return fmt.Errorf(
-			"refusing to delete unknown files in %q (%s); move or remove them, then run `kodama down --purge` again",
+			"refusing to delete unknown files in %q (%s); move or remove them, then run `kodema down --purge` again",
 			stateDir, strings.Join(unknown, ", "),
 		)
 	}

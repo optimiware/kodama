@@ -16,7 +16,7 @@
 //	internal/shell/workspace/adapter_contract.go
 //	    File.Validate, Materialization.Validate, Preparation.StartAllowed,
 //	    Materializer, ValidatePath, IsReservedPath, InputPath, OutputPath,
-//	    SecretPath, and the /kodama roots plus the reserved credential path
+//	    SecretPath, and the /kodema roots plus the reserved credential path
 //	internal/shell/log/adapter_contract.go
 //	    Retention, DefaultRetention, AppendResult, RetainedSink, ReadRequest,
 //	    ReadResult, LivePublisher, LiveSubscriber, LiveSubscription
@@ -73,10 +73,10 @@
 //     resource_bindings, pipelines, tasks, task_messages, executions, actions,
 //     cleanup, verifications, receipts, audit, events. Migration names match
 //     ^\d{4}_[a-z0-9_]+\.sql$ starting at 0001.
-//   - Preparation materializes only under /kodama/inputs, /kodama/outputs,
-//     /kodama/task.json and /kodama/secrets. Paths are absolute, confined, free
+//   - Preparation materializes only under /kodema/inputs, /kodema/outputs,
+//     /kodema/task.json and /kodema/secrets. Paths are absolute, confined, free
 //     of traversal/duplicate separators, and never inside the writable
-//     /workspace. /kodama/secrets/KODAMA_TOKEN is the sole reserved credential
+//     /workspace. /kodema/secrets/KODEMA_TOKEN is the sole reserved credential
 //     mount and stored secret declarations cannot shadow it.
 //   - The secret envelope suite is AES-256-GCM with a 12-byte content nonce, a
 //     12-byte key-wrap nonce, a 32-byte data key and a 48-byte wrapped key.
@@ -89,7 +89,7 @@
 //     "libpod/v4" and Kubernetes Jobs are "batch/v1". Start outcomes and
 //     observations are the Kernel vocabulary; absent/unknown never
 //     prove nonexecution and Job deletion alone is not stop confirmation.
-//   - NATS subjects are scope-qualified: kodama.v1.<tenant>.<project|_>.<kind>
+//   - NATS subjects are scope-qualified: kodema.v1.<tenant>.<project|_>.<kind>
 //     (events, invalidations, ingress) with the execution id appended for logs.
 //     The ingress kind is the separate authenticated observation-ingress
 //     subject and is never the committed-event subject.
@@ -124,19 +124,19 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/installation"
-	"github.com/optimiware/kodama/internal/shell/authorize"
-	"github.com/optimiware/kodama/internal/shell/event"
-	"github.com/optimiware/kodama/internal/shell/identity"
-	"github.com/optimiware/kodama/internal/shell/integration/nats"
-	"github.com/optimiware/kodama/internal/shell/log"
-	"github.com/optimiware/kodama/internal/shell/pipeline"
-	"github.com/optimiware/kodama/internal/shell/runtime"
-	"github.com/optimiware/kodama/internal/shell/secret"
-	"github.com/optimiware/kodama/internal/shell/store"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
-	"github.com/optimiware/kodama/internal/shell/token"
-	"github.com/optimiware/kodama/internal/shell/workspace"
+	"github.com/optimiware/kodema/internal/installation"
+	"github.com/optimiware/kodema/internal/shell/authorize"
+	"github.com/optimiware/kodema/internal/shell/event"
+	"github.com/optimiware/kodema/internal/shell/identity"
+	"github.com/optimiware/kodema/internal/shell/integration/nats"
+	"github.com/optimiware/kodema/internal/shell/log"
+	"github.com/optimiware/kodema/internal/shell/pipeline"
+	"github.com/optimiware/kodema/internal/shell/runtime"
+	"github.com/optimiware/kodema/internal/shell/secret"
+	"github.com/optimiware/kodema/internal/shell/store"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
+	"github.com/optimiware/kodema/internal/shell/token"
+	"github.com/optimiware/kodema/internal/shell/workspace"
 )
 
 // TestPortsTakeContextFirst proves every blocking adapter port takes

@@ -6,7 +6,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/userland/session"
+	"github.com/optimiware/kodema/internal/userland/session"
 )
 
 func assertRestoreReason(t *testing.T, store session.Store, ref session.Ref, reason session.Reason) {
@@ -34,16 +34,16 @@ func TestRestoreTypedReasons(t *testing.T) {
 	storage := newFakeStorage()
 	store := newTestStore(t, storage, &fakeClock{now: testNow})
 
-	missing := mustRef(t, "kodama-checkpoint/v1/ctx-9999")
+	missing := mustRef(t, "kodema-checkpoint/v1/ctx-9999")
 	assertRestoreReason(t, store, missing, session.ReasonMissing)
 
-	versionRef := mustRef(t, "kodama-checkpoint/v1/ctx-0101")
+	versionRef := mustRef(t, "kodema-checkpoint/v1/ctx-0101")
 	unsupported := baseRecord()
 	unsupported.Version = "v2"
 	storage.put(versionRef, unsupported)
 	assertRestoreReason(t, store, versionRef, session.ReasonVersionMismatch)
 
-	corruptRef := mustRef(t, "kodama-checkpoint/v1/ctx-0102")
+	corruptRef := mustRef(t, "kodema-checkpoint/v1/ctx-0102")
 	corrupt := baseRecord()
 	corrupt.Messages = []session.Message{{Role: "wizard", Content: "x"}}
 	storage.put(corruptRef, corrupt)
@@ -75,10 +75,10 @@ func TestRestoreUnsupportedReferenceVersionIsTyped(t *testing.T) {
 	store := newTestStore(t, storage, &fakeClock{now: testNow})
 
 	for _, ref := range []session.Ref{
-		"kodama-checkpoint/v2/ctx-0001",
-		"kodama-checkpoint/v2/",
-		"kodama-checkpoint/v2",
-		"kodama-checkpoint/v10/ctx-0001",
+		"kodema-checkpoint/v2/ctx-0001",
+		"kodema-checkpoint/v2/",
+		"kodema-checkpoint/v2",
+		"kodema-checkpoint/v10/ctx-0001",
 	} {
 		record, err := store.Restore(context.Background(), ref)
 		if err == nil {
@@ -100,7 +100,7 @@ func TestRestoreUnsupportedReferenceVersionIsTyped(t *testing.T) {
 	}
 
 	// A supported version with a malformed payload stays an untyped refusal.
-	if _, err := store.Restore(context.Background(), "kodama-checkpoint/v1/"); err == nil {
+	if _, err := store.Restore(context.Background(), "kodema-checkpoint/v1/"); err == nil {
 		t.Fatal("Restore accepted a malformed supported-version reference")
 	} else {
 		if _, ok := errors.AsType[session.RestoreError](err); ok {

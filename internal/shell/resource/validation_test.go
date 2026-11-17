@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/shell/resource"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/shell/resource"
 )
 
 func TestRegisterBindingValidatesMetadataBounds(t *testing.T) {

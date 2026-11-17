@@ -14,7 +14,7 @@ package git
 //     read/write-at-all rules, bounded streaming through the injected
 //     GitBackend, sanitized refusals and header allow-lists). The handler mints
 //     a unique per-request push identity and places it in the backend
-//     environment as KODAMA_SOURCE_EVENT, so an identical repeated push never
+//     environment as KODEMA_SOURCE_EVENT, so an identical repeated push never
 //     reuses an earlier journal entry.
 //   - hook.go: the native `update`/`pre-receive`/`post-receive` authority
 //     adapter (strict object-id/ref parsing, exact Service.Update verification
@@ -36,7 +36,7 @@ package git
 // the `post-receive` adapter, which reconciles each intent from observed ref
 // state through Service.Recover. A refused batch therefore moves no ref, sends
 // no report and leaves no `reported` entry. A redelivery of the same push
-// (same KODAMA_SOURCE_EVENT) settles its existing entry from observation only
+// (same KODEMA_SOURCE_EVENT) settles its existing entry from observation only
 // and never applies the stored compare-and-swap from stale verification.
 //
 // Ref deletes are refused. The journal has no durable candidate

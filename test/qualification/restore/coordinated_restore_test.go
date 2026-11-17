@@ -30,15 +30,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/installation"
-	recovery "github.com/optimiware/kodama/internal/shell/app/drivers/recovery"
-	gitpkg "github.com/optimiware/kodama/internal/userland/git"
-	sessionpkg "github.com/optimiware/kodama/internal/userland/session"
-	"github.com/optimiware/kodama/test/support/infrastructure/harness"
-	"github.com/optimiware/kodama/test/support/infrastructure/messaging"
-	recoverysupport "github.com/optimiware/kodama/test/support/infrastructure/recovery"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/installation"
+	recovery "github.com/optimiware/kodema/internal/shell/app/drivers/recovery"
+	gitpkg "github.com/optimiware/kodema/internal/userland/git"
+	sessionpkg "github.com/optimiware/kodema/internal/userland/session"
+	"github.com/optimiware/kodema/test/support/infrastructure/harness"
+	"github.com/optimiware/kodema/test/support/infrastructure/messaging"
+	recoverysupport "github.com/optimiware/kodema/test/support/infrastructure/recovery"
 )
 
 // coordinatedDrill is one completed coordinated restore and its measured
@@ -183,13 +183,13 @@ func TestLocalCoordinatedRestore(t *testing.T) {
 	if err != nil {
 		t.Fatalf("TimelineEvidence: %v", err)
 	}
-	evidence.SourceRevision = os.Getenv("KODAMA_Q03_SOURCE_REVISION")
+	evidence.SourceRevision = os.Getenv("KODEMA_Q03_SOURCE_REVISION")
 	evidence.UnrecoverableWorkspaces = append([]string(nil), drill.Result.UnrecoverableWorkspaces...)
 	evidence.Images = []ImageRecord{
 		{Tag: source.PostgresImageTag, Digest: source.PostgresImageDigest},
 		{Tag: source.NATSImageTag, Digest: source.NATSImageDigest},
 		{Tag: harness.ImageRegistry, Digest: drill.Registry.Digest},
-		{Tag: "kodama/w45:retained", Digest: drill.Artifact},
+		{Tag: "kodema/w45:retained", Digest: drill.Artifact},
 	}
 	recordDrillEvidence(t, "run-coordinated-"+drill.RunID+".json", evidence)
 }
@@ -305,7 +305,7 @@ func TestLocalCoordinatedRestoreUncertainEffect(t *testing.T) {
 		RunID:                   prepared.runID,
 		Environment:             "local-podman",
 		Outcome:                 "blocked",
-		SourceRevision:          os.Getenv("KODAMA_Q03_SOURCE_REVISION"),
+		SourceRevision:          os.Getenv("KODEMA_Q03_SOURCE_REVISION"),
 		Milestones:              milestones,
 		CommittedWatermark:      &WatermarkRecord{At: prepared.committedAt, IDs: committedIDs},
 		RestoredWatermark:       &WatermarkRecord{At: prepared.committedAt, IDs: restoredIDs},
@@ -320,7 +320,7 @@ func TestLocalCoordinatedRestoreUncertainEffect(t *testing.T) {
 			{Tag: source.PostgresImageTag, Digest: source.PostgresImageDigest},
 			{Tag: source.NATSImageTag, Digest: source.NATSImageDigest},
 			{Tag: harness.ImageRegistry, Digest: prepared.service.registry.Digest},
-			{Tag: "kodama/w45:retained", Digest: prepared.service.artifact},
+			{Tag: "kodema/w45:retained", Digest: prepared.service.artifact},
 		},
 	}
 	if path := recordDrillEvidence(t, "run-coordinated-uncertain-"+prepared.runID+".json", evidence); path == "" {
@@ -660,7 +660,7 @@ func seedServiceOwnedState(t *testing.T, source *recoverysupport.Shard) serviceO
 
 	registry := messaging.StartRegistry(t, false)
 	manifest, blobs := messaging.OCIManifest([]byte(`{"architecture":"amd64"}`), []byte("retained artifact bytes"))
-	artifact := registry.Push(t, "kodama/w45", "retained", manifest, blobs)
+	artifact := registry.Push(t, "kodema/w45", "retained", manifest, blobs)
 
 	return serviceOwnedState{
 		tenant:        tenant,
@@ -883,7 +883,7 @@ func (dispatch *countingDispatch) Count() int { return int(dispatch.count.Load()
 // fetchManifest reads one artifact manifest by digest from the real registry.
 func fetchManifest(t *testing.T, registry *messaging.Registry, digest string) []byte {
 	t.Helper()
-	request, err := http.NewRequest(http.MethodGet, registry.BaseURL+"/v2/kodama/w45/manifests/"+digest, nil)
+	request, err := http.NewRequest(http.MethodGet, registry.BaseURL+"/v2/kodema/w45/manifests/"+digest, nil)
 	if err != nil {
 		t.Fatalf("manifest request: %v", err)
 	}

@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/optimiware/kodama/client"
-	"github.com/optimiware/kodama/internal/fault"
+	"github.com/optimiware/kodema/client"
+	"github.com/optimiware/kodema/internal/fault"
 )
 
 // sessionFile is the durable human-session JSON shape. It never contains a

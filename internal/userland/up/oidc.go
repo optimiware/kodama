@@ -24,7 +24,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/optimiware/kodama/api"
+	"github.com/optimiware/kodema/api"
 )
 
 const (
@@ -41,7 +41,7 @@ type DevIssuerConfig struct {
 	Issuer string
 	// Audience is the API audience minted into access tokens.
 	Audience string
-	// APIURL is the public Kodama API URL advertised in /.well-known/kodama-configuration.
+	// APIURL is the public Kodema API URL advertised in /.well-known/kodema-configuration.
 	APIURL string
 	// ClientID is the public OAuth client ID (defaults to "kodactl").
 	ClientID string
@@ -152,7 +152,7 @@ func NewDevIssuer(cfg DevIssuerConfig) (*DevIssuer, error) {
 	return issuer, nil
 }
 
-// DiscoveryDocument returns the Kodama /.well-known/kodama-configuration document.
+// DiscoveryDocument returns the Kodema /.well-known/kodema-configuration document.
 func (issuer *DevIssuer) DiscoveryDocument() api.DiscoveryDocument {
 	base := issuer.cfg.Issuer
 	return api.DiscoveryDocument{
@@ -211,7 +211,7 @@ func (issuer *DevIssuer) mintIDToken(persona, clientID, nonce string, ttl time.D
 		"iss":   issuer.cfg.Issuer,
 		"sub":   persona,
 		"aud":   clientID,
-		"email": persona + "@kodama.local",
+		"email": persona + "@kodema.local",
 		"name":  "Local " + strings.ToUpper(persona[:1]) + persona[1:],
 		"iat":   now.Unix(),
 		"nbf":   now.Unix(),
@@ -397,8 +397,8 @@ func (issuer *DevIssuer) renderPersonaPicker(w http.ResponseWriter, clientID, re
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 	action := html.EscapeString(issuer.cfg.Issuer + "/authorize")
-	_, _ = fmt.Fprintf(w, `<!doctype html><html><head><meta charset="utf-8"><title>Kodama Local Sign-In</title></head><body>
-<h1>Select a Kodama persona</h1>
+	_, _ = fmt.Fprintf(w, `<!doctype html><html><head><meta charset="utf-8"><title>Kodema Local Sign-In</title></head><body>
+<h1>Select a Kodema persona</h1>
 <form method="post" action="%s">
 <input type="hidden" name="response_type" value="code">
 <input type="hidden" name="client_id" value="%s">
@@ -584,8 +584,8 @@ func (issuer *DevIssuer) handleDevice(w http.ResponseWriter, r *http.Request) {
 		userCode := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("user_code")))
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.WriteHeader(http.StatusOK)
-		_, _ = fmt.Fprintf(w, `<!doctype html><html><head><meta charset="utf-8"><title>Kodama Device Login</title></head><body>
-<h1>Approve Kodama Device Sign-In</h1>
+		_, _ = fmt.Fprintf(w, `<!doctype html><html><head><meta charset="utf-8"><title>Kodema Device Login</title></head><body>
+<h1>Approve Kodema Device Sign-In</h1>
 <form method="post" action="%s">
 <input type="text" name="user_code" value="%s" placeholder="XXXX-XXXX" required>
 <button type="submit" name="persona" value="admin">Approve as Admin</button>

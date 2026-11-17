@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/shell/resource"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/shell/resource"
 )
 
 // TestGitReadVerifyShape pins the repository-level `git.read` resource

@@ -11,12 +11,12 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/kernel"
-	"github.com/optimiware/kodama/internal/kernel/engine"
-	"github.com/optimiware/kodama/internal/shell/runtime/podman"
-	"github.com/optimiware/kodama/test/support/infrastructure/harness"
-	runtimesupport "github.com/optimiware/kodama/test/support/infrastructure/runtime"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/kernel"
+	"github.com/optimiware/kodema/internal/kernel/engine"
+	"github.com/optimiware/kodema/internal/shell/runtime/podman"
+	"github.com/optimiware/kodema/test/support/infrastructure/harness"
+	runtimesupport "github.com/optimiware/kodema/test/support/infrastructure/runtime"
 )
 
 // TestPodmanRuntimeWorkspacePersistenceAndCredentialRefresh proves a retained
@@ -73,7 +73,7 @@ func TestPodmanRuntimeWorkspacePersistenceAndCredentialRefresh(t *testing.T) {
 	thirdRequest := fixture.request(third, []string{
 		`i=0`,
 		`while [ ! -f /workspace/stop ]; do`,
-		`  cat /kodama/secrets/KODAMA_TOKEN > /workspace/token-seen`,
+		`  cat /kodema/secrets/KODEMA_TOKEN > /workspace/token-seen`,
 		`  i=$((i+1))`,
 		`  if [ "$i" -ge 60 ]; then break; fi`,
 		`  sleep 1`,
@@ -100,7 +100,7 @@ func TestPodmanRuntimeWorkspacePersistenceAndCredentialRefresh(t *testing.T) {
 		t.Fatalf("RefreshCredential: %v", err)
 	}
 	waitForVolumeContent(t, ctx, fixture, "token-seen", "tok-new")
-	credentialPath := filepath.Join(fixture.root, string(third.WorkloadID), "kodama", "secrets", "KODAMA_TOKEN")
+	credentialPath := filepath.Join(fixture.root, string(third.WorkloadID), "kodema", "secrets", "KODEMA_TOKEN")
 	credential, err := os.ReadFile(credentialPath)
 	if err != nil {
 		t.Fatalf("read replaced credential: %v", err)

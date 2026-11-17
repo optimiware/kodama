@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/userland/git/app/native"
-	nativefix "github.com/optimiware/kodama/test/support/boundaries/native"
+	"github.com/optimiware/kodema/internal/userland/git/app/native"
+	nativefix "github.com/optimiware/kodema/test/support/boundaries/native"
 )
 
 func TestHookChannelSecurityAndSecretFreeState(t *testing.T) {
@@ -67,7 +67,7 @@ func TestHookChannelSecurityAndSecretFreeState(t *testing.T) {
 	}
 
 	// Negative control: the scanner must find a planted canary.
-	const canary = "kodama-canary-native-secret"
+	const canary = "kodema-canary-native-secret"
 	canaryPath := filepath.Join(harness.Root, "canary.txt")
 	if err := os.WriteFile(canaryPath, []byte(canary), 0o600); err != nil {
 		t.Fatalf("WriteFile canary: %v", err)

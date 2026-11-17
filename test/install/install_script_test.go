@@ -33,7 +33,7 @@ func newInstallRelease(t *testing.T, version string) *installRelease {
 	t.Helper()
 	release := &installRelease{version: version, files: map[string][]byte{}}
 	var sums strings.Builder
-	for _, binary := range []string{"kodama", "kodactl"} {
+	for _, binary := range []string{"kodema", "kodactl"} {
 		name := fmt.Sprintf("%s_%s_%s_%s", binary, version, runtime.GOOS, runtime.GOARCH)
 		script := []byte("#!/bin/sh\necho " + binary + " " + version + "\n")
 		var archive bytes.Buffer
@@ -113,7 +113,7 @@ func TestInstallScript(t *testing.T) {
 		command.Env = append([]string{
 			"HOME=" + home,
 			"PATH=" + os.Getenv("PATH"),
-			"KODAMA_RELEASES_URL=" + server.URL + "/releases",
+			"KODEMA_RELEASES_URL=" + server.URL + "/releases",
 		}, env...)
 		output, err := command.CombinedOutput()
 		return filepath.Join(home, ".local", "bin"), string(output), err == nil
@@ -133,14 +133,14 @@ func TestInstallScript(t *testing.T) {
 		if !ok {
 			t.Fatalf("install.sh failed: %s", output)
 		}
-		for _, binary := range []string{"kodama", "kodactl"} {
+		for _, binary := range []string{"kodema", "kodactl"} {
 			printed, err := exec.Command(filepath.Join(directory, binary)).Output()
 			if err != nil || string(printed) != binary+" 9.8.7\n" {
 				t.Errorf("%s printed %q, %v; want the installed binary to run", binary, printed, err)
 			}
 		}
 		if names := installed(directory); len(names) != 2 {
-			t.Errorf("%s holds %v; want kodama and kodactl only", directory, names)
+			t.Errorf("%s holds %v; want kodema and kodactl only", directory, names)
 		}
 		// The empty home's directory is not on PATH, and the script says so.
 		if !strings.Contains(output, "is not on your PATH") {
@@ -151,7 +151,7 @@ func TestInstallScript(t *testing.T) {
 	t.Run("installs a named release into a named directory", func(t *testing.T) {
 		release := newInstallRelease(t, "1.2.3-rc.1")
 		target := filepath.Join(t.TempDir(), "bin")
-		_, output, ok := install(t, release, "KODAMA_VERSION=v1.2.3-rc.1", "KODAMA_INSTALL_DIR="+target)
+		_, output, ok := install(t, release, "KODEMA_VERSION=v1.2.3-rc.1", "KODEMA_INSTALL_DIR="+target)
 		if !ok {
 			t.Fatalf("install.sh failed: %s", output)
 		}
@@ -159,7 +159,7 @@ func TestInstallScript(t *testing.T) {
 			t.Errorf("a named version asked for the latest release %d time(s)", release.latest)
 		}
 		if names := installed(target); len(names) != 2 {
-			t.Errorf("%s holds %v; want kodama and kodactl", target, names)
+			t.Errorf("%s holds %v; want kodema and kodactl", target, names)
 		}
 	})
 
@@ -186,7 +186,7 @@ func TestInstallScript(t *testing.T) {
 	} {
 		t.Run("refuses "+refusal.name, func(t *testing.T) {
 			release := newInstallRelease(t, "9.8.7")
-			// kodactl is the second archive: kodama has passed by then.
+			// kodactl is the second archive: kodema has passed by then.
 			refusal.break_(release, fmt.Sprintf("kodactl_9.8.7_%s_%s.tar.gz", runtime.GOOS, runtime.GOARCH))
 			directory, output, ok := install(t, release)
 			if ok || !strings.Contains(output, refusal.message) {
@@ -200,7 +200,7 @@ func TestInstallScript(t *testing.T) {
 
 	t.Run("refuses a release that does not exist", func(t *testing.T) {
 		release := newInstallRelease(t, "9.8.7")
-		directory, output, ok := install(t, release, "KODAMA_VERSION=9.9.9")
+		directory, output, ok := install(t, release, "KODEMA_VERSION=9.9.9")
 		if ok || !strings.Contains(output, "release 9.9.9 was not found") {
 			t.Fatalf("install.sh succeeded=%v with %q; want a refusal that names the release", ok, output)
 		}

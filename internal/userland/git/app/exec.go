@@ -17,8 +17,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/optimiware/kodama/internal/userland/git"
-	"github.com/optimiware/kodama/internal/userland/git/app/native"
+	"github.com/optimiware/kodema/internal/userland/git"
+	"github.com/optimiware/kodema/internal/userland/git/app/native"
 )
 
 // ErrOutputTooLarge reports a native command whose bounded output was

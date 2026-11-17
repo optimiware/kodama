@@ -2,9 +2,9 @@
 # No Git and no network: it consumes the prepared checkout and writes the
 # deterministic fixture sources the following tools action commits and tests.
 set -eu
-test -n "${KODAMA_TASK:-}"
+test -n "${KODEMA_TASK:-}"
 test -s "$W49_TASK_FILE"
-test "$(cat "$W49_WORKSPACE/execution-marker")" = "$KODAMA_EXECUTION"
+test "$(cat "$W49_WORKSPACE/execution-marker")" = "$KODEMA_EXECUTION"
 test "$(cat "$W49_WORKSPACE/run-marker")" = "$SMOKE_RUN_MARKER"
 test -d "$W49_WORKSPACE/repo"
 cat >"$W49_WORKSPACE/repo/answer.sh" <<'W49_ANSWER'

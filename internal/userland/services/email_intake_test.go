@@ -9,7 +9,7 @@ package services_test
 //	services.IntakeEmail(ctx, services.EmailIntakeConfig, io.Reader) (services.EmailIntakeResult, error)
 //
 // Trusted configuration (tenant, project, pipeline) selects scope. Nothing in
-// the message selects scope, pipeline or a Kodama role. The bounded Message-ID
+// the message selects scope, pipeline or a Kodema role. The bounded Message-ID
 // is the only message identity; the stable idempotency key is derived from the
 // trusted configuration plus that identity and never from the message content,
 // so a redelivery converges through the public receipt while changed content
@@ -32,9 +32,9 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/userland/services"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/userland/services"
 )
 
 const (
@@ -59,7 +59,7 @@ func emailMessage(messageID, subject, body string, extraHeaders ...string) strin
 	message.WriteString("Message-ID: " + messageID + "\r\n")
 	message.WriteString("Subject: " + subject + "\r\n")
 	message.WriteString("From: reporter@example.test\r\n")
-	message.WriteString("To: intake@kodama.test\r\n")
+	message.WriteString("To: intake@kodema.test\r\n")
 	message.WriteString("Content-Type: text/plain; charset=utf-8\r\n")
 	for _, header := range extraHeaders {
 		message.WriteString(header + "\r\n")
@@ -355,17 +355,17 @@ func TestEmailChangedContentSameMessageIDRefused(t *testing.T) {
 }
 
 // TestEmailHeadersCannotSelectScopeOrPipeline proves message headers grant no
-// scope, pipeline or Kodama role: only trusted configuration selects them.
+// scope, pipeline or Kodema role: only trusted configuration selects them.
 func TestEmailHeadersCannotSelectScopeOrPipeline(t *testing.T) {
 	hostile := []string{
-		"X-Kodama-Tenant: tenant-evil",
-		"X-Kodama-Project: project-evil",
-		"X-Kodama-Pipeline: pipeline-evil",
+		"X-Kodema-Tenant: tenant-evil",
+		"X-Kodema-Project: project-evil",
+		"X-Kodema-Pipeline: pipeline-evil",
 		"Pipeline-ID: pipeline-evil",
 		"X-Pipeline: pipeline-evil",
-		"X-Kodama-Role: admin",
-		"X-Kodama-Assignment: role/admin",
-		"X-Kodama-Service: evil-service",
+		"X-Kodema-Role: admin",
+		"X-Kodema-Assignment: role/admin",
+		"X-Kodema-Service: evil-service",
 		"Reply-To: attacker@evil.test",
 	}
 	handler := newEmailFakeHandler()
@@ -462,7 +462,7 @@ func TestEmailOversizeAndMalformedMessagesRefused(t *testing.T) {
 			"Message-ID: <p26-headers@example.test>",
 			"Subject: header bound",
 			"From: reporter@example.test",
-			"To: intake@kodama.test",
+			"To: intake@kodema.test",
 			"Content-Type: text/plain; charset=utf-8",
 		}
 		for index := range count {
@@ -642,7 +642,7 @@ func emailHeadersMessage(extraFields int) string {
 		"Message-ID: <p26-header-limit@example.test>",
 		"Subject: header bound",
 		"From: reporter@example.test",
-		"To: intake@kodama.test",
+		"To: intake@kodema.test",
 		"Content-Type: text/plain; charset=utf-8",
 	}
 	for index := range extraFields {
@@ -1016,9 +1016,9 @@ func TestEmailReceiptIgnoresTransportHeaders(t *testing.T) {
 	}
 	first := newEmailFakeHandler()
 	second := newEmailFakeHandler()
-	firstMessage := message("first@example.test", "intake@kodama.test", "first-reply@example.test",
+	firstMessage := message("first@example.test", "intake@kodema.test", "first-reply@example.test",
 		"from relay-a.example.test by intake.example.test", "trace-a")
-	secondMessage := message("second@example.test", "another@kodama.test", "second-reply@example.test",
+	secondMessage := message("second@example.test", "another@kodema.test", "second-reply@example.test",
 		"from relay-b.example.test by intake.example.test", "trace-b")
 	if _, err := services.IntakeEmail(t.Context(), emailIntakeConfig(first), strings.NewReader(firstMessage)); err != nil {
 		t.Fatalf("first delivery: %v", err)
@@ -1051,7 +1051,7 @@ func TestEmailRefusalsNeverEchoMessageContent(t *testing.T) {
 		"Message-ID: <p26-echo-header-count@example.test>",
 		"Subject: " + emailEchoSentinel + " subject",
 		"From: reporter@example.test",
-		"To: intake@kodama.test",
+		"To: intake@kodema.test",
 		"Content-Type: text/plain; charset=utf-8",
 	}
 	for index := range services.MaxEmailHeaderCount {

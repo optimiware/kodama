@@ -103,8 +103,8 @@
 package registry_test
 
 import (
-	"github.com/optimiware/kodama/internal/shell/integration/registry"
-	"github.com/optimiware/kodama/internal/shell/pipeline"
+	"github.com/optimiware/kodema/internal/shell/integration/registry"
+	"github.com/optimiware/kodema/internal/shell/pipeline"
 )
 
 // Compile-time conformance: the registry resolver is one pipeline.Resolver.

@@ -7,7 +7,7 @@
 #     test/e2e/internal/harness/run-stage.sh go test -race -tags=e2e \
 #     -count=1 -timeout=20m ./test/e2e/...
 #
-# The script opens kubectl port-forwards to svc/kodama and svc/oauthsonas,
+# The script opens kubectl port-forwards to svc/kodema and svc/oauthsonas,
 # acquires all four canonical persona tokens from scripts/oauthsonas-token into
 # private 0600 files, hands only those paths to the common run-installation.sh
 # runner, and runs the supplied command. It never enables shell tracing, never
@@ -26,10 +26,10 @@
 #   Q01_API_URL           default https://127.0.0.1:${Q01_API_PORT}
 #   Q01_API_PORT          default 18443
 #   Q01_OAUTHSONAS_PORT   default the port in Q01_OAUTHSONAS_URL (8443)
-#   Q01_OAUTHSONAS_HOST   default oauthsonas.kodama-system.svc.cluster.local
+#   Q01_OAUTHSONAS_HOST   default oauthsonas.kodema-system.svc.cluster.local
 #   Q01_OAUTHSONAS_SERVICE default oauthsonas
-#   Q01_KODAMA_SERVICE    default kodama
-#   Q01_RELEASE_NAMESPACE default kodama-system
+#   Q01_KODEMA_SERVICE    default kodema
+#   Q01_RELEASE_NAMESPACE default kodema-system
 #   Q01_EVIDENCE_DIR      default $TMPDIR/oc/q01-evidence/<UTC timestamp>
 #   Q01_READY_ATTEMPTS    readiness poll attempts (default 120)
 #   Q01_READY_INTERVAL    seconds between readiness polls (default 0.25)
@@ -44,7 +44,7 @@
 #   Q01_NATS_CA_FILE        the broker CA PEM bundle. When Q01_NATS_URL is
 #                           tls:// it defaults to $Q01_CA_PEM.
 #   Q01_NATS_TOKEN_FILE     optional override: a private 0600 file holding a
-#                           store-backed Kodama service credential. The live
+#                           store-backed Kodema service credential. The live
 #                           probes mint their own run-unique service credential,
 #                           because a human OIDC token has no store-backed
 #                           expiry and the stage callout refuses it by design
@@ -56,22 +56,22 @@
 #   Q01_NATS_CLIENT_CERT_FILE / Q01_NATS_CLIENT_KEY_FILE
 #                           the client certificate pair the stage broker's mTLS
 #                           handshake requires (extracted from Secret
-#                           kodama-broker: tls.crt/tls.key). Supplied together
+#                           kodema-broker: tls.crt/tls.key). Supplied together
 #                           or not at all.
 #
 #   Stage live-subscription procedure. The stage broker is cluster-internal
-#   (tls://nats.kodama-system.svc.cluster.local:4222) with TLS and a
+#   (tls://nats.kodema-system.svc.cluster.local:4222) with TLS and a
 #   per-credential authorization callout, so open a forward outside this script
-#   (it forwards only svc/kodama, svc/oauthsonas and, with Q01_SMOKE_GIT=1, the
+#   (it forwards only svc/kodema, svc/oauthsonas and, with Q01_SMOKE_GIT=1, the
 #   Git service):
 #
-#     kubectl --context "$Q01_KUBE_CONTEXT" --namespace kodama-system \
+#     kubectl --context "$Q01_KUBE_CONTEXT" --namespace kodema-system \
 #       port-forward svc/nats 14222:4222
 #
 #   Then run the suite with the broker URL reachable through that forward:
 #
 #     Q01_NATS_URL=tls://127.0.0.1:14222 \
-#     Q01_NATS_TLS_SERVER_NAME=nats.kodama-system.svc.cluster.local \
+#     Q01_NATS_TLS_SERVER_NAME=nats.kodema-system.svc.cluster.local \
 #     Q01_NATS_CA_FILE="$Q01_CA_PEM" \
 #     scripts/infra-slot.sh --exclusive scw-stage stack -- \
 #       test/e2e/internal/harness/run-stage.sh go test -race -tags=e2e \
@@ -85,7 +85,7 @@
 # Optional stage installation descriptor (schema version 1):
 #   Q01_STAGE_DESCRIPTOR          1 generates one in a private work file
 #   Q01_INSTALLATION_FILE         an existing descriptor wins over generation
-#   Q01_STAGE_INSTALLATION_ID     default kodama-stage
+#   Q01_STAGE_INSTALLATION_ID     default kodema-stage
 #   Q01_SERVER_IMAGE_DIGEST       required when generating (sha256:<64 hex>)
 #   Q01_DEPLOYED_REVISION         required when generating
 #   Q01_OAUTHSONAS_ISSUER         default $Q01_OAUTHSONAS_URL
@@ -127,10 +127,10 @@ if (( ${#missing[@]} > 0 )); then
   die "missing required environment input(s): ${missing[*]}"
 fi
 
-release_namespace="${Q01_RELEASE_NAMESPACE:-kodama-system}"
-kodama_service="${Q01_KODAMA_SERVICE:-kodama}"
+release_namespace="${Q01_RELEASE_NAMESPACE:-kodema-system}"
+kodema_service="${Q01_KODEMA_SERVICE:-kodema}"
 oauth_service="${Q01_OAUTHSONAS_SERVICE:-oauthsonas}"
-oauth_host="${Q01_OAUTHSONAS_HOST:-oauthsonas.kodama-system.svc.cluster.local}"
+oauth_host="${Q01_OAUTHSONAS_HOST:-oauthsonas.kodema-system.svc.cluster.local}"
 api_port="${Q01_API_PORT:-18443}"
 api_url="${Q01_API_URL:-https://127.0.0.1:${api_port}}"
 default_tools_image="docker.io/library/buildpack-deps@sha256:712f969c9d81a35f9f00cce701faae521891d42a20b592b61bd0e6c5328fad7c"
@@ -147,10 +147,10 @@ else
   die "Q01_OAUTHSONAS_URL must be https://host:port"
 fi
 oauth_port="${Q01_OAUTHSONAS_PORT:-$oauth_url_port}"
-tls_server_name="${Q01_TLS_SERVER_NAME:-kodama.kodama-system.svc.cluster.local}"
+tls_server_name="${Q01_TLS_SERVER_NAME:-kodema.kodema-system.svc.cluster.local}"
 smoke_git="${Q01_SMOKE_GIT:-0}"
 tenant="${Q01_TENANT_ID:-$Q01_PROJECT_ID}"
-git_service="${Q01_GIT_SERVICE:-kodama-git-${tenant}}"
+git_service="${Q01_GIT_SERVICE:-kodema-git-${tenant}}"
 git_host="${Q01_GIT_HOST:-${git_service}.${release_namespace}.svc.cluster.local}"
 git_port="${Q01_GIT_PORT:-18445}"
 git_url="${Q01_GIT_URL:-https://127.0.0.1:${git_port}}"
@@ -173,12 +173,12 @@ cleanup_interval="${Q01_CLEANUP_INTERVAL:-0.1}"
 [[ "$Q01_PROJECT_ID" =~ ^[A-Za-z0-9_-]+$ ]] || die "Q01_PROJECT_ID is not a bounded identity"
 [[ "$smoke_git" == "0" || "$smoke_git" == "1" ]] || die "Q01_SMOKE_GIT must be 0 or 1"
 [[ "${Q01_STAGE_DESCRIPTOR:-0}" == "0" || "${Q01_STAGE_DESCRIPTOR:-0}" == "1" ]] || die "Q01_STAGE_DESCRIPTOR must be 0 or 1"
-[[ "$release_namespace" == "kodama-system" ]] || die "Q01_RELEASE_NAMESPACE must be kodama-system"
+[[ "$release_namespace" == "kodema-system" ]] || die "Q01_RELEASE_NAMESPACE must be kodema-system"
 [[ "$access_secret" =~ ^[a-z0-9.-]+$ ]] || die "Q01_ACCESS_CODE_SECRET is not a kubernetes Secret name"
 # Secret data keys may contain underscore (the stage key is access_code);
 # Secret names may not.
 [[ "$access_key" =~ ^[a-z0-9._-]+$ ]] || die "Q01_ACCESS_CODE_KEY is not a Secret data key"
-[[ "$kodama_service" =~ ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$ ]] || die "Q01_KODAMA_SERVICE is not a kubernetes service name"
+[[ "$kodema_service" =~ ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$ ]] || die "Q01_KODEMA_SERVICE is not a kubernetes service name"
 [[ "$oauth_service" =~ ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$ ]] || die "Q01_OAUTHSONAS_SERVICE is not a kubernetes service name"
 [[ "$api_port" =~ ^[0-9]+$ ]] && (( api_port >= 1 && api_port <= 65535 )) || die "Q01_API_PORT is not a port"
 [[ "$oauth_port" =~ ^[0-9]+$ ]] && (( oauth_port >= 1 && oauth_port <= 65535 )) || die "Q01_OAUTHSONAS_PORT is not a port"
@@ -276,16 +276,16 @@ wait_http() {
   die "the $name endpoint did not become ready through its port-forward"
 }
 
-start_forward "$kodama_service" "$api_port" "$work/kodama-port-forward.log"
+start_forward "$kodema_service" "$api_port" "$work/kodema-port-forward.log"
 start_forward "$oauth_service" "$oauth_port" "$work/oauthsonas-port-forward.log"
 if [[ "$smoke_git" == "1" ]]; then
   start_forward "$git_service" "$git_port" "$work/git-port-forward.log"
 fi
 
-# The kodama probe accepts 400: the edge decodes the request envelope before it
+# The kodema probe accepts 400: the edge decodes the request envelope before it
 # authenticates, so a bodyless probe is invalid_input rather than
 # unauthenticated. 400 still proves the verified TLS endpoint is reachable.
-wait_http "kodama" \
+wait_http "kodema" \
   "https://${tls_server_name}:${api_port}/api/v1/projects/${Q01_PROJECT_ID}/executions" \
   "${tls_server_name}:${api_port}:127.0.0.1" \
   '200|400|401|403|404'
@@ -353,7 +353,7 @@ if [[ -n "$installation_file" ]]; then
     die "Q01_INSTALLATION_FILE is not a readable file"
 else
   if [[ "${Q01_STAGE_DESCRIPTOR:-0}" == "1" ]]; then
-    stage_id="${Q01_STAGE_INSTALLATION_ID:-kodama-stage}"
+    stage_id="${Q01_STAGE_INSTALLATION_ID:-kodema-stage}"
     revision="${Q01_DEPLOYED_REVISION:-}"
     server_digest="${Q01_SERVER_IMAGE_DIGEST:-}"
     audience="${Q01_OAUTHSONAS_AUDIENCE:-}"
@@ -389,8 +389,8 @@ else
       "$tools_image" "$harness_image" \
       "$issuer" "$audience" "$oauth_ca" "$client_id" "$redirect_uri" \
       "${oauth_host}:${oauth_port}:127.0.0.1" "$access_file" \
-      "${Q01_SUBJECT_ADMIN:-${KODAMA_STAGE_SUBJECT_ADMIN:-admin}}" "${Q01_SUBJECT_ENGINEER:-${KODAMA_STAGE_SUBJECT_ENGINEER:-engineer}}" \
-      "${Q01_SUBJECT_REVIEWER:-${KODAMA_STAGE_SUBJECT_REVIEWER:-reviewer}}" "${Q01_SUBJECT_OPERATOR:-${KODAMA_STAGE_SUBJECT_OPERATOR:-operator}}" \
+      "${Q01_SUBJECT_ADMIN:-${KODEMA_STAGE_SUBJECT_ADMIN:-admin}}" "${Q01_SUBJECT_ENGINEER:-${KODEMA_STAGE_SUBJECT_ENGINEER:-engineer}}" \
+      "${Q01_SUBJECT_REVIEWER:-${KODEMA_STAGE_SUBJECT_REVIEWER:-reviewer}}" "${Q01_SUBJECT_OPERATOR:-${KODEMA_STAGE_SUBJECT_OPERATOR:-operator}}" \
       "$smoke_git" "$git_url" "$git_workload_url" "$git_service_id" "$git_admin_binding_id" "$git_admin_resource_id" \
       "$smoke_repository" "$smoke_resource_id" "$smoke_binding_id" <<'PY'
 import json

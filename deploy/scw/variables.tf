@@ -4,13 +4,13 @@ variable "project_id" {
 }
 
 variable "cluster_name" {
-  description = "Logical Kodama cluster name (defaults to stage)."
+  description = "Logical Kodema cluster name (defaults to stage)."
   type        = string
   default     = "stage"
 }
 
 variable "environment" {
-  description = "Kodama runtime environment profile (production for stage and prod clusters)."
+  description = "Kodema runtime environment profile (production for stage and prod clusters)."
   type        = string
   default     = "production"
 }
@@ -34,9 +34,9 @@ variable "zone" {
 }
 
 variable "release_namespace" {
-  description = "Kubernetes namespace for the Kodama control-plane release."
+  description = "Kubernetes namespace for the Kodema control-plane release."
   type        = string
-  default     = "kodama-system"
+  default     = "kodema-system"
 }
 
 variable "tenants" {
@@ -114,7 +114,7 @@ variable "k8s_root_volume_size_gb" {
 }
 
 variable "workspace_storage_class" {
-  description = "Kubernetes StorageClass used by Kodama for execution workspace PVCs and retained logs."
+  description = "Kubernetes StorageClass used by Kodema for execution workspace PVCs and retained logs."
   type        = string
   default     = "sbs-default"
 }
@@ -140,7 +140,7 @@ variable "postgres_volume_size_gb" {
 variable "postgres_database_name" {
   description = "Application database name, created and owned by the migration step."
   type        = string
-  default     = "kodama"
+  default     = "kodema"
 }
 
 variable "postgres_admin_database" {
@@ -152,7 +152,7 @@ variable "postgres_admin_database" {
 variable "postgres_admin_user" {
   description = "Initial bootstrap administrator username for the Managed PostgreSQL instance."
   type        = string
-  default     = "kodama_bootstrap_admin"
+  default     = "kodema_bootstrap_admin"
 }
 
 variable "postgres_admin_password" {

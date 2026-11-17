@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/api"
+	"github.com/optimiware/kodema/api"
 
-	"github.com/optimiware/kodama/test/e2e/internal/smoke"
+	"github.com/optimiware/kodema/test/e2e/internal/smoke"
 )
 
 // TestSmokeGitChecks proves the protected-Git and push-trigger checks refuse
@@ -71,7 +71,7 @@ func TestSmokeGitChecks(t *testing.T) {
 	})
 
 	t.Run("hook refusal", func(t *testing.T) {
-		if err := smoke.CheckHookRejected([]byte("remote: kodama git: update rejected\nfatal: failed to push")); err != nil {
+		if err := smoke.CheckHookRejected([]byte("remote: kodema git: update rejected\nfatal: failed to push")); err != nil {
 			t.Fatalf("the hook refusal was refused: %v", err)
 		}
 		if err := smoke.CheckHookRejected([]byte("fatal: unable to access: TLS handshake timeout")); err == nil {

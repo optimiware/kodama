@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/userland/git"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/userland/git"
 )
 
 // Sentinel refusals of tenant provisioning. They are exported so the app
@@ -111,8 +111,8 @@ const (
 	provisioningCommitMessage = "repo admin"
 	// provisioningAgentName and provisioningAgentEmail are the explicit
 	// author/committer identity. They are never inherited from host config.
-	provisioningAgentName  = "Kodama Provisioning"
-	provisioningAgentEmail = "kodama@example.invalid"
+	provisioningAgentName  = "Kodema Provisioning"
+	provisioningAgentEmail = "kodema@example.invalid"
 )
 
 // ProvisionAdminRepository creates the tenant's trusted admin repository
@@ -349,7 +349,7 @@ func (provisioner *adminProvisioner) create(ctx context.Context) (AdminProvision
 	}
 	// The served repository must accept a smart-HTTP receive-pack and advertise
 	// atomic support exactly like every other provisioned repository. Ref policy
-	// still belongs to Kodama's ordered rules and the hooks, never to git config.
+	// still belongs to Kodema's ordered rules and the hooks, never to git config.
 	if _, err := provisioner.require(ctx, "--git-dir="+staging, "config", "receive.advertiseAtomic", "true"); err != nil {
 		return AdminProvisionResult{}, fmt.Errorf("configure atomic receives: %w", err)
 	}

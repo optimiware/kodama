@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	runtimesupport "github.com/optimiware/kodama/test/support/infrastructure/runtime"
+	runtimesupport "github.com/optimiware/kodema/test/support/infrastructure/runtime"
 )
 
 // runLabelArgs renders this run's cleanup labels as Podman CLI arguments.
@@ -23,9 +23,9 @@ func runLabelArgs() []string {
 }
 
 // TestRunScopedSweepLeavesForeignWorkspaceResources proves the suite's
-// post-run sweep removes only resources carrying kodama.test=1 and this run's
-// kodama.owner-pid. A container and a volume carrying only the product
-// kodama.dev/workspace label (as a real Kodama installation, or a concurrent
+// post-run sweep removes only resources carrying kodema.test=1 and this run's
+// kodema.owner-pid. A container and a volume carrying only the product
+// kodema.dev/workspace label (as a real Kodema installation, or a concurrent
 // shard, would) must survive. Resources this run created must be removed.
 func TestRunScopedSweepLeavesForeignWorkspaceResources(t *testing.T) {
 	ctx := t.Context()
@@ -33,10 +33,10 @@ func TestRunScopedSweepLeavesForeignWorkspaceResources(t *testing.T) {
 	runtimesupport.ResolveImage(ctx, t, service.Podman(), runtimesupport.ImageAlpineTag)
 
 	suffix := fmt.Sprintf("%d-%d", os.Getpid(), time.Now().UnixNano())
-	foreignContainer := "kodama-i02d-foreign-" + suffix
-	foreignVolume := "kodama-i02d-foreign-vol-" + suffix
-	ownContainer := "kodama-i02d-own-" + suffix
-	ownVolume := "kodama-i02d-own-vol-" + suffix
+	foreignContainer := "kodema-i02d-foreign-" + suffix
+	foreignVolume := "kodema-i02d-foreign-vol-" + suffix
+	ownContainer := "kodema-i02d-own-" + suffix
+	ownVolume := "kodema-i02d-own-vol-" + suffix
 
 	// Foreign resources: product workspace label only, no test/owner scope.
 	foreignWorkspace := "foreign-workspace-" + suffix
@@ -112,7 +112,7 @@ func TestRunScopedSweepFiltersOnRunLabels(t *testing.T) {
 	runtimesupport.ResolveImage(ctx, t, service.Podman(), runtimesupport.ImageAlpineTag)
 
 	suffix := fmt.Sprintf("%d-%d", os.Getpid(), time.Now().UnixNano())
-	foreignContainer := "kodama-i02d-foreign-same-" + suffix
+	foreignContainer := "kodema-i02d-foreign-same-" + suffix
 	if _, err := runtimesupport.RunPodman(ctx, "run", "-d", "--name", foreignContainer,
 		"--label", runtimesupport.WorkspaceLabel+"="+runtimesupport.RunScoped("workspace-podman-1"),
 		runtimesupport.ImageAlpineTag, "sleep", "60"); err != nil {

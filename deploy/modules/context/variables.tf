@@ -9,7 +9,7 @@ variable "cloud" {
 }
 
 variable "cluster_name" {
-  description = "Logical Kodama cluster name within the target cloud/project/region (defaults to stage)."
+  description = "Logical Kodema cluster name within the target cloud/project/region (defaults to stage)."
   type        = string
   default     = "stage"
 
@@ -20,7 +20,7 @@ variable "cluster_name" {
 }
 
 variable "environment" {
-  description = "Kodama installation environment profile (production, test, development). Stage and prod clusters run the production profile."
+  description = "Kodema installation environment profile (production, test, development). Stage and prod clusters run the production profile."
   type        = string
   default     = "production"
 
@@ -68,9 +68,9 @@ variable "zone" {
 }
 
 variable "release_namespace" {
-  description = "Kubernetes namespace for the Kodama control-plane release."
+  description = "Kubernetes namespace for the Kodema control-plane release."
   type        = string
-  default     = "kodama-system"
+  default     = "kodema-system"
 
   validation {
     condition     = can(regex("^[a-z0-9]([-a-z0-9]*[a-z0-9])?$", var.release_namespace))
@@ -85,7 +85,7 @@ variable "tenants" {
 
   validation {
     condition     = length(var.tenants) > 0 && alltrue([for t in var.tenants : can(regex("^[a-z0-9]([-a-z0-9]{0,47}[a-z0-9])?$", t))])
-    error_message = "tenants must be a non-empty list of valid DNS-1123 tenant slugs of at most 49 characters (so kodama-tenant-<id> stays within 63 characters)."
+    error_message = "tenants must be a non-empty list of valid DNS-1123 tenant slugs of at most 49 characters (so kodema-tenant-<id> stays within 63 characters)."
   }
 }
 

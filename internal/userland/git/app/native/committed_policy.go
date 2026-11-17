@@ -7,8 +7,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/userland/git"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/userland/git"
 )
 
 // The trusted policy is the tenant's `admin` repository, not a mutable

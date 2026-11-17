@@ -3,14 +3,14 @@ package app
 // Streaming credential-injecting LLM proxy for external coding agents.
 //
 // Workloads running inside container actions authenticate with their mounted
-// Kodama execution credential (either `Authorization: Bearer kodex...` or
+// Kodema execution credential (either `Authorization: Bearer kodex...` or
 // `x-api-key: kodex...`) against `/llm/{provider}/{upstream_path...}` (such as
 // `POST /llm/anthropic/v1/messages` or `POST /llm/openai/v1/responses`).
 //
 // Before any upstream connection is opened or any secret is resolved, the proxy
 // authenticates the caller, requires an active workload execution principal,
 // re-reads current execution/action state and `ExecConfiguredModels` authority,
-// enforces the active action's remaining deadline, strips the caller's Kodama
+// enforces the active action's remaining deadline, strips the caller's Kodema
 // credential, resolves the provider secret through the gateway secret policy in
 // the execution's scope, and streams response chunks (including SSE
 // `text/event-stream` events) immediately without following redirects.
@@ -28,18 +28,18 @@ import (
 	"sync"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/shell/app/bridges"
-	"github.com/optimiware/kodama/internal/shell/authorize"
-	"github.com/optimiware/kodama/internal/shell/gateway"
-	"github.com/optimiware/kodama/internal/shell/identity"
-	"github.com/optimiware/kodama/internal/shell/secret"
-	"github.com/optimiware/kodama/internal/shell/store"
-	"github.com/optimiware/kodama/internal/shell/store/units/platform"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
-	"github.com/optimiware/kodama/internal/shell/token"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/shell/app/bridges"
+	"github.com/optimiware/kodema/internal/shell/authorize"
+	"github.com/optimiware/kodema/internal/shell/gateway"
+	"github.com/optimiware/kodema/internal/shell/identity"
+	"github.com/optimiware/kodema/internal/shell/secret"
+	"github.com/optimiware/kodema/internal/shell/store"
+	"github.com/optimiware/kodema/internal/shell/store/units/platform"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
+	"github.com/optimiware/kodema/internal/shell/token"
 )
 
 const (

@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
+	"github.com/optimiware/kodema/api"
 
-	"github.com/optimiware/kodama/test/e2e/internal/harness"
-	"github.com/optimiware/kodama/test/e2e/internal/smoke"
+	"github.com/optimiware/kodema/test/e2e/internal/harness"
+	"github.com/optimiware/kodema/test/e2e/internal/smoke"
 )
 
 // TestSmokeChecks proves every release-smoke helper refuses the wrong-actor,
@@ -224,11 +224,11 @@ func TestSmokeMissingInputs(t *testing.T) {
 	digest := "sha256:" + strings.Repeat("a", 64)
 	config := harness.Config{
 		APIURL:               "https://localhost:18443",
-		CAPEM:                "/tmp/kodama-ca.crt",
+		CAPEM:                "/tmp/kodema-ca.crt",
 		ProjectID:            "tenant-local",
 		Image:                "docker.io/library/buildpack-deps@" + digest,
 		ExternalHarnessImage: "docker.io/library/alpine@" + digest,
-		WorkloadCAFile:       "/tmp/kodama-ca.crt",
+		WorkloadCAFile:       "/tmp/kodema-ca.crt",
 		PersonaTokenFiles: map[harness.Persona]string{
 			harness.PersonaAdmin:    "/tmp/admin-token",
 			harness.PersonaEngineer: "/tmp/engineer-token",
@@ -278,11 +278,11 @@ func TestSmokeMissingInputsNonGit(t *testing.T) {
 	digest := "sha256:" + strings.Repeat("a", 64)
 	config := harness.Config{
 		APIURL:               "https://localhost:18443",
-		CAPEM:                "/tmp/kodama-ca.crt",
+		CAPEM:                "/tmp/kodema-ca.crt",
 		ProjectID:            "tenant-a",
 		Image:                "docker.io/library/buildpack-deps@" + digest,
 		ExternalHarnessImage: "docker.io/library/alpine@" + digest,
-		WorkloadCAFile:       "/tmp/kodama-ca.crt",
+		WorkloadCAFile:       "/tmp/kodema-ca.crt",
 		SmokeGitDisabled:     true,
 		PersonaTokenFiles: map[harness.Persona]string{
 			harness.PersonaAdmin:    "/tmp/admin-token",

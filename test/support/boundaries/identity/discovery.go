@@ -7,10 +7,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/optimiware/kodama/api"
+	"github.com/optimiware/kodema/api"
 )
 
-// DiscoveryDocumentFor builds the Kodama discovery document bound to one
+// DiscoveryDocumentFor builds the Kodema discovery document bound to one
 // fixture provider and API URL. It is a fixture of the public discovery facts,
 // not the composed Shell.
 func DiscoveryDocumentFor(provider *Provider, apiURL, clientID string, scopes ...string) api.DiscoveryDocument {
@@ -30,7 +30,7 @@ func DiscoveryDocumentFor(provider *Provider, apiURL, clientID string, scopes ..
 	}
 }
 
-// DiscoveryServer serves the fixed Kodama public discovery route over loopback
+// DiscoveryServer serves the fixed Kodema public discovery route over loopback
 // TLS. A child process trusts it through SSL_CERT_FILE. The document can be
 // changed after a login, which is how the endpoint-pinning tests model a hostile
 // discovery response.

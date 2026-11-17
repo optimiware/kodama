@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	kubesupport "github.com/optimiware/kodama/test/support/infrastructure/kubernetes"
+	kubesupport "github.com/optimiware/kodema/test/support/infrastructure/kubernetes"
 )
 
 // TestCleanupExitCode proves the post-run exit-code rule: a best-effort sweep
@@ -58,7 +58,7 @@ func TestClassifyKindProbe(t *testing.T) {
 		wantSweep bool
 	}{
 		{name: "clean probe", pid: 4242},
-		{name: "own cluster leaked", leaked: []string{"kodama-t-4242-0123abcd"}, pid: 4242, wantOwn: true},
+		{name: "own cluster leaked", leaked: []string{"kodema-t-4242-0123abcd"}, pid: 4242, wantOwn: true},
 		{name: "probe failure after creating a cluster", probeErr: broken, created: true, pid: 4242, wantOwn: true},
 		{name: "foreign probe failure", probeErr: broken, pid: 4242, wantSweep: true},
 		{name: "kind unavailable without a created cluster", probeErr: unavailable, pid: 4242},
@@ -75,7 +75,7 @@ func TestClassifyKindProbe(t *testing.T) {
 		})
 	}
 
-	if own, _ := ClassifyKindProbe(nil, []string{"kodama-t-4242-0123abcd", "kodama-t-4242-fedcba98"}, false, 4242); own == nil ||
+	if own, _ := ClassifyKindProbe(nil, []string{"kodema-t-4242-0123abcd", "kodema-t-4242-fedcba98"}, false, 4242); own == nil ||
 		!strings.Contains(own.Error(), "2 cluster(s) owned by pid 4242") {
 		t.Fatalf("leak error = %v; want both owned cluster names and the pid", own)
 	}
@@ -85,17 +85,17 @@ func TestClassifyKindProbe(t *testing.T) {
 // process's generated names and never a foreign, protected or malformed one.
 func TestOwnClusterNames(t *testing.T) {
 	names := []string{
-		"kodama-t-4242-0123abcd",
-		"kodama-t-4242-fedcba98",
-		"kodama-t-4243-0123abcd", // another live lane
-		"kodama-probe",           // protected cluster
-		"kodama-t-4242-0123ABCD", // uppercase is outside the naming contract
-		"kodama-t-4242-0123abc",  // short suffix
+		"kodema-t-4242-0123abcd",
+		"kodema-t-4242-fedcba98",
+		"kodema-t-4243-0123abcd", // another live lane
+		"kodema-probe",           // protected cluster
+		"kodema-t-4242-0123ABCD", // uppercase is outside the naming contract
+		"kodema-t-4242-0123abc",  // short suffix
 		"other-4242-0123abcd",    // foreign prefix
-		"kodama-t--0123abcd",     // missing pid
+		"kodema-t--0123abcd",     // missing pid
 	}
 	got := OwnClusterNames(names, 4242)
-	want := []string{"kodama-t-4242-0123abcd", "kodama-t-4242-fedcba98"}
+	want := []string{"kodema-t-4242-0123abcd", "kodema-t-4242-fedcba98"}
 	if len(got) != len(want) {
 		t.Fatalf("OwnClusterNames = %v; want %v", got, want)
 	}

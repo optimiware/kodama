@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Guarded pre-gate reset for the Kodama Scaleway stage only.
+# Guarded pre-gate reset for the Kodema Scaleway stage only.
 #
 # The M2 gate is the ten non-Git scenarios after a clean stage reset (user
 # decision U28). This driver records the pre-reset boundary, stops the
@@ -20,13 +20,13 @@ set -euo pipefail
 set +x
 umask 077
 
-readonly STAGE_CONTEXT='admin@kodama-stage-k8s'
-readonly STAGE_NAMESPACE='kodama-system'
-readonly TENANT_NAMESPACE='kodama-tenant-tenant-a'
-readonly RELEASE='kodama-stage'
-readonly CONFIRM='reset-kodama-stage'
-readonly RETAINED_CLAIM='kodama-retained-logs'
-readonly CONTROLLER_DEPLOYMENT='kodama'
+readonly STAGE_CONTEXT='admin@kodema-stage-k8s'
+readonly STAGE_NAMESPACE='kodema-system'
+readonly TENANT_NAMESPACE='kodema-tenant-tenant-a'
+readonly RELEASE='kodema-stage'
+readonly CONFIRM='reset-kodema-stage'
+readonly RETAINED_CLAIM='kodema-retained-logs'
+readonly CONTROLLER_DEPLOYMENT='kodema'
 readonly POD_TIMEOUT=300
 readonly QUIESCE_TIMEOUT=180
 readonly NAMESPACE_TIMEOUT=300
@@ -36,7 +36,7 @@ readonly CLAIM_TIMEOUT=180
 # deploy/stage/vite-acceptance.yaml; these two are the reset vehicles.
 readonly POSTGRES_IMAGE='docker.io/library/postgres@sha256:3540c0362c809df084ffac0ae69fe794515f9de92692f02178bcdce0ef0302ac'
 readonly NATS_IMAGE='docker.io/natsio/nats-box@sha256:9d5f35d286c3dcfca18bb2339b51345f9f89b580b237ab16ddfe609bdca9c72d'
-readonly NATS_SERVER='tls://nats.kodama-system.svc.cluster.local:4222'
+readonly NATS_SERVER='tls://nats.kodema-system.svc.cluster.local:4222'
 
 # The five roles the migration ledger creates: 0001 (owner and runtime) and
 # 0009 (controller, publisher, auth), per
@@ -44,15 +44,15 @@ readonly NATS_SERVER='tls://nats.kodama-system.svc.cluster.local:4222'
 # internal/shell/store/postgres/migrations.go. The setup administrator is not
 # in this list and must survive.
 readonly ROLES=(
-  kodama_owner
-  kodama_runtime
-  kodama_controller
-  kodama_publisher
-  kodama_auth
+  kodema_owner
+  kodema_runtime
+  kodema_controller
+  kodema_publisher
+  kodema_auth
 )
 
 # Exactly the release-owned streams; no other stream or the broker claim.
-readonly STREAMS=(KODAMA_EVENTS KODAMA_INVALIDATIONS)
+readonly STREAMS=(KODEMA_EVENTS KODEMA_INVALIDATIONS)
 
 # Historical F-4 stuck cleanups recorded by the planner; the pre-state pod
 # records presence/absence and a minimal state for each. They are never edited.
@@ -78,13 +78,13 @@ Usage: scripts/stage-reset [--print-plan]
 
 Guarded pre-gate reset for the Scaleway stage. Requires:
   KUBECONFIG                    readable regular file, mode 0600
-  KODAMA_STAGE_CONTEXT          admin@kodama-stage-k8s
-  KODAMA_STAGE_NAMESPACE        kodama-system
-  KODAMA_STAGE_TENANT_NAMESPACE kodama-tenant-tenant-a
-  KODAMA_STAGE_EVIDENCE_DIR     absolute private evidence directory
-  KODAMA_STAGE_RESET_CONFIRM    reset-kodama-stage (apply mode only)
-  KODAMA_STAGE_DATABASE_NAME    optional pinned application database name; it
-                                must match the kodama-database Secret
+  KODEMA_STAGE_CONTEXT          admin@kodema-stage-k8s
+  KODEMA_STAGE_NAMESPACE        kodema-system
+  KODEMA_STAGE_TENANT_NAMESPACE kodema-tenant-tenant-a
+  KODEMA_STAGE_EVIDENCE_DIR     absolute private evidence directory
+  KODEMA_STAGE_RESET_CONFIRM    reset-kodema-stage (apply mode only)
+  KODEMA_STAGE_DATABASE_NAME    optional pinned application database name; it
+                                must match the kodema-database Secret
 
 --print-plan prints the intended actions and the exact SQL without any
 mutation. Apply mode refuses without the confirmation variable.
@@ -123,38 +123,38 @@ stat_mode() {
 kubeconfig_mode="$(stat_mode "$KUBECONFIG")"
 [[ "$kubeconfig_mode" == '600' ]] || refuse "KUBECONFIG '$KUBECONFIG' has mode $kubeconfig_mode; want 0600"
 
-[[ "${KODAMA_STAGE_CONTEXT:-}" == "$STAGE_CONTEXT" ]] ||
-  refuse "KODAMA_STAGE_CONTEXT must be exactly '$STAGE_CONTEXT'"
-[[ "${KODAMA_STAGE_NAMESPACE:-}" == "$STAGE_NAMESPACE" ]] ||
-  refuse "KODAMA_STAGE_NAMESPACE must be exactly '$STAGE_NAMESPACE'"
-[[ "${KODAMA_STAGE_TENANT_NAMESPACE:-}" == "$TENANT_NAMESPACE" ]] ||
-  refuse "KODAMA_STAGE_TENANT_NAMESPACE must be exactly '$TENANT_NAMESPACE'; prefixes and wildcards are refused"
-case "${KODAMA_STAGE_NAMESPACE}${KODAMA_STAGE_TENANT_NAMESPACE}" in
+[[ "${KODEMA_STAGE_CONTEXT:-}" == "$STAGE_CONTEXT" ]] ||
+  refuse "KODEMA_STAGE_CONTEXT must be exactly '$STAGE_CONTEXT'"
+[[ "${KODEMA_STAGE_NAMESPACE:-}" == "$STAGE_NAMESPACE" ]] ||
+  refuse "KODEMA_STAGE_NAMESPACE must be exactly '$STAGE_NAMESPACE'"
+[[ "${KODEMA_STAGE_TENANT_NAMESPACE:-}" == "$TENANT_NAMESPACE" ]] ||
+  refuse "KODEMA_STAGE_TENANT_NAMESPACE must be exactly '$TENANT_NAMESPACE'; prefixes and wildcards are refused"
+case "${KODEMA_STAGE_NAMESPACE}${KODEMA_STAGE_TENANT_NAMESPACE}" in
   *'*'*|*'?'*) refuse 'namespace inputs must not contain wildcard characters' ;;
 esac
 
-[[ -n "${KODAMA_STAGE_EVIDENCE_DIR:-}" ]] || refuse 'KODAMA_STAGE_EVIDENCE_DIR is required'
-[[ "${KODAMA_STAGE_EVIDENCE_DIR}" == /* ]] ||
-  refuse "KODAMA_STAGE_EVIDENCE_DIR must be an absolute path, got '${KODAMA_STAGE_EVIDENCE_DIR}'"
-[[ "$KODAMA_STAGE_EVIDENCE_DIR" != '/' ]] || refuse 'KODAMA_STAGE_EVIDENCE_DIR must not be the filesystem root'
+[[ -n "${KODEMA_STAGE_EVIDENCE_DIR:-}" ]] || refuse 'KODEMA_STAGE_EVIDENCE_DIR is required'
+[[ "${KODEMA_STAGE_EVIDENCE_DIR}" == /* ]] ||
+  refuse "KODEMA_STAGE_EVIDENCE_DIR must be an absolute path, got '${KODEMA_STAGE_EVIDENCE_DIR}'"
+[[ "$KODEMA_STAGE_EVIDENCE_DIR" != '/' ]] || refuse 'KODEMA_STAGE_EVIDENCE_DIR must not be the filesystem root'
 
-# The application database is read from the kodama-database Secret inside the
+# The application database is read from the kodema-database Secret inside the
 # pods. An operator may pin the expected name explicitly; each pod refuses when
 # it disagrees with the Secret, and a disconnected identifier is refused here.
-stage_database_name="${KODAMA_STAGE_DATABASE_NAME:-}"
+stage_database_name="${KODEMA_STAGE_DATABASE_NAME:-}"
 if [[ -n "$stage_database_name" ]]; then
   [[ "$stage_database_name" =~ ^[A-Za-z0-9_][A-Za-z0-9_-]{0,62}$ ]] ||
-    refuse "KODAMA_STAGE_DATABASE_NAME '$stage_database_name' is not a bounded database identifier"
+    refuse "KODEMA_STAGE_DATABASE_NAME '$stage_database_name' is not a bounded database identifier"
 fi
 database_name_env=''
 if [[ -n "$stage_database_name" ]]; then
-  database_name_env="        - {name: KODAMA_STAGE_DATABASE_NAME, value: '${stage_database_name}'}
+  database_name_env="        - {name: KODEMA_STAGE_DATABASE_NAME, value: '${stage_database_name}'}
 "
 fi
 
 if [[ "$mode" == 'apply' ]]; then
-  [[ "${KODAMA_STAGE_RESET_CONFIRM:-}" == "$CONFIRM" ]] ||
-    refuse "set KODAMA_STAGE_RESET_CONFIRM=$CONFIRM to authorize the reset"
+  [[ "${KODEMA_STAGE_RESET_CONFIRM:-}" == "$CONFIRM" ]] ||
+    refuse "set KODEMA_STAGE_RESET_CONFIRM=$CONFIRM to authorize the reset"
 fi
 
 require_cmd kubectl
@@ -172,7 +172,7 @@ helm --kubeconfig "$KUBECONFIG" --kube-context "$STAGE_CONTEXT" status "$RELEASE
   -n "$STAGE_NAMESPACE" >/dev/null 2>&1 ||
   refuse "Helm release '$RELEASE' is not present in '$STAGE_NAMESPACE'"
 
-for secret in kodama-database-admin kodama-database kodama-broker kodama-nats-auth; do
+for secret in kodema-database-admin kodema-database kodema-broker kodema-nats-auth; do
   kube -n "$STAGE_NAMESPACE" get secret "$secret" >/dev/null 2>&1 ||
     refuse "Secret '$STAGE_NAMESPACE/$secret' is missing"
 done
@@ -184,63 +184,63 @@ readonly RESET_SQL="$(cat <<'SQL'
 -- administrator. The database and administrator names never appear on a
 -- command line: they are read from the session itself.
 SELECT current_database() AS db, current_user AS admin \gset
-SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'kodama_owner') AS has_owner \gset
+SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'kodema_owner') AS has_owner \gset
 \if :has_owner
--- 0001 grants kodama_owner to the administrator WITH INHERIT FALSE, SET TRUE.
+-- 0001 grants kodema_owner to the administrator WITH INHERIT FALSE, SET TRUE.
 -- The creator keeps ADMIN, so temporarily enabling INHERIT lets the
 -- administrator exercise the database owner's privileges; it is narrowed back
 -- below and the role is dropped. This needs no superuser and no wildcard.
-GRANT kodama_owner TO :"admin" WITH INHERIT TRUE;
+GRANT kodema_owner TO :"admin" WITH INHERIT TRUE;
 -- Reassign database ownership away from the owner role so the role can be
 -- dropped. With INHERIT enabled the administrator passes the owner check.
 ALTER DATABASE :"db" OWNER TO :"admin";
 \endif
 -- Reset exactly the two migration-owned schemas. public holds every
--- unqualified application table; kodama_meta holds the migration ledger.
+-- unqualified application table; kodema_meta holds the migration ledger.
 DROP SCHEMA IF EXISTS public CASCADE;
-DROP SCHEMA IF EXISTS kodama_meta CASCADE;
+DROP SCHEMA IF EXISTS kodema_meta CASCADE;
 -- Recreate public owned by pg_database_owner, the pre-handover owner the
--- migrated schema expects: after 0001 hands the database to kodama_owner,
+-- migrated schema expects: after 0001 hands the database to kodema_owner,
 -- that role owns public and can create the 0003 tables.
 CREATE SCHEMA public AUTHORIZATION pg_database_owner;
 -- The setup administrator runs bootstrap migration 0009 after 0001 hands the
--- database to kodama_owner; 0009 grants USAGE on public to the system roles.
+-- database to kodema_owner; 0009 grants USAGE on public to the system roles.
 -- Keep the grant option public ownership gave it while it was the database
 -- owner, scoped to the empty schema, so the non-superuser replay stays legal.
 GRANT USAGE ON SCHEMA public TO :"admin" WITH GRANT OPTION;
 \if :has_owner
 -- Restore the original non-INHERIT membership before removing the role, so a
 -- failure here never leaves the administrator with inherited owner rights.
-GRANT kodama_owner TO :"admin" WITH INHERIT FALSE;
+GRANT kodema_owner TO :"admin" WITH INHERIT FALSE;
 \endif
--- Drop exactly the five migration-created roles. Never a kodama_* wildcard
+-- Drop exactly the five migration-created roles. Never a kodema_* wildcard
 -- or a broad owned-object drop: the setup administrator must survive.
-DROP ROLE IF EXISTS kodama_owner;
-DROP ROLE IF EXISTS kodama_runtime;
-DROP ROLE IF EXISTS kodama_controller;
-DROP ROLE IF EXISTS kodama_publisher;
-DROP ROLE IF EXISTS kodama_auth;
+DROP ROLE IF EXISTS kodema_owner;
+DROP ROLE IF EXISTS kodema_runtime;
+DROP ROLE IF EXISTS kodema_controller;
+DROP ROLE IF EXISTS kodema_publisher;
+DROP ROLE IF EXISTS kodema_auth;
 SQL
 )"
 
 readonly PRE_STATE_SQL="$(cat <<'SQL'
 SELECT 'utc' AS key, to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS value;
-SELECT CASE WHEN to_regclass('kodama_meta.schema_migrations') IS NOT NULL THEN 'true' ELSE 'false' END AS has_ledger \gset
+SELECT CASE WHEN to_regclass('kodema_meta.schema_migrations') IS NOT NULL THEN 'true' ELSE 'false' END AS has_ledger \gset
 \if :has_ledger
-SELECT 'ledger' AS key, coalesce(max(name), 'none') AS value FROM kodama_meta.schema_migrations;
+SELECT 'ledger' AS key, coalesce(max(name), 'none') AS value FROM kodema_meta.schema_migrations;
 \endif
 SELECT CASE WHEN to_regclass('public.executions') IS NOT NULL
-  AND EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'kodama_owner')
+  AND EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'kodema_owner')
   THEN 'true' ELSE 'false' END AS can_read_executions \gset
 \if :can_read_executions
 -- The setup administrator owns neither the tables nor their privileges, and
 -- every scoped table has FORCE RLS. Read as the migration owner (the
 -- administrator holds SET) with the stage tenant pinned; an empty project
 -- keeps the tenant-wide scope. tenant-a is the fixed suffix of
--- kodama-tenant-tenant-a, which the namespace guard above pins.
-SET ROLE kodama_owner;
-SET kodama.tenant_id = 'tenant-a';
-SET kodama.project_id = '';
+-- kodema-tenant-tenant-a, which the namespace guard above pins.
+SET ROLE kodema_owner;
+SET kodema.tenant_id = 'tenant-a';
+SET kodema.project_id = '';
 SELECT 'execution' AS key,
        e.id || '|state=' || e.state ||
        '|cleanup=' || coalesce(c.state, 'none') ||
@@ -255,8 +255,8 @@ WHERE e.id IN (
 )
 ORDER BY e.id;
 RESET ROLE;
-RESET kodama.tenant_id;
-RESET kodama.project_id;
+RESET kodema.tenant_id;
+RESET kodema.project_id;
 \endif
 SQL
 )"
@@ -269,7 +269,7 @@ stage pre-gate reset plan (no changes made)
   tenant namespace: $TENANT_NAMESPACE
   retained claim:   $STAGE_NAMESPACE/pvc/$RETAINED_CLAIM
   release:          $RELEASE
-  database:         from the kodama-database Secret's database_url (PGDATABASE)
+  database:         from the kodema-database Secret's database_url (PGDATABASE)
 
 actions, in order:
   1. record UTC start, Helm revision, replica counts, the three historical
@@ -300,7 +300,7 @@ fi
 
 # --- Apply mode --------------------------------------------------------------
 
-EVIDENCE_DIR="${KODAMA_STAGE_EVIDENCE_DIR}"
+EVIDENCE_DIR="${KODEMA_STAGE_EVIDENCE_DIR}"
 mkdir -p -- "$EVIDENCE_DIR"
 chmod 700 -- "$EVIDENCE_DIR"
 
@@ -390,8 +390,8 @@ record_if_present() {
 # owner the setup administrator cannot become. Both are split into libpq
 # component variables inside the pod (never a psql argument) and the password
 # is percent-decoded because bootstrap-secrets URL-encodes it.
-pg_connect_script=': "${KODAMA_ADMIN_DATABASE_URL:?the admin Secret must provide KODAMA_ADMIN_DATABASE_URL}"
-if [[ "$KODAMA_ADMIN_DATABASE_URL" =~ ^postgres(ql)?://([^:@/]+):([^@]*)@([^:/]+):([0-9]+)/([^?]+)(\?(.*))?$ ]]; then
+pg_connect_script=': "${KODEMA_ADMIN_DATABASE_URL:?the admin Secret must provide KODEMA_ADMIN_DATABASE_URL}"
+if [[ "$KODEMA_ADMIN_DATABASE_URL" =~ ^postgres(ql)?://([^:@/]+):([^@]*)@([^:/]+):([0-9]+)/([^?]+)(\?(.*))?$ ]]; then
   pg_user="${BASH_REMATCH[2]}"
   pg_password="${BASH_REMATCH[3]}"
   export PGHOST="${BASH_REMATCH[4]}"
@@ -402,31 +402,31 @@ if [[ "$KODAMA_ADMIN_DATABASE_URL" =~ ^postgres(ql)?://([^:@/]+):([^@]*)@([^:/]+
   if [[ "$pg_params" =~ (^|&)sslmode=([^&]+) ]]; then
     export PGSSLMODE="${BASH_REMATCH[2]}"
   fi
-  export PGSSLROOTCERT=/etc/kodama/pg-ca/ca.crt
-  unset pg_user pg_password pg_params KODAMA_ADMIN_DATABASE_URL
+  export PGSSLROOTCERT=/etc/kodema/pg-ca/ca.crt
+  unset pg_user pg_password pg_params KODEMA_ADMIN_DATABASE_URL
 else
   echo "the administrator URL is not a supported PostgreSQL URI" >&2
   exit 1
 fi
 app_database=""
-if [[ -n "${KODAMA_DATABASE_URL:-}" ]]; then
-  if [[ "$KODAMA_DATABASE_URL" =~ ^postgres(ql)?://([^:@/]+):([^@]*)@([^:/]+):([0-9]+)/([^?]+)(\?(.*))?$ ]]; then
+if [[ -n "${KODEMA_DATABASE_URL:-}" ]]; then
+  if [[ "$KODEMA_DATABASE_URL" =~ ^postgres(ql)?://([^:@/]+):([^@]*)@([^:/]+):([0-9]+)/([^?]+)(\?(.*))?$ ]]; then
     app_database="${BASH_REMATCH[6]}"
   else
     echo "the application URL is not a supported PostgreSQL URI" >&2
     exit 1
   fi
 fi
-unset KODAMA_DATABASE_URL
-if [[ -n "${KODAMA_STAGE_DATABASE_NAME:-}" ]]; then
-  override_database="$KODAMA_STAGE_DATABASE_NAME"
-  unset KODAMA_STAGE_DATABASE_NAME
+unset KODEMA_DATABASE_URL
+if [[ -n "${KODEMA_STAGE_DATABASE_NAME:-}" ]]; then
+  override_database="$KODEMA_STAGE_DATABASE_NAME"
+  unset KODEMA_STAGE_DATABASE_NAME
   if [[ ! "$override_database" =~ ^[A-Za-z0-9_][A-Za-z0-9_-]{0,62}$ ]]; then
-    echo "refusing: KODAMA_STAGE_DATABASE_NAME is not a bounded database identifier" >&2
+    echo "refusing: KODEMA_STAGE_DATABASE_NAME is not a bounded database identifier" >&2
     exit 1
   fi
   if [[ -n "$app_database" && "$override_database" != "$app_database" ]]; then
-    echo "refusing: KODAMA_STAGE_DATABASE_NAME disagrees with the kodama-database Secret database_url" >&2
+    echo "refusing: KODEMA_STAGE_DATABASE_NAME disagrees with the kodema-database Secret database_url" >&2
     exit 1
   fi
   app_database="$override_database"
@@ -443,9 +443,9 @@ unset app_database override_database
 # the empty admin database has none, and resetting it would silently do nothing
 # while the ALTER DATABASE failed on its Scaleway-owned database.
 readonly ledger_guard_script="$(cat <<'GUARD'
-ledger_present="$(psql -X -q -A -t -v ON_ERROR_STOP=1 -c "SELECT CASE WHEN to_regclass('kodama_meta.schema_migrations') IS NOT NULL THEN 'present' ELSE 'absent' END")"
+ledger_present="$(psql -X -q -A -t -v ON_ERROR_STOP=1 -c "SELECT CASE WHEN to_regclass('kodema_meta.schema_migrations') IS NOT NULL THEN 'present' ELSE 'absent' END")"
 if [[ "$ledger_present" != "present" ]]; then
-  printf "refusing: database %s has no kodama_meta.schema_migrations ledger\n" "$PGDATABASE" >&2
+  printf "refusing: database %s has no kodema_meta.schema_migrations ledger\n" "$PGDATABASE" >&2
   exit 1
 fi
 unset ledger_present
@@ -456,9 +456,9 @@ pre_state_manifest="$(cat <<POD
 apiVersion: v1
 kind: Pod
 metadata:
-  generateName: kodama-stage-reset-preflight-
+  generateName: kodema-stage-reset-preflight-
   labels:
-    app.kubernetes.io/name: kodama
+    app.kubernetes.io/name: kodema
     app.kubernetes.io/component: stage-reset-preflight
 spec:
   restartPolicy: Never
@@ -480,22 +480,22 @@ $(printf '%s\n' "$ledger_guard_script" | sed 's/^/          /')
 $(printf '%s\n' "$PRE_STATE_SQL" | sed 's/^/          /')
           SQL
       env:
-        - {name: KODAMA_ADMIN_DATABASE_URL, valueFrom: {secretKeyRef: {name: kodama-database-admin, key: admin_url}}}
-        - {name: KODAMA_DATABASE_URL, valueFrom: {secretKeyRef: {name: kodama-database, key: database_url}}}
-${database_name_env}        - {name: PGAPPNAME, value: kodama-stage-reset-preflight}
+        - {name: KODEMA_ADMIN_DATABASE_URL, valueFrom: {secretKeyRef: {name: kodema-database-admin, key: admin_url}}}
+        - {name: KODEMA_DATABASE_URL, valueFrom: {secretKeyRef: {name: kodema-database, key: database_url}}}
+${database_name_env}        - {name: PGAPPNAME, value: kodema-stage-reset-preflight}
       securityContext:
         allowPrivilegeEscalation: false
         readOnlyRootFilesystem: true
         capabilities: {drop: ["ALL"]}
       volumeMounts:
-        - {name: database-ca, mountPath: /etc/kodama/pg-ca, readOnly: true}
+        - {name: database-ca, mountPath: /etc/kodema/pg-ca, readOnly: true}
       resources:
         requests: {cpu: 50m, memory: 64Mi}
         limits: {cpu: 500m, memory: 256Mi}
   volumes:
     - name: database-ca
       secret:
-        secretName: kodama-database
+        secretName: kodema-database
         items: [{key: ca.crt, path: ca.crt}]
 POD
 )"
@@ -508,9 +508,9 @@ pre_state_nats_manifest="$(cat <<POD
 apiVersion: v1
 kind: Pod
 metadata:
-  generateName: kodama-stage-reset-stream-preflight-
+  generateName: kodema-stage-reset-stream-preflight-
   labels:
-    app.kubernetes.io/name: kodama
+    app.kubernetes.io/name: kodema
     app.kubernetes.io/component: stage-reset-preflight
 spec:
   restartPolicy: Never
@@ -529,7 +529,7 @@ spec:
       args:
         - |
 $(printf '%s\n' "$nats_common_script" | sed 's/^/          /')
-          for stream in KODAMA_EVENTS KODAMA_INVALIDATIONS; do
+          for stream in KODEMA_EVENTS KODEMA_INVALIDATIONS; do
             printf 'stream=%s\n' "\$stream"
             if stream_output="\$(nats --server "\$NATS_URL" \$nats_tls stream info "\$stream" 2>&1)"; then
               printf '%s\n' "\$stream_output"
@@ -547,8 +547,8 @@ $(printf '%s\n' "$nats_common_script" | sed 's/^/          /')
           done
       env:
         - {name: NATS_URL, value: "${NATS_SERVER}"}
-        - {name: NATS_USER, valueFrom: {secretKeyRef: {name: kodama-nats-auth, key: shell-user}}}
-        - {name: NATS_PASSWORD, valueFrom: {secretKeyRef: {name: kodama-nats-auth, key: shell-password}}}
+        - {name: NATS_USER, valueFrom: {secretKeyRef: {name: kodema-nats-auth, key: shell-user}}}
+        - {name: NATS_PASSWORD, valueFrom: {secretKeyRef: {name: kodema-nats-auth, key: shell-password}}}
         - {name: HOME, value: /tmp}
       securityContext:
         allowPrivilegeEscalation: false
@@ -563,7 +563,7 @@ $(printf '%s\n' "$nats_common_script" | sed 's/^/          /')
   volumes:
     - name: broker-tls
       secret:
-        secretName: kodama-broker
+        secretName: kodema-broker
         items:
           - {key: ca.crt, path: ca.crt}
           - {key: tls.crt, path: tls.crt}
@@ -577,9 +577,9 @@ db_reset_manifest="$(cat <<POD
 apiVersion: v1
 kind: Pod
 metadata:
-  generateName: kodama-stage-reset-database-
+  generateName: kodema-stage-reset-database-
   labels:
-    app.kubernetes.io/name: kodama
+    app.kubernetes.io/name: kodema
     app.kubernetes.io/component: stage-reset-database
 spec:
   restartPolicy: Never
@@ -600,22 +600,22 @@ $(printf '%s\n' "$ledger_guard_script" | sed 's/^/          /')
 $(printf '%s\n' "$RESET_SQL" | sed 's/^/          /')
           SQL
       env:
-        - {name: KODAMA_ADMIN_DATABASE_URL, valueFrom: {secretKeyRef: {name: kodama-database-admin, key: admin_url}}}
-        - {name: KODAMA_DATABASE_URL, valueFrom: {secretKeyRef: {name: kodama-database, key: database_url}}}
-${database_name_env}        - {name: PGAPPNAME, value: kodama-stage-reset}
+        - {name: KODEMA_ADMIN_DATABASE_URL, valueFrom: {secretKeyRef: {name: kodema-database-admin, key: admin_url}}}
+        - {name: KODEMA_DATABASE_URL, valueFrom: {secretKeyRef: {name: kodema-database, key: database_url}}}
+${database_name_env}        - {name: PGAPPNAME, value: kodema-stage-reset}
       securityContext:
         allowPrivilegeEscalation: false
         readOnlyRootFilesystem: true
         capabilities: {drop: ["ALL"]}
       volumeMounts:
-        - {name: database-ca, mountPath: /etc/kodama/pg-ca, readOnly: true}
+        - {name: database-ca, mountPath: /etc/kodema/pg-ca, readOnly: true}
       resources:
         requests: {cpu: 50m, memory: 64Mi}
         limits: {cpu: 500m, memory: 256Mi}
   volumes:
     - name: database-ca
       secret:
-        secretName: kodama-database
+        secretName: kodema-database
         items: [{key: ca.crt, path: ca.crt}]
 POD
 )"
@@ -624,9 +624,9 @@ nats_reset_manifest="$(cat <<POD
 apiVersion: v1
 kind: Pod
 metadata:
-  generateName: kodama-stage-reset-streams-
+  generateName: kodema-stage-reset-streams-
   labels:
-    app.kubernetes.io/name: kodama
+    app.kubernetes.io/name: kodema
     app.kubernetes.io/component: stage-reset-streams
 spec:
   restartPolicy: Never
@@ -645,7 +645,7 @@ spec:
       args:
         - |
 $(printf '%s\n' "$nats_common_script" | sed 's/^/          /')
-          for stream in KODAMA_EVENTS KODAMA_INVALIDATIONS; do
+          for stream in KODEMA_EVENTS KODEMA_INVALIDATIONS; do
             if stream_output="\$(nats --server "\$NATS_URL" \$nats_tls stream info "\$stream" 2>&1)"; then
               consumers="\$(nats --server "\$NATS_URL" \$nats_tls consumer ls "\$stream" --names 2>/dev/null || true)"
               for consumer in \$consumers; do
@@ -667,8 +667,8 @@ $(printf '%s\n' "$nats_common_script" | sed 's/^/          /')
           done
       env:
         - {name: NATS_URL, value: "${NATS_SERVER}"}
-        - {name: NATS_USER, valueFrom: {secretKeyRef: {name: kodama-nats-auth, key: shell-user}}}
-        - {name: NATS_PASSWORD, valueFrom: {secretKeyRef: {name: kodama-nats-auth, key: shell-password}}}
+        - {name: NATS_USER, valueFrom: {secretKeyRef: {name: kodema-nats-auth, key: shell-user}}}
+        - {name: NATS_PASSWORD, valueFrom: {secretKeyRef: {name: kodema-nats-auth, key: shell-password}}}
         - {name: HOME, value: /tmp}
       securityContext:
         allowPrivilegeEscalation: false
@@ -683,7 +683,7 @@ $(printf '%s\n' "$nats_common_script" | sed 's/^/          /')
   volumes:
     - name: broker-tls
       secret:
-        secretName: kodama-broker
+        secretName: kodema-broker
         items:
           - {key: ca.crt, path: ca.crt}
           - {key: tls.crt, path: tls.crt}
@@ -760,14 +760,14 @@ fi
 END_UTC="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
 printf 'reset_end_utc=%s\n' "$END_UTC" >>"$BOUNDARY_FILE"
 cat >"$SUMMARY_FILE" <<SUMMARY
-kodama stage pre-gate reset complete
+kodema stage pre-gate reset complete
 reset_start_utc=$START_UTC
 reset_end_utc=$END_UTC
 context=$STAGE_CONTEXT
 release=$RELEASE
 namespace=$STAGE_NAMESPACE
 deployment=$CONTROLLER_DEPLOYMENT scaled to 0 (not scaled back)
-database_schemas=public,kodama_meta reset
+database_schemas=public,kodema_meta reset
 database_roles=${ROLES[*]} dropped
 streams=${STREAMS[*]} deleted
 tenant_namespace=$TENANT_NAMESPACE deleted

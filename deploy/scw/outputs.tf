@@ -2,7 +2,7 @@ locals {
   pg_private_endpoint = scaleway_rdb_instance.main.private_network[0]
   pg_host             = coalesce(try(local.pg_private_endpoint.ip, null), local.pg_private_endpoint.hostname)
   pg_port             = local.pg_private_endpoint.port
-  kms_key_ref         = "${module.context.key_ref_prefix}${scaleway_key_manager_key.kodama.id}"
+  kms_key_ref         = "${module.context.key_ref_prefix}${scaleway_key_manager_key.kodema.id}"
 
   deployment_descriptor = {
     cloud                 = module.context.cloud
@@ -22,8 +22,8 @@ locals {
       apiserver_url         = scaleway_k8s_cluster.main.apiserver_url
       cni                   = scaleway_k8s_cluster.main.cni
       storage_class         = var.workspace_storage_class
-      service_account_name  = "kodama"
-      workload_identity_ref = scaleway_iam_application.kodama_kms.id
+      service_account_name  = "kodema"
+      workload_identity_ref = scaleway_iam_application.kodema_kms.id
     }
     postgres = {
       instance_id    = scaleway_rdb_instance.main.id
@@ -37,9 +37,9 @@ locals {
     }
     kms = {
       key_adapter  = module.context.key_adapter
-      key_id       = scaleway_key_manager_key.kodama.id
+      key_id       = scaleway_key_manager_key.kodema.id
       key_ref      = local.kms_key_ref
-      iam_identity = scaleway_iam_application.kodama_kms.id
+      iam_identity = scaleway_iam_application.kodema_kms.id
     }
   }
 }
@@ -62,15 +62,15 @@ output "database_ca_certificate" {
 }
 
 output "kms_key_ref" {
-  description = "Kodama KMS key reference string."
+  description = "Kodema KMS key reference string."
   value       = local.kms_key_ref
 }
 
 output "kms_credentials" {
   description = "Dedicated least-privilege Scaleway IAM application credentials for KMS decrypt."
   value = {
-    access_key = scaleway_iam_api_key.kodama_kms.access_key
-    secret_key = scaleway_iam_api_key.kodama_kms.secret_key
+    access_key = scaleway_iam_api_key.kodema_kms.access_key
+    secret_key = scaleway_iam_api_key.kodema_kms.secret_key
     project_id = var.project_id
     region     = var.region
   }

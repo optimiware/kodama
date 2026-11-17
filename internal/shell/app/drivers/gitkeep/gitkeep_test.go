@@ -13,7 +13,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/userland/git"
+	"github.com/optimiware/kodema/internal/userland/git"
 )
 
 const testTenant = "tenant-a"

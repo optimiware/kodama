@@ -18,25 +18,25 @@ import (
 )
 
 // productionOIDCArgs returns the four environment variables
-// cmd/kodama/production.go refuses to start without. prefix is "" for the
-// kodama chart and "kodama." for the stack chart.
+// cmd/kodema/production.go refuses to start without. prefix is "" for the
+// kodema chart and "kodema." for the stack chart.
 func productionOIDCArgs(prefix string) []string {
 	return []string{
-		"--set", prefix + "config.extraEnv.KODAMA_OIDC_ISSUER=https://issuer.example",
-		"--set", prefix + "config.extraEnv.KODAMA_OIDC_AUDIENCE=kodama",
-		"--set", prefix + "config.extraEnv.KODAMA_OIDC_JWKS_URL=https://issuer.example/jwks",
-		"--set", prefix + "config.extraEnv.KODAMA_OIDC_TENANT_CLAIM=org_id",
+		"--set", prefix + "config.extraEnv.KODEMA_OIDC_ISSUER=https://issuer.example",
+		"--set", prefix + "config.extraEnv.KODEMA_OIDC_AUDIENCE=kodema",
+		"--set", prefix + "config.extraEnv.KODEMA_OIDC_JWKS_URL=https://issuer.example/jwks",
+		"--set", prefix + "config.extraEnv.KODEMA_OIDC_TENANT_CLAIM=org_id",
 	}
 }
 
-// kodamaProductionArgs renders the kodama chart with its production inputs.
-func kodamaProductionArgs(extra ...string) []string {
+// kodemaProductionArgs renders the kodema chart with its production inputs.
+func kodemaProductionArgs(extra ...string) []string {
 	return append(productionOIDCArgs(""), extra...)
 }
 
 // stackProductionArgs renders the stack chart with its production inputs.
 func stackProductionArgs(extra ...string) []string {
-	return append(productionOIDCArgs("kodama."), extra...)
+	return append(productionOIDCArgs("kodema."), extra...)
 }
 
 // renderedObjectNamed returns one rendered object by kind and metadata.name.
@@ -98,16 +98,16 @@ func renderedEnvEntry(t *testing.T, deployment map[string]any, name string) map[
 	return nil
 }
 
-// TestKodamaChartServiceAccountAndRBACCreateFalse proves an explicit
+// TestKodemaChartServiceAccountAndRBACCreateFalse proves an explicit
 // create=false actually disables the object. A `| default true` treats false
 // as an absent value and still renders both.
-func TestKodamaChartServiceAccountAndRBACCreateFalse(t *testing.T) {
+func TestKodemaChartServiceAccountAndRBACCreateFalse(t *testing.T) {
 	helm, charts := stagedCharts(t)
-	chart := filepath.Join(charts, "kodama")
+	chart := filepath.Join(charts, "kodema")
 
-	rendered, err := renderChartArgs(t, helm, "kodama", chart, kodamaProductionArgs()...)
+	rendered, err := renderChartArgs(t, helm, "kodema", chart, kodemaProductionArgs()...)
 	if err != nil {
-		t.Fatalf("helm template kodama: %v\n%s", err, rendered)
+		t.Fatalf("helm template kodema: %v\n%s", err, rendered)
 	}
 	if got := renderedKindCount(rendered, "ServiceAccount"); got != 1 {
 		t.Fatalf("default render has %d ServiceAccounts, want 1", got)
@@ -116,17 +116,17 @@ func TestKodamaChartServiceAccountAndRBACCreateFalse(t *testing.T) {
 		t.Fatalf("default render has %d ClusterRoleBindings, want 1", got)
 	}
 
-	rendered, err = renderChartArgs(t, helm, "kodama", chart, kodamaProductionArgs("--set", "serviceAccount.create=false")...)
+	rendered, err = renderChartArgs(t, helm, "kodema", chart, kodemaProductionArgs("--set", "serviceAccount.create=false")...)
 	if err != nil {
-		t.Fatalf("helm template kodama with serviceAccount.create=false: %v\n%s", err, rendered)
+		t.Fatalf("helm template kodema with serviceAccount.create=false: %v\n%s", err, rendered)
 	}
 	if got := renderedKindCount(rendered, "ServiceAccount"); got != 0 {
 		t.Errorf("serviceAccount.create=false still rendered %d ServiceAccounts:\n%s", got, rendered)
 	}
 
-	rendered, err = renderChartArgs(t, helm, "kodama", chart, kodamaProductionArgs("--set", "rbac.create=false")...)
+	rendered, err = renderChartArgs(t, helm, "kodema", chart, kodemaProductionArgs("--set", "rbac.create=false")...)
 	if err != nil {
-		t.Fatalf("helm template kodama with rbac.create=false: %v\n%s", err, rendered)
+		t.Fatalf("helm template kodema with rbac.create=false: %v\n%s", err, rendered)
 	}
 	for _, kind := range []string{"ClusterRole", "ClusterRoleBinding", "Role", "RoleBinding"} {
 		if got := renderedKindCount(rendered, kind); got != 0 {
@@ -135,21 +135,21 @@ func TestKodamaChartServiceAccountAndRBACCreateFalse(t *testing.T) {
 	}
 
 	// An absent create key keeps the documented default (create).
-	rendered, err = renderChartArgs(t, helm, "kodama", chart, kodamaProductionArgs("--set-json", "serviceAccount={}")...)
+	rendered, err = renderChartArgs(t, helm, "kodema", chart, kodemaProductionArgs("--set-json", "serviceAccount={}")...)
 	if err != nil {
-		t.Fatalf("helm template kodama with an empty serviceAccount object: %v\n%s", err, rendered)
+		t.Fatalf("helm template kodema with an empty serviceAccount object: %v\n%s", err, rendered)
 	}
 	if got := renderedKindCount(rendered, "ServiceAccount"); got != 1 {
 		t.Errorf("an absent serviceAccount.create rendered %d ServiceAccounts, want the default 1", got)
 	}
 }
 
-// TestKodamaChartImageDigestSchemaRejectsNonDigest pins the schema grammar at
+// TestKodemaChartImageDigestSchemaRejectsNonDigest pins the schema grammar at
 // render time: only an empty value or a full lower-case sha256 digest is
 // accepted.
-func TestKodamaChartImageDigestSchemaRejectsNonDigest(t *testing.T) {
+func TestKodemaChartImageDigestSchemaRejectsNonDigest(t *testing.T) {
 	helm, charts := stagedCharts(t)
-	chart := filepath.Join(charts, "kodama")
+	chart := filepath.Join(charts, "kodema")
 
 	for _, digest := range []string{
 		"sha256:abc",
@@ -158,7 +158,7 @@ func TestKodamaChartImageDigestSchemaRejectsNonDigest(t *testing.T) {
 		"sha512:" + strings.Repeat("a", 64),
 		"latest",
 	} {
-		rendered, err := renderChartArgs(t, helm, "kodama", chart, kodamaProductionArgs("--set", "image.digest="+digest)...)
+		rendered, err := renderChartArgs(t, helm, "kodema", chart, kodemaProductionArgs("--set", "image.digest="+digest)...)
 		if err == nil {
 			t.Errorf("helm template accepted image.digest=%q:\n%s", digest, rendered)
 			continue
@@ -169,24 +169,24 @@ func TestKodamaChartImageDigestSchemaRejectsNonDigest(t *testing.T) {
 	}
 
 	digest := "sha256:" + strings.Repeat("a", 64)
-	rendered, err := renderChartArgs(t, helm, "kodama", chart, kodamaProductionArgs("--set", "image.digest="+digest)...)
+	rendered, err := renderChartArgs(t, helm, "kodema", chart, kodemaProductionArgs("--set", "image.digest="+digest)...)
 	if err != nil {
 		t.Fatalf("helm template refused a valid image digest: %v\n%s", err, rendered)
 	}
-	if !strings.Contains(rendered, "registry.example.com/kodama@"+digest) {
+	if !strings.Contains(rendered, "registry.example.com/kodema@"+digest) {
 		t.Errorf("rendered Deployment does not use the digest image reference:\n%s", rendered)
 	}
 }
 
-// TestKodamaChartDatabaseCAVolumeIsRequired proves the database CA Secret is
+// TestKodemaChartDatabaseCAVolumeIsRequired proves the database CA Secret is
 // mounted without optional: true. A missing Secret must stop the pod instead
 // of starting it without a certificate root.
-func TestKodamaChartDatabaseCAVolumeIsRequired(t *testing.T) {
+func TestKodemaChartDatabaseCAVolumeIsRequired(t *testing.T) {
 	helm, charts := stagedCharts(t)
-	chart := filepath.Join(charts, "kodama")
-	rendered, err := renderChartArgs(t, helm, "kodama", chart, kodamaProductionArgs()...)
+	chart := filepath.Join(charts, "kodema")
+	rendered, err := renderChartArgs(t, helm, "kodema", chart, kodemaProductionArgs()...)
 	if err != nil {
-		t.Fatalf("helm template kodama: %v\n%s", err, rendered)
+		t.Fatalf("helm template kodema: %v\n%s", err, rendered)
 	}
 	deployment := renderedObjectOfKind(t, rendered, "Deployment")
 	volume := renderedVolume(t, deployment, "database-ca")
@@ -194,23 +194,23 @@ func TestKodamaChartDatabaseCAVolumeIsRequired(t *testing.T) {
 	if optional, present := secret["optional"]; present && optional == true {
 		t.Fatalf("database-ca Secret volume is optional: %v", secret)
 	}
-	if stringAtKey(t, secret, "secretName") != "kodama-database" {
-		t.Errorf("database-ca volume does not read the kodama-database Secret: %v", secret)
+	if stringAtKey(t, secret, "secretName") != "kodema-database" {
+		t.Errorf("database-ca volume does not read the kodema-database Secret: %v", secret)
 	}
 }
 
-// TestKodamaChartKMSenvFromFollowsProfile proves the KMS credential Secret is
+// TestKodemaChartKMSenvFromFollowsProfile proves the KMS credential Secret is
 // required in production for the default scw-kms adapter (its composition
 // requires SCW_SECRET_KEY) and optional only for a development or test profile.
 // The aws-kms and gcp-kms adapters, which render no reference in production,
 // are covered by kms_credential_mode_component_test.go.
-func TestKodamaChartKMSenvFromFollowsProfile(t *testing.T) {
+func TestKodemaChartKMSenvFromFollowsProfile(t *testing.T) {
 	helm, charts := stagedCharts(t)
-	chart := filepath.Join(charts, "kodama")
+	chart := filepath.Join(charts, "kodema")
 
-	rendered, err := renderChartArgs(t, helm, "kodama", chart, kodamaProductionArgs()...)
+	rendered, err := renderChartArgs(t, helm, "kodema", chart, kodemaProductionArgs()...)
 	if err != nil {
-		t.Fatalf("helm template kodama: %v\n%s", err, rendered)
+		t.Fatalf("helm template kodema: %v\n%s", err, rendered)
 	}
 	deployment := renderedObjectOfKind(t, rendered, "Deployment")
 	containers := containersOf(t, deployment)
@@ -222,16 +222,16 @@ func TestKodamaChartKMSenvFromFollowsProfile(t *testing.T) {
 		t.Fatalf("rendered Deployment envFrom = %v, want exactly the KMS Secret", containers[0]["envFrom"])
 	}
 	entry := objectAtKey(t, envFrom[0].(map[string]any), "secretRef")
-	if stringAtKey(t, entry, "name") != "kodama-kms-credentials" {
-		t.Errorf("envFrom does not read kodama-kms-credentials: %v", entry)
+	if stringAtKey(t, entry, "name") != "kodema-kms-credentials" {
+		t.Errorf("envFrom does not read kodema-kms-credentials: %v", entry)
 	}
 	if optional, present := entry["optional"]; present && optional == true {
 		t.Errorf("production envFrom marks the KMS credentials optional: %v", entry)
 	}
 
-	rendered, err = renderChartArgs(t, helm, "kodama", chart, kodamaProductionArgs("--set", "environment=development")...)
+	rendered, err = renderChartArgs(t, helm, "kodema", chart, kodemaProductionArgs("--set", "environment=development")...)
 	if err != nil {
-		t.Fatalf("helm template kodama with environment=development: %v\n%s", err, rendered)
+		t.Fatalf("helm template kodema with environment=development: %v\n%s", err, rendered)
 	}
 	development := renderedObjectOfKind(t, rendered, "Deployment")
 	devContainers := containersOf(t, development)
@@ -245,20 +245,20 @@ func TestKodamaChartKMSenvFromFollowsProfile(t *testing.T) {
 	}
 }
 
-// TestKodamaChartRequiresProductionOIDC proves the render fails when the four
+// TestKodemaChartRequiresProductionOIDC proves the render fails when the four
 // production OIDC variables are missing, naming the variable, and succeeds
 // once they are supplied. A development profile does not require them.
-func TestKodamaChartRequiresProductionOIDC(t *testing.T) {
+func TestKodemaChartRequiresProductionOIDC(t *testing.T) {
 	helm, charts := stagedCharts(t)
-	chart := filepath.Join(charts, "kodama")
+	chart := filepath.Join(charts, "kodema")
 
-	rendered, err := renderChartArgs(t, helm, "kodama", chart)
+	rendered, err := renderChartArgs(t, helm, "kodema", chart)
 	if err == nil {
 		t.Fatalf("helm template accepted a production render without OIDC variables:\n%s", rendered)
 	}
 	named := false
 	for _, name := range []string{
-		"KODAMA_OIDC_ISSUER", "KODAMA_OIDC_AUDIENCE", "KODAMA_OIDC_JWKS_URL", "KODAMA_OIDC_TENANT_CLAIM",
+		"KODEMA_OIDC_ISSUER", "KODEMA_OIDC_AUDIENCE", "KODEMA_OIDC_JWKS_URL", "KODEMA_OIDC_TENANT_CLAIM",
 	} {
 		if strings.Contains(rendered, name) {
 			named = true
@@ -268,12 +268,12 @@ func TestKodamaChartRequiresProductionOIDC(t *testing.T) {
 		t.Errorf("the production OIDC refusal names none of the required variables:\n%s", rendered)
 	}
 
-	rendered, err = renderChartArgs(t, helm, "kodama", chart, kodamaProductionArgs()...)
+	rendered, err = renderChartArgs(t, helm, "kodema", chart, kodemaProductionArgs()...)
 	if err != nil {
 		t.Fatalf("helm template refused a production render with OIDC variables: %v\n%s", err, rendered)
 	}
 
-	rendered, err = renderChartArgs(t, helm, "kodama", chart, "--set", "environment=development")
+	rendered, err = renderChartArgs(t, helm, "kodema", chart, "--set", "environment=development")
 	if err != nil {
 		t.Fatalf("helm template refused a development render without OIDC variables: %v\n%s", err, rendered)
 	}
@@ -281,7 +281,7 @@ func TestKodamaChartRequiresProductionOIDC(t *testing.T) {
 	// The template guard is a second layer: with the schema requirement removed
 	// it must still refuse the production render with its own message.
 	helm, charts = stagedCharts(t)
-	chart = filepath.Join(charts, "kodama")
+	chart = filepath.Join(charts, "kodema")
 	schemaPath := filepath.Join(chart, "values.schema.json")
 	schemaMap := map[string]any{}
 	if err := json.Unmarshal([]byte(readFileForTest(t, schemaPath)), &schemaMap); err != nil {
@@ -294,7 +294,7 @@ func TestKodamaChartRequiresProductionOIDC(t *testing.T) {
 	}
 	rewriteStagedFile(t, schemaPath, string(encoded))
 
-	rendered, err = renderChartArgs(t, helm, "kodama", chart)
+	rendered, err = renderChartArgs(t, helm, "kodema", chart)
 	if err == nil {
 		t.Fatalf("template guard accepted a production render without OIDC variables:\n%s", rendered)
 	}
@@ -313,15 +313,15 @@ func readFileForTest(t *testing.T, path string) string {
 	return string(body)
 }
 
-// TestKodamaChartSecretKeyReferencesAndTLSPaths pins the exact Secret keys the
+// TestKodemaChartSecretKeyReferencesAndTLSPaths pins the exact Secret keys the
 // server environment reads, plus the fixed TLS/CA paths. A rename on either
 // side would otherwise surface only when a stage pod fails to start.
-func TestKodamaChartSecretKeyReferencesAndTLSPaths(t *testing.T) {
+func TestKodemaChartSecretKeyReferencesAndTLSPaths(t *testing.T) {
 	helm, charts := stagedCharts(t)
-	chart := filepath.Join(charts, "kodama")
-	rendered, err := renderChartArgs(t, helm, "kodama", chart, kodamaProductionArgs()...)
+	chart := filepath.Join(charts, "kodema")
+	rendered, err := renderChartArgs(t, helm, "kodema", chart, kodemaProductionArgs()...)
 	if err != nil {
-		t.Fatalf("helm template kodama: %v\n%s", err, rendered)
+		t.Fatalf("helm template kodema: %v\n%s", err, rendered)
 	}
 	deployment := renderedObjectOfKind(t, rendered, "Deployment")
 
@@ -330,11 +330,11 @@ func TestKodamaChartSecretKeyReferencesAndTLSPaths(t *testing.T) {
 		secret string
 		key    string
 	}{
-		{"KODAMA_DATABASE_URL", "kodama-database", "database_url"},
-		{"KODAMA_CONTROLLER_DATABASE_URL", "kodama-database", "controller_url"},
-		{"KODAMA_PUBLISHER_DATABASE_URL", "kodama-database", "publisher_url"},
-		{"KODAMA_AUTH_DATABASE_URL", "kodama-database", "auth_url"},
-		{"KODAMA_NATS_URL", "kodama-broker", "nats_url"},
+		{"KODEMA_DATABASE_URL", "kodema-database", "database_url"},
+		{"KODEMA_CONTROLLER_DATABASE_URL", "kodema-database", "controller_url"},
+		{"KODEMA_PUBLISHER_DATABASE_URL", "kodema-database", "publisher_url"},
+		{"KODEMA_AUTH_DATABASE_URL", "kodema-database", "auth_url"},
+		{"KODEMA_NATS_URL", "kodema-broker", "nats_url"},
 	}
 	for _, reference := range references {
 		entry := renderedEnvEntry(t, deployment, reference.name)
@@ -352,11 +352,11 @@ func TestKodamaChartSecretKeyReferencesAndTLSPaths(t *testing.T) {
 	}
 
 	fixed := map[string]string{
-		"KODAMA_NATS_CA_FILE":   "/etc/kodama/broker-tls/ca.crt",
-		"KODAMA_NATS_CERT_FILE": "/etc/kodama/broker-tls/tls.crt",
-		"KODAMA_NATS_KEY_FILE":  "/etc/kodama/broker-tls/tls.key",
-		"KODAMA_TLS_DIR":        "/etc/kodama/tls",
-		"KODAMA_KEY_BLOBS_DIR":  "/etc/kodama/keys",
+		"KODEMA_NATS_CA_FILE":   "/etc/kodema/broker-tls/ca.crt",
+		"KODEMA_NATS_CERT_FILE": "/etc/kodema/broker-tls/tls.crt",
+		"KODEMA_NATS_KEY_FILE":  "/etc/kodema/broker-tls/tls.key",
+		"KODEMA_TLS_DIR":        "/etc/kodema/tls",
+		"KODEMA_KEY_BLOBS_DIR":  "/etc/kodema/keys",
 	}
 	for name, want := range fixed {
 		entry := renderedEnvEntry(t, deployment, name)
@@ -366,36 +366,36 @@ func TestKodamaChartSecretKeyReferencesAndTLSPaths(t *testing.T) {
 	}
 }
 
-// assertKodamaRecreateClearsRollingUpdate proves the rendered kodama strategy
-// block clears rollingUpdate. The kodama Deployment has always been Recreate on
+// assertKodemaRecreateClearsRollingUpdate proves the rendered kodema strategy
+// block clears rollingUpdate. The kodema Deployment has always been Recreate on
 // the stage (a controller upgrade must never overlap two pods), so the null
 // keeps the submitted object free of the API-server-defaulted field. It does
 // not switch an existing RollingUpdate Deployment to Recreate under server-side
 // apply; deploy/README.md documents the one-time operator remedy for that.
-func assertKodamaRecreateClearsRollingUpdate(t *testing.T, deployment map[string]any) {
+func assertKodemaRecreateClearsRollingUpdate(t *testing.T, deployment map[string]any) {
 	t.Helper()
 	strategy := objectAtKey(t, deployment, "spec")
 	strategy = objectAtKey(t, strategy, "strategy")
 	if stringAtKey(t, strategy, "type") != "Recreate" {
-		t.Errorf("kodama: strategy.type = %q, want Recreate", stringAtKey(t, strategy, "type"))
+		t.Errorf("kodema: strategy.type = %q, want Recreate", stringAtKey(t, strategy, "type"))
 	}
 	rollingUpdate, present := strategy["rollingUpdate"]
 	if !present || rollingUpdate != nil {
-		t.Errorf("kodama: strategy.rollingUpdate = %v (present=%v), want an explicit null", rollingUpdate, present)
+		t.Errorf("kodema: strategy.rollingUpdate = %v (present=%v), want an explicit null", rollingUpdate, present)
 	}
 }
 
-// TestRecreateDeploymentsClearRollingUpdate pins the kodama Deployment: it is
+// TestRecreateDeploymentsClearRollingUpdate pins the kodema Deployment: it is
 // Recreate on the stage and clears rollingUpdate, so an upgrade of that
 // existing object stays valid.
 func TestRecreateDeploymentsClearRollingUpdate(t *testing.T) {
 	helm, charts := stagedCharts(t)
-	chart := filepath.Join(charts, "kodama")
-	rendered, err := renderChartArgs(t, helm, "kodama", chart, kodamaProductionArgs()...)
+	chart := filepath.Join(charts, "kodema")
+	rendered, err := renderChartArgs(t, helm, "kodema", chart, kodemaProductionArgs()...)
 	if err != nil {
-		t.Fatalf("helm template kodama: %v\n%s", err, rendered)
+		t.Fatalf("helm template kodema: %v\n%s", err, rendered)
 	}
-	assertKodamaRecreateClearsRollingUpdate(t, renderedObjectOfKind(t, rendered, "Deployment"))
+	assertKodemaRecreateClearsRollingUpdate(t, renderedObjectOfKind(t, rendered, "Deployment"))
 }
 
 // checkOAuthSonasSinglePodStrategy verifies the rendered OAuthSonas
@@ -455,7 +455,7 @@ func intAtKey(object map[string]any, key string) (int, bool) {
 func TestOAuthSonasDeploymentStrategyIsSinglePodRollingUpdate(t *testing.T) {
 	helm, stack := stageStackChart(t)
 	values := oauthSonasValuesFile(t, oauthSonasBaseValues)
-	rendered, err := oauthSonasRender(t, helm, stack, "kodama-system", values)
+	rendered, err := oauthSonasRender(t, helm, stack, "kodema-system", values)
 	if err != nil {
 		t.Fatalf("helm template enabled oauthsonas: %v\n%s", err, rendered)
 	}
@@ -509,7 +509,7 @@ func TestOAuthSonasDeploymentStrategyIsSinglePodRollingUpdate(t *testing.T) {
 			rewriteStagedFile(t, path, mutated)
 
 			values := oauthSonasValuesFile(t, oauthSonasBaseValues)
-			rendered, err := oauthSonasRender(t, helm, stack, "kodama-system", values)
+			rendered, err := oauthSonasRender(t, helm, stack, "kodema-system", values)
 			if mutation.renderFails {
 				if err == nil {
 					t.Fatalf("render accepted the mutation %q:\n%s", mutation.name, rendered)
@@ -533,9 +533,9 @@ func TestOAuthSonasDeploymentStrategyIsSinglePodRollingUpdate(t *testing.T) {
 // both the tag pin and the digest, and that neither can be removed.
 func TestStackChartNATSImageIsTagAndDigestPinned(t *testing.T) {
 	helm, stack := stageStackChart(t)
-	rendered, err := renderChartArgs(t, helm, "kodama-stack", stack, stackProductionArgs()...)
+	rendered, err := renderChartArgs(t, helm, "kodema-stack", stack, stackProductionArgs()...)
 	if err != nil {
-		t.Fatalf("helm template kodama-stack: %v\n%s", err, rendered)
+		t.Fatalf("helm template kodema-stack: %v\n%s", err, rendered)
 	}
 	statefulSet := renderedObjectOfKind(t, rendered, "StatefulSet")
 	podSpec := objectAtKey(t, objectAtKey(t, statefulSet, "spec"), "template")
@@ -553,7 +553,7 @@ func TestStackChartNATSImageIsTagAndDigestPinned(t *testing.T) {
 		{"--set", "nats.image.digest="},
 		{"--set", "nats.image.tag="},
 	} {
-		rendered, err := renderChartArgs(t, helm, "kodama-stack", stack, stackProductionArgs(override...)...)
+		rendered, err := renderChartArgs(t, helm, "kodema-stack", stack, stackProductionArgs(override...)...)
 		if err == nil {
 			t.Errorf("helm template accepted %v:\n%s", override, rendered)
 		}

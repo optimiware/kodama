@@ -4,17 +4,17 @@ package production
 
 // Q02 runtime-isolation probe. It proves the deployed stage gives each tenant a
 // distinct namespace with the baseline pod-security profile, a LimitRange and a
-// default-deny NetworkPolicy that admits only cluster DNS and Kodama, that an
+// default-deny NetworkPolicy that admits only cluster DNS and Kodema, that an
 // actual workload carries bounded CPU/memory requests and limits, and that a
 // live tenant-A workload cannot reach a live tenant-B listener while it can
-// still reach Kodama and cannot reach the Kubernetes API.
+// still reach Kodema and cannot reach the Kubernetes API.
 
 import (
 	"context"
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
+	"github.com/optimiware/kodema/api"
 )
 
 // TestStageRuntimeIsolation is Q02 probe (i). Required image: a POSIX shell with
@@ -94,12 +94,12 @@ func TestStageRuntimeIsolation(t *testing.T) {
 		t.Fatalf("tenant B's listener exited before the probe connected (state %q); the workload image needs a working nc", stillRunning.State)
 	}
 
-	kodamaService, err := resilienceKodamaService()
+	kodemaService, err := resilienceKodemaService()
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
 	clientExecution := isolationStart(t, runtime.A.Stage,
-		isolationNetworkClientPipeline(networkImage, serverIP, kodamaService, isolatedMarker), "isolation-net-client")
+		isolationNetworkClientPipeline(networkImage, serverIP, kodemaService, isolatedMarker), "isolation-net-client")
 	clientPod, err := isolationWaitPod(ctx, runtime.Kubectl, runtime.A.Namespace, isolationExecutionLabel+"="+clientExecution, 2*time.Minute)
 	if err != nil {
 		t.Fatalf("tenant A's network client pod did not start: %v", err)

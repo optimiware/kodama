@@ -15,5 +15,5 @@ output "project_id" {
 
 output "state_prefix_template" {
   description = "Per-cluster GCS state prefix template."
-  value       = "kodama/gcp/${var.project_id}/${var.region}/<cluster_name>"
+  value       = "kodema/gcp/${var.project_id}/${var.region}/<cluster_name>"
 }

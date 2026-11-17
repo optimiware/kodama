@@ -12,7 +12,7 @@ import (
 
 func fakeBinary(t *testing.T) string {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "kodama")
+	path := filepath.Join(t.TempDir(), "kodema")
 	if err := os.WriteFile(path, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
 		t.Fatalf("WriteFile binary: %v", err)
 	}
@@ -221,7 +221,7 @@ func TestInitBareRepositorySetsTransportConfigOnly(t *testing.T) {
 	}
 	for _, forbidden := range []string{"receive.denyDeletes", "receive.denyNonFastForwards"} {
 		if err := exec.Command("git", "-C", path, "config", "--get", forbidden).Run(); err == nil {
-			t.Fatalf("%s was set; ref policy belongs to Kodama rules", forbidden)
+			t.Fatalf("%s was set; ref policy belongs to Kodema rules", forbidden)
 		}
 	}
 	head, err := exec.Command("git", "-C", path, "symbolic-ref", "HEAD").Output()

@@ -6,12 +6,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/shell/event"
-	"github.com/optimiware/kodama/internal/shell/store"
-	"github.com/optimiware/kodama/internal/shell/trigger"
-	"github.com/optimiware/kodama/internal/shell/verify"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/shell/event"
+	"github.com/optimiware/kodema/internal/shell/store"
+	"github.com/optimiware/kodema/internal/shell/trigger"
+	"github.com/optimiware/kodema/internal/shell/verify"
 )
 
 type metricsOutbox struct {
@@ -68,12 +68,12 @@ func TestMetricsCollectRendersEveryNamedSeries(t *testing.T) {
 		t.Fatalf("collect: %v", err)
 	}
 	for _, want := range []string{
-		"kodama_publication_backlog 2\n",
-		"kodama_consumer_lag 3\n",
-		"kodama_pending_cleanup 4\n",
-		"kodama_refused_pushes_total 2\n",
-		"kodama_refused_reports_total 1\n",
-		"kodama_dependency_errors_total 1\n",
+		"kodema_publication_backlog 2\n",
+		"kodema_consumer_lag 3\n",
+		"kodema_pending_cleanup 4\n",
+		"kodema_refused_pushes_total 2\n",
+		"kodema_refused_reports_total 1\n",
+		"kodema_dependency_errors_total 1\n",
 	} {
 		if !strings.Contains(string(body), want) {
 			t.Fatalf("exposition has no %q:\n%s", want, body)

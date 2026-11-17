@@ -80,13 +80,13 @@ func TestAllowedInstallationImportURLOnly(t *testing.T) {
 // path.
 func allowedInstallationImport(path string) bool {
 	switch {
-	case path == "github.com/optimiware/kodama/api" || strings.HasPrefix(path, "github.com/optimiware/kodama/api/"):
+	case path == "github.com/optimiware/kodema/api" || strings.HasPrefix(path, "github.com/optimiware/kodema/api/"):
 		return true
-	case path == "github.com/optimiware/kodama/internal/id" || strings.HasPrefix(path, "github.com/optimiware/kodama/internal/id/"):
+	case path == "github.com/optimiware/kodema/internal/id" || strings.HasPrefix(path, "github.com/optimiware/kodema/internal/id/"):
 		return true
-	case path == "github.com/optimiware/kodama/internal/fault" || strings.HasPrefix(path, "github.com/optimiware/kodama/internal/fault/"):
+	case path == "github.com/optimiware/kodema/internal/fault" || strings.HasPrefix(path, "github.com/optimiware/kodema/internal/fault/"):
 		return true
-	case strings.HasPrefix(path, "github.com/optimiware/kodama/"):
+	case strings.HasPrefix(path, "github.com/optimiware/kodema/"):
 		return false
 	}
 

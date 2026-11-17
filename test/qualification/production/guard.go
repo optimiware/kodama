@@ -9,7 +9,7 @@ import (
 )
 
 // ReleaseNamespace is the one non-tenant namespace a Q02 run may mutate.
-const ReleaseNamespace = "kodama-system"
+const ReleaseNamespace = "kodema-system"
 
 // Access is one namespaced kubectl access the guard evaluates before a process
 // starts.
@@ -113,7 +113,7 @@ func (guard *Guard) Normalize(access Access) (Access, error) {
 			return Access{}, fmt.Errorf("kubernetes mutation of %q is not allowlisted", access.Resource)
 		}
 		// Claim mutation is limited to deleting one owned retained workspace
-		// claim in an assigned tenant namespace. kodama-system holds the Git
+		// claim in an assigned tenant namespace. kodema-system holds the Git
 		// keep claim and the NATS claim, whose loss is never a probe outcome.
 		if baseResource(access.Resource) == "persistentvolumeclaims" {
 			if access.Verb != "delete" {
@@ -208,7 +208,7 @@ var allowedMutations = map[string]bool{
 	// A workspace-loss probe must delete exactly one owned retained claim in an
 	// assigned tenant namespace. The live probe is gated on an explicit
 	// disposable-stage confirmation; Normalize additionally refuses any other
-	// claim verb and every claim mutation in kodama-system, which holds the Git
+	// claim verb and every claim mutation in kodema-system, which holds the Git
 	// keep claim and the NATS claim.
 	"persistentvolumeclaims": true,
 }

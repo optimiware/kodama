@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# install.sh: install and start the single-host Kodama `test` environment with
+# install.sh: install and start the single-host Kodema `test` environment with
 # rootless Podman.
 #
 # Prerequisites: rootless Podman with a running `podman system service` socket,
@@ -69,28 +69,28 @@ usage: deploy/podman/install.sh [--refresh-credentials]
                          (the normal install keeps a still-valid credential)
 
 Environment (all optional, safe defaults):
-  KODAMA_LOCAL_PREFIX              container/label prefix      (kodama-local)
-  KODAMA_LOCAL_STATE_DIR           absolute state directory    (~/.local/state/kodama/podman/<prefix>)
-  KODAMA_LOCAL_HTTPS_PORT          Kodama HTTPS port           (18443)
-  KODAMA_LOCAL_OIDC_PORT           OAuthSonas TLS port         (18444)
-  KODAMA_LOCAL_GIT_PORT            git serve HTTP port         (18081)
-  KODAMA_LOCAL_GIT_HTTPS_PORT      Git HTTPS front-end port    (18445)
-  KODAMA_LOCAL_POSTGRES_PORT       PostgreSQL port on loopback (15432)
-  KODAMA_LOCAL_NATS_PORT           NATS client port on loopback (14222)
-  KODAMA_LOCAL_NATS_MONITOR_PORT   NATS monitor port           (18222)
-  KODAMA_LOCAL_OAUTH_UPSTREAM_PORT OAuthSonas plain HTTP port  (18181)
-  KODAMA_LOCAL_TENANT              tenant id                   (tenant-local)
-  KODAMA_LOCAL_PROJECT             project id (defaults to the tenant; OAuthSonas
+  KODEMA_LOCAL_PREFIX              container/label prefix      (kodema-local)
+  KODEMA_LOCAL_STATE_DIR           absolute state directory    (~/.local/state/kodema/podman/<prefix>)
+  KODEMA_LOCAL_HTTPS_PORT          Kodema HTTPS port           (18443)
+  KODEMA_LOCAL_OIDC_PORT           OAuthSonas TLS port         (18444)
+  KODEMA_LOCAL_GIT_PORT            git serve HTTP port         (18081)
+  KODEMA_LOCAL_GIT_HTTPS_PORT      Git HTTPS front-end port    (18445)
+  KODEMA_LOCAL_POSTGRES_PORT       PostgreSQL port on loopback (15432)
+  KODEMA_LOCAL_NATS_PORT           NATS client port on loopback (14222)
+  KODEMA_LOCAL_NATS_MONITOR_PORT   NATS monitor port           (18222)
+  KODEMA_LOCAL_OAUTH_UPSTREAM_PORT OAuthSonas plain HTTP port  (18181)
+  KODEMA_LOCAL_TENANT              tenant id                   (tenant-local)
+  KODEMA_LOCAL_PROJECT             project id (defaults to the tenant; OAuthSonas
                                    carries one claim, so humans are project-scoped
                                    and the default project is named like the tenant)
-  KODAMA_LOCAL_POSTGRES_IMAGE      pinned PostgreSQL image
-  KODAMA_LOCAL_NATS_IMAGE          pinned NATS image
-  KODAMA_LOCAL_OAUTHSONAS_IMAGE    pinned OAuthSonas image
-  KODAMA_LOCAL_WORKLOAD_IMAGE      pinned pre-pulled workload image
-  KODAMA_LOCAL_EXTERNAL_HARNESS_IMAGE pinned external-harness workload image
-  KODAMA_LOCAL_GIT_RESOURCES       comma-separated repo=resource mappings (admin=git-admin)
-  KODAMA_LOCAL_KODAMA_IMAGE        use an existing kodama image instead of building
-  KODAMA_LOCAL_PODMAN_SOCKET       Podman API socket           ($XDG_RUNTIME_DIR/podman/podman.sock)
+  KODEMA_LOCAL_POSTGRES_IMAGE      pinned PostgreSQL image
+  KODEMA_LOCAL_NATS_IMAGE          pinned NATS image
+  KODEMA_LOCAL_OAUTHSONAS_IMAGE    pinned OAuthSonas image
+  KODEMA_LOCAL_WORKLOAD_IMAGE      pinned pre-pulled workload image
+  KODEMA_LOCAL_EXTERNAL_HARNESS_IMAGE pinned external-harness workload image
+  KODEMA_LOCAL_GIT_RESOURCES       comma-separated repo=resource mappings (admin=git-admin)
+  KODEMA_LOCAL_KODEMA_IMAGE        use an existing kodema image instead of building
+  KODEMA_LOCAL_PODMAN_SOCKET       Podman API socket           ($XDG_RUNTIME_DIR/podman/podman.sock)
 
 Every image override must be tag@sha256:<64 hex>; a bare tag is refused.
 USAGE
@@ -133,10 +133,10 @@ case "$git_version" in
 esac
 
 podman info >/dev/null 2>&1 || die "rootless Podman is not usable for this user"
-[ -S "$PODMAN_SOCKET" ] || die "KODAMA_LOCAL_PODMAN_SOCKET does not name an existing Unix socket: ${PODMAN_SOCKET} (start it with: systemctl --user enable --now podman.socket; if the unit is already active, systemctl --user restart podman.socket)"
+[ -S "$PODMAN_SOCKET" ] || die "KODEMA_LOCAL_PODMAN_SOCKET does not name an existing Unix socket: ${PODMAN_SOCKET} (start it with: systemctl --user enable --now podman.socket; if the unit is already active, systemctl --user restart podman.socket)"
 
 host_ip="$(host_address)"
-log "host ${host_ip}: Kodama https ${HTTPS_PORT}, OAuthSonas https ${OIDC_PORT}, git ${GIT_PORT}, git https ${GIT_HTTPS_PORT}, PostgreSQL ${POSTGRES_PORT}, NATS ${NATS_PORT}"
+log "host ${host_ip}: Kodema https ${HTTPS_PORT}, OAuthSonas https ${OIDC_PORT}, git ${GIT_PORT}, git https ${GIT_HTTPS_PORT}, PostgreSQL ${POSTGRES_PORT}, NATS ${NATS_PORT}"
 
 # ---- state directory and markers ------------------------------------------
 
@@ -160,7 +160,7 @@ for directory in "$tls_dir" "$secrets_dir" "$versions_dir" "$data_dir" "$oauth_d
 	ensure_dir "$directory" 700
 done
 
-# ---- TLS: one private CA, one Kodama leaf, one OAuthSonas leaf -------------
+# ---- TLS: one private CA, one Kodema leaf, one OAuthSonas leaf -------------
 
 if [ ! -s "$tls_dir/ca.crt" ] || [ ! -s "$tls_dir/ca.key" ]; then
 	log "creating the private installation CA"
@@ -168,7 +168,7 @@ if [ ! -s "$tls_dir/ca.crt" ] || [ ! -s "$tls_dir/ca.key" ]; then
 	# RFC 5280 verifiers (Python 3.13 and newer enable that mode by default).
 	openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes \
 		-keyout "$tls_dir/ca.key" -out "$tls_dir/ca.crt" -days 825 \
-		-subj "/CN=Kodama local install CA" \
+		-subj "/CN=Kodema local install CA" \
 		-addext "keyUsage=critical,keyCertSign,cRLSign" >/dev/null 2>&1
 fi
 chmod 600 "$tls_dir/ca.key"
@@ -210,7 +210,7 @@ chmod 644 "$ca_bundle"
 # ---- secrets and 0600 environment files -----------------------------------
 
 ensure_secret "$secrets_dir/postgres-superuser-password" 24
-ensure_secret "$secrets_dir/kodama-admin-password" 24
+ensure_secret "$secrets_dir/kodema-admin-password" 24
 ensure_secret "$secrets_dir/runtime-password" 24
 ensure_secret "$secrets_dir/controller-password" 24
 ensure_secret "$secrets_dir/publisher-password" 24
@@ -218,71 +218,71 @@ ensure_secret "$secrets_dir/auth-password" 24
 ensure_secret "$access_code_file" 16
 
 postgres_password="$(cat "$secrets_dir/postgres-superuser-password")"
-admin_password="$(cat "$secrets_dir/kodama-admin-password")"
+admin_password="$(cat "$secrets_dir/kodema-admin-password")"
 runtime_password="$(cat "$secrets_dir/runtime-password")"
 controller_password="$(cat "$secrets_dir/controller-password")"
 publisher_password="$(cat "$secrets_dir/publisher-password")"
 auth_password="$(cat "$secrets_dir/auth-password")"
 access_code="$(cat "$access_code_file")"
 
-database_url="postgres://kodama_runtime:${runtime_password}@127.0.0.1:${POSTGRES_PORT}/${DATABASE}?sslmode=disable"
-controller_url="postgres://kodama_controller:${controller_password}@127.0.0.1:${POSTGRES_PORT}/${DATABASE}?sslmode=disable"
-publisher_url="postgres://kodama_publisher:${publisher_password}@127.0.0.1:${POSTGRES_PORT}/${DATABASE}?sslmode=disable"
-auth_url="postgres://kodama_auth:${auth_password}@127.0.0.1:${POSTGRES_PORT}/${DATABASE}?sslmode=disable"
-admin_url="postgres://kodama_admin:${admin_password}@127.0.0.1:${POSTGRES_PORT}/postgres?sslmode=disable"
+database_url="postgres://kodema_runtime:${runtime_password}@127.0.0.1:${POSTGRES_PORT}/${DATABASE}?sslmode=disable"
+controller_url="postgres://kodema_controller:${controller_password}@127.0.0.1:${POSTGRES_PORT}/${DATABASE}?sslmode=disable"
+publisher_url="postgres://kodema_publisher:${publisher_password}@127.0.0.1:${POSTGRES_PORT}/${DATABASE}?sslmode=disable"
+auth_url="postgres://kodema_auth:${auth_password}@127.0.0.1:${POSTGRES_PORT}/${DATABASE}?sslmode=disable"
+admin_url="postgres://kodema_admin:${admin_password}@127.0.0.1:${POSTGRES_PORT}/postgres?sslmode=disable"
 
 write_env "$postgres_env" "POSTGRES_PASSWORD=${postgres_password}"
 write_env "$migrate_env" \
-	"KODAMA_PROFILE=test" \
-	"KODAMA_ADMIN_DATABASE_URL=${admin_url}" \
-	"KODAMA_DATABASE_URL=${database_url}" \
-	"KODAMA_CONTROLLER_DATABASE_URL=${controller_url}" \
-	"KODAMA_PUBLISHER_DATABASE_URL=${publisher_url}" \
-	"KODAMA_AUTH_DATABASE_URL=${auth_url}"
+	"KODEMA_PROFILE=test" \
+	"KODEMA_ADMIN_DATABASE_URL=${admin_url}" \
+	"KODEMA_DATABASE_URL=${database_url}" \
+	"KODEMA_CONTROLLER_DATABASE_URL=${controller_url}" \
+	"KODEMA_PUBLISHER_DATABASE_URL=${publisher_url}" \
+	"KODEMA_AUTH_DATABASE_URL=${auth_url}"
 write_env "$bootstrap_env" \
-	"KODAMA_PROFILE=test" \
-	"KODAMA_INSTALLATION_ID=${INSTALLATION_ID}" \
-	"KODAMA_DATABASE_URL=${database_url}" \
-	"KODAMA_KEY_ADAPTER=keyfile" \
-	"KODAMA_KEY_REF=keyfile:kek-v1" \
-	"KODAMA_KEYFILE=${secrets_dir}/keys/kek-v1.key" \
-	"KODAMA_OIDC_ISSUER=${OIDC_ISSUER}" \
-	"KODAMA_OIDC_AUDIENCE=${OIDC_AUDIENCE}" \
-	"KODAMA_OIDC_JWKS_URL=${OIDC_ISSUER}/.well-known/jwks.json" \
-	"KODAMA_OIDC_CA_FILE=${tls_dir}/ca.crt" \
-	"KODAMA_OIDC_TENANT_CLAIM=org_id"
+	"KODEMA_PROFILE=test" \
+	"KODEMA_INSTALLATION_ID=${INSTALLATION_ID}" \
+	"KODEMA_DATABASE_URL=${database_url}" \
+	"KODEMA_KEY_ADAPTER=keyfile" \
+	"KODEMA_KEY_REF=keyfile:kek-v1" \
+	"KODEMA_KEYFILE=${secrets_dir}/keys/kek-v1.key" \
+	"KODEMA_OIDC_ISSUER=${OIDC_ISSUER}" \
+	"KODEMA_OIDC_AUDIENCE=${OIDC_AUDIENCE}" \
+	"KODEMA_OIDC_JWKS_URL=${OIDC_ISSUER}/.well-known/jwks.json" \
+	"KODEMA_OIDC_CA_FILE=${tls_dir}/ca.crt" \
+	"KODEMA_OIDC_TENANT_CLAIM=org_id"
 ensure_dir "${secrets_dir}/keys" 700
 server_common=(
-	"KODAMA_PROFILE=test"
-	"KODAMA_INSTALLATION_ID=${INSTALLATION_ID}"
-	"KODAMA_DATA_DIR=${data_dir}"
-	"KODAMA_DATABASE_URL=${database_url}"
-	"KODAMA_CONTROLLER_DATABASE_URL=${controller_url}"
-	"KODAMA_PUBLISHER_DATABASE_URL=${publisher_url}"
-	"KODAMA_AUTH_DATABASE_URL=${auth_url}"
-	"KODAMA_NATS_URL=nats://127.0.0.1:${NATS_PORT}"
-	"KODAMA_PODMAN_SOCKET=${PODMAN_SOCKET}"
-	"KODAMA_KEY_ADAPTER=keyfile"
-	"KODAMA_KEY_REF=keyfile:kek-v1"
-	"KODAMA_KEYFILE=${secrets_dir}/keys/kek-v1.key"
-	"KODAMA_TLS_DIR=${tls_dir}"
-	"KODAMA_OIDC_ISSUER=${OIDC_ISSUER}"
-	"KODAMA_OIDC_AUDIENCE=${OIDC_AUDIENCE}"
-	"KODAMA_OIDC_JWKS_URL=${OIDC_ISSUER}/.well-known/jwks.json"
-	"KODAMA_OIDC_CA_FILE=${tls_dir}/ca.crt"
-	"KODAMA_OIDC_TENANT_CLAIM=org_id"
-	"KODAMA_DISCOVERY_ISSUER=${OIDC_ISSUER}"
-	"KODAMA_DISCOVERY_CLIENT_ID=${OIDC_CLIENT_ID}"
-	"KODAMA_DISCOVERY_AUDIENCE=${OIDC_AUDIENCE}"
-	"KODAMA_DISCOVERY_AUTHORIZATION_ENDPOINT=${DISCOVERY_AUTHORIZATION_ENDPOINT}"
-	"KODAMA_DISCOVERY_TOKEN_ENDPOINT=${DISCOVERY_TOKEN_ENDPOINT}"
-	"KODAMA_DISCOVERY_DEVICE_AUTHORIZATION_ENDPOINT=${DISCOVERY_DEVICE_AUTHORIZATION_ENDPOINT}"
-	"KODAMA_DISCOVERY_REVOCATION_ENDPOINT=${DISCOVERY_REVOCATION_ENDPOINT}"
-	"KODAMA_DISCOVERY_SCOPES=${DISCOVERY_SCOPES}"
-	"KODAMA_DISCOVERY_API_URL=${PUBLIC_URL}"
-	"KODAMA_PUBLIC_URL=${PUBLIC_URL}"
-	"KODAMA_WORKLOAD_URL=${WORKLOAD_URL}"
-	"KODAMA_ADDRESS=0.0.0.0:${HTTPS_PORT}"
+	"KODEMA_PROFILE=test"
+	"KODEMA_INSTALLATION_ID=${INSTALLATION_ID}"
+	"KODEMA_DATA_DIR=${data_dir}"
+	"KODEMA_DATABASE_URL=${database_url}"
+	"KODEMA_CONTROLLER_DATABASE_URL=${controller_url}"
+	"KODEMA_PUBLISHER_DATABASE_URL=${publisher_url}"
+	"KODEMA_AUTH_DATABASE_URL=${auth_url}"
+	"KODEMA_NATS_URL=nats://127.0.0.1:${NATS_PORT}"
+	"KODEMA_PODMAN_SOCKET=${PODMAN_SOCKET}"
+	"KODEMA_KEY_ADAPTER=keyfile"
+	"KODEMA_KEY_REF=keyfile:kek-v1"
+	"KODEMA_KEYFILE=${secrets_dir}/keys/kek-v1.key"
+	"KODEMA_TLS_DIR=${tls_dir}"
+	"KODEMA_OIDC_ISSUER=${OIDC_ISSUER}"
+	"KODEMA_OIDC_AUDIENCE=${OIDC_AUDIENCE}"
+	"KODEMA_OIDC_JWKS_URL=${OIDC_ISSUER}/.well-known/jwks.json"
+	"KODEMA_OIDC_CA_FILE=${tls_dir}/ca.crt"
+	"KODEMA_OIDC_TENANT_CLAIM=org_id"
+	"KODEMA_DISCOVERY_ISSUER=${OIDC_ISSUER}"
+	"KODEMA_DISCOVERY_CLIENT_ID=${OIDC_CLIENT_ID}"
+	"KODEMA_DISCOVERY_AUDIENCE=${OIDC_AUDIENCE}"
+	"KODEMA_DISCOVERY_AUTHORIZATION_ENDPOINT=${DISCOVERY_AUTHORIZATION_ENDPOINT}"
+	"KODEMA_DISCOVERY_TOKEN_ENDPOINT=${DISCOVERY_TOKEN_ENDPOINT}"
+	"KODEMA_DISCOVERY_DEVICE_AUTHORIZATION_ENDPOINT=${DISCOVERY_DEVICE_AUTHORIZATION_ENDPOINT}"
+	"KODEMA_DISCOVERY_REVOCATION_ENDPOINT=${DISCOVERY_REVOCATION_ENDPOINT}"
+	"KODEMA_DISCOVERY_SCOPES=${DISCOVERY_SCOPES}"
+	"KODEMA_DISCOVERY_API_URL=${PUBLIC_URL}"
+	"KODEMA_PUBLIC_URL=${PUBLIC_URL}"
+	"KODEMA_WORKLOAD_URL=${WORKLOAD_URL}"
+	"KODEMA_ADDRESS=0.0.0.0:${HTTPS_PORT}"
 )
 # OAuthSonas carries one string claim (org_id). The final server maps it to the
 # project as well as the tenant, so humans and project commands are project-
@@ -290,7 +290,7 @@ server_common=(
 # exactly once, to create that first project: a tenant-scoped command refuses a
 # project-scoped actor. The bootstrap environment above is the tenant-wide form.
 write_env "$server_tenant_env" "${server_common[@]}"
-write_env "$server_env" "${server_common[@]}" "KODAMA_OIDC_PROJECT_CLAIM=org_id"
+write_env "$server_env" "${server_common[@]}" "KODEMA_OIDC_PROJECT_CLAIM=org_id"
 write_env "$oauth_env" "OAUTHSONAS_ACCESS_CODE=${access_code}"
 write_env "$oauthsonas_env" \
 	"OAUTHSONAS_URL=${OIDC_ISSUER}" \
@@ -300,21 +300,21 @@ write_env "$oauthsonas_env" \
 	"OAUTHSONAS_REDIRECT=${OIDC_REDIRECT}"
 write_env "$operator_env" \
 	"# Generated by deploy/podman/install.sh; source this file, do not commit it." \
-	"KODAMA_LOCAL_PREFIX=${PREFIX}" \
-	"KODAMA_LOCAL_STATE_DIR=${STATE_DIR}" \
-	"KODAMA_LOCAL_HTTPS_PORT=${HTTPS_PORT}" \
-	"KODAMA_LOCAL_OIDC_PORT=${OIDC_PORT}" \
-	"KODAMA_LOCAL_GIT_PORT=${GIT_PORT}" \
-	"KODAMA_LOCAL_GIT_HTTPS_PORT=${GIT_HTTPS_PORT}" \
-	"KODAMA_LOCAL_TENANT=${TENANT}" \
-	"KODAMA_LOCAL_GIT_RESOURCES=${GIT_RESOURCES}" \
-	"KODAMA_PUBLIC_URL=${PUBLIC_URL}" \
-	"KODAMA_WORKLOAD_URL=${WORKLOAD_URL}" \
-	"KODAMA_GIT_URL=${GIT_PUBLIC_URL}" \
-	"KODAMA_GIT_WORKLOAD_URL=${GIT_WORKLOAD_URL}" \
-	"KODAMA_INSTALLATION_FILE=${installation_file}" \
-	"KODAMA_CA_FILE=${tls_dir}/ca.crt" \
-	"KODAMA_ADMIN_TOKEN_FILE=${admin_token_file}"
+	"KODEMA_LOCAL_PREFIX=${PREFIX}" \
+	"KODEMA_LOCAL_STATE_DIR=${STATE_DIR}" \
+	"KODEMA_LOCAL_HTTPS_PORT=${HTTPS_PORT}" \
+	"KODEMA_LOCAL_OIDC_PORT=${OIDC_PORT}" \
+	"KODEMA_LOCAL_GIT_PORT=${GIT_PORT}" \
+	"KODEMA_LOCAL_GIT_HTTPS_PORT=${GIT_HTTPS_PORT}" \
+	"KODEMA_LOCAL_TENANT=${TENANT}" \
+	"KODEMA_LOCAL_GIT_RESOURCES=${GIT_RESOURCES}" \
+	"KODEMA_PUBLIC_URL=${PUBLIC_URL}" \
+	"KODEMA_WORKLOAD_URL=${WORKLOAD_URL}" \
+	"KODEMA_GIT_URL=${GIT_PUBLIC_URL}" \
+	"KODEMA_GIT_WORKLOAD_URL=${GIT_WORKLOAD_URL}" \
+	"KODEMA_INSTALLATION_FILE=${installation_file}" \
+	"KODEMA_CA_FILE=${tls_dir}/ca.crt" \
+	"KODEMA_ADMIN_TOKEN_FILE=${admin_token_file}"
 
 # OAuthSonas configuration carries no secret; the access code stays in the
 # environment file. The file is mounted directly, so its mode is world-readable
@@ -375,40 +375,40 @@ source_revision="$(git -C "$repo_root" rev-parse HEAD 2>/dev/null || printf 'unk
 # program `git serve` runs for every smart-HTTP exchange. The project image
 # installs it; a prebuilt image supplied by the operator must carry it too.
 git_backend_present() {
-	podman run --rm --label "kodama.local.prefix=${PREFIX}" \
-		--label "kodama.local.command=image-check" \
+	podman run --rm --label "kodema.local.prefix=${PREFIX}" \
+		--label "kodema.local.command=image-check" \
 		--entrypoint /bin/sh "$1" -c 'test -x "$(git --exec-path)/git-http-backend"' >/dev/null 2>&1
 }
 
-if [ -n "$KODAMA_IMAGE" ]; then
-	image_exists "$KODAMA_IMAGE" || die "KODAMA_LOCAL_KODAMA_IMAGE is not present in the local image store: ${KODAMA_IMAGE}"
-	git_backend_present "$KODAMA_IMAGE" ||
-		die "the prebuilt kodama image ${KODAMA_IMAGE} has no git-http-backend; it must install Alpine's git-daemon package (see deploy/images/kodama/Containerfile) so the Git service can serve smart HTTP"
-	log "using the prebuilt kodama image ${KODAMA_IMAGE}"
+if [ -n "$KODEMA_IMAGE" ]; then
+	image_exists "$KODEMA_IMAGE" || die "KODEMA_LOCAL_KODEMA_IMAGE is not present in the local image store: ${KODEMA_IMAGE}"
+	git_backend_present "$KODEMA_IMAGE" ||
+		die "the prebuilt kodema image ${KODEMA_IMAGE} has no git-http-backend; it must install Alpine's git-daemon package (see deploy/images/kodema/Containerfile) so the Git service can serve smart HTTP"
+	log "using the prebuilt kodema image ${KODEMA_IMAGE}"
 else
-	KODAMA_IMAGE="localhost/${PREFIX}/kodama:${KODAMA_IMAGE_TAG}"
+	KODEMA_IMAGE="localhost/${PREFIX}/kodema:${KODEMA_IMAGE_TAG}"
 	if [ -s "$image_rev_file" ] && [ "$(cat "$image_rev_file")" = "$revision" ] &&
-		image_exists "$KODAMA_IMAGE" && git_backend_present "$KODAMA_IMAGE"; then
-		log "reusing the kodama image ${KODAMA_IMAGE} for ${revision}"
+		image_exists "$KODEMA_IMAGE" && git_backend_present "$KODEMA_IMAGE"; then
+		log "reusing the kodema image ${KODEMA_IMAGE} for ${revision}"
 	else
-		log "building the kodama image from ${revision}"
+		log "building the kodema image from ${revision}"
 		podman build --format oci -q \
-			-f "${repo_root}/deploy/images/kodama/Containerfile" \
+			-f "${repo_root}/deploy/images/kodema/Containerfile" \
 			--label "org.opencontainers.image.revision=${revision}" \
-			-t "$KODAMA_IMAGE" "$repo_root" >/dev/null
-		git_backend_present "$KODAMA_IMAGE" ||
-			die "the built kodama image ${KODAMA_IMAGE} has no git-http-backend; deploy/images/kodama/Containerfile must install Alpine's git-daemon package"
+			-t "$KODEMA_IMAGE" "$repo_root" >/dev/null
+		git_backend_present "$KODEMA_IMAGE" ||
+			die "the built kodema image ${KODEMA_IMAGE} has no git-http-backend; deploy/images/kodema/Containerfile must install Alpine's git-daemon package"
 		printf '%s\n' "$revision" >"$image_rev_file"
 	fi
 fi
-kodama_image_id="$(podman image inspect --format '{{.Id}}' "$KODAMA_IMAGE")"
-[ -n "$kodama_image_id" ] || die "the kodama image ${KODAMA_IMAGE} has no local identity"
-server_digest="$(podman image inspect --format '{{.Digest}}' "$KODAMA_IMAGE" 2>/dev/null || true)"
-[ -n "$server_digest" ] || server_digest="$kodama_image_id"
-if [ -n "${KODAMA_LOCAL_KODAMA_IMAGE:-}" ]; then
-	image_revision="$(podman image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$KODAMA_IMAGE" 2>/dev/null || true)"
+kodema_image_id="$(podman image inspect --format '{{.Id}}' "$KODEMA_IMAGE")"
+[ -n "$kodema_image_id" ] || die "the kodema image ${KODEMA_IMAGE} has no local identity"
+server_digest="$(podman image inspect --format '{{.Digest}}' "$KODEMA_IMAGE" 2>/dev/null || true)"
+[ -n "$server_digest" ] || server_digest="$kodema_image_id"
+if [ -n "${KODEMA_LOCAL_KODEMA_IMAGE:-}" ]; then
+	image_revision="$(podman image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$KODEMA_IMAGE" 2>/dev/null || true)"
 	case "$image_revision" in
-	"" | "<no value>") die "KODAMA_LOCAL_KODAMA_IMAGE carries no org.opencontainers.image.revision label; its revision provenance cannot be recorded" ;;
+	"" | "<no value>") die "KODEMA_LOCAL_KODEMA_IMAGE carries no org.opencontainers.image.revision label; its revision provenance cannot be recorded" ;;
 	esac
 	source_revision="$image_revision"
 fi
@@ -419,7 +419,7 @@ container_current() {
 	local name=$1 hash=$2
 	podman container exists "$name" >/dev/null 2>&1 || return 1
 	[ "$(podman inspect --format '{{.State.Running}}' "$name" 2>/dev/null)" = "true" ] || return 1
-	[ "$(podman inspect --format '{{index .Config.Labels "kodama.local.confighash"}}' "$name" 2>/dev/null)" = "$hash" ] || return 1
+	[ "$(podman inspect --format '{{index .Config.Labels "kodema.local.confighash"}}' "$name" 2>/dev/null)" = "$hash" ] || return 1
 }
 
 remove_container() {
@@ -431,12 +431,12 @@ remove_container() {
 ensure_own_volume() {
 	local name=$1 label
 	if podman volume exists "$name" >/dev/null 2>&1; then
-		label="$(podman volume inspect --format '{{index .Labels "kodama.local.prefix"}}' "$name" 2>/dev/null || true)"
+		label="$(podman volume inspect --format '{{index .Labels "kodema.local.prefix"}}' "$name" 2>/dev/null || true)"
 		[ "$label" = "$PREFIX" ] ||
-			die "refusing volume ${name}: it is not labelled kodama.local.prefix=${PREFIX}"
+			die "refusing volume ${name}: it is not labelled kodema.local.prefix=${PREFIX}"
 		return 0
 	fi
-	podman volume create --label "kodama.local.prefix=${PREFIX}" "$name" >/dev/null
+	podman volume create --label "kodema.local.prefix=${PREFIX}" "$name" >/dev/null
 }
 
 start_postgres() {
@@ -447,9 +447,9 @@ start_postgres() {
 	remove_container "$container_postgres"
 	ensure_own_volume "$postgres_volume"
 	podman run -d --name "$container_postgres" \
-		--label "kodama.local.prefix=${PREFIX}" \
-		--label "kodama.local.component=postgres" \
-		--label "kodama.local.confighash=${hash}" \
+		--label "kodema.local.prefix=${PREFIX}" \
+		--label "kodema.local.component=postgres" \
+		--label "kodema.local.confighash=${hash}" \
 		-p "127.0.0.1:${POSTGRES_PORT}:5432" \
 		-v "${postgres_volume}:/var/lib/postgresql" \
 		--env-file "$postgres_env" \
@@ -476,9 +476,9 @@ start_nats() {
 	remove_container "$container_nats"
 	ensure_own_volume "$nats_volume"
 	podman run -d --name "$container_nats" \
-		--label "kodama.local.prefix=${PREFIX}" \
-		--label "kodama.local.component=nats" \
-		--label "kodama.local.confighash=${hash}" \
+		--label "kodema.local.prefix=${PREFIX}" \
+		--label "kodema.local.component=nats" \
+		--label "kodema.local.confighash=${hash}" \
 		-p "127.0.0.1:${NATS_PORT}:4222" \
 		-p "127.0.0.1:${NATS_MONITOR_PORT}:8222" \
 		-v "${nats_volume}:/data" \
@@ -493,9 +493,9 @@ start_oauthsonas() {
 	log "starting OAuthSonas"
 	remove_container "$container_oauth"
 	podman run -d --name "$container_oauth" \
-		--label "kodama.local.prefix=${PREFIX}" \
-		--label "kodama.local.component=oauthsonas" \
-		--label "kodama.local.confighash=${hash}" \
+		--label "kodema.local.prefix=${PREFIX}" \
+		--label "kodema.local.component=oauthsonas" \
+		--label "kodema.local.confighash=${hash}" \
 		--network=host \
 		--env-file "$oauth_env" \
 		-v "${oauth_config}:/etc/oauthsonas/config.yaml:ro" \
@@ -561,20 +561,20 @@ start_git_tls() {
 
 start_server() {
 	local env_file=$1 hash
-	hash="$(config_hash "$KODAMA_IMAGE" "$kodama_image_id" "$(cat "$env_file")")"
+	hash="$(config_hash "$KODEMA_IMAGE" "$kodema_image_id" "$(cat "$env_file")")"
 	container_current "$container_server" "$hash" && return 0
-	log "starting kodama server --profile test"
+	log "starting kodema server --profile test"
 	remove_container "$container_server"
 	podman run -d --name "$container_server" \
-		--label "kodama.local.prefix=${PREFIX}" \
-		--label "kodama.local.component=server" \
-		--label "kodama.local.confighash=${hash}" \
+		--label "kodema.local.prefix=${PREFIX}" \
+		--label "kodema.local.component=server" \
+		--label "kodema.local.confighash=${hash}" \
 		--network=host \
 		--userns=keep-id:uid=65532,gid=65532 \
 		-v "${STATE_DIR}:${STATE_DIR}" \
 		-v "$(dirname "$PODMAN_SOCKET"):$(dirname "$PODMAN_SOCKET")" \
 		--env-file "$env_file" \
-		"$KODAMA_IMAGE" server --profile test >/dev/null
+		"$KODEMA_IMAGE" server --profile test >/dev/null
 	wait_server_ready
 }
 
@@ -591,7 +591,7 @@ wait_server_ready() {
 		fi
 		if [ "$(podman inspect --format '{{.State.Running}}' "$container_server")" != "true" ]; then
 			podman logs "$container_server" >&2 || true
-			die "kodama server exited before readiness"
+			die "kodema server exited before readiness"
 		fi
 		if [ "$(curl --silent --show-error --max-time 3 --cacert "$tls_dir/ca.crt" --output /dev/null --write-out '%{http_code}' "${PUBLIC_URL}/readyz" 2>/dev/null || true)" = "200" ]; then
 			ready=1
@@ -599,30 +599,30 @@ wait_server_ready() {
 		fi
 		sleep 1
 	done
-	[ -n "$ready" ] || die "kodama server was not ready within 90s (podman logs ${container_server})"
+	[ -n "$ready" ] || die "kodema server was not ready within 90s (podman logs ${container_server})"
 }
 
 start_git() {
 	local hash resource_args=()
-	hash="$(config_hash "$KODAMA_IMAGE" "$kodama_image_id" "$(cat "$git_env")" "$GIT_RESOURCES")"
+	hash="$(config_hash "$KODEMA_IMAGE" "$kodema_image_id" "$(cat "$git_env")" "$GIT_RESOURCES")"
 	container_current "$container_git" "$hash" && return 0
-	log "starting kodama git serve"
+	log "starting kodema git serve"
 	remove_container "$container_git"
 	IFS=',' read -r -a git_resource_mappings <<<"$GIT_RESOURCES"
 	for mapping in "${git_resource_mappings[@]}"; do
 		resource_args+=(--resource "$mapping")
 	done
 	podman run -d --name "$container_git" \
-		--label "kodama.local.prefix=${PREFIX}" \
-		--label "kodama.local.component=git" \
-		--label "kodama.local.confighash=${hash}" \
+		--label "kodema.local.prefix=${PREFIX}" \
+		--label "kodema.local.component=git" \
+		--label "kodema.local.confighash=${hash}" \
 		--network=host \
 		--userns=keep-id:uid=65532,gid=65532 \
 		-v "${git_root}:${git_root}" \
 		-v "${git_credential_dir}:${git_credential_dir}:ro" \
 		-v "${ca_bundle}:${ca_bundle}:ro" \
 		--env-file "$git_env" \
-		"$KODAMA_IMAGE" git serve \
+		"$KODEMA_IMAGE" git serve \
 		--tenant "$TENANT" \
 		--listen "127.0.0.1:${GIT_PORT}" \
 		--storage-root "$git_storage" \
@@ -635,7 +635,7 @@ start_git() {
 		if ! podman container exists "$container_git" >/dev/null 2>&1 ||
 			[ "$(podman inspect --format '{{.State.Running}}' "$container_git")" != "true" ]; then
 			podman logs "$container_git" >&2 || true
-			die "kodama git serve exited before listening"
+			die "kodema git serve exited before listening"
 		fi
 		if curl --silent --show-error --max-time 2 --output /dev/null "http://127.0.0.1:${GIT_PORT}/" 2>/dev/null; then
 			git_ready=1
@@ -643,23 +643,23 @@ start_git() {
 		fi
 		sleep 0.5
 	done
-	[ -n "$git_ready" ] || die "kodama git serve did not listen within 30s"
+	[ -n "$git_ready" ] || die "kodema git serve did not listen within 30s"
 }
 
 # ---- infrastructure --------------------------------------------------------
 
 start_postgres
 # A non-superuser administrator owns migrations; the four runtime roles are
-# created by `kodama migrate`. The statement travels on stdin, never argv.
+# created by `kodema migrate`. The statement travels on stdin, never argv.
 podman exec -i "$container_postgres" psql -v ON_ERROR_STOP=1 -U postgres -d postgres >/dev/null <<SQL
 DO \$\$
 BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'kodama_admin') THEN
-    CREATE ROLE kodama_admin LOGIN CREATEROLE CREATEDB NOSUPERUSER NOBYPASSRLS;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'kodema_admin') THEN
+    CREATE ROLE kodema_admin LOGIN CREATEROLE CREATEDB NOSUPERUSER NOBYPASSRLS;
   END IF;
 END
 \$\$;
-ALTER ROLE kodama_admin WITH PASSWORD '${admin_password}';
+ALTER ROLE kodema_admin WITH PASSWORD '${admin_password}';
 SQL
 
 start_nats
@@ -669,7 +669,7 @@ start_oauth_tls
 # ---- migrate and bootstrap -------------------------------------------------
 
 log "applying migrations"
-kodama_run "$migrate_env" migrate
+kodema_run "$migrate_env" migrate
 
 log "obtaining an OAuthSonas administrator token"
 OAUTHSONAS_URL="$OIDC_ISSUER" \
@@ -686,8 +686,8 @@ if [ ! -s "$bootstrap_marker" ]; then
 	if [ ! -s "${secrets_dir}/keys/kek-v1.key" ]; then
 		init_flag="--init-keyfile"
 	fi
-	if ! bootstrap_output="$(kodama_run "$bootstrap_env" bootstrap-admin --profile test ${init_flag} \
-		--tenant "$TENANT" --tenant-name "Local Kodama tenant" \
+	if ! bootstrap_output="$(kodema_run "$bootstrap_env" bootstrap-admin --profile test ${init_flag} \
+		--tenant "$TENANT" --tenant-name "Local Kodema tenant" \
 		--token-file "$admin_token_file")"; then
 		die "bootstrap-admin failed; if the tenant already exists without ${bootstrap_marker}, run down.sh --purge and install again"
 	fi
@@ -992,8 +992,8 @@ else
 fi
 
 write_env "$git_env" \
-	"KODAMA_BASE_URL=${PUBLIC_URL}" \
-	"KODAMA_CREDENTIAL_FILE=${git_token_file}" \
+	"KODEMA_BASE_URL=${PUBLIC_URL}" \
+	"KODEMA_CREDENTIAL_FILE=${git_token_file}" \
 	"SSL_CERT_FILE=${ca_bundle}"
 
 # ensure_git_binding registers the admin repository binding on a fresh install
@@ -1048,7 +1048,7 @@ log "registering the admin repository binding with the Git HTTPS origins"
 ensure_git_binding
 
 log "provisioning the tenant admin repository"
-kodama_run "$server_env" git provision-tenant \
+kodema_run "$server_env" git provision-tenant \
 	--tenant "$TENANT" --storage-root "$git_storage" --journal-dir "$git_journal" >/dev/null
 
 start_git
@@ -1058,7 +1058,7 @@ write_installation_descriptor "$installation_file" "$source_revision" "$server_d
 	die "could not write the installation descriptor ${installation_file}"
 
 log "installed and ready"
-log "  Kodama:    ${PUBLIC_URL} (CA ${tls_dir}/ca.crt)"
+log "  Kodema:    ${PUBLIC_URL} (CA ${tls_dir}/ca.crt)"
 log "  git serve: http://127.0.0.1:${GIT_PORT} (loopback only)"
 log "  git https: ${GIT_PUBLIC_URL} (workloads: ${GIT_WORKLOAD_URL})"
 log "  installation: ${installation_file}"

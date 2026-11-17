@@ -1,9 +1,9 @@
-// Package auth implements Kodama's built-in Userland OIDC Provider and Social
-// Login Broker (`kodama auth serve`).
+// Package auth implements Kodema's built-in Userland OIDC Provider and Social
+// Login Broker (`kodema auth serve`).
 //
 // It uses only the Go standard library and public/Userland contracts, minting
 // standard ES256 JWTs that verify cleanly with both `kodactl login` and
-// Kodama's S05 OIDC access-token verifier.
+// Kodema's S05 OIDC access-token verifier.
 package auth
 
 import (
@@ -18,18 +18,18 @@ import (
 	"strings"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/userland/principal"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/userland/principal"
 )
 
 const (
-	// DefaultListenAddress is the default loopback listener address for `kodama auth serve`.
+	// DefaultListenAddress is the default loopback listener address for `kodema auth serve`.
 	DefaultListenAddress = "127.0.0.1:8082"
 	// DefaultClientID is the default public OAuth client ID (`kodactl`).
 	DefaultClientID = "kodactl"
 	// DefaultAudience is the default API audience bound into minted access tokens.
-	DefaultAudience = "kodama"
+	DefaultAudience = "kodema"
 	// DefaultTenantID is the default tenant claim value when none is specified.
 	DefaultTenantID = "default"
 	// DefaultTenantClaim is the default JWT claim carrying the tenant identity.
@@ -67,11 +67,11 @@ type Config struct {
 	// When empty, ephemeral in-memory keys are generated.
 	StateDir string
 
-	// TenantID is the Kodama tenant ID stamped into issued JWTs. Defaults to "default".
+	// TenantID is the Kodema tenant ID stamped into issued JWTs. Defaults to "default".
 	TenantID id.TenantID
 	// TenantClaim is the JWT claim name carrying TenantID. Defaults to "tenant".
 	TenantClaim string
-	// ProjectID is an optional Kodama project ID stamped into issued JWTs.
+	// ProjectID is an optional Kodema project ID stamped into issued JWTs.
 	ProjectID id.ProjectID
 	// ProjectClaim is the JWT claim name carrying ProjectID when ProjectID is set.
 	ProjectClaim string
@@ -80,7 +80,7 @@ type Config struct {
 	ClientID string
 	// AdditionalClientIDs are optional extra pre-registered public client IDs.
 	AdditionalClientIDs []string
-	// Audience is the API audience stamped into access_token JWTs (defaults to "kodama").
+	// Audience is the API audience stamped into access_token JWTs (defaults to "kodema").
 	Audience string
 	// RedirectURIs are explicitly allowed redirect URIs in addition to RFC 8252
 	// §7.3 dynamic loopback callbacks (http://127.0.0.1:<port>/callback and

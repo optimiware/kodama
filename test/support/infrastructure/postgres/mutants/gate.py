@@ -17,8 +17,8 @@ import os, re, shutil, subprocess, sys, tempfile, time, warnings
 warnings.filterwarnings("ignore", category=SyntaxWarning)  # definitions.py keeps regex escapes verbatim
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-WORK = os.environ.get("MUT_WORK", os.path.join(tempfile.gettempdir(), "kodama-mut"))
-SRC = os.environ.get("SRC", os.path.join(tempfile.gettempdir(), "kodama-mut-src"))
+WORK = os.environ.get("MUT_WORK", os.path.join(tempfile.gettempdir(), "kodema-mut"))
+SRC = os.environ.get("SRC", os.path.join(tempfile.gettempdir(), "kodema-mut-src"))
 RESULTS = os.environ.get("MUT_RESULTS", os.path.join(WORK, "results.tsv"))
 ENV = dict(os.environ)
 

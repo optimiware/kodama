@@ -36,9 +36,9 @@ func TestStageDrillScriptTakesTheRDBLock(t *testing.T) {
 		command.Env = append([]string{
 			"PATH=" + bin + string(os.PathListSeparator) + os.Getenv("PATH"),
 			"Q03_TEST_RECORD=" + recorded,
-			"KODAMA_Q03_STAGE_INSTANCE_ID=11111111-2222-3333-4444-555555555555",
-			"KODAMA_Q03_STAGE_SOURCE_DATABASE=kodama",
-			"KODAMA_Q03_STAGE_MANAGED_DATABASE=kodama",
+			"KODEMA_Q03_STAGE_INSTANCE_ID=11111111-2222-3333-4444-555555555555",
+			"KODEMA_Q03_STAGE_SOURCE_DATABASE=kodema",
+			"KODEMA_Q03_STAGE_MANAGED_DATABASE=kodema",
 		}, extra...)
 		combined, err := command.CombinedOutput()
 		var exit *exec.ExitError
@@ -61,14 +61,14 @@ func TestStageDrillScriptTakesTheRDBLock(t *testing.T) {
 		t.Fatalf("default launcher arguments = %v (exit %d, output %q); want %v", arguments, code, output, want)
 	}
 
-	arguments, output, code = run("KODAMA_Q03_STAGE_LOCK=scw-stage")
+	arguments, output, code = run("KODEMA_Q03_STAGE_LOCK=scw-stage")
 	if code != 0 || len(arguments) < 2 || arguments[1] != "scw-stage" {
 		t.Fatalf("overridden launcher arguments = %v (exit %d, output %q); want the lock scw-stage", arguments, code, output)
 	}
 
-	arguments, output, code = run("KODAMA_Q03_STAGE_LOCK=../bad lock")
-	if code == 0 || arguments != nil || !strings.Contains(output, "KODAMA_Q03_STAGE_LOCK") {
-		t.Fatalf("unsafe lock name = exit %d, launcher arguments %v, output %q; want a refusal naming KODAMA_Q03_STAGE_LOCK before the launcher runs", code, arguments, output)
+	arguments, output, code = run("KODEMA_Q03_STAGE_LOCK=../bad lock")
+	if code == 0 || arguments != nil || !strings.Contains(output, "KODEMA_Q03_STAGE_LOCK") {
+		t.Fatalf("unsafe lock name = exit %d, launcher arguments %v, output %q; want a refusal naming KODEMA_Q03_STAGE_LOCK before the launcher runs", code, arguments, output)
 	}
 }
 

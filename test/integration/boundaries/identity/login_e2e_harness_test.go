@@ -20,22 +20,22 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/userland/cli"
-	idfix "github.com/optimiware/kodama/test/support/boundaries/identity"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/userland/cli"
+	idfix "github.com/optimiware/kodema/test/support/boundaries/identity"
 )
 
 // fakeBrowserHelperEnv marks the re-executed test binary as the fake browser.
-const fakeBrowserHelperEnv = "KODAMA_BROWSER_HELPER"
+const fakeBrowserHelperEnv = "KODEMA_BROWSER_HELPER"
 
 // fakeBrowserBinaryEnv names the test binary the launcher re-executes.
-const fakeBrowserBinaryEnv = "KODAMA_BROWSER_BINARY"
+const fakeBrowserBinaryEnv = "KODEMA_BROWSER_BINARY"
 
 // fakeBrowserModeEnv selects the hostile browser behavior.
-const fakeBrowserModeEnv = "KODAMA_BROWSER_MODE"
+const fakeBrowserModeEnv = "KODEMA_BROWSER_MODE"
 
 // fakeBrowserLogEnv names the observation file the helper writes.
-const fakeBrowserLogEnv = "KODAMA_BROWSER_LOG"
+const fakeBrowserLogEnv = "KODEMA_BROWSER_LOG"
 
 // loginHarness drives the real kodactl binary as a child process against the
 // in-process OIDC and discovery fixtures. Everything the child can observe is
@@ -76,7 +76,7 @@ func newLoginHarness(t *testing.T) *loginHarness {
 		browserLog: filepath.Join(root, "browser.json"),
 		clientID:   "kodactl",
 	}
-	harness.sessionDir = filepath.Join(harness.configDir, "kodama")
+	harness.sessionDir = filepath.Join(harness.configDir, "kodema")
 	harness.sessionPath = filepath.Join(harness.sessionDir, "session.json")
 	for _, directory := range []string{harness.home, harness.configDir, harness.sessionDir, harness.tmpDir, harness.browserDir} {
 		if err := os.MkdirAll(directory, 0o700); err != nil {
@@ -146,7 +146,7 @@ func (harness *loginHarness) installFakeBrowser() error {
 }
 
 // environment builds the child environment. It deliberately omits DISPLAY,
-// SSH_CONNECTION and any developer KODAMA_SERVER value unless a test adds them.
+// SSH_CONNECTION and any developer KODEMA_SERVER value unless a test adds them.
 func (harness *loginHarness) environment(extra map[string]string) []string {
 	environment := []string{
 		"PATH=" + harness.browserDir + string(os.PathListSeparator) + os.Getenv("PATH"),
@@ -154,7 +154,7 @@ func (harness *loginHarness) environment(extra map[string]string) []string {
 		"XDG_CONFIG_HOME=" + harness.configDir,
 		"TMPDIR=" + harness.tmpDir,
 		"SSL_CERT_FILE=" + harness.caPath,
-		"KODAMA_SERVER=" + harness.discovery.URL(),
+		"KODEMA_SERVER=" + harness.discovery.URL(),
 		fakeBrowserHelperEnv + "=1",
 		fakeBrowserBinaryEnv + "=" + harness.helperPath,
 		fakeBrowserLogEnv + "=" + harness.browserLog,

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sync"
 
-	git "github.com/optimiware/kodama/internal/userland/git"
+	git "github.com/optimiware/kodema/internal/userland/git"
 )
 
 // fakeActorVerifier authenticates a forwarded credential to the current actor

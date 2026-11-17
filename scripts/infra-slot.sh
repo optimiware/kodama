@@ -1,35 +1,35 @@
 #!/usr/bin/env bash
 # Run one real-infrastructure command inside a bounded host slot.
 #
-#   scripts/infra-slot.sh stack -- env KODAMA_REQUIRE_INFRA=1 go test -race -tags=integration ./test/integration/lifecycle/
-#   scripts/infra-slot.sh kind  -- env KODAMA_REQUIRE_INFRA=1 go test -race -tags=integration -run TestKubernetesPipeline ./test/integration/lifecycle/
+#   scripts/infra-slot.sh stack -- env KODEMA_REQUIRE_INFRA=1 go test -race -tags=integration ./test/integration/lifecycle/
+#   scripts/infra-slot.sh kind  -- env KODEMA_REQUIRE_INFRA=1 go test -race -tags=integration -run TestKubernetesPipeline ./test/integration/lifecycle/
 #   scripts/infra-slot.sh --exclusive <name> stack -- <command>   # one holder at a time for a suite that derives fixed names
 #
 # Pools: "stack" bounds real Podman/PostgreSQL/NATS runs, "kind" bounds rootless
 # kind clusters. A kind run holds one kind slot AND one stack slot (kind first,
 # then stack, so waiters cannot deadlock). Isolation between concurrent runs is
-# already provided by the harness (generated kodama-t-<pid>-<random> cluster
+# already provided by the harness (generated kodema-t-<pid>-<random> cluster
 # names, per-shard labels, Podman-allocated loopback ports); this script only
 # bounds how many run at once and gives each run its own short TMPDIR.
 #
 # --exclusive NAME is a generic host-wide named lock that admits one holder at a
-# time (waits obey KODAMA_SLOT_WAIT). No suite currently needs it: the runtime
+# time (waits obey KODEMA_SLOT_WAIT). No suite currently needs it: the runtime
 # component suite is run-scoped; use it only for a suite that derives fixed
 # host names.
 #
 # Environment:
-#   KODAMA_STACK_SLOTS  concurrent stack runs   (default 6; use 1 on an 8-core host)
-#   KODAMA_KIND_SLOTS   concurrent kind clusters (default 4; use 1 on an 8-core host)
-#   KODAMA_LOAD_MAX     start no new run while the 1-minute load average exceeds
+#   KODEMA_STACK_SLOTS  concurrent stack runs   (default 6; use 1 on an 8-core host)
+#   KODEMA_KIND_SLOTS   concurrent kind clusters (default 4; use 1 on an 8-core host)
+#   KODEMA_LOAD_MAX     start no new run while the 1-minute load average exceeds
 #                       this value (default: 80% of the CPU count)
-#   KODAMA_SLOT_WAIT    seconds to wait for a slot before exiting 75 (default 3600)
-#   KODAMA_KEYS_MIN     warn when this user's kernel key quota (kernel.keys.maxkeys)
+#   KODEMA_SLOT_WAIT    seconds to wait for a slot before exiting 75 (default 3600)
+#   KODEMA_KEYS_MIN     warn when this user's kernel key quota (kernel.keys.maxkeys)
 #                       is below this value (default 2000)
-#   KODAMA_SLOT_DIR     lock directory (default /tmp/oc/slots)
+#   KODEMA_SLOT_DIR     lock directory (default /tmp/oc/slots)
 #   TMPDIR              honoured when set and at most 24 bytes; otherwise /tmp/oc/<pool>-<slot>
-#   KODAMA_TOOLS_DIR    directory holding the pinned host tools
+#   KODEMA_TOOLS_DIR    directory holding the pinned host tools
 #                       (default $HOME/.local/bin): a kind run prepends it to PATH
-#                       and, unless already set, points KODAMA_KIND_BIN at
+#                       and, unless already set, points KODEMA_KIND_BIN at
 #                       kind-0.33.0 there. The harness pins kind 0.33.0, so the
 #                       directory must provide a kubectl matching node v1.37
 #                       (the default install also carries kubectl v1.34.13).
@@ -59,13 +59,13 @@ case "$pool" in
   *) echo "infra-slot: unknown pool '$pool' (want stack or kind)" >&2; exit 64 ;;
 esac
 
-dir=${KODAMA_SLOT_DIR:-/tmp/oc/slots}
+dir=${KODEMA_SLOT_DIR:-/tmp/oc/slots}
 mkdir -p "$dir"
 cpus=$(nproc 2>/dev/null || echo 8)
-stack_slots=${KODAMA_STACK_SLOTS:-6}
-kind_slots=${KODAMA_KIND_SLOTS:-4}
-load_max=${KODAMA_LOAD_MAX:-$((cpus * 8 / 10))}
-wait_max=${KODAMA_SLOT_WAIT:-3600}
+stack_slots=${KODEMA_STACK_SLOTS:-6}
+kind_slots=${KODEMA_KIND_SLOTS:-4}
+load_max=${KODEMA_LOAD_MAX:-$((cpus * 8 / 10))}
+wait_max=${KODEMA_SLOT_WAIT:-3600}
 started=$SECONDS
 
 acquire() { # pool count fdvar -> sets the descriptor and the chosen index
@@ -106,9 +106,9 @@ inherited_lock() { # fd target_file -> 0 when this process already holds fd on t
 }
 
 if [ -n "$exclusive" ]; then
-  if [ "${KODAMA_EXCLUSIVE_NAME:-}" = "$exclusive" ] &&
-     inherited_lock "${KODAMA_EXCLUSIVE_FD:-}" "$dir/excl.$exclusive.lock"; then
-    excl_fd=$KODAMA_EXCLUSIVE_FD
+  if [ "${KODEMA_EXCLUSIVE_NAME:-}" = "$exclusive" ] &&
+     inherited_lock "${KODEMA_EXCLUSIVE_FD:-}" "$dir/excl.$exclusive.lock"; then
+    excl_fd=$KODEMA_EXCLUSIVE_FD
   else
     exec {excl_fd}>"$dir/excl.$exclusive.lock"
     until flock -n "$excl_fd"; do
@@ -118,34 +118,34 @@ if [ -n "$exclusive" ]; then
       fi
       sleep 2
     done
-    export KODAMA_EXCLUSIVE_NAME="$exclusive"
-    export KODAMA_EXCLUSIVE_FD="$excl_fd"
+    export KODEMA_EXCLUSIVE_NAME="$exclusive"
+    export KODEMA_EXCLUSIVE_FD="$excl_fd"
   fi
 fi
 
 kind_fd=""
 if [ "$pool" = "kind" ]; then
-  if [ -n "${KODAMA_KIND_INDEX:-}" ] &&
-     inherited_lock "${KODAMA_KIND_FD:-}" "$dir/kind.${KODAMA_KIND_INDEX}.lock"; then
-    kind_fd=$KODAMA_KIND_FD
-    kind_index=$KODAMA_KIND_INDEX
+  if [ -n "${KODEMA_KIND_INDEX:-}" ] &&
+     inherited_lock "${KODEMA_KIND_FD:-}" "$dir/kind.${KODEMA_KIND_INDEX}.lock"; then
+    kind_fd=$KODEMA_KIND_FD
+    kind_index=$KODEMA_KIND_INDEX
   else
     acquire kind "$kind_slots" kind_fd
     kind_index=$slot_index
-    export KODAMA_KIND_FD="$kind_fd"
-    export KODAMA_KIND_INDEX="$kind_index"
+    export KODEMA_KIND_FD="$kind_fd"
+    export KODEMA_KIND_INDEX="$kind_index"
   fi
 fi
 stack_fd=""
-if [ -n "${KODAMA_STACK_INDEX:-}" ] &&
-   inherited_lock "${KODAMA_STACK_FD:-}" "$dir/stack.${KODAMA_STACK_INDEX}.lock"; then
-  stack_fd=$KODAMA_STACK_FD
-  stack_index=$KODAMA_STACK_INDEX
+if [ -n "${KODEMA_STACK_INDEX:-}" ] &&
+   inherited_lock "${KODEMA_STACK_FD:-}" "$dir/stack.${KODEMA_STACK_INDEX}.lock"; then
+  stack_fd=$KODEMA_STACK_FD
+  stack_index=$KODEMA_STACK_INDEX
 else
   acquire stack "$stack_slots" stack_fd
   stack_index=$slot_index
-  export KODAMA_STACK_FD="$stack_fd"
-  export KODAMA_STACK_INDEX="$stack_index"
+  export KODEMA_STACK_FD="$stack_fd"
+  export KODEMA_STACK_INDEX="$stack_index"
 fi
 
 while ! load_ok; do
@@ -160,15 +160,15 @@ label="stack-$stack_index"
 if [ "$pool" = "kind" ]; then
   label="kind-$kind_index"
   export KIND_EXPERIMENTAL_PROVIDER=${KIND_EXPERIMENTAL_PROVIDER:-podman}
-  tools=${KODAMA_TOOLS_DIR:-$HOME/.local/bin}
+  tools=${KODEMA_TOOLS_DIR:-$HOME/.local/bin}
   if [ -d "$tools" ] && [ -O "$tools" ]; then
     export PATH="$tools:$PATH"
-    if [ -z "${KODAMA_KIND_BIN:-}" ] && [ -x "$tools/kind-0.33.0" ]; then
-      export KODAMA_KIND_BIN="$tools/kind-0.33.0"
+    if [ -z "${KODEMA_KIND_BIN:-}" ] && [ -x "$tools/kind-0.33.0" ]; then
+      export KODEMA_KIND_BIN="$tools/kind-0.33.0"
     fi
   fi
 fi
-export KODAMA_SLOT="$label"
+export KODEMA_SLOT="$label"
 # Podman and hook sockets live under TMPDIR and a Unix socket path is limited
 # to 107 bytes, so a long preset TMPDIR produces "bind: invalid argument"
 # failures that name no cause. Replace any TMPDIR longer than 24 bytes.
@@ -189,7 +189,7 @@ key_max=${key_usage#*/}
 case "$key_max" in
   "" | *[!0-9]*) key_max=$(cat /proc/sys/kernel/keys/maxkeys 2>/dev/null || echo "") ;;
 esac
-key_min=${KODAMA_KEYS_MIN:-2000}
+key_min=${KODEMA_KEYS_MIN:-2000}
 case "$key_max" in
   "" | *[!0-9]*) ;;
   *)

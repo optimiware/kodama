@@ -10,7 +10,7 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/fault"
+	"github.com/optimiware/kodema/internal/fault"
 )
 
 // ecCoordinates returns the fixed-width big-endian affine coordinates of a

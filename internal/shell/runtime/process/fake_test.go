@@ -17,15 +17,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/kernel"
-	"github.com/optimiware/kodama/internal/kernel/definition"
-	"github.com/optimiware/kodama/internal/kernel/engine"
-	"github.com/optimiware/kodama/internal/shell/workspace"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/kernel"
+	"github.com/optimiware/kodema/internal/kernel/definition"
+	"github.com/optimiware/kodema/internal/kernel/engine"
+	"github.com/optimiware/kodema/internal/shell/workspace"
 )
 
 const (
-	testKodamaURL = "https://kodama.example.com"
+	testKodemaURL = "https://kodema.example.com"
 	// testImage is a digest-pinned image reference. The development Process
 	// adapter does not use it, but the admitted declaration still carries one.
 	testImage = "registry.example.com/tools/build@sha256:" +
@@ -741,7 +741,7 @@ func baseConfig(t *testing.T) Config {
 	return Config{
 		Root:          root,
 		WorkspaceRoot: workspaceRoot,
-		KodamaURL:     testKodamaURL,
+		KodemaURL:     testKodemaURL,
 		Executor:      newFakeExecutor(observer),
 		Observer:      observer,
 		Files:         newFakeFiles(),
@@ -780,7 +780,7 @@ func newFixture(t *testing.T) *fixture {
 	config := Config{
 		Root:          root,
 		WorkspaceRoot: workspaceRoot,
-		KodamaURL:     testKodamaURL,
+		KodemaURL:     testKodemaURL,
 		Executor:      executor,
 		Observer:      observer,
 		Files:         files,
@@ -805,7 +805,7 @@ func (f *fixture) config() Config {
 	return Config{
 		Root:          f.root,
 		WorkspaceRoot: f.workspaceRoot,
-		KodamaURL:     testKodamaURL,
+		KodemaURL:     testKodemaURL,
 		Executor:      f.executor,
 		Observer:      f.observer,
 		Files:         f.files,
@@ -823,7 +823,7 @@ func (f *fixture) resourceRoot(t *testing.T) string {
 	return root
 }
 
-// hostPath maps one logical /kodama path onto the adapter-owned host root.
+// hostPath maps one logical /kodema path onto the adapter-owned host root.
 func (f *fixture) hostPath(t *testing.T, logical string) string {
 	t.Helper()
 	return filepath.Join(f.resourceRoot(t), logical)

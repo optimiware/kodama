@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/client"
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/userland/cli"
+	"github.com/optimiware/kodema/client"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/userland/cli"
 )
 
 // TestRunHelperGetSuccess pins the exact Git credential-helper response for a
@@ -35,7 +35,7 @@ func TestRunHelperGetSuccess(t *testing.T) {
 			if code != cli.ExitSuccess {
 				t.Fatalf("exit code = %d; want %d (stderr: %s)", code, cli.ExitSuccess, errOut.String())
 			}
-			want := "username=kodama\npassword=" + testCase.credential.Token + "\n"
+			want := "username=kodema\npassword=" + testCase.credential.Token + "\n"
 			if out.String() != want {
 				t.Fatalf("stdout = %q; want %q", out.String(), want)
 			}

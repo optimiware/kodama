@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	pgdriver "github.com/optimiware/kodama/internal/shell/app/drivers/postgres"
-	"github.com/optimiware/kodama/internal/shell/store"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
+	pgdriver "github.com/optimiware/kodema/internal/shell/app/drivers/postgres"
+	"github.com/optimiware/kodema/internal/shell/store"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
 )
 
 // RawConn is the narrow query surface of the pgx wrapper connection.
@@ -194,7 +194,7 @@ func ScopedQuery(ctx context.Context, db *pgdriver.DB, scope tenancy.Scope, colu
 	}
 	defer func() { _ = conn.Rollback(context.WithoutCancel(ctx)) }()
 	if _, err := conn.Exec(ctx,
-		`SELECT set_config('kodama.tenant_id', $1, true), set_config('kodama.project_id', $2, true)`,
+		`SELECT set_config('kodema.tenant_id', $1, true), set_config('kodema.project_id', $2, true)`,
 		string(scope.TenantID), string(scope.ProjectID)); err != nil {
 		return nil, err
 	}
@@ -236,7 +236,7 @@ func ScopedExec(ctx context.Context, db *pgdriver.DB, scope tenancy.Scope, state
 	}
 	defer func() { _ = conn.Rollback(context.WithoutCancel(ctx)) }()
 	if _, err := conn.Exec(ctx,
-		`SELECT set_config('kodama.tenant_id', $1, true), set_config('kodama.project_id', $2, true)`,
+		`SELECT set_config('kodema.tenant_id', $1, true), set_config('kodema.project_id', $2, true)`,
 		string(scope.TenantID), string(scope.ProjectID)); err != nil {
 		return 0, err
 	}

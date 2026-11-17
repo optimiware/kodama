@@ -16,8 +16,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/optimiware/kodama/internal/shell/store"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
+	"github.com/optimiware/kodema/internal/shell/store"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
 )
 
 // advisoryLockSQL takes one transaction-scoped PostgreSQL advisory lock on a

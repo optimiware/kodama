@@ -5,8 +5,8 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/optimiware/kodama/internal/fault"
-	runtimepodman "github.com/optimiware/kodama/internal/shell/runtime/podman"
+	"github.com/optimiware/kodema/internal/fault"
+	runtimepodman "github.com/optimiware/kodema/internal/shell/runtime/podman"
 )
 
 // FenceConfig binds one fence driver to its libpod client and its explicit

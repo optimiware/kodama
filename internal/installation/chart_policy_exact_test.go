@@ -23,7 +23,7 @@ import (
 )
 
 // checkTenantNamespacesTemplate requires exactly one Namespace document, ranged
-// over .Values.tenants, named kodama-tenant-<tenant>, with no literal cluster
+// over .Values.tenants, named kodema-tenant-<tenant>, with no literal cluster
 // namespace anywhere.
 func checkTenantNamespacesTemplate(body string) error {
 	if got := strings.Count(body, "kind: Namespace"); got != 1 {
@@ -35,17 +35,17 @@ func checkTenantNamespacesTemplate(body string) error {
 	for _, match := range regexp.MustCompile(`(?m)^[ \t]*name:[ \t]*(.+?)[ \t]*$`).FindAllStringSubmatch(body, -1) {
 		value := strings.TrimSpace(match[1])
 		if strings.Contains(value, "{{") {
-			if value != "kodama-tenant-{{ $tenant }}" {
-				return fmt.Errorf("namespaces.yaml renders a templated object name %q that is not kodama-tenant-{{ $tenant }}", value)
+			if value != "kodema-tenant-{{ $tenant }}" {
+				return fmt.Errorf("namespaces.yaml renders a templated object name %q that is not kodema-tenant-{{ $tenant }}", value)
 			}
 			continue
 		}
-		if value != "kodama-tenant-limits" {
+		if value != "kodema-tenant-limits" {
 			return fmt.Errorf("namespaces.yaml renders a literal object name %q, want only the scoped LimitRange name", value)
 		}
 	}
 	if regexp.MustCompile(`(?m)^[ \t]*name:[ \t]*kube-system[ \t]*$`).MatchString(body) || strings.Contains(body, "kubernetes.io/metadata.name: kube-system") {
-		return fmt.Errorf("namespaces.yaml names or targets kube-system; tenant assets must stay in kodama-tenant-*")
+		return fmt.Errorf("namespaces.yaml names or targets kube-system; tenant assets must stay in kodema-tenant-*")
 	}
 	return nil
 }
@@ -150,7 +150,7 @@ func TestTenantNamespaceTemplateMutationSensitivity(t *testing.T) {
 		t.Fatal("checker accepted a kube-system Namespace with pod-security labels")
 	}
 
-	unscoped := strings.Replace(body, "name: kodama-tenant-{{ $tenant }}", "name: kodama-tenant-fixed", 1)
+	unscoped := strings.Replace(body, "name: kodema-tenant-{{ $tenant }}", "name: kodema-tenant-fixed", 1)
 	if unscoped == body {
 		t.Fatal("test mutation did not pin one namespace name")
 	}

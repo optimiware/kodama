@@ -14,12 +14,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/id"
-	runtimepodman "github.com/optimiware/kodama/internal/shell/runtime/podman"
-	"github.com/optimiware/kodama/internal/shell/secret"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
-	"github.com/optimiware/kodama/test/support/factory"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/id"
+	runtimepodman "github.com/optimiware/kodema/internal/shell/runtime/podman"
+	"github.com/optimiware/kodema/internal/shell/secret"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
+	"github.com/optimiware/kodema/test/support/factory"
 )
 
 const (
@@ -278,7 +278,7 @@ func TestFilesystemValuesNeverBecomeOutputs(t *testing.T) {
 				Name:  "consume",
 				Image: harness.Image.Reference,
 				Commands: []string{
-					`test ! -e /kodama/outputs/produce/artifact`,
+					`test ! -e /kodema/outputs/produce/artifact`,
 					`test "$(cat /workspace/artifact)" = "` + filesystemValue + `"`,
 					`printf 'consume-saw-workspace-only\n'`,
 				},
@@ -351,11 +351,11 @@ func TestSecretChangeIsolationAcrossActions(t *testing.T) {
 				Timeout: "1h",
 				Secrets: []string{secretName},
 				Commands: []string{
-					`value=$(cat /kodama/secrets/ROTATE_SECRET)`,
+					`value=$(cat /kodema/secrets/ROTATE_SECRET)`,
 					`if [ "$value" = "` + oldValue + `" ]; then printf 'hold-initial=old\n'; else printf 'hold-initial=unexpected\n'; exit 1; fi`,
 					`touch /workspace/hold-ready`,
 					`while [ ! -e ` + s11ReleasePath + ` ]; do sleep 1; done`,
-					`value=$(cat /kodama/secrets/ROTATE_SECRET)`,
+					`value=$(cat /kodema/secrets/ROTATE_SECRET)`,
 					`if [ "$value" = "` + oldValue + `" ]; then printf 'hold-final=old\n'; else printf 'hold-final=unexpected\n'; exit 1; fi`,
 				},
 			},
@@ -364,7 +364,7 @@ func TestSecretChangeIsolationAcrossActions(t *testing.T) {
 				Image:   harness.Image.Reference,
 				Secrets: []string{secretName},
 				Commands: []string{
-					`value=$(cat /kodama/secrets/ROTATE_SECRET)`,
+					`value=$(cat /kodema/secrets/ROTATE_SECRET)`,
 					`if [ "$value" = "` + newValue + `" ]; then printf 'later-value=new\n'; else printf 'later-value=unexpected\n'; exit 1; fi`,
 				},
 			},

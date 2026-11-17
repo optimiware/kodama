@@ -157,7 +157,7 @@ package pipeline_test
 //	func (*Management) Read(context.Context, ReadCommand) (Definition, error)
 //	func (*Management) List(context.Context, ListCommand) ([]Definition, error)
 //
-// Pinned YAML authoring encoding (S03 §1–2/§4, KODAMA.md examples):
+// Pinned YAML authoring encoding (S03 §1–2/§4, KODEMA.md examples):
 //
 //   - A pipeline document is a mapping with keys inputs, env, actions and the
 //     optional repository, service and on.push. Unknown keys are refused.
@@ -166,7 +166,7 @@ package pipeline_test
 //     (default string) and required defaults to false. Declaration order is
 //     preserved.
 //   - env is a mapping of literal string values. Names use id.EnvName and the
-//     reserved KODAMA_* names are refused. Action env overrides pipeline env.
+//     reserved KODEMA_* names are refused. Action env overrides pipeline env.
 //   - actions is a nonempty ordered sequence. Each action has name, exactly one
 //     of image (container) or request (request), optional commands, env,
 //     secrets, timeout and outputs; a request action also has subject.
@@ -195,13 +195,13 @@ import (
 	"context"
 	"time"
 
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/kernel/definition"
-	"github.com/optimiware/kodama/internal/shell/authorize"
-	"github.com/optimiware/kodama/internal/shell/event"
-	"github.com/optimiware/kodama/internal/shell/pipeline"
-	"github.com/optimiware/kodama/internal/shell/receipt"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/kernel/definition"
+	"github.com/optimiware/kodema/internal/shell/authorize"
+	"github.com/optimiware/kodema/internal/shell/event"
+	"github.com/optimiware/kodema/internal/shell/pipeline"
+	"github.com/optimiware/kodema/internal/shell/receipt"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
 )
 
 // Compile-time pins for the added interfaces and method signatures.

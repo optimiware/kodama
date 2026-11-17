@@ -20,15 +20,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/kernel"
-	"github.com/optimiware/kodama/internal/kernel/definition"
-	"github.com/optimiware/kodama/internal/kernel/engine"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/kernel"
+	"github.com/optimiware/kodema/internal/kernel/definition"
+	"github.com/optimiware/kodema/internal/kernel/engine"
 )
 
 const (
-	testKodamaURL = "https://kodama.example.com"
+	testKodemaURL = "https://kodema.example.com"
 	// testImage is a digest-pinned image reference.
 	testImage = "registry.example.com/tools/build@sha256:" +
 		"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
@@ -1167,7 +1167,7 @@ func newFixture(t *testing.T) *fixture {
 		Libpod:    libpod,
 		Files:     files,
 		Root:      root,
-		KodamaURL: testKodamaURL,
+		KodemaURL: testKodemaURL,
 		Cleanup:   CleanupPolicy{Attempts: 3, Backoff: time.Second},
 		Clock:     clock,
 	})
@@ -1194,8 +1194,8 @@ func (f *fixture) workloadRoot() string {
 	return filepath.Join(f.root, string(f.request.Identity.WorkloadID))
 }
 
-func (f *fixture) kodamaRoot() string {
-	return filepath.Join(f.workloadRoot(), "kodama")
+func (f *fixture) kodemaRoot() string {
+	return filepath.Join(f.workloadRoot(), "kodema")
 }
 
 func (f *fixture) hostPath(logical string) string {
@@ -1203,11 +1203,11 @@ func (f *fixture) hostPath(logical string) string {
 }
 
 func (f *fixture) scriptPath() string {
-	return filepath.Join(f.kodamaRoot(), "script")
+	return filepath.Join(f.kodemaRoot(), "script")
 }
 
 func (f *fixture) credentialPath() string {
-	return filepath.Join(f.kodamaRoot(), "secrets", "KODAMA_TOKEN")
+	return filepath.Join(f.kodemaRoot(), "secrets", "KODEMA_TOKEN")
 }
 
 func (f *fixture) prepare(t *testing.T) engine.Preparation {
@@ -1355,7 +1355,7 @@ func newAdapterWithRoot(t *testing.T, fx *fixture) *Adapter {
 		Libpod:    fx.libpod,
 		Files:     fx.files,
 		Root:      fx.root,
-		KodamaURL: testKodamaURL,
+		KodemaURL: testKodemaURL,
 		Cleanup:   CleanupPolicy{Attempts: 3, Backoff: time.Second},
 		Clock:     fx.clock,
 	})

@@ -12,10 +12,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/kernel"
-	"github.com/optimiware/kodama/internal/kernel/engine"
-	"github.com/optimiware/kodama/internal/kernel/flow"
-	"github.com/optimiware/kodama/internal/kernel/testkit"
+	"github.com/optimiware/kodema/internal/kernel"
+	"github.com/optimiware/kodema/internal/kernel/engine"
+	"github.com/optimiware/kodema/internal/kernel/flow"
+	"github.com/optimiware/kodema/internal/kernel/testkit"
 )
 
 // TestIssuedMarkerCommitFailureDoesNotStart pins persist-intent-before-effect:

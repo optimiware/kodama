@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/userland/cli"
+	"github.com/optimiware/kodema/internal/userland/cli"
 )
 
 // TestPKCEChallengeGolden pins RFC 7636 appendix B: S256 over the ASCII

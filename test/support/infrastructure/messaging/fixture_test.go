@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/test/support/infrastructure/harness"
-	runtimesupport "github.com/optimiware/kodama/test/support/infrastructure/runtime"
+	"github.com/optimiware/kodema/test/support/infrastructure/harness"
+	runtimesupport "github.com/optimiware/kodema/test/support/infrastructure/runtime"
 )
 
 // The deterministic fixture build is the foundation the recipe-image tests
@@ -144,7 +144,7 @@ func TestFixtureBuildRefusesBaseOutsideContainerfilePin(t *testing.T) {
 	if err != nil {
 		t.Fatalf("build the mismatched base reference: %v", err)
 	}
-	_, err = builder.Build(context.Background(), other, FixtureInputs{Marker: "fixture-drift\n"}, "localhost/kodama-fixture-unit:drift")
+	_, err = builder.Build(context.Background(), other, FixtureInputs{Marker: "fixture-drift\n"}, "localhost/kodema-fixture-unit:drift")
 	if err == nil {
 		t.Fatal("build accepted a base that differs from the Containerfile pin")
 	}
@@ -316,7 +316,7 @@ func TestFixtureBuildInputsAreDeterministic(t *testing.T) {
 // build argument may override it. A build that merely happens to be repeatable
 // on one host is not enough.
 func TestFixtureBuildArgsPinReproducibilityControls(t *testing.T) {
-	args := fixtureBuildArgs("localhost/kodama-fixture-example:first", "/tmp/context")
+	args := fixtureBuildArgs("localhost/kodema-fixture-example:first", "/tmp/context")
 	joined := strings.Join(args, " ")
 	for _, required := range []string{
 		"build",
@@ -425,7 +425,7 @@ func fixtureManifestServer(t *testing.T, repository string, bodies map[string][]
 // a prune, so shared content-addressed cache entries and a twin's names
 // survive.
 func TestFixtureCleanupRemovesEveryCreatedName(t *testing.T) {
-	repository := "kodama/fixture-unit-retarget"
+	repository := "kodema/fixture-unit-retarget"
 	bodyA := []byte(`{"schemaVersion":2,"content":"fixture-A"}`)
 	bodyB := []byte(`{"schemaVersion":2,"content":"fixture-B"}`)
 	digestA := DigestOf(bodyA)
@@ -464,8 +464,8 @@ func TestFixtureCleanupRemovesEveryCreatedName(t *testing.T) {
 		t.Fatalf("resolve the pinned fixture base: %v", err)
 	}
 	ctx := context.Background()
-	localFirst := "localhost/kodama-fixture-unit:first"
-	localSecond := "localhost/kodama-fixture-unit:second"
+	localFirst := "localhost/kodema-fixture-unit:first"
+	localSecond := "localhost/kodema-fixture-unit:second"
 
 	first, err := builder.Build(ctx, base, FixtureInputs{Marker: "fixture-A\n"}, localFirst)
 	if err != nil {
@@ -548,8 +548,8 @@ func TestFixtureCleanupRemovesEveryCreatedName(t *testing.T) {
 // the one tolerated outcome because another actor may already have removed the
 // name.
 func TestFixtureCleanupReportsRemovalFailures(t *testing.T) {
-	localFirst := "localhost/kodama-fixture-unit:first"
-	localSecond := "localhost/kodama-fixture-unit:second"
+	localFirst := "localhost/kodema-fixture-unit:first"
+	localSecond := "localhost/kodema-fixture-unit:second"
 	runner := &recordingRunner{}
 	runner.handler = func(command harness.Command) (harness.Result, error) {
 		if len(command.Args) > 1 && command.Args[0] == "rmi" && command.Args[1] == localFirst {
@@ -590,7 +590,7 @@ func TestFixtureCleanupReportsRemovalFailures(t *testing.T) {
 // failure: "image not known" (and "no such image") means the exact name is
 // already gone, so cleanup succeeds and does not retry it.
 func TestFixtureCleanupToleratesAlreadyGoneNames(t *testing.T) {
-	localTag := "localhost/kodama-fixture-unit:first"
+	localTag := "localhost/kodema-fixture-unit:first"
 	runner := &recordingRunner{}
 	runner.handler = func(command harness.Command) (harness.Result, error) {
 		if len(command.Args) > 1 && command.Args[0] == "rmi" {
@@ -641,7 +641,7 @@ func assertCleanupRemovesExactly(t *testing.T, builder *FixtureBuilder, runner *
 // recorded before the build command can create it: a build that fails must
 // still be cleaned up by exact name.
 func TestFixtureCleanupRemovesTagFromFailedBuild(t *testing.T) {
-	const localTag = "localhost/kodama-fixture-failed:build"
+	const localTag = "localhost/kodema-fixture-failed:build"
 	runner := &recordingRunner{}
 	runner.handler = func(command harness.Command) (harness.Result, error) {
 		if len(command.Args) == 1 && command.Args[0] == "--version" {
@@ -669,7 +669,7 @@ func TestFixtureCleanupRemovesTagFromFailedBuild(t *testing.T) {
 // the push command runs: a failed push must still be cleaned up by exact name.
 func TestFixtureCleanupRemovesRetargetTagFromFailedPush(t *testing.T) {
 	instance := &Registry{BaseURL: "http://127.0.0.1:5000"}
-	const repository = "kodama/fixture-failed"
+	const repository = "kodema/fixture-failed"
 	reference := instance.Host() + "/" + repository + ":current"
 	runner := &recordingRunner{}
 	runner.handler = func(command harness.Command) (harness.Result, error) {
@@ -680,7 +680,7 @@ func TestFixtureCleanupRemovesRetargetTagFromFailedPush(t *testing.T) {
 		return harness.Result{}, nil
 	}
 	builder := NewFixtureBuilder(WithFixtureRunner(runner), WithFixtureEnv([]string{"PATH=/bin"}))
-	image := FixtureImage{Tag: "localhost/kodama-fixture-failed:image", ImageID: fixtureTestBaseDigest}
+	image := FixtureImage{Tag: "localhost/kodema-fixture-failed:image", ImageID: fixtureTestBaseDigest}
 	if _, err := builder.Publish(context.Background(), instance, image, repository, "current"); err == nil {
 		t.Fatal("failed push reported success")
 	}
@@ -692,7 +692,7 @@ func TestFixtureCleanupRemovesRetargetTagFromFailedPush(t *testing.T) {
 // that fails must still be cleaned up by exact name.
 func TestFixtureCleanupRemovesReferenceFromFailedRun(t *testing.T) {
 	instance := &Registry{BaseURL: "http://127.0.0.1:5000"}
-	reference := instance.Host() + "/kodama/fixture-failed@" + fixtureTestBaseDigest
+	reference := instance.Host() + "/kodema/fixture-failed@" + fixtureTestBaseDigest
 	runner := &recordingRunner{}
 	runner.handler = func(command harness.Command) (harness.Result, error) {
 		if len(command.Args) > 0 && command.Args[0] == "run" {
@@ -735,7 +735,7 @@ func fixtureStubManifestServer(t *testing.T, repository string, body []byte, hea
 // the header check: only comparing the requested digest with the returned
 // bytes can reject this body.
 func TestRegistryManifestDigestRejectsMismatchedBytes(t *testing.T) {
-	const repository = "kodama/fixture-tampered"
+	const repository = "kodema/fixture-tampered"
 	requested := DigestOf([]byte(`{"schemaVersion":2,"content":"honest"}`))
 	body := []byte(`{"schemaVersion":2,"content":"tampered"}`)
 	instance := fixtureStubManifestServer(t, repository, body, "")
@@ -752,7 +752,7 @@ func TestRegistryManifestDigestRejectsMismatchedBytes(t *testing.T) {
 // header may not stand in for the returned bytes: honest bytes with a lying
 // header must fail even when the reference is a mutable tag.
 func TestRegistryManifestDigestRejectsLyingHeader(t *testing.T) {
-	const repository = "kodama/fixture-lying-header"
+	const repository = "kodema/fixture-lying-header"
 	body := []byte(`{"schemaVersion":2,"content":"honest"}`)
 	honest := DigestOf(body)
 	lie := DigestOf([]byte(`{"schemaVersion":2,"content":"other"}`))
@@ -783,12 +783,12 @@ func newFixturePushRunner(digest string) *recordingRunner {
 // the push reported. The stub serves no Docker-Content-Digest header, so the
 // returned bytes must be compared with the pushed digest on their own.
 func TestPublishRejectsTamperedRegistryManifest(t *testing.T) {
-	const repository = "kodama/fixture-publish-tampered"
+	const repository = "kodema/fixture-publish-tampered"
 	pushed := DigestOf([]byte(`{"schemaVersion":2,"content":"pushed"}`))
 	body := []byte(`{"schemaVersion":2,"content":"tampered"}`)
 	instance := fixtureStubManifestServer(t, repository, body, "")
 	builder := NewFixtureBuilder(WithFixtureRunner(newFixturePushRunner(pushed)), WithFixtureEnv([]string{"PATH=/bin"}))
-	image := FixtureImage{Tag: "localhost/kodama-fixture-publish:first", ImageID: fixtureTestBaseDigest}
+	image := FixtureImage{Tag: "localhost/kodema-fixture-publish:first", ImageID: fixtureTestBaseDigest}
 	_, err := builder.Publish(context.Background(), instance, image, repository, "current")
 	if err == nil {
 		t.Fatal("publish accepted registry manifest bytes that do not hash to the pushed digest")
@@ -806,13 +806,13 @@ func TestPublishRejectsTamperedRegistryManifest(t *testing.T) {
 // registry reports a Docker-Content-Digest header that disagrees with the
 // returned bytes, even though those bytes match the pushed digest.
 func TestPublishRejectsLyingRegistryManifestHeader(t *testing.T) {
-	const repository = "kodama/fixture-publish-lying-header"
+	const repository = "kodema/fixture-publish-lying-header"
 	body := []byte(`{"schemaVersion":2,"content":"pushed"}`)
 	pushed := DigestOf(body)
 	lie := DigestOf([]byte(`{"schemaVersion":2,"content":"lie"}`))
 	instance := fixtureStubManifestServer(t, repository, body, lie)
 	builder := NewFixtureBuilder(WithFixtureRunner(newFixturePushRunner(pushed)), WithFixtureEnv([]string{"PATH=/bin"}))
-	image := FixtureImage{Tag: "localhost/kodama-fixture-publish:first", ImageID: fixtureTestBaseDigest}
+	image := FixtureImage{Tag: "localhost/kodema-fixture-publish:first", ImageID: fixtureTestBaseDigest}
 	if _, err := builder.Publish(context.Background(), instance, image, repository, "current"); err == nil {
 		t.Fatalf("publish accepted a lying Docker-Content-Digest %q for honest bytes %q", lie, pushed)
 	}
@@ -911,10 +911,10 @@ func TestFixtureNamesAreShardScoped(t *testing.T) {
 // another repository must be refused, not merely a leading fixture- string.
 func TestFixtureNameGuardRejectsForeignNames(t *testing.T) {
 	accepted := []string{
-		"localhost/kodama-fixture-shard:first",
-		"127.0.0.1:5000/kodama/fixture-shard-rebuild:current",
-		"127.0.0.1:5000/kodama/fixture-shard-rebuild@" + fixtureTestBaseDigest,
-		"[::1]:5001/kodama/fixture-shard:tag",
+		"localhost/kodema-fixture-shard:first",
+		"127.0.0.1:5000/kodema/fixture-shard-rebuild:current",
+		"127.0.0.1:5000/kodema/fixture-shard-rebuild@" + fixtureTestBaseDigest,
+		"[::1]:5001/kodema/fixture-shard:tag",
 	}
 	for _, name := range accepted {
 		if !fixtureNameOwned(name) {
@@ -923,15 +923,15 @@ func TestFixtureNameGuardRejectsForeignNames(t *testing.T) {
 	}
 	refused := []string{
 		"localhost/other",
-		"localhost/kodama-other:tag",
+		"localhost/kodema-other:tag",
 		"127.0.0.1:5000/other/fixture-x",
 		"127.0.0.1:5000/other/fixture-x:tag",
 		"127.0.0.1:5000/other/repo:current",
-		"127.0.0.1:5000/kodama/fixture-x/extra:tag",
-		"kodama/fixture-x:tag",
+		"127.0.0.1:5000/kodema/fixture-x/extra:tag",
+		"kodema/fixture-x:tag",
 		FixtureBaseTag,
-		" localhost/kodama-fixture-shard:tag",
-		"localhost/kodama-fixture-shard:tag ",
+		" localhost/kodema-fixture-shard:tag",
+		"localhost/kodema-fixture-shard:tag ",
 	}
 	for _, name := range refused {
 		if fixtureNameOwned(name) {
@@ -945,16 +945,16 @@ func TestFixtureNameGuardRejectsForeignNames(t *testing.T) {
 // verification is disabled only for these harness-registry commands. Any
 // dropped or weakened flag changes the vector and fails here.
 func TestFixtureRunAndPushArgsPinControls(t *testing.T) {
-	reference := "127.0.0.1:5000/kodama/fixture-args@" + fixtureTestBaseDigest
-	name := runtimesupport.RunScoped("kodama-fixture-run-1")
+	reference := "127.0.0.1:5000/kodema/fixture-args@" + fixtureTestBaseDigest
+	name := runtimesupport.RunScoped("kodema-fixture-run-1")
 	gotRun := fixtureRunArgs(reference, name, runtimesupport.RunLabels())
 	requireFixtureArgsEqual(t, gotRun, fixtureWantRunArgs(reference, name))
 	requireFixtureProbeScope(t, gotRun)
 	wantPush := []string{
 		"push", "--tls-verify=false", "--digestfile", "/tmp/digest",
-		"localhost/kodama-fixture-args:first", reference,
+		"localhost/kodema-fixture-args:first", reference,
 	}
-	if got := fixturePushArgs("localhost/kodama-fixture-args:first", reference, "/tmp/digest"); strings.Join(got, " ") != strings.Join(wantPush, " ") {
+	if got := fixturePushArgs("localhost/kodema-fixture-args:first", reference, "/tmp/digest"); strings.Join(got, " ") != strings.Join(wantPush, " ") {
 		t.Fatalf("push arguments = %q; want %q", strings.Join(got, " "), strings.Join(wantPush, " "))
 	}
 }
@@ -965,8 +965,8 @@ func TestFixtureRunAndPushArgsPinControls(t *testing.T) {
 // overrides the marker entrypoint with git. A foreign image, a tag-only
 // reference and a run that does not actually print a git version are refused.
 func TestFixtureGitVersionPinsTheLocalGitProbe(t *testing.T) {
-	const localTag = "localhost/kodama-fixture-unit:git"
-	name := runtimesupport.RunScoped("kodama-fixture-git-1")
+	const localTag = "localhost/kodema-fixture-unit:git"
+	name := runtimesupport.RunScoped("kodema-fixture-git-1")
 	gotArgs := fixtureGitArgs(localTag, name, runtimesupport.RunLabels())
 	requireFixtureArgsEqual(t, gotArgs, fixtureWantGitArgs(localTag, name))
 	requireFixtureProbeScope(t, gotArgs)
@@ -998,9 +998,9 @@ func TestFixtureGitVersionPinsTheLocalGitProbe(t *testing.T) {
 	// must be refused before any command runs.
 	for _, reference := range []string{
 		"docker.io/library/buildpack-deps:trixie-scm",
-		"127.0.0.1:5000/kodama/fixture-unit:git",
+		"127.0.0.1:5000/kodema/fixture-unit:git",
 		"localhost/other:git",
-		" localhost/kodama-fixture-unit:git",
+		" localhost/kodema-fixture-unit:git",
 	} {
 		if _, err := builder.GitVersion(context.Background(), reference); err == nil {
 			t.Fatalf("git probe accepted non-fixture image %q", reference)
@@ -1029,26 +1029,26 @@ func TestRunMarkerRefusesForeignReferences(t *testing.T) {
 	runner := &recordingRunner{}
 	builder := NewFixtureBuilder(WithFixtureRunner(runner), WithFixtureEnv([]string{"PATH=/bin"}))
 	refused := []string{
-		"127.0.0.1:5001/kodama/fixture-shard:tag",
-		"localhost/kodama-fixture-shard:tag",
-		"kodama-fixture-shard:tag",
-		"127.0.0.1:5000/kodama/Fixture-Shard:tag",
-		"127.0.0.1:5000/kodama/fixture-shard:TAG",
-		"127.0.0.1:5000/kodama/fixture-shard@sha256:nothex",
-		" 127.0.0.1:5000/kodama/fixture-shard:tag",
+		"127.0.0.1:5001/kodema/fixture-shard:tag",
+		"localhost/kodema-fixture-shard:tag",
+		"kodema-fixture-shard:tag",
+		"127.0.0.1:5000/kodema/Fixture-Shard:tag",
+		"127.0.0.1:5000/kodema/fixture-shard:TAG",
+		"127.0.0.1:5000/kodema/fixture-shard@sha256:nothex",
+		" 127.0.0.1:5000/kodema/fixture-shard:tag",
 		// Host matching must be exact equality: a port that merely extends the
 		// real one, an evil name that embeds the real host, a prefixed or
 		// userinfo-wrapped host, a doubled slash, another loopback spelling and
 		// a scheme prefix are all foreign.
-		"127.0.0.1:50001/kodama/fixture-x:t",
-		"127.0.0.1:5000.evil.example/kodama/fixture-x:t",
-		"x127.0.0.1:5000/kodama/fixture-x:t",
-		"user@127.0.0.1:5000/kodama/fixture-x:t",
-		"127.0.0.1:5000//kodama/fixture-x:t",
-		"127.0.0.1:5000/kodama//fixture-x:t",
-		"[::1]:5000/kodama/fixture-x:t",
-		"localhost:5000/kodama/fixture-x:t",
-		"docker://127.0.0.1:5000/kodama/fixture-x:t",
+		"127.0.0.1:50001/kodema/fixture-x:t",
+		"127.0.0.1:5000.evil.example/kodema/fixture-x:t",
+		"x127.0.0.1:5000/kodema/fixture-x:t",
+		"user@127.0.0.1:5000/kodema/fixture-x:t",
+		"127.0.0.1:5000//kodema/fixture-x:t",
+		"127.0.0.1:5000/kodema//fixture-x:t",
+		"[::1]:5000/kodema/fixture-x:t",
+		"localhost:5000/kodema/fixture-x:t",
+		"docker://127.0.0.1:5000/kodema/fixture-x:t",
 	}
 	for _, reference := range refused {
 		if _, err := builder.RunMarker(context.Background(), instance, reference); err == nil {
@@ -1061,7 +1061,7 @@ func TestRunMarkerRefusesForeignReferences(t *testing.T) {
 	if commands := runner.recorded(); len(commands) != 0 {
 		t.Fatalf("a refused run still issued commands: %v", commands)
 	}
-	if _, err := builder.RunMarker(context.Background(), nil, "127.0.0.1:5000/kodama/fixture-shard:tag"); err == nil {
+	if _, err := builder.RunMarker(context.Background(), nil, "127.0.0.1:5000/kodema/fixture-shard:tag"); err == nil {
 		t.Fatal("run accepted a nil registry")
 	}
 }
@@ -1071,7 +1071,7 @@ func TestRunMarkerRefusesForeignReferences(t *testing.T) {
 // to a mutable :current tag) with the fixed run controls.
 func TestRunMarkerIssuesPinnedRunForRegistryReference(t *testing.T) {
 	instance := &Registry{BaseURL: "http://127.0.0.1:5000"}
-	reference := instance.Host() + "/kodama/fixture-run@" + fixtureTestBaseDigest
+	reference := instance.Host() + "/kodema/fixture-run@" + fixtureTestBaseDigest
 	runner := &recordingRunner{}
 	runner.handler = func(command harness.Command) (harness.Result, error) {
 		if len(command.Args) > 0 && command.Args[0] == "run" {

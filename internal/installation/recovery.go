@@ -8,7 +8,7 @@ package installation
 import (
 	"context"
 
-	"github.com/optimiware/kodama/internal/fault"
+	"github.com/optimiware/kodema/internal/fault"
 )
 
 // BackupIdentity names exactly one backup set.

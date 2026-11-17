@@ -1,7 +1,7 @@
-# Quickstart: a local Kodama with `kodama up`
+# Quickstart: a local Kodema with `kodema up`
 
-`kodama up` starts a complete Kodama on one machine, and `kodactl run` runs a
-pipeline file on it. This is the shortest way to try Kodama.
+`kodema up` starts a complete Kodema on one machine, and `kodactl run` runs a
+pipeline file on it. This is the shortest way to try Kodema.
 
 It is **not a production installation**: one host, a local keyfile, and a
 built-in sign-in that asks for no password. For production, see the
@@ -11,7 +11,7 @@ built-in sign-in that asks for no password. For production, see the
 
 - Linux with rootless Podman 5 or newer and its user API socket:
   `systemctl --user enable --now podman.socket`, and `podman info` succeeds.
-  Docker is not supported, because Kodama starts workloads through the Podman
+  Docker is not supported, because Kodema starts workloads through the Podman
   API. macOS with a Podman machine is expected to work and has not been run.
 - `curl` and `tar`, for the installer.
 - Port 8443 free.
@@ -19,41 +19,41 @@ built-in sign-in that asks for no password. For production, see the
 ## Start
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/optimiware/kodama/master/install.sh | sh
-kodama up
-source ~/.kodama/instances/default/env.sh
+curl -fsSL https://raw.githubusercontent.com/optimiware/kodema/master/install.sh | sh
+kodema up
+source ~/.kodema/instances/default/env.sh
 kodactl whoami
 ```
 
-[`install.sh`](../../install.sh) installs `kodama` and `kodactl` into
+[`install.sh`](../../install.sh) installs `kodema` and `kodactl` into
 `~/.local/bin`, which must be on your `PATH`. It downloads the two archives of
 the latest release for your operating system and architecture, and installs
-nothing unless both match the release's `SHA256SUMS`. `KODAMA_VERSION` names
-another release (0.2.1 or newer) and `KODAMA_INSTALL_DIR` another directory.
+nothing unless both match the release's `SHA256SUMS`. `KODEMA_VERSION` names
+another release (0.2.1 or newer) and `KODEMA_INSTALL_DIR` another directory.
 Run it again to upgrade.
 
-`kodama up` pulls the container image of its own version.
+`kodema up` pulls the container image of its own version.
 
 ### From a checkout
 
 With Go (the version in [`.go-version`](../../.go-version)), `git` and `make`:
 
 ```sh
-git clone https://github.com/optimiware/kodama && cd kodama
+git clone https://github.com/optimiware/kodema && cd kodema
 make build image
-bin/kodama up
-source ~/.kodama/instances/default/env.sh
+bin/kodema up
+source ~/.kodema/instances/default/env.sh
 ```
 
-`make build` builds `bin/kodama` and `bin/kodactl`. `make image` builds the
-container image of the same version, which is the image `kodama up` starts.
-The commands below are then `bin/kodama` and `bin/kodactl`.
+`make build` builds `bin/kodema` and `bin/kodactl`. `make image` builds the
+container image of the same version, which is the image `kodema up` starts.
+The commands below are then `bin/kodema` and `bin/kodactl`.
 
-## What `kodama up` does
+## What `kodema up` does
 
 The command is safe to run again. It:
 
-1. Starts PostgreSQL, NATS, the Kodama server and the Git service as
+1. Starts PostgreSQL, NATS, the Kodema server and the Git service as
    containers, and a gateway on `https://127.0.0.1:8443` that serves the API,
    MCP (`/mcp`), sign-in (`/auth/`) and Git (`/git/`).
 2. Creates a local CA and certificates, the tenant `tenant-local` and the
@@ -62,7 +62,7 @@ The command is safe to run again. It:
    `engineer`, `reviewer` and `operator`.
 4. Writes `env.sh`, which points `kodactl` at this installation as `admin`.
 
-Everything is kept in `~/.kodama/instances/default`. `whoami` should answer
+Everything is kept in `~/.kodema/instances/default`. `whoami` should answer
 with the roles `admin,engineer,reviewer,operator`.
 
 ## Run a first pipeline
@@ -79,7 +79,7 @@ actions:
     image: docker.io/library/alpine@sha256:0f49f331d9212aff11b932863be4eb01cdf962969aa86dab7d1ee21ac6f5f52b
     timeout: 2m
     commands:
-      - echo "hello from a Kodama workload"
+      - echo "hello from a Kodema workload"
 EOF
 
 kodactl run hello.yaml
@@ -87,7 +87,7 @@ kodactl run hello.yaml
 
 ```text
 execution execution-… started
-hello from a Kodama workload
+hello from a Kodema workload
 execution execution-… succeeded
 ```
 
@@ -142,11 +142,11 @@ kodactl task list
 
 ## Sign in as a person
 
-`env.sh` uses an administrator token that `kodama up` wrote. To act as one of
+`env.sh` uses an administrator token that `kodema up` wrote. To act as one of
 the personas, sign in:
 
 ```sh
-unset KODAMA_CREDENTIAL_FILE
+unset KODEMA_CREDENTIAL_FILE
 kodactl login            # or: kodactl login --device, without a browser
 kodactl whoami
 ```
@@ -158,7 +158,7 @@ Project and membership administration needs the tenant-wide administrator
 token instead:
 
 ```sh
-kodactl --credential-file "$KODAMA_TENANT_ADMIN_CREDENTIAL_FILE" member list
+kodactl --credential-file "$KODEMA_TENANT_ADMIN_CREDENTIAL_FILE" member list
 ```
 
 ## Git
@@ -167,14 +167,14 @@ The tenant's admin repository is served under `/git/`. Authenticate with a
 credential-store file, never an argument:
 
 ```sh
-creds=~/.kodama/instances/default/git-credentials
+creds=~/.kodema/instances/default/git-credentials
 (
   umask 077
-  printf 'protocol=https\nhost=127.0.0.1:8443\nusername=kodama\npassword=%s\n\n' \
-    "$(cat ~/.kodama/instances/default/admin-token)" |
+  printf 'protocol=https\nhost=127.0.0.1:8443\nusername=kodema\npassword=%s\n\n' \
+    "$(cat ~/.kodema/instances/default/admin-token)" |
     git credential-store --file "$creds" store
 )
-git -c http.sslCAInfo="$KODAMA_CA_FILE" -c credential.helper="store --file=$creds" \
+git -c http.sslCAInfo="$KODEMA_CA_FILE" -c credential.helper="store --file=$creds" \
   clone https://127.0.0.1:8443/git/admin
 ```
 
@@ -187,15 +187,15 @@ kodactl mcp install claude --print     # or cursor, codex; without --print it wr
 ## Operate
 
 ```sh
-kodama status
-kodama up              # again: renews the credentials below
-kodama down            # stops it and keeps the state
-kodama down --purge    # removes the containers, volumes and state
+kodema status
+kodema up              # again: renews the credentials below
+kodema down            # stops it and keeps the state
+kodema down --purge    # removes the containers, volumes and state
 ```
 
 - The administrator token in `env.sh` lasts 24 hours and the Git service
-  credential 8 hours. Run `kodama up` again to renew both.
-- `kodama up --name <name>` runs a second installation; give it another
+  credential 8 hours. Run `kodema up` again to renew both.
+- `kodema up --name <name>` runs a second installation; give it another
   `--listen` port.
 
 ## Limits

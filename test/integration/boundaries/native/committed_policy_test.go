@@ -10,12 +10,12 @@ import (
 	"strings"
 	"testing"
 
-	nativefix "github.com/optimiware/kodama/test/support/boundaries/native"
+	nativefix "github.com/optimiware/kodema/test/support/boundaries/native"
 )
 
 // TestGitServeBinaryRefusesTheRemovedPolicyInputs pins the removed policy-file
 // fallback at the real entrypoint: --policy is an unknown flag (exit 2) and the
-// removed KODAMA_GIT_POLICY variable is ignored, so the command reaches its
+// removed KODEMA_GIT_POLICY variable is ignored, so the command reaches its
 // normal required-flag refusal instead of reading a policy file.
 func TestGitServeBinaryRefusesTheRemovedPolicyInputs(t *testing.T) {
 	environment := []string{
@@ -36,16 +36,16 @@ func TestGitServeBinaryRefusesTheRemovedPolicyInputs(t *testing.T) {
 		t.Fatalf("stderr = %q; want the unknown-flag usage error naming policy", stderr)
 	}
 
-	environment = append(environment, "KODAMA_GIT_POLICY="+filepath.Join(t.TempDir(), "git.conf"))
+	environment = append(environment, "KODEMA_GIT_POLICY="+filepath.Join(t.TempDir(), "git.conf"))
 	_, stderr, code = provisionCLI(t, environment, "git", "serve")
 	if code != 2 {
-		t.Fatalf("git serve with only KODAMA_GIT_POLICY exited %d; want the required-flag refusal (2)", code)
+		t.Fatalf("git serve with only KODEMA_GIT_POLICY exited %d; want the required-flag refusal (2)", code)
 	}
 	if !strings.Contains(stderr, "git serve requires --tenant, --storage-root and --journal-dir") {
 		t.Fatalf("stderr = %q; want the required-flag refusal", stderr)
 	}
 	if strings.Contains(stderr, "policy") {
-		t.Fatalf("stderr = %q; the removed KODAMA_GIT_POLICY variable must not be part of the contract", stderr)
+		t.Fatalf("stderr = %q; the removed KODEMA_GIT_POLICY variable must not be part of the contract", stderr)
 	}
 }
 
@@ -87,7 +87,7 @@ func TestCommittedPolicyMissingDependencyIs503(t *testing.T) {
 			if err != nil {
 				t.Fatalf("NewRequest: %v", err)
 			}
-			request.SetBasicAuth("kodama", harness.HumanToken)
+			request.SetBasicAuth("kodema", harness.HumanToken)
 			response, err := nativefix.NewHTTPClient().Do(request)
 			if err != nil {
 				t.Fatalf("GET info/refs: %v", err)

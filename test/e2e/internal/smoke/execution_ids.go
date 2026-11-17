@@ -2,7 +2,7 @@
 
 package smoke
 
-import "github.com/optimiware/kodama/api"
+import "github.com/optimiware/kodema/api"
 
 // ExecutionIDs returns every execution identity a cleanup owns: the complete
 // durable task history in order, then the current execution, then any

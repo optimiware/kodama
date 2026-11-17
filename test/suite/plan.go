@@ -1,4 +1,4 @@
-// Package suite plans and runs Kodama's real-infrastructure test suites as
+// Package suite plans and runs Kodema's real-infrastructure test suites as
 // waves of concurrent lanes, for a Podman installation, a local kind cluster,
 // the cloud stage and the complete local matrix.
 //
@@ -47,10 +47,10 @@ const testVerifier = "test/e2e/internal/harness/verify-go-test.sh"
 // The concurrency knobs of the gated test packages and their accepted maxima.
 // A lane never passes a value its package would refuse.
 const (
-	e2eConcurrencyEnv   = "KODAMA_E2E_CONCURRENCY"
-	stageConcurrencyEnv = "KODAMA_STAGE_CONCURRENCY"
-	q03ConcurrencyEnv   = "KODAMA_Q03_CONCURRENCY"
-	kindConcurrencyEnv  = "KODAMA_LIFECYCLE_KIND_CONCURRENCY"
+	e2eConcurrencyEnv   = "KODEMA_E2E_CONCURRENCY"
+	stageConcurrencyEnv = "KODEMA_STAGE_CONCURRENCY"
+	q03ConcurrencyEnv   = "KODEMA_Q03_CONCURRENCY"
+	kindConcurrencyEnv  = "KODEMA_LIFECYCLE_KIND_CONCURRENCY"
 
 	maxE2EConcurrency   = 32
 	maxStageConcurrency = 24
@@ -64,14 +64,14 @@ const MaxConcurrency = maxE2EConcurrency
 // podmanPortEnv is the complete port set deploy/podman/smoke.sh requires for
 // its disposable installation.
 var podmanPortEnv = []string{
-	"KODAMA_LOCAL_HTTPS_PORT",
-	"KODAMA_LOCAL_OIDC_PORT",
-	"KODAMA_LOCAL_GIT_PORT",
-	"KODAMA_LOCAL_GIT_HTTPS_PORT",
-	"KODAMA_LOCAL_POSTGRES_PORT",
-	"KODAMA_LOCAL_NATS_PORT",
-	"KODAMA_LOCAL_NATS_MONITOR_PORT",
-	"KODAMA_LOCAL_OAUTH_UPSTREAM_PORT",
+	"KODEMA_LOCAL_HTTPS_PORT",
+	"KODEMA_LOCAL_OIDC_PORT",
+	"KODEMA_LOCAL_GIT_PORT",
+	"KODEMA_LOCAL_GIT_HTTPS_PORT",
+	"KODEMA_LOCAL_POSTGRES_PORT",
+	"KODEMA_LOCAL_NATS_PORT",
+	"KODEMA_LOCAL_NATS_MONITOR_PORT",
+	"KODEMA_LOCAL_OAUTH_UPSTREAM_PORT",
 }
 
 // Options selects and sizes one plan.
@@ -210,12 +210,12 @@ func (options Options) portableE2ELane(name, pool string, concurrency int) Lane 
 		Argv: inSlot(pool, options.verifiedGoTest(PortableE2ETests, "30m", "e2e",
 			"-parallel", strconv.Itoa(concurrency), "-run", PortableE2ERunPattern, "./test/e2e/")...),
 		Env: []string{
-			"KODAMA_REQUIRE_INFRA=1",
+			"KODEMA_REQUIRE_INFRA=1",
 			"Q01_REQUIRE_INSTALLATION=1",
 			"Q01_SMOKE_GIT=1",
 			setting("Q01_INSTALLATION_FILE", options.Installation),
 			setting("Q01_EVIDENCE_DIR", options.evidence(name)),
-			setting("KODAMA_EVIDENCE_DIR", options.evidence(name)),
+			setting("KODEMA_EVIDENCE_DIR", options.evidence(name)),
 			setting(e2eConcurrencyEnv, concurrency),
 		},
 	}
@@ -225,14 +225,14 @@ func (options Options) portableE2ELane(name, pool string, concurrency int) Lane 
 func (options Options) localRestoreLane(getenv func(string) string) Lane {
 	const name = "qualification-restore-local"
 	env := []string{
-		"KODAMA_REQUIRE_INFRA=1",
-		setting("KODAMA_EVIDENCE_DIR", options.evidence(name)),
+		"KODEMA_REQUIRE_INFRA=1",
+		setting("KODEMA_EVIDENCE_DIR", options.evidence(name)),
 		setting(q03ConcurrencyEnv, options.concurrency(4, maxQ03Concurrency)),
 	}
-	if strings.TrimSpace(getenv("KODAMA_Q03_SOURCE_REVISION")) == "" {
+	if strings.TrimSpace(getenv("KODEMA_Q03_SOURCE_REVISION")) == "" {
 		for _, candidate := range []string{"Q01_DEPLOYED_REVISION", "Q01_HARNESS_REVISION"} {
 			if rev := strings.TrimSpace(getenv(candidate)); rev != "" {
-				env = append(env, setting("KODAMA_Q03_SOURCE_REVISION", rev))
+				env = append(env, setting("KODEMA_Q03_SOURCE_REVISION", rev))
 				break
 			}
 		}
@@ -251,8 +251,8 @@ func (options Options) kindLifecycleLane() Lane {
 		Name: name,
 		Argv: inSlot("kind", options.verifiedGoTest(KindLifecycleTests, "45m", "integration", "-run", "^TestKubernetes", "./test/integration/lifecycle/")...),
 		Env: []string{
-			"KODAMA_REQUIRE_INFRA=1",
-			setting("KODAMA_EVIDENCE_DIR", options.evidence(name)),
+			"KODEMA_REQUIRE_INFRA=1",
+			setting("KODEMA_EVIDENCE_DIR", options.evidence(name)),
 			setting(kindConcurrencyEnv, options.concurrency(3, maxKindConcurrency)),
 		},
 	}
@@ -265,8 +265,8 @@ func (options Options) kindComponentLane() Lane {
 		Name: name,
 		Argv: inSlot("kind", options.goTest("40m", "component", "./test/component/kubernetes/", "./test/component/deploy/")...),
 		Env: []string{
-			"KODAMA_REQUIRE_INFRA=1",
-			setting("KODAMA_EVIDENCE_DIR", options.evidence(name)),
+			"KODEMA_REQUIRE_INFRA=1",
+			setting("KODEMA_EVIDENCE_DIR", options.evidence(name)),
 		},
 	}
 }
@@ -307,16 +307,16 @@ func (options Options) disposablePodmanLane(concurrency int, getenv func(string)
 	const name = "portable-e2e-podman"
 	environment := []string{
 		"Q01_SMOKE_GIT=1",
-		setting("KODAMA_SMOKE_TEST_RUN", PortableE2ERunPattern),
-		setting("KODAMA_SMOKE_EXPECT", strings.Join(PortableE2ETests, " ")),
-		"KODAMA_SMOKE_SHARD_REPOS=2",
+		setting("KODEMA_SMOKE_TEST_RUN", PortableE2ERunPattern),
+		setting("KODEMA_SMOKE_EXPECT", strings.Join(PortableE2ETests, " ")),
+		"KODEMA_SMOKE_SHARD_REPOS=2",
 		setting("Q01_EVIDENCE_DIR", options.evidence(name)),
-		setting("KODAMA_EVIDENCE_DIR", options.evidence(name)),
+		setting("KODEMA_EVIDENCE_DIR", options.evidence(name)),
 		setting(e2eConcurrencyEnv, concurrency),
 	}
 	if strings.TrimSpace(getenv("Q01_NATS_URL")) == "" {
 		// The live subscription proofs need the installation's broker.
-		environment = append(environment, setting("Q01_NATS_URL", "nats://127.0.0.1:"+strings.TrimSpace(getenv("KODAMA_LOCAL_NATS_PORT"))))
+		environment = append(environment, setting("Q01_NATS_URL", "nats://127.0.0.1:"+strings.TrimSpace(getenv("KODEMA_LOCAL_NATS_PORT"))))
 	}
 	return Lane{Name: name, Argv: inSlot("stack", "deploy/podman/smoke.sh"), Env: environment}, nil
 }
@@ -340,8 +340,8 @@ func localAllWaves(options Options, getenv func(string) string) []Wave {
 			Name: name,
 			Argv: inSlot("stack", options.goTest(timeout, tags, arguments...)...),
 			Env: []string{
-				"KODAMA_REQUIRE_INFRA=1",
-				setting("KODAMA_EVIDENCE_DIR", options.evidence(name)),
+				"KODEMA_REQUIRE_INFRA=1",
+				setting("KODEMA_EVIDENCE_DIR", options.evidence(name)),
 			},
 		}
 	}
@@ -374,8 +374,8 @@ func stageWaves(options Options, getenv func(string) string) ([]Wave, error) {
 	default:
 		return nil, fmt.Errorf("unknown Q03 mode %q (want plan, restore or drop)", mode)
 	}
-	if !options.SkipQ03 && strings.TrimSpace(getenv("KODAMA_Q03_STAGE_INSTANCE_ID")) == "" {
-		return nil, errors.New("the stage RDB drill is not configured: set the KODAMA_Q03_STAGE_* inputs of scripts/q03-stage-drill or pass --skip-q03")
+	if !options.SkipQ03 && strings.TrimSpace(getenv("KODEMA_Q03_STAGE_INSTANCE_ID")) == "" {
+		return nil, errors.New("the stage RDB drill is not configured: set the KODEMA_Q03_STAGE_* inputs of scripts/q03-stage-drill or pass --skip-q03")
 	}
 	environment, err := stageEnvironment(options, getenv)
 	if err != nil {
@@ -403,11 +403,11 @@ func stageWaves(options Options, getenv func(string) string) ([]Wave, error) {
 	if !options.SkipQ03 {
 		const name = "stage-rdb-drill"
 		lane := Lane{Name: name, Argv: []string{"scripts/q03-stage-drill", mode}}
-		if strings.TrimSpace(getenv("KODAMA_Q03_EVIDENCE_DIR")) == "" {
-			lane.Env = append(lane.Env, setting("KODAMA_Q03_EVIDENCE_DIR", options.evidence(name)))
+		if strings.TrimSpace(getenv("KODEMA_Q03_EVIDENCE_DIR")) == "" {
+			lane.Env = append(lane.Env, setting("KODEMA_Q03_EVIDENCE_DIR", options.evidence(name)))
 		}
-		if strings.TrimSpace(getenv("KODAMA_Q03_SOURCE_REVISION")) == "" && environment.revision != "" {
-			lane.Env = append(lane.Env, setting("KODAMA_Q03_SOURCE_REVISION", environment.revision))
+		if strings.TrimSpace(getenv("KODEMA_Q03_SOURCE_REVISION")) == "" && environment.revision != "" {
+			lane.Env = append(lane.Env, setting("KODEMA_Q03_SOURCE_REVISION", environment.revision))
 		}
 		first = append(first, lane)
 	}

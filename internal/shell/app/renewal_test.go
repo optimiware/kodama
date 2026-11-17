@@ -30,7 +30,7 @@ package app
 // because a running workload's credential must stay current across a fenced
 // restore.
 //
-// Behavior pinned here (S05 §3, KODAMA.md "Execution lifetime" and
+// Behavior pinned here (S05 §3, KODEMA.md "Execution lifetime" and
 // docs/specs/07-runtime-secrets.md):
 //   - Renew only while the execution is running, holds a current committed
 //     credential inside the margin, and its current action deadline is in the
@@ -63,10 +63,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/shell/token"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/shell/token"
 )
 
 // TestRenewalReissuesBeforeExpiry pins the renewal margin, the single atomic

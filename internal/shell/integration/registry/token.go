@@ -7,7 +7,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/optimiware/kodama/internal/fault"
+	"github.com/optimiware/kodema/internal/fault"
 )
 
 // maxTokenResponse bounds one token endpoint reply (a JWT and a few fields).

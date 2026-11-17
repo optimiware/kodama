@@ -8,12 +8,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/shell/authorize"
-	"github.com/optimiware/kodama/internal/shell/event"
-	"github.com/optimiware/kodama/internal/shell/identity"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/shell/authorize"
+	"github.com/optimiware/kodema/internal/shell/event"
+	"github.com/optimiware/kodema/internal/shell/identity"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
 )
 
 // fakeCursor is the consumer-owned resume-cursor seam. It reports the latest
@@ -250,7 +250,7 @@ func TestSubscriberBuildsScopeQualifiedSubjects(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Setup: %v", err)
 	}
-	want := []string{"kodama.v1.tenant-a.project-a.events"}
+	want := []string{"kodema.v1.tenant-a.project-a.events"}
 	if !reflect.DeepEqual(grant.Subjects, want) {
 		t.Fatalf("subjects = %v, want %v", grant.Subjects, want)
 	}
@@ -433,14 +433,14 @@ func TestEventSubjectIsInjectiveAndScopeQualified(t *testing.T) {
 	if err != nil {
 		t.Fatalf("EventSubject: %v", err)
 	}
-	if project != "kodama.v1.tenant-a.project-a.events" {
+	if project != "kodema.v1.tenant-a.project-a.events" {
 		t.Errorf("project subject = %q", project)
 	}
 	tenant, err := event.EventSubject(tenancy.Scope{TenantID: testTenant})
 	if err != nil {
 		t.Fatalf("EventSubject tenant-wide: %v", err)
 	}
-	if tenant != "kodama.v1.tenant-a._.events" {
+	if tenant != "kodema.v1.tenant-a._.events" {
 		t.Errorf("tenant-wide subject = %q", tenant)
 	}
 	if project == tenant {

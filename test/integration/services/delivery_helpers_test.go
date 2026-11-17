@@ -43,10 +43,10 @@ import (
 
 	"go.yaml.in/yaml/v3"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/test/support/factory"
-	support "github.com/optimiware/kodama/test/support/infrastructure/messaging"
-	runtimesupport "github.com/optimiware/kodama/test/support/infrastructure/runtime"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/test/support/factory"
+	support "github.com/optimiware/kodema/test/support/infrastructure/messaging"
+	runtimesupport "github.com/optimiware/kodema/test/support/infrastructure/runtime"
 )
 
 // deliveryActionTimeout keeps every recipe action clear of the transaction clock
@@ -389,14 +389,14 @@ func deliveryUniqueName(t *testing.T) string {
 // image under a new name.
 func deliveryBuildImage(t *testing.T, ctx context.Context, base runtimesupport.PinnedImage, prefix string) (localTag, imageID, marker string) {
 	t.Helper()
-	marker = "kodama-" + prefix
+	marker = "kodema-" + prefix
 	directory := t.TempDir()
 	if err := os.WriteFile(filepath.Join(directory, "marker"), []byte(marker), 0o644); err != nil {
 		t.Fatalf("write per-test delivery image marker: %v", err)
 	}
 	containerfile := "FROM " + base.Reference + "\n" +
-		"LABEL kodama.test/delivery=\"" + prefix + "\"\n" +
-		"COPY marker /kodama-delivery-marker\n"
+		"LABEL kodema.test/delivery=\"" + prefix + "\"\n" +
+		"COPY marker /kodema-delivery-marker\n"
 	if err := os.WriteFile(filepath.Join(directory, "Containerfile"), []byte(containerfile), 0o644); err != nil {
 		t.Fatalf("write per-test delivery Containerfile: %v", err)
 	}
@@ -785,8 +785,8 @@ func deliveryRegistryProbeCommand(port int, repository, reference string) string
 // version and action id, then stages the declared output with the public
 // envelope. It retries a version conflict with a fresh idempotency key because
 // execution.action.outputs is not idempotent across reused keys.
-const deliverySubmitTemplate = `TOKEN=$(cat /kodama/secrets/KODAMA_TOKEN)
-ENDPOINT=${KODAMA_URL#http://}
+const deliverySubmitTemplate = `TOKEN=$(cat /kodema/secrets/KODEMA_TOKEN)
+ENDPOINT=${KODEMA_URL#http://}
 API_HOST=${ENDPOINT%:*}
 API_PORT=${ENDPOINT##*:}
 api() {
@@ -802,16 +802,16 @@ attempt=0
 submitted=0
 while [ "$attempt" -lt 20 ]; do
   attempt=$((attempt+1))
-  inspect=$(api GET "/api/v1/executions/$KODAMA_EXECUTION" '{}')
+  inspect=$(api GET "/api/v1/executions/$KODEMA_EXECUTION" '{}')
   case "$inspect" in
     *'"operation":"execution.inspect"'*) ;;
     *) echo "execution inspect failed: $inspect" >&2; exit 1 ;;
   esac
   version=$(printf '%s' "$inspect" | grep -o '"version":[0-9]*' | head -n 1 | cut -d: -f2)
-  action=$(printf '%s' "$inspect" | sed 's/},{/}\n{/g' | grep -F "\"name\":\"$KODAMA_ACTION\"" | grep -o '"action_id":"[^"]*"' | head -n 1 | cut -d'"' -f4)
+  action=$(printf '%s' "$inspect" | sed 's/},{/}\n{/g' | grep -F "\"name\":\"$KODEMA_ACTION\"" | grep -o '"action_id":"[^"]*"' | head -n 1 | cut -d'"' -f4)
   test -n "$version"
   test -n "$action"
-  response=$(api PUT "/api/v1/executions/$KODAMA_EXECUTION/actions/$action/outputs" "{\"input\":{\"outputs\":{__OUTPUT_MEMBERS__}},\"expected_version\":$version,\"idempotency_key\":\"outputs:$KODAMA_EXECUTION:$action:__OUTPUT_LABEL__:$attempt\"}")
+  response=$(api PUT "/api/v1/executions/$KODEMA_EXECUTION/actions/$action/outputs" "{\"input\":{\"outputs\":{__OUTPUT_MEMBERS__}},\"expected_version\":$version,\"idempotency_key\":\"outputs:$KODEMA_EXECUTION:$action:__OUTPUT_LABEL__:$attempt\"}")
   case "$response" in
     *'"operation":"execution.action.outputs"'*) submitted=1; break ;;
     *version_conflict*) echo "execution outputs hit a version conflict; retrying with a fresh key" >&2 ;;
@@ -895,7 +895,7 @@ func deliveryCountActionTransitions(t *testing.T, harness *factory.Harness, acti
 }
 
 // deliveryAssertNoArtifactEntity proves the served operation inventory has no
-// artifact registration surface: an artifact is an output value, not a Kodama
+// artifact registration surface: an artifact is an output value, not a Kodema
 // entity. The positive control keeps the check from passing on an empty table.
 func deliveryAssertNoArtifactEntity(t *testing.T) {
 	t.Helper()

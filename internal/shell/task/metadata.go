@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/optimiware/kodama/internal/fault"
+	"github.com/optimiware/kodema/internal/fault"
 )
 
 // Task metadata and conversation bounds. Metadata is one opaque JSON object of
@@ -20,7 +20,7 @@ const (
 // emptyConversationJSON is the present conversation snapshot of a task-bound
 // admission with zero messages. It is the valid JSON empty array, the same
 // encoding a non-empty conversation uses (a JSON array of messages), so a
-// workload can parse /kodama/task.json. It is non-nil: presence is distinct
+// workload can parse /kodema/task.json. It is non-nil: presence is distinct
 // from the nil task-free case, which materializes no file.
 const emptyConversationJSON = "[]"
 
@@ -96,7 +96,7 @@ func marshalMetadata(metadata map[string]string) []byte {
 // task-bound admission, so a zero-message combined conversation is the present
 // JSON empty array (non-nil, "[]"), never nil: nil is reserved for a task-free
 // execution, and a task-bound run with nil bytes materializes no
-// /kodama/task.json while KODAMA_TASK is still set. The empty array keeps the
+// /kodema/task.json while KODEMA_TASK is still set. The empty array keeps the
 // file valid JSON and consistent with the non-empty message-array encoding.
 func conversationBytes(messages []Message, answer *Message) ([]byte, error) {
 	combined := append([]Message(nil), messages...)

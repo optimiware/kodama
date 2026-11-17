@@ -11,20 +11,20 @@
 #     scripts/stage-personas
 #
 # Inputs:
-#   KODAMA_STAGE_API_URL            https API origin (default none)
-#   KODAMA_STAGE_CA_FILE            installation CA bundle (path)
-#   KODAMA_STAGE_ADMIN_TOKEN_FILE   administrator bearer token, mode 0600
-#   KODAMA_STAGE_PROJECT_ID         project (default tenant-a)
-#   KODAMA_STAGE_ISSUER             OAuthSonas issuer (https)
+#   KODEMA_STAGE_API_URL            https API origin (default none)
+#   KODEMA_STAGE_CA_FILE            installation CA bundle (path)
+#   KODEMA_STAGE_ADMIN_TOKEN_FILE   administrator bearer token, mode 0600
+#   KODEMA_STAGE_PROJECT_ID         project (default tenant-a)
+#   KODEMA_STAGE_ISSUER             OAuthSonas issuer (https)
 #
 # Optional:
-#   KODAMA_STAGE_TENANT_ID          tenant (default: the project id)
-#   KODAMA_STAGE_API_HOST           allowed API host (default 127.0.0.1)
-#   KODAMA_STAGE_SUBJECT_ADMIN      admin subject (default admin)
-#   KODAMA_STAGE_SUBJECT_ENGINEER   engineer subject (default engineer)
-#   KODAMA_STAGE_SUBJECT_REVIEWER   reviewer subject (default reviewer)
-#   KODAMA_STAGE_SUBJECT_OPERATOR   operator subject (default operator)
-#   KODAMA_STAGE_EVIDENCE_DIR       absolute evidence directory
+#   KODEMA_STAGE_TENANT_ID          tenant (default: the project id)
+#   KODEMA_STAGE_API_HOST           allowed API host (default 127.0.0.1)
+#   KODEMA_STAGE_SUBJECT_ADMIN      admin subject (default admin)
+#   KODEMA_STAGE_SUBJECT_ENGINEER   engineer subject (default engineer)
+#   KODEMA_STAGE_SUBJECT_REVIEWER   reviewer subject (default reviewer)
+#   KODEMA_STAGE_SUBJECT_OPERATOR   operator subject (default operator)
+#   KODEMA_STAGE_EVIDENCE_DIR       absolute evidence directory
 #
 # The script creates the project idempotently, derives each principal as
 # "oidc-" plus the first 32 lowercase hex characters of
@@ -55,35 +55,35 @@ die() {
 # A credential supplied on the command line or as a plain environment value is
 # refused: only the private file input is accepted.
 if (( $# > 0 )); then
-	die "no argv is accepted; supply the administrator credential only through KODAMA_STAGE_ADMIN_TOKEN_FILE"
+	die "no argv is accepted; supply the administrator credential only through KODEMA_STAGE_ADMIN_TOKEN_FILE"
 fi
-for forbidden in KODAMA_STAGE_ADMIN_TOKEN KODAMA_STAGE_TOKEN KODAMA_STAGE_BEARER; do
+for forbidden in KODEMA_STAGE_ADMIN_TOKEN KODEMA_STAGE_TOKEN KODEMA_STAGE_BEARER; do
 	if [[ -n "${!forbidden:-}" ]]; then
 		die "${forbidden} is refused; a credential is accepted only as a private 0600 file"
 	fi
 done
 
-api_url="${KODAMA_STAGE_API_URL:-}"
-ca_file="${KODAMA_STAGE_CA_FILE:-}"
-token_file="${KODAMA_STAGE_ADMIN_TOKEN_FILE:-}"
-project="${KODAMA_STAGE_PROJECT_ID:-tenant-a}"
-tenant="${KODAMA_STAGE_TENANT_ID:-$project}"
-issuer="${KODAMA_STAGE_ISSUER:-}"
-allowed_host="${KODAMA_STAGE_API_HOST:-127.0.0.1}"
-evidence_dir="${KODAMA_STAGE_EVIDENCE_DIR:-}"
+api_url="${KODEMA_STAGE_API_URL:-}"
+ca_file="${KODEMA_STAGE_CA_FILE:-}"
+token_file="${KODEMA_STAGE_ADMIN_TOKEN_FILE:-}"
+project="${KODEMA_STAGE_PROJECT_ID:-tenant-a}"
+tenant="${KODEMA_STAGE_TENANT_ID:-$project}"
+issuer="${KODEMA_STAGE_ISSUER:-}"
+allowed_host="${KODEMA_STAGE_API_HOST:-127.0.0.1}"
+evidence_dir="${KODEMA_STAGE_EVIDENCE_DIR:-}"
 work=""
 
-[[ -n "$api_url" ]] || die "KODAMA_STAGE_API_URL is required"
-[[ -n "$ca_file" ]] || die "KODAMA_STAGE_CA_FILE is required"
-[[ -n "$token_file" ]] || die "KODAMA_STAGE_ADMIN_TOKEN_FILE is required"
-[[ -n "$issuer" ]] || die "KODAMA_STAGE_ISSUER is required"
+[[ -n "$api_url" ]] || die "KODEMA_STAGE_API_URL is required"
+[[ -n "$ca_file" ]] || die "KODEMA_STAGE_CA_FILE is required"
+[[ -n "$token_file" ]] || die "KODEMA_STAGE_ADMIN_TOKEN_FILE is required"
+[[ -n "$issuer" ]] || die "KODEMA_STAGE_ISSUER is required"
 
 # https://host[:port] only: no user information, path, query or fragment.
 if [[ ! "$api_url" =~ ^https://([^/?#]+)/?$ ]]; then
-	die "KODAMA_STAGE_API_URL must be an https origin without user information, a path, query or fragment"
+	die "KODEMA_STAGE_API_URL must be an https origin without user information, a path, query or fragment"
 fi
 authority="${BASH_REMATCH[1]}"
-[[ "$authority" != *"@"* ]] || die "KODAMA_STAGE_API_URL must not carry user information"
+[[ "$authority" != *"@"* ]] || die "KODEMA_STAGE_API_URL must not carry user information"
 if [[ "$authority" =~ ^([A-Za-z0-9.-]+):([0-9]{1,5})$ ]]; then
 	api_host="${BASH_REMATCH[1]}"
 	api_port="${BASH_REMATCH[2]}"
@@ -91,31 +91,31 @@ elif [[ "$authority" =~ ^[A-Za-z0-9.-]+$ ]]; then
 	api_host="$authority"
 	api_port="443"
 else
-	die "KODAMA_STAGE_API_URL host is not a plain DNS name or IPv4 address"
+	die "KODEMA_STAGE_API_URL host is not a plain DNS name or IPv4 address"
 fi
-[[ "$allowed_host" =~ ^[A-Za-z0-9.-]+$ ]] || die "KODAMA_STAGE_API_HOST is not a plain host"
+[[ "$allowed_host" =~ ^[A-Za-z0-9.-]+$ ]] || die "KODEMA_STAGE_API_HOST is not a plain host"
 [[ "$api_host" == "$allowed_host" ]] ||
-	die "KODAMA_STAGE_API_URL host ${api_host} is not the stage API host ${allowed_host}"
-[[ "$api_port" =~ ^[0-9]+$ ]] && (( api_port >= 1 && api_port <= 65535 )) || die "KODAMA_STAGE_API_URL port is not a port"
+	die "KODEMA_STAGE_API_URL host ${api_host} is not the stage API host ${allowed_host}"
+[[ "$api_port" =~ ^[0-9]+$ ]] && (( api_port >= 1 && api_port <= 65535 )) || die "KODEMA_STAGE_API_URL port is not a port"
 api_base="${api_url%/}"
 
 [[ "$issuer" =~ ^https://[^[:space:]/?#]+(/[^[:space:]]*)?$ ]] ||
-	die "KODAMA_STAGE_ISSUER must be an https URL"
-[[ "$project" =~ ^[A-Za-z0-9_-]{1,128}$ ]] || die "KODAMA_STAGE_PROJECT_ID is not a bounded identity"
-[[ "$tenant" =~ ^[A-Za-z0-9_-]{1,128}$ ]] || die "KODAMA_STAGE_TENANT_ID is not a bounded identity"
+	die "KODEMA_STAGE_ISSUER must be an https URL"
+[[ "$project" =~ ^[A-Za-z0-9_-]{1,128}$ ]] || die "KODEMA_STAGE_PROJECT_ID is not a bounded identity"
+[[ "$tenant" =~ ^[A-Za-z0-9_-]{1,128}$ ]] || die "KODEMA_STAGE_TENANT_ID is not a bounded identity"
 
-[[ -f "$ca_file" ]] || die "KODAMA_STAGE_CA_FILE is not a regular file"
-[[ -r "$ca_file" ]] || die "KODAMA_STAGE_CA_FILE is not readable"
+[[ -f "$ca_file" ]] || die "KODEMA_STAGE_CA_FILE is not a regular file"
+[[ -r "$ca_file" ]] || die "KODEMA_STAGE_CA_FILE is not readable"
 
-[[ -f "$token_file" ]] || die "KODAMA_STAGE_ADMIN_TOKEN_FILE is not a regular file"
-[[ -r "$token_file" ]] || die "KODAMA_STAGE_ADMIN_TOKEN_FILE is not readable"
-[[ -s "$token_file" ]] || die "KODAMA_STAGE_ADMIN_TOKEN_FILE is empty"
+[[ -f "$token_file" ]] || die "KODEMA_STAGE_ADMIN_TOKEN_FILE is not a regular file"
+[[ -r "$token_file" ]] || die "KODEMA_STAGE_ADMIN_TOKEN_FILE is not readable"
+[[ -s "$token_file" ]] || die "KODEMA_STAGE_ADMIN_TOKEN_FILE is empty"
 token_mode="$(stat -c '%a' "$token_file" 2>/dev/null || true)"
-[[ "$token_mode" == "600" ]] || die "KODAMA_STAGE_ADMIN_TOKEN_FILE must be mode 0600 (found ${token_mode:-unknown})"
+[[ "$token_mode" == "600" ]] || die "KODEMA_STAGE_ADMIN_TOKEN_FILE must be mode 0600 (found ${token_mode:-unknown})"
 
 case "$evidence_dir" in
 	"" | /*) ;;
-	*) die "KODAMA_STAGE_EVIDENCE_DIR must be absolute" ;;
+	*) die "KODEMA_STAGE_EVIDENCE_DIR must be absolute" ;;
 esac
 
 for tool in curl python3 stat sha256sum cut mktemp; do
@@ -144,10 +144,10 @@ roles_for() {
 
 subject_for() {
 	case "$1" in
-	admin) printf '%s' "${KODAMA_STAGE_SUBJECT_ADMIN:-admin}" ;;
-	engineer) printf '%s' "${KODAMA_STAGE_SUBJECT_ENGINEER:-engineer}" ;;
-	reviewer) printf '%s' "${KODAMA_STAGE_SUBJECT_REVIEWER:-reviewer}" ;;
-	operator) printf '%s' "${KODAMA_STAGE_SUBJECT_OPERATOR:-operator}" ;;
+	admin) printf '%s' "${KODEMA_STAGE_SUBJECT_ADMIN:-admin}" ;;
+	engineer) printf '%s' "${KODEMA_STAGE_SUBJECT_ENGINEER:-engineer}" ;;
+	reviewer) printf '%s' "${KODEMA_STAGE_SUBJECT_REVIEWER:-reviewer}" ;;
+	operator) printf '%s' "${KODEMA_STAGE_SUBJECT_OPERATOR:-operator}" ;;
 	*) die "unknown persona $1" ;;
 	esac
 }

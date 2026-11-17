@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/installation"
+	"github.com/optimiware/kodema/internal/installation"
 )
 
 type keepRefsTestSweeper struct{}

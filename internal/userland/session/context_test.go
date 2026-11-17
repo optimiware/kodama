@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/userland/session"
+	"github.com/optimiware/kodema/internal/userland/session"
 )
 
 // tenByteRecord builds five messages of exactly ten bytes each
@@ -83,8 +83,8 @@ func TestContextWindowExactByteLimit(t *testing.T) {
 // never trimmed and never inlined when history is trimmed.
 func TestContextWindowPreservesReferences(t *testing.T) {
 	record := tenByteRecord()
-	first := mustRef(t, "kodama-checkpoint/v1/ctx-0001")
-	second := mustRef(t, "kodama-checkpoint/v1/ctx-0002")
+	first := mustRef(t, "kodema-checkpoint/v1/ctx-0001")
+	second := mustRef(t, "kodema-checkpoint/v1/ctx-0002")
 	record.ContextRefs = []session.Ref{first, second}
 
 	window, err := record.Window(session.ContextLimits{MaxMessages: 1, MaxBytes: 1 << 20})

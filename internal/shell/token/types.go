@@ -21,22 +21,22 @@ import (
 	"math"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/shell/authorize"
-	"github.com/optimiware/kodama/internal/shell/event"
-	"github.com/optimiware/kodama/internal/shell/receipt"
-	"github.com/optimiware/kodama/internal/shell/service"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/shell/authorize"
+	"github.com/optimiware/kodema/internal/shell/event"
+	"github.com/optimiware/kodema/internal/shell/receipt"
+	"github.com/optimiware/kodema/internal/shell/service"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
 )
 
 // Domain separators of the two derived token kinds. The encoded domain string
 // is the first length-prefixed field of the MAC input.
 const (
 	// ExecutionDomain is the execution credential domain.
-	ExecutionDomain = "kodama-execution-v1"
+	ExecutionDomain = "kodema-execution-v1"
 	// ServiceDomain is the service credential domain.
-	ServiceDomain = "kodama-service-v1"
+	ServiceDomain = "kodema-service-v1"
 )
 
 // Presented token prefixes. A token of the wrong prefix/kind is refused.

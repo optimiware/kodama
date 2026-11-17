@@ -11,11 +11,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/client"
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/shell/app/drivers/userlandfs"
-	"github.com/optimiware/kodama/internal/userland/cli"
-	idfix "github.com/optimiware/kodama/test/support/boundaries/identity"
+	"github.com/optimiware/kodema/client"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/shell/app/drivers/userlandfs"
+	"github.com/optimiware/kodema/internal/userland/cli"
+	idfix "github.com/optimiware/kodema/test/support/boundaries/identity"
 )
 
 // sessionFixture builds one human-session login fixture. The config directory
@@ -41,16 +41,16 @@ func sessionFixture(t *testing.T, provider *idfix.Provider) sessionFixtureResult
 	if err := provider.RegisterClientWithTTL("kodactl", "client-secret", claims, time.Hour); err != nil {
 		t.Fatalf("RegisterClient: %v", err)
 	}
-	code, err := provider.IssueAuthorizationCode("kodactl", "https://kodama.example/callback", claims)
+	code, err := provider.IssueAuthorizationCode("kodactl", "https://kodema.example/callback", claims)
 	if err != nil {
 		t.Fatalf("IssueAuthorizationCode: %v", err)
 	}
-	response, err := provider.ExchangeCode(context.Background(), code, "kodactl", "client-secret", "https://kodama.example/callback")
+	response, err := provider.ExchangeCode(context.Background(), code, "kodactl", "client-secret", "https://kodema.example/callback")
 	if err != nil {
 		t.Fatalf("ExchangeCode: %v", err)
 	}
 	root := t.TempDir()
-	directory := filepath.Join(root, "kodama")
+	directory := filepath.Join(root, "kodema")
 	path := filepath.Join(directory, "session.json")
 	store := &cli.FileSessionStore{Path: path, Files: userlandfs.FileSystem{}, Now: provider.Clock().Now}
 	credential := client.Credential{
@@ -130,7 +130,7 @@ func TestLoginPersistsSessionWithRestrictivePermissions(t *testing.T) {
 }
 
 // TestLoginCreatesMissingConfigDirectory pins the first-login behavior: a
-// login at a non-existent ~/.config/kodama creates the directory with mode
+// login at a non-existent ~/.config/kodema creates the directory with mode
 // 0700 and writes the session file with mode 0600.
 func TestLoginCreatesMissingConfigDirectory(t *testing.T) {
 	provider := newOIDC(t, idfix.OIDCOptions{})
@@ -170,7 +170,7 @@ func TestLoginCreatesMissingConfigDirectory(t *testing.T) {
 // session file 0600.
 func TestFileSessionStoreSaveCreatesOwnerOnlyDirectory(t *testing.T) {
 	root := t.TempDir()
-	directory := filepath.Join(root, "kodama")
+	directory := filepath.Join(root, "kodema")
 	path := filepath.Join(directory, "session.json")
 	store := &cli.FileSessionStore{Path: path, Files: userlandfs.FileSystem{}, Now: time.Now}
 	credential := client.Credential{Kind: client.KindSession, Token: "human-session-token", ExpiresAt: time.Now().Add(time.Hour)}
@@ -518,8 +518,8 @@ func TestHelperDecisionOriginAndCredentialRules(t *testing.T) {
 			if response.Password != testCase.want {
 				t.Fatalf("password = %q; want %q", response.Password, testCase.want)
 			}
-			if response.Password != "" && response.Username != "kodama" {
-				t.Fatalf("username = %q; want kodama", response.Username)
+			if response.Password != "" && response.Username != "kodema" {
+				t.Fatalf("username = %q; want kodema", response.Username)
 			}
 			if response.Password == "" && response.Username != "" {
 				t.Fatalf("refusal username = %q; want empty", response.Username)
@@ -544,7 +544,7 @@ func TestHelperOutputShapeAndDiagnosticsRedaction(t *testing.T) {
 	if code != cli.ExitSuccess {
 		t.Fatalf("helper exit code = %d", code)
 	}
-	if out.String() != "username=kodama\npassword=human-token\n" {
+	if out.String() != "username=kodema\npassword=human-token\n" {
 		t.Fatalf("helper stdout = %q; want the declared shape", out.String())
 	}
 	if errOut.Len() != 0 {

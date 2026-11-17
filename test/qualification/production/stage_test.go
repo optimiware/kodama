@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
+	"github.com/optimiware/kodema/api"
 )
 
 // TestStageAuthenticatedAndUnauthenticated is the first live Q02 probe. An

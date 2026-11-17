@@ -6,8 +6,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/fault"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/fault"
 )
 
 // Native-agent runtime bounds. They bound one planning loop, one model call
@@ -16,7 +16,7 @@ const (
 	// CheckpointVersion is the durable checkpoint record version.
 	CheckpointVersion = 1
 	// CheckpointRefPrefix is the fixed checkpoint reference prefix.
-	CheckpointRefPrefix = "kodama-checkpoint/"
+	CheckpointRefPrefix = "kodema-checkpoint/"
 	// CheckpointRefVersion is the supported checkpoint reference version.
 	CheckpointRefVersion = "v1"
 	// MaxCheckpointRefBytes bounds one checkpoint reference.

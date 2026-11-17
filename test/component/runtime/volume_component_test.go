@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/shell/runtime/podman"
-	runtimesupport "github.com/optimiware/kodama/test/support/infrastructure/runtime"
+	"github.com/optimiware/kodema/internal/shell/runtime/podman"
+	runtimesupport "github.com/optimiware/kodema/test/support/infrastructure/runtime"
 )
 
 // TestPodmanVolumeRemoveRefusesInUseVolume proves the real Podman seam never
@@ -24,7 +24,7 @@ func TestPodmanVolumeRemoveRefusesInUseVolume(t *testing.T) {
 	fixture := newPodmanFixture(t, "workspace-podman-volume")
 
 	suffix := fmt.Sprintf("%d-%d", os.Getpid(), time.Now().UnixNano())
-	container := "kodama-i02d-inuse-" + suffix
+	container := "kodema-i02d-inuse-" + suffix
 	args := []string{
 		"run", "-d", "--name", container,
 		"--label", runtimesupport.WorkspaceLabel + "=" + string(fixture.workspaceID),

@@ -12,14 +12,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/installation"
-	"github.com/optimiware/kodama/internal/shell/secret"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/installation"
+	"github.com/optimiware/kodema/internal/shell/secret"
 )
 
 // r14PostgresBase is a complete URL-form DSN with a password. A refusal must
 // never echo either the DSN or the password.
-const r14PostgresBase = "postgres://kodama:pg-hunter2@db.example:5432/kodama"
+const r14PostgresBase = "postgres://kodema:pg-hunter2@db.example:5432/kodema"
 
 // r14NATSTLS is the only accepted production NATS transport.
 const r14NATSTLS = "tls://nats.example:4222"
@@ -99,18 +99,18 @@ func TestProductionRequiresVerifyFullOnEveryPostgresDSN(t *testing.T) {
 			name string
 			dsn  string
 		}{
-			{name: "other scheme", dsn: "foo://kodama:pg-hunter2@db.example:5432/kodama?sslmode=verify-full"},
-			{name: "postgresql scheme", dsn: "postgresql://kodama:pg-hunter2@db.example:5432/kodama?sslmode=verify-full"},
-			{name: "uppercase scheme", dsn: "POSTGRES://kodama:pg-hunter2@db.example:5432/kodama?sslmode=verify-full"},
-			{name: "empty host", dsn: "postgres:///kodama?sslmode=verify-full"},
-			{name: "empty host with socket override", dsn: "postgres:///kodama?host=/var/run/postgresql&sslmode=verify-full"},
-			{name: "percent encoded unix host", dsn: "postgres://%2Fvar%2Frun%2Fpostgresql/kodama?sslmode=verify-full"},
-			{name: "comma host list", dsn: "postgres://db.example,/var/run/postgresql/kodama?sslmode=verify-full"},
-			{name: "empty host element", dsn: "postgres://,db.example/kodama?sslmode=verify-full"},
-			{name: "port zero", dsn: "postgres://db.example:0/kodama?sslmode=verify-full"},
-			{name: "port too large", dsn: "postgres://db.example:65536/kodama?sslmode=verify-full"},
+			{name: "other scheme", dsn: "foo://kodema:pg-hunter2@db.example:5432/kodema?sslmode=verify-full"},
+			{name: "postgresql scheme", dsn: "postgresql://kodema:pg-hunter2@db.example:5432/kodema?sslmode=verify-full"},
+			{name: "uppercase scheme", dsn: "POSTGRES://kodema:pg-hunter2@db.example:5432/kodema?sslmode=verify-full"},
+			{name: "empty host", dsn: "postgres:///kodema?sslmode=verify-full"},
+			{name: "empty host with socket override", dsn: "postgres:///kodema?host=/var/run/postgresql&sslmode=verify-full"},
+			{name: "percent encoded unix host", dsn: "postgres://%2Fvar%2Frun%2Fpostgresql/kodema?sslmode=verify-full"},
+			{name: "comma host list", dsn: "postgres://db.example,/var/run/postgresql/kodema?sslmode=verify-full"},
+			{name: "empty host element", dsn: "postgres://,db.example/kodema?sslmode=verify-full"},
+			{name: "port zero", dsn: "postgres://db.example:0/kodema?sslmode=verify-full"},
+			{name: "port too large", dsn: "postgres://db.example:65536/kodema?sslmode=verify-full"},
 			{name: "missing database path", dsn: "postgres://db.example?sslmode=verify-full"},
-			{name: "keyword form", dsn: "host=db.example user=kodama password=pg-hunter2 dbname=kodama sslmode=verify-full"},
+			{name: "keyword form", dsn: "host=db.example user=kodema password=pg-hunter2 dbname=kodema sslmode=verify-full"},
 		}
 		for _, testCase := range refusedDSNs {
 			t.Run(field.name+" refused "+testCase.name, func(t *testing.T) {
@@ -134,8 +134,8 @@ func TestProductionRequiresVerifyFullOnEveryPostgresDSN(t *testing.T) {
 			{name: "verify-full", dsn: r14PostgresBase + "?sslmode=verify-full"},
 			{name: "verify-full with other options", dsn: r14PostgresBase + "?connect_timeout=10&sslmode=verify-full"},
 			{name: "percent-encoded sslmode", dsn: r14PostgresBase + "?sslmode=verify%2Dfull"},
-			{name: "ipv6 host", dsn: "postgres://kodama:pg-hunter2@[2001:db8::1]:5432/kodama?sslmode=verify-full"},
-			{name: "port omitted", dsn: "postgres://kodama:pg-hunter2@db.example/kodama?sslmode=verify-full"},
+			{name: "ipv6 host", dsn: "postgres://kodema:pg-hunter2@[2001:db8::1]:5432/kodema?sslmode=verify-full"},
+			{name: "port omitted", dsn: "postgres://kodema:pg-hunter2@db.example/kodema?sslmode=verify-full"},
 		}
 		for _, testCase := range accepted {
 			t.Run(field.name+" accepted "+testCase.name, func(t *testing.T) {
@@ -153,17 +153,17 @@ func TestProductionRequiresVerifyFullOnEveryPostgresDSN(t *testing.T) {
 // flow emits on every one of the four production pools: the generated password
 // is 24 random bytes rendered as 48 hex characters (scripts/bootstrap-secrets
 // `openssl rand -hex 24`) and the chart/script suffix is
-// `sslmode=verify-full&sslrootcert=/etc/kodama/pg-ca/ca.crt`. The credential
+// `sslmode=verify-full&sslrootcert=/etc/kodema/pg-ca/ca.crt`. The credential
 // grammar is deliberately percent-free: letters, digits, `.`, `_`, `~` and `-`
 // are accepted and a percent-encoded credential is refused.
 func TestProductionAcceptedCredentialGrammar(t *testing.T) {
 	const hex48 = "0123456789abcdef0123456789abcdef0123456789abcdef"
-	const suffix = "?sslmode=verify-full&sslrootcert=/etc/kodama/pg-ca/ca.crt"
+	const suffix = "?sslmode=verify-full&sslrootcert=/etc/kodema/pg-ca/ca.crt"
 	roleUser := map[string]string{
-		"runtime":    "kodama_runtime",
-		"controller": "kodama_controller",
-		"publisher":  "kodama_publisher",
-		"auth":       "kodama_auth",
+		"runtime":    "kodema_runtime",
+		"controller": "kodema_controller",
+		"publisher":  "kodema_publisher",
+		"auth":       "kodema_auth",
 	}
 	for _, field := range productionDSNFields() {
 		user := roleUser[field.name]
@@ -179,7 +179,7 @@ func TestProductionAcceptedCredentialGrammar(t *testing.T) {
 		} {
 			t.Run(field.name+" accepted "+password.name, func(t *testing.T) {
 				config := validProductionConfig(t)
-				*field.url(&config) = "postgres://" + user + ":" + password.value + "@database:5432/kodama" + suffix
+				*field.url(&config) = "postgres://" + user + ":" + password.value + "@database:5432/kodema" + suffix
 				if err := config.resolved().validate(); err != nil {
 					t.Fatalf("validate refused the %s DSN with %s: %v", field.name, password.name, err)
 				}
@@ -188,7 +188,7 @@ func TestProductionAcceptedCredentialGrammar(t *testing.T) {
 		for _, password := range []string{"p%40ss", "p%23x", "p%25", "p%40ss%2Fw%3Ard"} {
 			t.Run(field.name+" refused percent credential "+password, func(t *testing.T) {
 				config := validProductionConfig(t)
-				*field.url(&config) = "postgres://" + user + ":" + password + "@database:5432/kodama" + suffix
+				*field.url(&config) = "postgres://" + user + ":" + password + "@database:5432/kodema" + suffix
 				err := config.resolved().validate()
 				requireInvalidInput(t, err, field.name+" percent-encoded credential")
 				if strings.Contains(err.Error(), password) {
@@ -250,7 +250,7 @@ func TestProductionKeyReferenceFamilyIsExact(t *testing.T) {
 			return installation.KeyRefAWSKMSPrefix + "alias/" + name
 		}, foreign: installation.KeyRefGCPKMSPrefix},
 		{name: "gcp", adapter: installation.KeyGCPKMS, prefix: installation.KeyRefGCPKMSPrefix, ref: func(name string) string {
-			return installation.KeyRefGCPKMSPrefix + "projects/kodama/locations/global/keyRings/kodama/cryptoKeys/" + name
+			return installation.KeyRefGCPKMSPrefix + "projects/kodema/locations/global/keyRings/kodema/cryptoKeys/" + name
 		}, foreign: installation.KeyRefAWSKMSPrefix},
 		{name: "scaleway", adapter: installation.KeyScalewayKMS, prefix: installation.KeyRefScalewayKMSPrefix, ref: func(name string) string {
 			return installation.KeyRefScalewayKMSPrefix + name

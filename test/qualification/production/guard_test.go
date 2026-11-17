@@ -11,22 +11,22 @@ import (
 // only the assigned context and namespaces, only namespaced workload mutations,
 // and never a node, cluster-scoped, tofu or cloud command.
 func TestHarnessConfinementGuardRefusals(t *testing.T) {
-	guard, err := NewGuard("kodama-stage-k8s", "kodama-tenant-tenant-a", "kodama-tenant-tenant-b")
+	guard, err := NewGuard("kodema-stage-k8s", "kodema-tenant-tenant-a", "kodema-tenant-tenant-b")
 	if err != nil {
 		t.Fatalf("build guard: %v", err)
 	}
 
 	admitted := []Access{
-		{Context: "kodama-stage-k8s", Namespace: ReleaseNamespace, Verb: "delete", Resource: "pods"},
-		{Context: "kodama-stage-k8s", Namespace: "kodama-tenant-tenant-a", Verb: "patch", Resource: "deployments"},
-		{Context: "kodama-stage-k8s", Namespace: "kodama-tenant-tenant-b", Verb: "scale", Resource: "statefulsets"},
-		{Context: "kodama-stage-k8s", Namespace: ReleaseNamespace, Verb: "port-forward", Resource: "services"},
-		{Context: "kodama-stage-k8s", Namespace: ReleaseNamespace, Verb: "get", Resource: "secrets"},
-		{Context: "kodama-stage-k8s", Namespace: "kodama-tenant-tenant-a", Verb: "get", Resource: "networkpolicies"},
-		{Context: "kodama-stage-k8s", Namespace: "kodama-tenant-tenant-b", Verb: "get", Resource: "limitranges"},
-		{Context: "kodama-stage-k8s", Namespace: "kodama-tenant-tenant-a", Verb: "get", Resource: "namespaces/kodama-tenant-tenant-a"},
-		{Context: "kodama-stage-k8s", Namespace: ReleaseNamespace, Verb: "describe", Resource: "namespaces/" + ReleaseNamespace},
-		{Context: "kodama-stage-k8s", Namespace: "kodama-tenant-tenant-a", Verb: "delete", Resource: "persistentvolumeclaims"},
+		{Context: "kodema-stage-k8s", Namespace: ReleaseNamespace, Verb: "delete", Resource: "pods"},
+		{Context: "kodema-stage-k8s", Namespace: "kodema-tenant-tenant-a", Verb: "patch", Resource: "deployments"},
+		{Context: "kodema-stage-k8s", Namespace: "kodema-tenant-tenant-b", Verb: "scale", Resource: "statefulsets"},
+		{Context: "kodema-stage-k8s", Namespace: ReleaseNamespace, Verb: "port-forward", Resource: "services"},
+		{Context: "kodema-stage-k8s", Namespace: ReleaseNamespace, Verb: "get", Resource: "secrets"},
+		{Context: "kodema-stage-k8s", Namespace: "kodema-tenant-tenant-a", Verb: "get", Resource: "networkpolicies"},
+		{Context: "kodema-stage-k8s", Namespace: "kodema-tenant-tenant-b", Verb: "get", Resource: "limitranges"},
+		{Context: "kodema-stage-k8s", Namespace: "kodema-tenant-tenant-a", Verb: "get", Resource: "namespaces/kodema-tenant-tenant-a"},
+		{Context: "kodema-stage-k8s", Namespace: ReleaseNamespace, Verb: "describe", Resource: "namespaces/" + ReleaseNamespace},
+		{Context: "kodema-stage-k8s", Namespace: "kodema-tenant-tenant-a", Verb: "delete", Resource: "persistentvolumeclaims"},
 	}
 	for _, access := range admitted {
 		if err := guard.Admit(access); err != nil {
@@ -40,7 +40,7 @@ func TestHarnessConfinementGuardRefusals(t *testing.T) {
 	}{
 		{
 			name:   "another context",
-			access: Access{Context: "kodama-probe", Namespace: ReleaseNamespace, Verb: "delete", Resource: "pods"},
+			access: Access{Context: "kodema-probe", Namespace: ReleaseNamespace, Verb: "delete", Resource: "pods"},
 		},
 		{
 			name:   "empty context",
@@ -48,99 +48,99 @@ func TestHarnessConfinementGuardRefusals(t *testing.T) {
 		},
 		{
 			name:   "another namespace",
-			access: Access{Context: "kodama-stage-k8s", Namespace: "default", Verb: "delete", Resource: "pods"},
+			access: Access{Context: "kodema-stage-k8s", Namespace: "default", Verb: "delete", Resource: "pods"},
 		},
 		{
 			name:   "namespace traversal",
-			access: Access{Context: "kodama-stage-k8s", Namespace: ReleaseNamespace + "/../default", Verb: "delete", Resource: "pods"},
+			access: Access{Context: "kodema-stage-k8s", Namespace: ReleaseNamespace + "/../default", Verb: "delete", Resource: "pods"},
 		},
 		{
 			name:   "nodes",
-			access: Access{Context: "kodama-stage-k8s", Namespace: ReleaseNamespace, Verb: "delete", Resource: "nodes"},
+			access: Access{Context: "kodema-stage-k8s", Namespace: ReleaseNamespace, Verb: "delete", Resource: "nodes"},
 		},
 		{
 			name:   "cluster role binding",
-			access: Access{Context: "kodama-stage-k8s", Namespace: ReleaseNamespace, Verb: "create", Resource: "clusterrolebindings"},
+			access: Access{Context: "kodema-stage-k8s", Namespace: ReleaseNamespace, Verb: "create", Resource: "clusterrolebindings"},
 		},
 		{
 			name:   "unknown mutation resource",
-			access: Access{Context: "kodama-stage-k8s", Namespace: ReleaseNamespace, Verb: "delete", Resource: "persistentvolumes"},
+			access: Access{Context: "kodema-stage-k8s", Namespace: ReleaseNamespace, Verb: "delete", Resource: "persistentvolumes"},
 		},
 		{
 			name:   "unknown verb",
-			access: Access{Context: "kodama-stage-k8s", Namespace: ReleaseNamespace, Verb: "apply", Resource: "pods"},
+			access: Access{Context: "kodema-stage-k8s", Namespace: ReleaseNamespace, Verb: "apply", Resource: "pods"},
 		},
 		{
 			name:   "empty resource",
-			access: Access{Context: "kodama-stage-k8s", Namespace: ReleaseNamespace, Verb: "delete", Resource: ""},
+			access: Access{Context: "kodema-stage-k8s", Namespace: ReleaseNamespace, Verb: "delete", Resource: ""},
 		},
 		{
 			name:   "exec verb",
-			access: Access{Context: "kodama-stage-k8s", Namespace: ReleaseNamespace, Verb: "exec", Resource: "pods"},
+			access: Access{Context: "kodema-stage-k8s", Namespace: ReleaseNamespace, Verb: "exec", Resource: "pods"},
 		},
 		{
 			name:   "copy verb",
-			access: Access{Context: "kodama-stage-k8s", Namespace: ReleaseNamespace, Verb: "cp", Resource: "pods"},
+			access: Access{Context: "kodema-stage-k8s", Namespace: ReleaseNamespace, Verb: "cp", Resource: "pods"},
 		},
 		{
 			name:   "attach verb",
-			access: Access{Context: "kodama-stage-k8s", Namespace: ReleaseNamespace, Verb: "attach", Resource: "pods"},
+			access: Access{Context: "kodema-stage-k8s", Namespace: ReleaseNamespace, Verb: "attach", Resource: "pods"},
 		},
 		{
 			name:   "edit verb",
-			access: Access{Context: "kodama-stage-k8s", Namespace: ReleaseNamespace, Verb: "edit", Resource: "deployments"},
+			access: Access{Context: "kodema-stage-k8s", Namespace: ReleaseNamespace, Verb: "edit", Resource: "deployments"},
 		},
 		{
 			name:   "proxy verb",
-			access: Access{Context: "kodama-stage-k8s", Namespace: ReleaseNamespace, Verb: "proxy", Resource: "services"},
+			access: Access{Context: "kodema-stage-k8s", Namespace: ReleaseNamespace, Verb: "proxy", Resource: "services"},
 		},
 		{
 			name:   "auth verb",
-			access: Access{Context: "kodama-stage-k8s", Namespace: ReleaseNamespace, Verb: "auth", Resource: "pods"},
+			access: Access{Context: "kodema-stage-k8s", Namespace: ReleaseNamespace, Verb: "auth", Resource: "pods"},
 		},
 		{
 			name:   "delete secret",
-			access: Access{Context: "kodama-stage-k8s", Namespace: ReleaseNamespace, Verb: "delete", Resource: "secrets"},
+			access: Access{Context: "kodema-stage-k8s", Namespace: ReleaseNamespace, Verb: "delete", Resource: "secrets"},
 		},
 		{
 			name:   "patch configmap",
-			access: Access{Context: "kodama-stage-k8s", Namespace: ReleaseNamespace, Verb: "patch", Resource: "configmaps"},
+			access: Access{Context: "kodema-stage-k8s", Namespace: ReleaseNamespace, Verb: "patch", Resource: "configmaps"},
 		},
 		{
 			name:   "delete service",
-			access: Access{Context: "kodama-stage-k8s", Namespace: ReleaseNamespace, Verb: "delete", Resource: "services"},
+			access: Access{Context: "kodema-stage-k8s", Namespace: ReleaseNamespace, Verb: "delete", Resource: "services"},
 		},
 		{
 			name:   "delete namespace",
-			access: Access{Context: "kodama-stage-k8s", Namespace: ReleaseNamespace, Verb: "delete", Resource: "namespaces"},
+			access: Access{Context: "kodema-stage-k8s", Namespace: ReleaseNamespace, Verb: "delete", Resource: "namespaces"},
 		},
 		{
 			name:   "list namespaces",
-			access: Access{Context: "kodama-stage-k8s", Namespace: ReleaseNamespace, Verb: "get", Resource: "namespaces"},
+			access: Access{Context: "kodema-stage-k8s", Namespace: ReleaseNamespace, Verb: "get", Resource: "namespaces"},
 		},
 		{
 			name:   "read a foreign namespace",
-			access: Access{Context: "kodama-stage-k8s", Namespace: ReleaseNamespace, Verb: "get", Resource: "namespaces/default"},
+			access: Access{Context: "kodema-stage-k8s", Namespace: ReleaseNamespace, Verb: "get", Resource: "namespaces/default"},
 		},
 		{
 			name:   "mutate an assigned namespace",
-			access: Access{Context: "kodama-stage-k8s", Namespace: "kodama-tenant-tenant-a", Verb: "patch", Resource: "namespaces/kodama-tenant-tenant-a"},
+			access: Access{Context: "kodema-stage-k8s", Namespace: "kodema-tenant-tenant-a", Verb: "patch", Resource: "namespaces/kodema-tenant-tenant-a"},
 		},
 		{
 			name:   "mutate a network policy",
-			access: Access{Context: "kodama-stage-k8s", Namespace: "kodama-tenant-tenant-a", Verb: "delete", Resource: "networkpolicies"},
+			access: Access{Context: "kodema-stage-k8s", Namespace: "kodema-tenant-tenant-a", Verb: "delete", Resource: "networkpolicies"},
 		},
 		{
 			name:   "create a claim in a tenant namespace",
-			access: Access{Context: "kodama-stage-k8s", Namespace: "kodama-tenant-tenant-a", Verb: "create", Resource: "persistentvolumeclaims"},
+			access: Access{Context: "kodema-stage-k8s", Namespace: "kodema-tenant-tenant-a", Verb: "create", Resource: "persistentvolumeclaims"},
 		},
 		{
 			name:   "patch a claim in a tenant namespace",
-			access: Access{Context: "kodama-stage-k8s", Namespace: "kodama-tenant-tenant-a", Verb: "patch", Resource: "persistentvolumeclaims"},
+			access: Access{Context: "kodema-stage-k8s", Namespace: "kodema-tenant-tenant-a", Verb: "patch", Resource: "persistentvolumeclaims"},
 		},
 		{
 			name:   "delete a claim in the release namespace",
-			access: Access{Context: "kodama-stage-k8s", Namespace: ReleaseNamespace, Verb: "delete", Resource: "persistentvolumeclaims"},
+			access: Access{Context: "kodema-stage-k8s", Namespace: ReleaseNamespace, Verb: "delete", Resource: "persistentvolumeclaims"},
 		},
 	}
 	for _, testCase := range refused {
@@ -164,18 +164,18 @@ func TestHarnessConfinementGuardRefusals(t *testing.T) {
 }
 
 // TestHarnessGuardClaimMutationScope pins the one claim mutation the probes may
-// perform: delete in an assigned tenant namespace. kodama-system holds the Git
+// perform: delete in an assigned tenant namespace. kodema-system holds the Git
 // keep claim and the NATS claim, so a claim create, patch or delete there - and
 // any non-delete claim verb in any namespace - must stay refused.
 func TestHarnessGuardClaimMutationScope(t *testing.T) {
-	guard, err := NewGuard("kodama-stage-k8s", "kodama-tenant-tenant-a", "kodama-tenant-tenant-b")
+	guard, err := NewGuard("kodema-stage-k8s", "kodema-tenant-tenant-a", "kodema-tenant-tenant-b")
 	if err != nil {
 		t.Fatalf("build guard: %v", err)
 	}
-	namespaces := []string{ReleaseNamespace, "kodama-tenant-tenant-a", "kodama-tenant-tenant-b"}
+	namespaces := []string{ReleaseNamespace, "kodema-tenant-tenant-a", "kodema-tenant-tenant-b"}
 	for _, namespace := range namespaces {
 		for verb := range mutationVerbs {
-			access := Access{Context: "kodama-stage-k8s", Namespace: namespace, Verb: verb, Resource: "persistentvolumeclaims"}
+			access := Access{Context: "kodema-stage-k8s", Namespace: namespace, Verb: verb, Resource: "persistentvolumeclaims"}
 			wantAdmit := verb == "delete" && namespace != ReleaseNamespace
 			err := guard.Admit(access)
 			switch {
@@ -189,10 +189,10 @@ func TestHarnessGuardClaimMutationScope(t *testing.T) {
 	// The restriction is claim-specific: the other allowlisted workload
 	// mutations keep working in the release and tenant namespaces.
 	for _, access := range []Access{
-		{Context: "kodama-stage-k8s", Namespace: ReleaseNamespace, Verb: "create", Resource: "jobs"},
-		{Context: "kodama-stage-k8s", Namespace: ReleaseNamespace, Verb: "patch", Resource: "deployments"},
-		{Context: "kodama-stage-k8s", Namespace: "kodama-tenant-tenant-a", Verb: "patch", Resource: "jobs"},
-		{Context: "kodama-stage-k8s", Namespace: "kodama-tenant-tenant-b", Verb: "delete", Resource: "pods"},
+		{Context: "kodema-stage-k8s", Namespace: ReleaseNamespace, Verb: "create", Resource: "jobs"},
+		{Context: "kodema-stage-k8s", Namespace: ReleaseNamespace, Verb: "patch", Resource: "deployments"},
+		{Context: "kodema-stage-k8s", Namespace: "kodema-tenant-tenant-a", Verb: "patch", Resource: "jobs"},
+		{Context: "kodema-stage-k8s", Namespace: "kodema-tenant-tenant-b", Verb: "delete", Resource: "pods"},
 	} {
 		if err := guard.Admit(access); err != nil {
 			t.Errorf("workload mutation %+v was refused: %v", access, err)

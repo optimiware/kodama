@@ -9,10 +9,10 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/client"
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/userland/principal"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/client"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/userland/principal"
 )
 
 const (
@@ -89,7 +89,7 @@ func provision(ctx context.Context, cfg provisionConfig) (string, error) {
 		return "", fmt.Errorf("the server was not ready within 90s")
 	}
 
-	// ensure runs a create that a repeated `kodama up` finds already done.
+	// ensure runs a create that a repeated `kodema up` finds already done.
 	ensure := func(token, operation, key string, input any) error {
 		_, err := call(token, operation, key, 0, input)
 		if class, _ := fault.ClassOf(err); class == fault.VersionConflict {
@@ -98,7 +98,7 @@ func provision(ctx context.Context, cfg provisionConfig) (string, error) {
 		return err
 	}
 
-	if err := ensure(cfg.TenantToken, "project.create", "kodama-up-project", api.ProjectCreateRequest{
+	if err := ensure(cfg.TenantToken, "project.create", "kodema-up-project", api.ProjectCreateRequest{
 		TenantID: cfg.TenantID, ProjectID: cfg.ProjectID, Name: cfg.ProjectID,
 	}); err != nil {
 		return "", err
@@ -113,19 +113,19 @@ func provision(ctx context.Context, cfg provisionConfig) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		if err := ensure(cfg.TenantToken, "membership.grant", "kodama-up-member-"+persona, api.MembershipGrantRequest{
+		if err := ensure(cfg.TenantToken, "membership.grant", "kodema-up-member-"+persona, api.MembershipGrantRequest{
 			ProjectID: cfg.ProjectID, PrincipalID: string(principalID), Roles: roles,
 		}); err != nil {
 			return "", err
 		}
 	}
 
-	if err := ensure(cfg.ProjectToken, "service.create", "kodama-up-service-git", api.ServiceCreateRequest{
+	if err := ensure(cfg.ProjectToken, "service.create", "kodema-up-service-git", api.ServiceCreateRequest{
 		ProjectID: cfg.ProjectID, ServiceID: gitServiceID, Roles: []string{"viewer"},
 	}); err != nil {
 		return "", err
 	}
-	if err := ensure(cfg.ProjectToken, "resource.binding.register", "kodama-up-binding-git-admin", api.ResourceBindingRegisterRequest{
+	if err := ensure(cfg.ProjectToken, "resource.binding.register", "kodema-up-binding-git-admin", api.ResourceBindingRegisterRequest{
 		ProjectID:        cfg.ProjectID,
 		BindingID:        "git-admin",
 		ResourceID:       "git-admin",
@@ -153,7 +153,7 @@ func provision(ctx context.Context, cfg provisionConfig) (string, error) {
 	}
 	// A service has a credential to rotate on every run but the first.
 	credential := api.ServiceCredentialRotateRequest{ServiceID: gitServiceID, TTLSeconds: int(gitCredentialTTL / time.Second)}
-	key := fmt.Sprintf("kodama-up-git-credential-%d", time.Now().UnixNano())
+	key := fmt.Sprintf("kodema-up-git-credential-%d", time.Now().UnixNano())
 	body, err := call(cfg.ProjectToken, "service.credential.rotate", key, version, credential)
 	if err != nil {
 		body, err = call(cfg.ProjectToken, "service.credential.issue", key+"-issue", version, credential)

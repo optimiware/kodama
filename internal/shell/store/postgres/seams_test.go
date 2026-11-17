@@ -18,12 +18,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/shell/event"
-	"github.com/optimiware/kodama/internal/shell/receipt"
-	"github.com/optimiware/kodama/internal/shell/store"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/shell/event"
+	"github.com/optimiware/kodema/internal/shell/receipt"
+	"github.com/optimiware/kodema/internal/shell/store"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
 )
 
 type seamDocument struct {
@@ -141,7 +141,7 @@ func TestSeamConformanceVectors(t *testing.T) {
 	validateSeamVectors(t, document)
 	for _, vector := range document.Controller {
 		t.Run("controller/"+vector.Name, func(t *testing.T) {
-			harness := newSeamHarness(t, vector, "kodama_controller")
+			harness := newSeamHarness(t, vector, "kodema_controller")
 			if err := runControllerVector(vector, harness); err != nil {
 				t.Fatalf("vector %q: %v", vector.Name, err)
 			}
@@ -149,7 +149,7 @@ func TestSeamConformanceVectors(t *testing.T) {
 	}
 	for _, vector := range document.Credentials {
 		t.Run("credentials/"+vector.Name, func(t *testing.T) {
-			harness := newSeamHarness(t, vector, "kodama_auth")
+			harness := newSeamHarness(t, vector, "kodema_auth")
 			if err := runCredentialVector(vector, harness); err != nil {
 				t.Fatalf("vector %q: %v", vector.Name, err)
 			}
@@ -157,7 +157,7 @@ func TestSeamConformanceVectors(t *testing.T) {
 	}
 	for _, vector := range document.Receipts {
 		t.Run("receipts/"+vector.Name, func(t *testing.T) {
-			harness := newSeamHarness(t, vector, "kodama_runtime")
+			harness := newSeamHarness(t, vector, "kodema_runtime")
 			if err := runReceiptVector(vector, harness); err != nil {
 				t.Fatalf("vector %q: %v", vector.Name, err)
 			}
@@ -165,7 +165,7 @@ func TestSeamConformanceVectors(t *testing.T) {
 	}
 	for _, vector := range document.ReceiptInProgress {
 		t.Run("receipt_in_progress/"+vector.Name, func(t *testing.T) {
-			harness := newSeamHarness(t, vector, "kodama_runtime")
+			harness := newSeamHarness(t, vector, "kodema_runtime")
 			if err := runReceiptVector(vector, harness); err != nil {
 				t.Fatalf("vector %q: %v", vector.Name, err)
 			}
@@ -173,7 +173,7 @@ func TestSeamConformanceVectors(t *testing.T) {
 	}
 	for _, vector := range document.Deadlines {
 		t.Run("deadlines/"+vector.Name, func(t *testing.T) {
-			harness := newSeamHarness(t, vector, "kodama_runtime")
+			harness := newSeamHarness(t, vector, "kodema_runtime")
 			if err := runDeadlineVector(vector, harness); err != nil {
 				t.Fatalf("vector %q: %v", vector.Name, err)
 			}

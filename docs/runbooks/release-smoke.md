@@ -1,4 +1,4 @@
-# Release smoke: any documented Kodama installation
+# Release smoke: any documented Kodema installation
 
 This runbook describes the installation-neutral release smoke harness in
 `test/e2e/`. It targets the disposable Podman installation of
@@ -12,7 +12,7 @@ through the public API and the served Git service only. The local bundle
 installs the four OAuthSonas personas and the workload-reachable Git HTTPS
 front end they need.
 
-- Product behavior: [KODAMA.md](../../KODAMA.md)
+- Product behavior: [KODEMA.md](../../KODEMA.md)
 - Local Podman install: [podman-quickstart.md](podman-quickstart.md)
 - All suites and the full 24-test portable selection:
   [unified-test-suite.md](unified-test-suite.md)
@@ -34,7 +34,7 @@ the five scenarios: 12 selected tests. `TestE2E_InstallationAccess` is not part
 of that selection; name it explicitly. The full portable selection is the 24
 tests of `suite.PortableE2ETests`, which includes the preflight
 ([unified-test-suite.md](unified-test-suite.md)). The five smoke scenarios are
-parallel subtests of `TestReleaseSmoke` (`KODAMA_E2E_CONCURRENCY=1` runs them
+parallel subtests of `TestReleaseSmoke` (`KODEMA_E2E_CONCURRENCY=1` runs them
 one at a time); each has its own bounded context and public cleanup. In
 required installation mode (`Q01_REQUIRE_INSTALLATION=1`) every missing
 preflight input is a failure, never a skip.
@@ -152,7 +152,7 @@ ambiguous and refused.
 | `Q01_ADMIN_TOKEN_FILE`, `Q01_ENGINEER_TOKEN_FILE`, `Q01_REVIEWER_TOKEN_FILE`, `Q01_OPERATOR_TOKEN_FILE` | private persona credential files |
 | `Q01_NATS_URL` | live subscription broker endpoint (`nats://` or `tls://`); absent means those probes skip outside a required run |
 | `Q01_NATS_CA_FILE` | broker CA PEM bundle for a `tls://` URL or an explicit TLS selection |
-| `Q01_NATS_CLIENT_CERT_FILE`, `Q01_NATS_CLIENT_KEY_FILE` | client certificate pair for a broker that verifies client certificates (the stage broker; Secret `kodama-broker`); supplied together or not at all |
+| `Q01_NATS_CLIENT_CERT_FILE`, `Q01_NATS_CLIENT_KEY_FILE` | client certificate pair for a broker that verifies client certificates (the stage broker; Secret `kodema-broker`); supplied together or not at all |
 | `Q01_NATS_TOKEN_FILE` | a private 0600 file with a store-backed service credential. The file is validated, but the live subscription tests always connect with the run-unique service credential they mint. A human OIDC token is refused by the callout because it has no store-backed expiry |
 | `Q01_SMOKE_GIT` | stage adapter: `1` runs the Git tests and scenarios, `0` (the adapter's default) leaves them out |
 | `Q01_NATS_TLS_SERVER_NAME` | explicit verified broker TLS name; omitted means the URL host |
@@ -163,7 +163,7 @@ ambiguous and refused.
 | `Q01_REQUIRE_STAGE`, `Q02_REQUIRE_STAGE` | legacy: an unconfigured live test fails |
 | `Q01_REQUIRE_INSTALLATION` | `1`: a live invocation fails instead of skipping; the installation preflight also fails on any missing persona credential, image pin, Git endpoint or repository |
 | `Q01_KUBE_CONTEXT` | stage adapter only; never a prerequisite of the generic runner |
-| `KODAMA_SMOKE_TEST_RUN`, `KODAMA_SMOKE_EXPECT` | `deploy/podman/smoke.sh` diagnostics only: a narrowed `-run` selection and its matching space-separated expected-name list; both must be narrowed together |
+| `KODEMA_SMOKE_TEST_RUN`, `KODEMA_SMOKE_EXPECT` | `deploy/podman/smoke.sh` diagnostics only: a narrowed `-run` selection and its matching space-separated expected-name list; both must be narrowed together |
 
 `Q01_KUBE_CONTEXT` and the port-forward/Secret logic belong to
 `test/e2e/internal/harness/run-stage.sh` (the Scaleway adapter). The generic
@@ -213,7 +213,7 @@ not printed.
    the API (`curl` with that CA and the mounted execution token) and to the
    workload Git URL (`git ls-remote` with `http.sslCAInfo` and a
    token-mounted `GIT_ASKPASS`). The execution token is re-read from
-   `/kodama/secrets/KODAMA_TOKEN` for each call.
+   `/kodema/secrets/KODEMA_TOKEN` for each call.
 
    The certificate is public data, not a credential. The `test` profile builds
    the workload secret-name policy from `SecretRules`, which is deny-by-default
@@ -230,22 +230,22 @@ HTTPS endpoint; `deploy/podman/install.sh` provides both.
 
 The disposable local wrapper runs the same preflight against its own
 installation (complete port set required, one slot). Its identity is
-invocation-owned: it never inherits `KODAMA_LOCAL_PREFIX`,
-`KODAMA_LOCAL_STATE_DIR` or `KODAMA_LOCAL_GIT_RESOURCES`, and only
-`KODAMA_SMOKE_PREFIX`/`KODAMA_SMOKE_STATE_DIR` override its run-unique prefix
+invocation-owned: it never inherits `KODEMA_LOCAL_PREFIX`,
+`KODEMA_LOCAL_STATE_DIR` or `KODEMA_LOCAL_GIT_RESOURCES`, and only
+`KODEMA_SMOKE_PREFIX`/`KODEMA_SMOKE_STATE_DIR` override its run-unique prefix
 and state. The example below uses ports that do not collide with the install
 defaults:
 
 ```sh
 scripts/infra-slot.sh stack -- \
-  env KODAMA_SMOKE_PREFIX=w49arpre \
-      KODAMA_SMOKE_STATE_DIR=/tmp/oc/w49ar-pre-state \
-      KODAMA_SMOKE_RUN=w49arpre1 \
-      KODAMA_LOCAL_HTTPS_PORT=22443 KODAMA_LOCAL_OIDC_PORT=22444 \
-      KODAMA_LOCAL_GIT_PORT=22081 KODAMA_LOCAL_GIT_HTTPS_PORT=22445 \
-      KODAMA_LOCAL_POSTGRES_PORT=19432 KODAMA_LOCAL_NATS_PORT=20222 \
-      KODAMA_LOCAL_NATS_MONITOR_PORT=22222 \
-      KODAMA_LOCAL_OAUTH_UPSTREAM_PORT=22181 \
+  env KODEMA_SMOKE_PREFIX=w49arpre \
+      KODEMA_SMOKE_STATE_DIR=/tmp/oc/w49ar-pre-state \
+      KODEMA_SMOKE_RUN=w49arpre1 \
+      KODEMA_LOCAL_HTTPS_PORT=22443 KODEMA_LOCAL_OIDC_PORT=22444 \
+      KODEMA_LOCAL_GIT_PORT=22081 KODEMA_LOCAL_GIT_HTTPS_PORT=22445 \
+      KODEMA_LOCAL_POSTGRES_PORT=19432 KODEMA_LOCAL_NATS_PORT=20222 \
+      KODEMA_LOCAL_NATS_MONITOR_PORT=22222 \
+      KODEMA_LOCAL_OAUTH_UPSTREAM_PORT=22181 \
       Q01_EVIDENCE_DIR=/tmp/oc/evidence/w49ar-pre \
   deploy/podman/smoke.sh --preflight
 ```
@@ -270,7 +270,7 @@ selection cannot pass):
 
 ```sh
 scripts/infra-slot.sh stack -- \
-  env KODAMA_REQUIRE_INFRA=1 Q01_REQUIRE_INSTALLATION=1 \
+  env KODEMA_REQUIRE_INFRA=1 Q01_REQUIRE_INSTALLATION=1 \
       Q01_INSTALLATION_FILE=/absolute/prepared-installation.json \
       Q01_EVIDENCE_DIR=/tmp/oc/evidence/RELEASE-RUN \
   test/e2e/internal/harness/run-installation.sh -- \
@@ -294,7 +294,7 @@ selected test and on a failed selected test:
 
 ```sh
 scripts/infra-slot.sh stack -- \
-  env KODAMA_REQUIRE_INFRA=1 Q01_REQUIRE_INSTALLATION=1 \
+  env KODEMA_REQUIRE_INFRA=1 Q01_REQUIRE_INSTALLATION=1 \
       Q01_INSTALLATION_FILE=/absolute/prepared-installation.json \
       Q01_EVIDENCE_DIR=/tmp/oc/evidence/RELEASE-RUN \
   test/e2e/internal/harness/run-installation.sh -- \
@@ -323,31 +323,31 @@ Go run's is 30 minutes. On the Scaleway stage the five scenarios took 91 s.
 
 A focused diagnostic run narrows both the `-run` selection and the expected
 list, so a partial run never claims the full selection. A narrowed run prints
-`kodama-smoke: NARROWED SELECTION - NOT RELEASE EVIDENCE` to stderr at the
+`kodema-smoke: NARROWED SELECTION - NOT RELEASE EVIDENCE` to stderr at the
 start and end and writes `selection=narrowed` to `summary.txt`; a full run
 writes `selection=full` and prints `full selection verified: N tests`:
 
 ```sh
 scripts/infra-slot.sh stack -- \
-  env KODAMA_SMOKE_RUN=diag1 KODAMA_SMOKE_TEST_RUN='^TestReleaseSmoke$/^ProtectedTask$' \
-    KODAMA_SMOKE_EXPECT='TestReleaseSmoke/ProtectedTask' \
-    KODAMA_LOCAL_HTTPS_PORT=22443 KODAMA_LOCAL_OIDC_PORT=22444 \
-    KODAMA_LOCAL_GIT_PORT=22081 KODAMA_LOCAL_GIT_HTTPS_PORT=22445 \
-    KODAMA_LOCAL_POSTGRES_PORT=19432 KODAMA_LOCAL_NATS_PORT=20222 \
-    KODAMA_LOCAL_NATS_MONITOR_PORT=22222 \
-    KODAMA_LOCAL_OAUTH_UPSTREAM_PORT=22181 \
+  env KODEMA_SMOKE_RUN=diag1 KODEMA_SMOKE_TEST_RUN='^TestReleaseSmoke$/^ProtectedTask$' \
+    KODEMA_SMOKE_EXPECT='TestReleaseSmoke/ProtectedTask' \
+    KODEMA_LOCAL_HTTPS_PORT=22443 KODEMA_LOCAL_OIDC_PORT=22444 \
+    KODEMA_LOCAL_GIT_PORT=22081 KODEMA_LOCAL_GIT_HTTPS_PORT=22445 \
+    KODEMA_LOCAL_POSTGRES_PORT=19432 KODEMA_LOCAL_NATS_PORT=20222 \
+    KODEMA_LOCAL_NATS_MONITOR_PORT=22222 \
+    KODEMA_LOCAL_OAUTH_UPSTREAM_PORT=22181 \
   deploy/podman/smoke.sh
 ```
 
 `deploy/podman/smoke.sh` runs the verifier by default; a bare `go test` is not
-the documented gate. `KODAMA_SMOKE_EXPECT` is a space-separated expected-name
+the documented gate. `KODEMA_SMOKE_EXPECT` is a space-separated expected-name
 list.
 
 The preflight:
 
 ```sh
 scripts/infra-slot.sh stack -- \
-  env KODAMA_REQUIRE_INFRA=1 Q01_REQUIRE_INSTALLATION=1 \
+  env KODEMA_REQUIRE_INFRA=1 Q01_REQUIRE_INSTALLATION=1 \
       Q01_INSTALLATION_FILE=/absolute/prepared-installation.json \
       Q01_EVIDENCE_DIR=/tmp/oc/evidence/RELEASE-RUN \
   test/e2e/internal/harness/run-installation.sh -- \
@@ -420,13 +420,13 @@ five actions:
    mounted token and the CA materialised in `/workspace`, checks the served main
    is B, and writes the execution/run markers.
 2. `implement` (the pinned Alpine external-harness image) consumes the markers
-   and `/kodama/task.json` and writes a deterministic program and its test; it
+   and `/kodema/task.json` and writes a deterministic program and its test; it
    uses no Git and no network. This is a functional fixture, not a model or
    native-agent claim.
 3. `test` (tools image) commits C, pushes C to the granted work ref (the
    authentication/reachability positive control), runs the committed test, then
    attempts C→main **before approval** and requires the hook's public
-   `kodama git: update rejected` refusal with main still B. It then submits
+   `kodema git: update rejected` refusal with main still B. It then submits
    `candidate=C` and `test_result=pass:C` through the Python output helper
    (with the test-computed candidate substituted into the generated helper).
 4. `review` requests `role/reviewer` with the immutable subject

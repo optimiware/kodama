@@ -18,15 +18,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/id"
-	runtimekube "github.com/optimiware/kodama/internal/shell/runtime/kube"
+	"github.com/optimiware/kodema/internal/id"
+	runtimekube "github.com/optimiware/kodema/internal/shell/runtime/kube"
 )
 
 // holdFinalizer is the test-owned finalizer the workspace component test places
 // on its claim so the deletion stays in progress for the whole assertion. The
 // product must never remove it: that is what proves Release did not clear state
 // or force the deletion.
-const holdFinalizer = "kodama.test/hold"
+const holdFinalizer = "kodema.test/hold"
 
 // terminatingReleaseHeldError reports whether after still satisfies the Release
 // contract for an ownership-preserving, unretained deletion in progress that was
@@ -75,7 +75,7 @@ func TestTerminatingReleaseInvariantsAllowControllerFinalizerDrift(t *testing.T)
 	deletedAt := time.Date(2026, time.November, 9, 12, 0, 0, 0, time.UTC)
 	otherTime := deletedAt.Add(time.Second)
 	held := runtimekube.Claim{
-		Name:      "kodama-workspace",
+		Name:      "kodema-workspace",
 		Namespace: string(tenant),
 		Labels: map[string]string{
 			runtimekube.LabelWorkspace: string(workspace),

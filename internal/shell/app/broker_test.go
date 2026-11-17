@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/id"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/id"
 )
 
 // setDown switches availability.

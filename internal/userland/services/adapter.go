@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/id"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/id"
 )
 
 // defaultRescanInterval is the periodic current-request rescan period when the

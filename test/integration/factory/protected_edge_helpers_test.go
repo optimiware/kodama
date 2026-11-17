@@ -33,11 +33,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	shelloidc "github.com/optimiware/kodama/internal/shell/integration/oidc"
-	"github.com/optimiware/kodama/internal/userland/git"
-	identityfixture "github.com/optimiware/kodama/test/support/boundaries/identity"
-	"github.com/optimiware/kodama/test/support/factory"
+	"github.com/optimiware/kodema/api"
+	shelloidc "github.com/optimiware/kodema/internal/shell/integration/oidc"
+	"github.com/optimiware/kodema/internal/userland/git"
+	identityfixture "github.com/optimiware/kodema/test/support/boundaries/identity"
+	"github.com/optimiware/kodema/test/support/factory"
 )
 
 const (
@@ -324,11 +324,11 @@ func runProtectedEdgeScenario(t *testing.T, fixture *gitHarness, options protect
 	evidence.implement = actionByName(t, implementRunning, "implement")
 	implementContainer := waitProtectedGoldenContainer(t, fixture, evidence.executionID, "implement")
 	evidence.executionToken = waitProtectedGoldenCredential(t, fixture, evidence.executionID, "implement")
-	if got := protectedGoldenExec(t, fixture, implementContainer, "printenv", "KODAMA_TASK"); got != evidence.taskID {
-		t.Fatalf("implement KODAMA_TASK = %q; want the task %q", got, evidence.taskID)
+	if got := protectedGoldenExec(t, fixture, implementContainer, "printenv", "KODEMA_TASK"); got != evidence.taskID {
+		t.Fatalf("implement KODEMA_TASK = %q; want the task %q", got, evidence.taskID)
 	}
 	if snapshot := protectedGoldenRead(t, fixture, implementContainer, protectedGoldenTaskFile); !json.Valid([]byte(snapshot)) {
-		t.Fatalf("implement /kodama/task.json is not valid JSON: %q", snapshot)
+		t.Fatalf("implement /kodema/task.json is not valid JSON: %q", snapshot)
 	}
 	requireProtectedGoldenCredentialUsable(t, fixture, evidence.executionID, evidence.executionToken)
 	releaseProtectedGoldenGate(t, fixture, implementContainer, protectedEdgeImplementGate)
@@ -471,11 +471,11 @@ func protectedEdgePreReviewCommands(base string) []string {
 	return []string{
 		"printf 'pre-review-ready\\n' > " + protectedEdgePreReviewReady,
 		"while [ ! -e " + protectedEdgePreReviewRelease + " ]; do sleep 1; done",
-		"if git_kodama push --quiet --force-with-lease=" + gitMainRef + ":" + base +
-			" origin \"$kodama_test_candidate\":" + gitMainRef + " 2>" + protectedEdgePreReviewError +
+		"if git_kodema push --quiet --force-with-lease=" + gitMainRef + ":" + base +
+			" origin \"$kodema_test_candidate\":" + gitMainRef + " 2>" + protectedEdgePreReviewError +
 			"; then\n  printf 'unapproved-protected-push-succeeded\\n' >&2\n  exit 1\nfi",
 		"printf 'unapproved-protected-push-refused\\n'",
-		"if ! git_kodama push --quiet origin \"$kodama_test_candidate\":" + protectedEdgeControlRef +
+		"if ! git_kodema push --quiet origin \"$kodema_test_candidate\":" + protectedEdgeControlRef +
 			"; then\n  printf 'work-control-push-refused\\n' >&2\n  exit 1\nfi",
 		"printf 'work-control-pushed\\n'",
 		"printf 'work-control-pushed\\n' > " + protectedEdgePreReviewControl,
@@ -961,7 +961,7 @@ func assertProtectedEdgePreReviewRefusal(t *testing.T, evidence protectedEdgeEvi
 	if fixture == nil || fixture.git == nil {
 		t.Fatalf("pre-review refusal evidence has no fixture")
 	}
-	if !strings.Contains(evidence.preReviewPushError, "kodama git: update rejected") {
+	if !strings.Contains(evidence.preReviewPushError, "kodema git: update rejected") {
 		t.Fatalf("pre-review protected push did not reach the managed hook: %q", evidence.preReviewPushError)
 	}
 	if !evidence.preReviewControl {

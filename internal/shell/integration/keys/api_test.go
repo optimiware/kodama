@@ -1,6 +1,6 @@
 // Package keys_test pins the secret-custody adapter API.
 //
-// Package kodama/internal/shell/integration/keys provides:
+// Package kodema/internal/shell/integration/keys provides:
 //
 //	// Provider is one key provider plus the key reference it serves.
 //	type Provider interface {

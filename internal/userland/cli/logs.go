@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/optimiware/kodama/api"
+	"github.com/optimiware/kodema/api"
 )
 
 // inspectedAction is a lenient projection of api.ExecutionAction used by CLI

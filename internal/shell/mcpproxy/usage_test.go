@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/shell/mcpproxy"
-	"github.com/optimiware/kodama/internal/shell/store"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/shell/mcpproxy"
+	"github.com/optimiware/kodema/internal/shell/store"
 )
 
 func TestCallRecordsAttributableUsage(t *testing.T) {

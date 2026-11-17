@@ -28,8 +28,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/test/support/factory"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/test/support/factory"
 )
 
 const (
@@ -194,7 +194,7 @@ func approveAtomicBatch(t *testing.T, fixture *gitHarness, reviewerToken, name, 
 				Image:   fixture.Image.Reference,
 				Timeout: approvalContainerTimeout,
 				Commands: []string{
-					`test ! -e /kodama/task.json`,
+					`test ! -e /kodema/task.json`,
 					`while [ ! -e /workspace/release ]; do sleep 1; done`,
 				},
 			},

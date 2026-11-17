@@ -3,7 +3,7 @@ package factory
 import (
 	"testing"
 
-	"github.com/optimiware/kodama/internal/shell/tenancy"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
 )
 
 // TestWithToolFixtureIsOptIn proves the external MCP proxy stays disabled by

@@ -1,6 +1,6 @@
 //go:build component
 
-// Rendered-chart checks for the kodama-stack broker authentication. The
+// Rendered-chart checks for the kodema-stack broker authentication. The
 // installation unit tests inspect the chart as text, so a template edit that
 // wraps `verify: true` in a flag or makes the fail-closed guard conditional
 // would keep them green while `helm template` renders an unauthenticated
@@ -20,10 +20,10 @@ import (
 	"testing"
 )
 
-// stackChartFile resolves one path inside deploy/charts/kodama-stack.
+// stackChartFile resolves one path inside deploy/charts/kodema-stack.
 func stackChartFile(t *testing.T, parts ...string) string {
 	t.Helper()
-	all := append([]string{repoRoot(t), "deploy", "charts", "kodama-stack"}, parts...)
+	all := append([]string{repoRoot(t), "deploy", "charts", "kodema-stack"}, parts...)
 	return filepath.Join(all...)
 }
 
@@ -38,7 +38,7 @@ func readStackChartFile(t *testing.T, parts ...string) string {
 }
 
 // helmBinary locates helm. The rendered-check contract is fail-closed for
-// infrastructure runs: if KODAMA_REQUIRE_INFRA=1 is set, a missing helm is a
+// infrastructure runs: if KODEMA_REQUIRE_INFRA=1 is set, a missing helm is a
 // test failure rather than a skip.
 func helmBinary(t *testing.T) string {
 	t.Helper()
@@ -51,10 +51,10 @@ func helmBinary(t *testing.T) string {
 			return candidate
 		}
 	}
-	if os.Getenv("KODAMA_REQUIRE_INFRA") == "1" {
-		t.Fatalf("helm is required to render the kodama-stack chart but was not found on PATH or in ~/.local/bin (KODAMA_REQUIRE_INFRA=1)")
+	if os.Getenv("KODEMA_REQUIRE_INFRA") == "1" {
+		t.Fatalf("helm is required to render the kodema-stack chart but was not found on PATH or in ~/.local/bin (KODEMA_REQUIRE_INFRA=1)")
 	}
-	t.Skip("helm not installed; skipping rendered-chart checks (set KODAMA_REQUIRE_INFRA=1 to fail instead)")
+	t.Skip("helm not installed; skipping rendered-chart checks (set KODEMA_REQUIRE_INFRA=1 to fail instead)")
 	return ""
 }
 
@@ -92,14 +92,14 @@ func stageStackChart(t *testing.T) (string, string) {
 	repositoryCharts := filepath.Join(repoRoot(t), "deploy", "charts")
 	destination := filepath.Join(t.TempDir(), "charts")
 	copyChartTree(t, repositoryCharts, destination)
-	stack := filepath.Join(destination, "kodama-stack")
+	stack := filepath.Join(destination, "kodema-stack")
 
 	command := exec.Command(helm, "dependency", "build", "--skip-refresh", stack)
 	command.Dir = stack
 	if output, err := command.CombinedOutput(); err != nil {
 		t.Fatalf("helm dependency build: %v\n%s", err, output)
 	}
-	if _, err := os.Stat(filepath.Join(repositoryCharts, "kodama-stack", "charts")); err == nil {
+	if _, err := os.Stat(filepath.Join(repositoryCharts, "kodema-stack", "charts")); err == nil {
 		t.Fatalf("helm dependency build wrote into the repository working tree")
 	}
 	return helm, stack
@@ -112,8 +112,8 @@ const anonymousGuardMessage = "anonymous NATS access is forbidden"
 // renderStack renders the chart with optional `--set key=value` overrides.
 func renderStack(t *testing.T, helm, chart string, sets ...string) (string, error) {
 	t.Helper()
-	args := []string{"template", "kodama-stack", chart, "--namespace", "kodama-system"}
-	args = append(args, productionOIDCArgs("kodama.")...)
+	args := []string{"template", "kodema-stack", chart, "--namespace", "kodema-system"}
+	args = append(args, productionOIDCArgs("kodema.")...)
 	for _, set := range sets {
 		args = append(args, "--set", set)
 	}
@@ -192,7 +192,7 @@ func statefulSetFromRender(rendered string) string {
 
 // assertRenderedMTLS proves the rendered broker verifies client certificates
 // against the mounted CA, has no anonymous escape hatch, and mounts the client
-// CA read-only from kodama-broker-tls.
+// CA read-only from kodema-broker-tls.
 func assertRenderedMTLS(t *testing.T, label, rendered string) {
 	t.Helper()
 	conf := natsConfFromRender(t, rendered)
@@ -223,9 +223,9 @@ func assertRenderedMTLS(t *testing.T, label, rendered string) {
 	if !mount.MatchString(statefulSet) {
 		t.Errorf("%s: rendered StatefulSet does not mount the client CA read-only", label)
 	}
-	volume := regexp.MustCompile(`(?ms)name:\s*client-ca\s*\r?\n\s+secret:\s*\r?\n\s+secretName:\s*kodama-broker-tls\s*$`)
+	volume := regexp.MustCompile(`(?ms)name:\s*client-ca\s*\r?\n\s+secret:\s*\r?\n\s+secretName:\s*kodema-broker-tls\s*$`)
 	if !volume.MatchString(statefulSet) {
-		t.Errorf("%s: rendered StatefulSet does not source the client CA from kodama-broker-tls", label)
+		t.Errorf("%s: rendered StatefulSet does not source the client CA from kodema-broker-tls", label)
 	}
 }
 
@@ -245,7 +245,7 @@ func TestStackChartRenderedCredentialsModeVerifiesClients(t *testing.T) {
 	helm, chart := stageStackChart(t)
 	rendered, err := renderStack(t, helm, chart,
 		"nats.auth.mode=credentials",
-		"nats.auth.credentials.existingSecret=kodama-broker-credentials")
+		"nats.auth.credentials.existingSecret=kodema-broker-credentials")
 	if err != nil {
 		t.Fatalf("helm template credentials mode failed: %v\n%s", err, rendered)
 	}
@@ -260,14 +260,14 @@ func TestStackChartRenderedCredentialsModeVerifiesClients(t *testing.T) {
 		}
 	}
 	statefulSet := statefulSetFromRender(rendered)
-	if count := strings.Count(statefulSet, "name: kodama-broker-credentials"); count < 2 {
-		t.Errorf("credentials mode sources %d values from kodama-broker-credentials, want 2", count)
+	if count := strings.Count(statefulSet, "name: kodema-broker-credentials"); count < 2 {
+		t.Errorf("credentials mode sources %d values from kodema-broker-credentials, want 2", count)
 	}
 }
 
 // TestStackChartRenderedCalloutAccountMatchesControlPlane pins the account
 // wiring in the real template: the rendered broker auth_callout account and
-// the control plane's KODAMA_NATS_CALLOUT_ACCOUNT are the same value. A broker
+// the control plane's KODEMA_NATS_CALLOUT_ACCOUNT are the same value. A broker
 // bound to one account and a callout signing grants for another would refuse
 // every admitted client.
 func TestStackChartRenderedCalloutAccountMatchesControlPlane(t *testing.T) {
@@ -283,19 +283,19 @@ func TestStackChartRenderedCalloutAccountMatchesControlPlane(t *testing.T) {
 	}
 	var controlPlaneAccount string
 	for document := range strings.SplitSeq(rendered, "\n---") {
-		if !strings.Contains(document, "kind: Deployment") || !strings.Contains(document, "KODAMA_NATS_CALLOUT_ACCOUNT") {
+		if !strings.Contains(document, "kind: Deployment") || !strings.Contains(document, "KODEMA_NATS_CALLOUT_ACCOUNT") {
 			continue
 		}
-		match := regexp.MustCompile(`(?ms)name:[ \t]*KODAMA_NATS_CALLOUT_ACCOUNT[ \t]*\r?\n[ \t]*value:[ \t]*"?([^"\s]+)"?`).FindStringSubmatch(document)
+		match := regexp.MustCompile(`(?ms)name:[ \t]*KODEMA_NATS_CALLOUT_ACCOUNT[ \t]*\r?\n[ \t]*value:[ \t]*"?([^"\s]+)"?`).FindStringSubmatch(document)
 		if match != nil {
 			controlPlaneAccount = match[1]
 		}
 	}
 	if controlPlaneAccount == "" {
-		t.Fatalf("rendered output has no KODAMA_NATS_CALLOUT_ACCOUNT value:\n%s", rendered)
+		t.Fatalf("rendered output has no KODEMA_NATS_CALLOUT_ACCOUNT value:\n%s", rendered)
 	}
 	if controlPlaneAccount != brokerAccount[1] {
-		t.Fatalf("KODAMA_NATS_CALLOUT_ACCOUNT = %q; broker auth_callout account = %q; want one value", controlPlaneAccount, brokerAccount[1])
+		t.Fatalf("KODEMA_NATS_CALLOUT_ACCOUNT = %q; broker auth_callout account = %q; want one value", controlPlaneAccount, brokerAccount[1])
 	}
 
 	// An override of only one side must fail the render, never produce a
@@ -443,7 +443,7 @@ func TestStackChartStructureFailsClosed(t *testing.T) {
 // guard) or moving code above it fails.
 func assertGuardIncludeFirst(t *testing.T, name, body string) {
 	t.Helper()
-	const include = `include "kodama-stack.natsAuthGuard"`
+	const include = `include "kodema-stack.natsAuthGuard"`
 	if count := strings.Count(body, include); count != 1 {
 		t.Errorf("%s includes the fail-closed NATS auth guard %d times, want exactly 1", name, count)
 	}
@@ -464,7 +464,7 @@ func assertGuardIncludeFirst(t *testing.T, name, body string) {
 		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
 			continue
 		}
-		directive := regexp.MustCompile(`^\{\{-?\s*include\s+"kodama-stack\.natsAuthGuard"`)
+		directive := regexp.MustCompile(`^\{\{-?\s*include\s+"kodema-stack\.natsAuthGuard"`)
 		if !directive.MatchString(trimmed) || strings.Count(trimmed, "{{") != 1 {
 			t.Errorf("%s: first render directive after the enabled gate is %q, want the unconditional fail-closed guard include; a conditional here can skip the guard", name, trimmed)
 		}
@@ -500,7 +500,7 @@ func TestStackChartNATSPodHardeningAndSingleReplica(t *testing.T) {
 				t.Fatalf("render accepted nats.replicaCount=%s:\n%s", badReplicas, out)
 			}
 
-			outSkip, errSkip := renderChartArgs(t, helm, "kodama-stack", chart, stackProductionArgs(
+			outSkip, errSkip := renderChartArgs(t, helm, "kodema-stack", chart, stackProductionArgs(
 				"--skip-schema-validation",
 				"--set", "nats.replicaCount="+badReplicas,
 			)...)

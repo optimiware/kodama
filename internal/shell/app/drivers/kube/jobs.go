@@ -7,8 +7,8 @@ import (
 	"path"
 	"strings"
 
-	"github.com/optimiware/kodama/internal/fault"
-	runtimekube "github.com/optimiware/kodama/internal/shell/runtime/kube"
+	"github.com/optimiware/kodema/internal/fault"
+	runtimekube "github.com/optimiware/kodema/internal/shell/runtime/kube"
 )
 
 // Job request bodies. The shape is the pinned batch/v1 manifest the adapter

@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/optimiware/kodama/client"
+	"github.com/optimiware/kodema/client"
 )
 
 // Validate checks the trusted server URL, optional session file, optional CA
@@ -246,7 +246,7 @@ func (response HelperResponse) String() string {
 }
 
 // HelperDecision answers one Git credential-helper request. A token is returned
-// as the password for username kodama only for a registered trusted origin, a
+// as the password for username kodema only for a registered trusted origin, a
 // current human or mounted execution credential and a `get` request;
 // store/erase, unregistered targets, insecure schemes, expired credentials and
 // every service credential produce an empty refusal.
@@ -281,5 +281,5 @@ func HelperDecision(config Config, request HelperRequest, credential client.Cred
 	if !credential.Usable(now) {
 		return HelperResponse{}, nil
 	}
-	return HelperResponse{Username: "kodama", Password: credential.Token}, nil
+	return HelperResponse{Username: "kodema", Password: credential.Token}, nil
 }

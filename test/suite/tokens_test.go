@@ -147,7 +147,7 @@ func TestOpenStageTokensOwnsTheSecondTenantToken(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenStageTokens: %v", err)
 	}
-	const settings = ":https://oauthsonas.kodama-system.svc.cluster.local:8443:oauthsonas.kodama-system.svc.cluster.local:8443:127.0.0.1:/run/stage/access-code"
+	const settings = ":https://oauthsonas.kodema-system.svc.cluster.local:8443:oauthsonas.kodema-system.svc.cluster.local:8443:127.0.0.1:/run/stage/access-code"
 	if got := readToken(t, tokens.SecondAdminFile); got != "token:tenant-b-admin"+settings {
 		t.Fatalf("second tenant token = %q; want one acquired with the descriptor's OAuthSonas settings", got)
 	}

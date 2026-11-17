@@ -8,18 +8,18 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	pgdriver "github.com/optimiware/kodama/internal/shell/app/drivers/postgres"
-	"github.com/optimiware/kodama/internal/shell/authorize"
-	"github.com/optimiware/kodama/internal/shell/identity"
-	"github.com/optimiware/kodama/internal/shell/receipt"
-	"github.com/optimiware/kodama/internal/shell/resource"
-	"github.com/optimiware/kodama/internal/shell/service"
-	storepg "github.com/optimiware/kodama/internal/shell/store/postgres"
-	identityunits "github.com/optimiware/kodama/internal/shell/store/units/identity"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
-	"github.com/optimiware/kodama/test/support/infrastructure/postgres"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	pgdriver "github.com/optimiware/kodema/internal/shell/app/drivers/postgres"
+	"github.com/optimiware/kodema/internal/shell/authorize"
+	"github.com/optimiware/kodema/internal/shell/identity"
+	"github.com/optimiware/kodema/internal/shell/receipt"
+	"github.com/optimiware/kodema/internal/shell/resource"
+	"github.com/optimiware/kodema/internal/shell/service"
+	storepg "github.com/optimiware/kodema/internal/shell/store/postgres"
+	identityunits "github.com/optimiware/kodema/internal/shell/store/units/identity"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
+	"github.com/optimiware/kodema/test/support/infrastructure/postgres"
 )
 
 type identityIDs struct {
@@ -78,7 +78,7 @@ func registerCommand(scope tenancy.Scope, actor, bindingID, resourceID, callerKe
 		TrustedOrigins:   []string{"https://git.example"},
 		Operations:       []resource.Operation{resource.OperationGitRefUpdate},
 		ReportableEvents: []string{"git.ref.updated"},
-		Metadata:         map[string]string{"repo": "kodama"},
+		Metadata:         map[string]string{"repo": "kodema"},
 		CallerKey:        callerKey,
 		Content:          bindingContent(callerKey),
 	}
@@ -152,7 +152,7 @@ func TestResourceRegisterCreateIfAbsentOnPostgreSQL(t *testing.T) {
 		"id": "binding-1", "tenant_id": "tenant-1", "project_id": "project-1",
 		"resource_id": "resource-1", "service_id": "service-a",
 		"origins": `["https://git.example"]`, "operations": `["git.ref.update"]`,
-		"reportable_events": `["git.ref.updated"]`, "metadata": `{"repo":"kodama"}`,
+		"reportable_events": `["git.ref.updated"]`, "metadata": `{"repo":"kodema"}`,
 		"version": int64(1), "created_at": pgtest.FixtureTime,
 	})
 	env.shard.RequireGoldenRow(t, ctx, env.runtime, scope1, "receipts", map[string]any{"id": "receipt-1"}, map[string]any{
@@ -198,7 +198,7 @@ func TestResourceRegisterCreateIfAbsentOnPostgreSQL(t *testing.T) {
 		"id": "binding-1", "tenant_id": "tenant-1", "project_id": "project-1",
 		"resource_id": "resource-1", "service_id": "service-a",
 		"origins": `["https://git.example"]`, "operations": `["git.ref.update"]`,
-		"reportable_events": `["git.ref.updated"]`, "metadata": `{"repo":"kodama"}`,
+		"reportable_events": `["git.ref.updated"]`, "metadata": `{"repo":"kodema"}`,
 		"version": int64(1), "created_at": pgtest.FixtureTime,
 	})
 
@@ -242,7 +242,7 @@ func TestResourceRegisterCreateIfAbsentOnPostgreSQL(t *testing.T) {
 	if len(binding.TrustedOrigins) != 1 || binding.TrustedOrigins[0] != "https://git.example" ||
 		len(binding.Operations) != 1 || binding.Operations[0] != resource.OperationGitRefUpdate ||
 		len(binding.ReportableEvents) != 1 || binding.ReportableEvents[0] != "git.ref.updated" ||
-		binding.Metadata["repo"] != "kodama" {
+		binding.Metadata["repo"] != "kodema" {
 		t.Fatalf("read binding decoded values = %+v; want the seeded origins/operations/events/metadata", binding)
 	}
 	update := resource.UpdateBindingCommand{
@@ -398,7 +398,7 @@ func TestResourceRegisterTwoScopeRaceOnPostgreSQL(t *testing.T) {
 		"id": winnerBinding, "tenant_id": "tenant-1", "project_id": string(winnerScope.ProjectID),
 		"resource_id": "resource-race", "service_id": serviceForScope(winnerScope),
 		"origins": `["https://git.example"]`, "operations": `["git.ref.update"]`,
-		"reportable_events": `["git.ref.updated"]`, "metadata": `{"repo":"kodama"}`,
+		"reportable_events": `["git.ref.updated"]`, "metadata": `{"repo":"kodema"}`,
 		"version": int64(1), "created_at": pgtest.FixtureTime,
 	})
 	// Both racers allocate ids from one shared counter before either commits,

@@ -14,14 +14,14 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/userland/git"
-	"github.com/optimiware/kodama/internal/userland/git/app/native"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/userland/git"
+	"github.com/optimiware/kodema/internal/userland/git/app/native"
 )
 
 const (
 	provisionTenantID          = id.TenantID("tenant-provision")
-	provisionHelperEnvironment = "KODAMA_PROVISION_HELPER"
+	provisionHelperEnvironment = "KODEMA_PROVISION_HELPER"
 	adminInitialPolicy         = "repo admin\n    RW = @admin\n"
 )
 
@@ -187,7 +187,7 @@ func writeAdminPolicyCommit(t *testing.T, environment []string, repositoryPath, 
 	tree := strings.TrimSpace(requireProvisionGit(t, indexEnvironment,
 		"--git-dir="+repositoryPath, "write-tree"))
 	commit := strings.TrimSpace(requireProvisionGit(t, environment,
-		"-c", "user.name=Kodama", "-c", "user.email=kodama@example.invalid",
+		"-c", "user.name=Kodema", "-c", "user.email=kodema@example.invalid",
 		"--git-dir="+repositoryPath, "commit-tree", tree, "-m", "policy update"))
 	requireProvisionGit(t, environment, "--git-dir="+repositoryPath,
 		"update-ref", "refs/heads/main", commit)
@@ -289,7 +289,7 @@ func TestProvisionTenantInstallsManagedHooksOnly(t *testing.T) {
 		if !ok {
 			t.Fatalf("hook %q was not installed", name)
 		}
-		if !strings.Contains(content, "managed by kodama") {
+		if !strings.Contains(content, "managed by kodema") {
 			t.Fatalf("hook %q is not the managed hook: %q", name, content)
 		}
 	}
@@ -510,7 +510,7 @@ func (host provisionHostileHost) environment(path string) []string {
 }
 
 // setProcessEnvironment installs the hostile host state in this process so the
-// nil-Environment path inherits it, as `kodama git provision-tenant` does when
+// nil-Environment path inherits it, as `kodema git provision-tenant` does when
 // an operator runs it from a hostile shell.
 func (host provisionHostileHost) setProcessEnvironment(t *testing.T) {
 	t.Helper()
@@ -616,15 +616,15 @@ func requireIsolatedAdminRepository(t *testing.T, environment []string,
 		if err != nil {
 			t.Fatalf("read installed hook %q: %v", name, err)
 		}
-		if !strings.Contains(string(data), "managed by kodama") {
+		if !strings.Contains(string(data), "managed by kodema") {
 			t.Fatalf("hook %q is not the managed hook: %q", name, data)
 		}
 	}
 
 	body := requireProvisionGit(t, environment, "--git-dir="+repositoryPath, "cat-file", "-p", "HEAD")
 	for _, identity := range []string{
-		"author Kodama Provisioning <kodama@example.invalid>",
-		"committer Kodama Provisioning <kodama@example.invalid>",
+		"author Kodema Provisioning <kodema@example.invalid>",
+		"committer Kodema Provisioning <kodema@example.invalid>",
 	} {
 		if !strings.Contains(body, identity) {
 			t.Fatalf("initial commit does not carry the explicit identity %q: %q", identity, body)
@@ -636,7 +636,7 @@ func requireIsolatedAdminRepository(t *testing.T, environment []string,
 // configuration cannot choose the template, hooks path, ref backend, default
 // branch, reflog or author identity. It covers the in-process boundary with a
 // hostile child environment and with the documented nil environment inherited
-// from a hostile process; the real `kodama git provision-tenant` binary is
+// from a hostile process; the real `kodema git provision-tenant` binary is
 // covered at the integration boundary.
 func TestProvisionTenantIsolatesHostileGitConfiguration(t *testing.T) {
 	t.Run("hostile-child-environment", func(t *testing.T) {
@@ -1258,11 +1258,11 @@ func TestProvisionTenantConcurrentProcessesConvergeOnOneHistory(t *testing.T) {
 			command := exec.Command(os.Args[0], "-test.run=^TestProvisionTenantHelperProcess$", "-test.count=1")
 			command.Env = append(os.Environ(),
 				provisionHelperEnvironment+"=1",
-				"KODAMA_PROVISION_TENANT="+string(provisionTenantID),
-				"KODAMA_PROVISION_STORAGE="+layout.storageRoot,
-				"KODAMA_PROVISION_JOURNAL="+layout.journalDirectory,
-				"KODAMA_PROVISION_HOME="+layout.home,
-				"KODAMA_PROVISION_RESULT="+resultPath,
+				"KODEMA_PROVISION_TENANT="+string(provisionTenantID),
+				"KODEMA_PROVISION_STORAGE="+layout.storageRoot,
+				"KODEMA_PROVISION_JOURNAL="+layout.journalDirectory,
+				"KODEMA_PROVISION_HOME="+layout.home,
+				"KODEMA_PROVISION_RESULT="+resultPath,
 			)
 			output, err := command.CombinedOutput()
 			if err != nil {
@@ -1595,10 +1595,10 @@ func TestProvisionTenantHelperProcess(t *testing.T) {
 		t.Skip("provisioning helper process only")
 	}
 	config := ProvisionConfig{
-		TenantID:         id.TenantID(os.Getenv("KODAMA_PROVISION_TENANT")),
-		StorageRoot:      os.Getenv("KODAMA_PROVISION_STORAGE"),
-		JournalDirectory: os.Getenv("KODAMA_PROVISION_JOURNAL"),
-		Environment:      provisionChildEnvironment(os.Getenv("KODAMA_PROVISION_HOME")),
+		TenantID:         id.TenantID(os.Getenv("KODEMA_PROVISION_TENANT")),
+		StorageRoot:      os.Getenv("KODEMA_PROVISION_STORAGE"),
+		JournalDirectory: os.Getenv("KODEMA_PROVISION_JOURNAL"),
+		Environment:      provisionChildEnvironment(os.Getenv("KODEMA_PROVISION_HOME")),
 	}
 	result, err := ProvisionTenant(context.Background(), config)
 	if err != nil {
@@ -1608,7 +1608,7 @@ func TestProvisionTenantHelperProcess(t *testing.T) {
 	if result.Created {
 		state = "created"
 	}
-	if err := os.WriteFile(os.Getenv("KODAMA_PROVISION_RESULT"), []byte(state), 0o600); err != nil {
+	if err := os.WriteFile(os.Getenv("KODEMA_PROVISION_RESULT"), []byte(state), 0o600); err != nil {
 		t.Fatalf("write helper result: %v", err)
 	}
 }

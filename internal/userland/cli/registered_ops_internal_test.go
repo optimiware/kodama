@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/api"
+	"github.com/optimiware/kodema/api"
 )
 
 func TestRenderWhoamiServerResultAndTaskListTable(t *testing.T) {

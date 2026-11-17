@@ -39,9 +39,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/shell/integration/keys"
-	"github.com/optimiware/kodama/internal/shell/secret"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/shell/integration/keys"
+	"github.com/optimiware/kodema/internal/shell/secret"
 )
 
 const (
@@ -51,9 +51,9 @@ const (
 	awsTestRef    = "aws-kms:" + awsTestKeyARN
 	// The alias forms: a bare alias name depends on the configured region, an
 	// alias ARN names its own.
-	awsTestAliasName = "alias/kodama-kek"
-	awsTestAliasARN  = "arn:aws:kms:eu-west-3:111122223333:alias/kodama-kek"
-	awsTestRoleARN   = "arn:aws:iam::111122223333:role/kodama-kms"
+	awsTestAliasName = "alias/kodema-kek"
+	awsTestAliasARN  = "arn:aws:kms:eu-west-3:111122223333:alias/kodema-kek"
+	awsTestRoleARN   = "arn:aws:iam::111122223333:role/kodema-kms"
 	// awsTestToken stands in for the projected service-account JWT.
 	awsTestToken = "eyJhbGciOiJSUzI1NiJ9.web-identity-token-sentinel.c2lnbmF0dXJl"
 	// awsTestBodySentinel is written into every refusal body: no error may
@@ -223,11 +223,11 @@ func awsTestRecord(request *http.Request, body []byte) awsTestCall {
 func awsTestSTSReply(credentials awsTestCredentials, expiration string) string {
 	return `<AssumeRoleWithWebIdentityResponse xmlns="https://sts.amazonaws.com/doc/2011-06-15/">
   <AssumeRoleWithWebIdentityResult>
-    <SubjectFromWebIdentityToken>system:serviceaccount:kodama:kodama</SubjectFromWebIdentityToken>
+    <SubjectFromWebIdentityToken>system:serviceaccount:kodema:kodema</SubjectFromWebIdentityToken>
     <Audience>sts.amazonaws.com</Audience>
     <AssumedRoleUser>
-      <Arn>arn:aws:sts::111122223333:assumed-role/kodama-kms/kodama</Arn>
-      <AssumedRoleId>AROACLKWSDQRAOEXAMPLE:kodama</AssumedRoleId>
+      <Arn>arn:aws:sts::111122223333:assumed-role/kodema-kms/kodema</Arn>
+      <AssumedRoleId>AROACLKWSDQRAOEXAMPLE:kodema</AssumedRoleId>
     </AssumedRoleUser>
     <Credentials>
       <SessionToken>` + credentials.sessionToken + `</SessionToken>
@@ -585,7 +585,7 @@ func TestAWSKMSDecryptRequestAndResult(t *testing.T) {
 		"Action":           {"AssumeRoleWithWebIdentity"},
 		"Version":          {"2011-06-15"},
 		"RoleArn":          {awsTestRoleARN},
-		"RoleSessionName":  {"kodama"},
+		"RoleSessionName":  {"kodema"},
 		"WebIdentityToken": {awsTestToken},
 	}
 	if form := awsTestForm(t, sts); fmt.Sprint(form) != fmt.Sprint(wantForm) {
@@ -754,7 +754,7 @@ func TestAWSKMSRefusesReferencesBeforeAnyIO(t *testing.T) {
 		// A well-formed reference for another region.
 		"aws-kms:arn:aws:kms:eu-west-1:111122223333:key/1234abcd-12ab-34cd-56ef-1234567890ab",
 		"aws-kms:arn:aws:kms:us-east-1:111122223333:key/1234abcd-12ab-34cd-56ef-1234567890ab",
-		"aws-kms:arn:aws:kms:eu-west-1:111122223333:alias/kodama-kek",
+		"aws-kms:arn:aws:kms:eu-west-1:111122223333:alias/kodema-kek",
 		"aws-kms:arn:aws-cn:kms:cn-north-1:111122223333:key/1234abcd-12ab-34cd-56ef-1234567890ab",
 		// An alias that breaks the alias rules.
 		"aws-kms:alias/",
@@ -1905,15 +1905,15 @@ func TestAWSKMSDoesNotCacheReplies(t *testing.T) {
 }
 
 // TestAWSKMSRoleSessionName pins the session name sent to STS: the configured
-// one, or "kodama".
+// one, or "kodema".
 func TestAWSKMSRoleSessionName(t *testing.T) {
 	for configured, want := range map[string]string{
-		"":                       "kodama",
-		"kodama-eu-west-3":       "kodama-eu-west-3",
+		"":                       "kodema",
+		"kodema-eu-west-3":       "kodema-eu-west-3",
 		"a_b+c=d,e.f@g-h":        "a_b+c=d,e.f@g-h",
 		"ab":                     "ab",
 		strings.Repeat("s", 64):  strings.Repeat("s", 64),
-		"Kodama.Control@Cluster": "Kodama.Control@Cluster",
+		"Kodema.Control@Cluster": "Kodema.Control@Cluster",
 	} {
 		fixture := newAWSTestFixture(t, awsTestOptions{
 			configure: func(config *keys.AWSKMSConfig) { config.RoleSessionName = configured },
@@ -1967,21 +1967,21 @@ func TestAWSKMSConfigurationRefusals(t *testing.T) {
 		{name: "scaleway region", mutate: region("fr-par")},
 
 		{name: "empty role", mutate: role("")},
-		{name: "role name only", mutate: role("kodama-kms")},
+		{name: "role name only", mutate: role("kodema-kms")},
 		{name: "role without name", mutate: role("arn:aws:iam::111122223333:role/")},
-		{name: "role with region", mutate: role("arn:aws:iam:eu-west-3:111122223333:role/kodama-kms")},
-		{name: "role with short account", mutate: role("arn:aws:iam::11112222333:role/kodama-kms")},
-		{name: "role with letter account", mutate: role("arn:aws:iam::11112222333a:role/kodama-kms")},
-		{name: "role without account", mutate: role("arn:aws:iam:::role/kodama-kms")},
-		{name: "role with unknown partition", mutate: role("arn:aws-iso:iam::111122223333:role/kodama-kms")},
-		{name: "role of another service", mutate: role("arn:aws:sts::111122223333:role/kodama-kms")},
-		{name: "user arn", mutate: role("arn:aws:iam::111122223333:user/kodama-kms")},
-		{name: "assumed role arn", mutate: role("arn:aws:sts::111122223333:assumed-role/kodama-kms/session")},
-		{name: "role with space", mutate: role("arn:aws:iam::111122223333:role/kodama kms")},
-		{name: "role with newline", mutate: role("arn:aws:iam::111122223333:role/kodama-kms\n")},
-		{name: "role with nul", mutate: role("arn:aws:iam::111122223333:role/kodama\x00kms")},
-		{name: "role with ampersand", mutate: role("arn:aws:iam::111122223333:role/kodama&RoleSessionName=x")},
-		{name: "role with empty path segment", mutate: role("arn:aws:iam::111122223333:role//kodama-kms")},
+		{name: "role with region", mutate: role("arn:aws:iam:eu-west-3:111122223333:role/kodema-kms")},
+		{name: "role with short account", mutate: role("arn:aws:iam::11112222333:role/kodema-kms")},
+		{name: "role with letter account", mutate: role("arn:aws:iam::11112222333a:role/kodema-kms")},
+		{name: "role without account", mutate: role("arn:aws:iam:::role/kodema-kms")},
+		{name: "role with unknown partition", mutate: role("arn:aws-iso:iam::111122223333:role/kodema-kms")},
+		{name: "role of another service", mutate: role("arn:aws:sts::111122223333:role/kodema-kms")},
+		{name: "user arn", mutate: role("arn:aws:iam::111122223333:user/kodema-kms")},
+		{name: "assumed role arn", mutate: role("arn:aws:sts::111122223333:assumed-role/kodema-kms/session")},
+		{name: "role with space", mutate: role("arn:aws:iam::111122223333:role/kodema kms")},
+		{name: "role with newline", mutate: role("arn:aws:iam::111122223333:role/kodema-kms\n")},
+		{name: "role with nul", mutate: role("arn:aws:iam::111122223333:role/kodema\x00kms")},
+		{name: "role with ampersand", mutate: role("arn:aws:iam::111122223333:role/kodema&RoleSessionName=x")},
+		{name: "role with empty path segment", mutate: role("arn:aws:iam::111122223333:role//kodema-kms")},
 		{name: "role with trailing slash", mutate: role("arn:aws:iam::111122223333:role/path/")},
 		{name: "role with non ascii", mutate: role("arn:aws:iam::111122223333:role/kodamá")},
 		{name: "role with leading space", mutate: role(" " + awsTestRoleARN)},
@@ -1994,11 +1994,11 @@ func TestAWSKMSConfigurationRefusals(t *testing.T) {
 
 		{name: "one byte session name", mutate: session("k")},
 		{name: "oversized session name", mutate: session(strings.Repeat("s", 65))},
-		{name: "session name with space", mutate: session("kodama control")},
-		{name: "session name with slash", mutate: session("kodama/control")},
-		{name: "session name with colon", mutate: session("kodama:control")},
-		{name: "session name with ampersand", mutate: session("kodama&x=1")},
-		{name: "session name with newline", mutate: session("kodama\n")},
+		{name: "session name with space", mutate: session("kodema control")},
+		{name: "session name with slash", mutate: session("kodema/control")},
+		{name: "session name with colon", mutate: session("kodema:control")},
+		{name: "session name with ampersand", mutate: session("kodema&x=1")},
+		{name: "session name with newline", mutate: session("kodema\n")},
 		{name: "session name with non ascii", mutate: session("kodamá")},
 
 		{name: "kms plain http", mutate: kmsEndpoint("http://kms.example.com")},
@@ -2059,14 +2059,14 @@ func TestAWSKMSConfigurationRefusals(t *testing.T) {
 		{name: "defaults", mutate: func(*keys.AWSKMSConfig) {}},
 		{name: "china region", mutate: func(config *keys.AWSKMSConfig) {
 			config.Region = "cn-north-1"
-			config.RoleARN = "arn:aws-cn:iam::111122223333:role/kodama-kms"
+			config.RoleARN = "arn:aws-cn:iam::111122223333:role/kodema-kms"
 		}},
 		{name: "govcloud region", mutate: func(config *keys.AWSKMSConfig) {
 			config.Region = "us-gov-west-1"
-			config.RoleARN = "arn:aws-us-gov:iam::111122223333:role/kodama-kms"
+			config.RoleARN = "arn:aws-us-gov:iam::111122223333:role/kodema-kms"
 		}},
-		{name: "role with path", mutate: role("arn:aws:iam::111122223333:role/service-role/eks/kodama-kms")},
-		{name: "role with name punctuation", mutate: role("arn:aws:iam::111122223333:role/Kodama_KMS+a=b,c.d@e-f")},
+		{name: "role with path", mutate: role("arn:aws:iam::111122223333:role/service-role/eks/kodema-kms")},
+		{name: "role with name punctuation", mutate: role("arn:aws:iam::111122223333:role/Kodema_KMS+a=b,c.d@e-f")},
 		{name: "endpoint with trailing slash", mutate: kmsEndpoint("https://kms.example.com/")},
 		{name: "endpoint with port and path", mutate: stsEndpoint("https://sts.example.com:8443/base")},
 		{name: "explicit transport", mutate: transport(&http.Transport{})},

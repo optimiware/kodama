@@ -7,7 +7,7 @@ import (
 	"io"
 	"time"
 
-	"github.com/optimiware/kodama/api"
+	"github.com/optimiware/kodema/api"
 )
 
 // OAuth login declarations: every port, value and fixed constant the kodactl

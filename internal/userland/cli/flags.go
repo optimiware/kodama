@@ -142,7 +142,7 @@ func (spec *argSpec) parse(args []string) ([]string, map[string]bool, error) {
 }
 
 // resolveProject resolves the active project from an explicit subcommand flag,
-// the loaded configuration, or the KODAMA_PROJECT environment variable.
+// the loaded configuration, or the KODEMA_PROJECT environment variable.
 func resolveProject(flagValue string, config Config, deps CommandDeps) string {
 	if trimmed := strings.TrimSpace(flagValue); trimmed != "" {
 		return trimmed
@@ -154,7 +154,7 @@ func resolveProject(flagValue string, config Config, deps CommandDeps) string {
 	if getenv == nil {
 		getenv = os.Getenv
 	}
-	return strings.TrimSpace(getenv("KODAMA_PROJECT"))
+	return strings.TrimSpace(getenv("KODEMA_PROJECT"))
 }
 
 // resolveOutputFormat resolves an optional per-command --output flag or falls

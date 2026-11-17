@@ -23,7 +23,7 @@ type ResultRecord struct {
 }
 
 // RecordResult registers a cleanup that writes the scenario result to
-// <KODAMA_EVIDENCE_DIR>/runtime-results.jsonl and logs it. A missing evidence
+// <KODEMA_EVIDENCE_DIR>/runtime-results.jsonl and logs it. A missing evidence
 // directory leaves logging only; it never fabricates a file.
 func RecordResult(t testing.TB, record ResultRecord) {
 	t.Helper()
@@ -40,7 +40,7 @@ func RecordResult(t testing.TB, record ResultRecord) {
 			return
 		}
 		t.Logf("runtime evidence: %s", encoded)
-		dir := os.Getenv("KODAMA_EVIDENCE_DIR")
+		dir := os.Getenv("KODEMA_EVIDENCE_DIR")
 		if dir == "" {
 			return
 		}

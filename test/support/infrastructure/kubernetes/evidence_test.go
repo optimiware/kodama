@@ -13,14 +13,14 @@ import (
 // scenario did not run; recording it as "passed" would manufacture evidence.
 func TestClusterEvidencePreservesSkippedStatus(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("KODAMA_EVIDENCE_DIR", dir)
+	t.Setenv("KODEMA_EVIDENCE_DIR", dir)
 
 	t.Run("skipped", func(t *testing.T) {
-		RecordCluster(t, ClusterRecord{Cluster: "kodama-t-100-abcdef01"})
-		t.Skip("kind readiness skipped: KODAMA_REQUIRE_INFRA is not 1")
+		RecordCluster(t, ClusterRecord{Cluster: "kodema-t-100-abcdef01"})
+		t.Skip("kind readiness skipped: KODEMA_REQUIRE_INFRA is not 1")
 	})
 	t.Run("passed", func(t *testing.T) {
-		RecordCluster(t, ClusterRecord{Cluster: "kodama-t-100-abcdef02"})
+		RecordCluster(t, ClusterRecord{Cluster: "kodema-t-100-abcdef02"})
 	})
 
 	records := readClusterEvidence(t, filepath.Join(dir, "kubernetes-results.jsonl"))
@@ -31,14 +31,14 @@ func TestClusterEvidencePreservesSkippedStatus(t *testing.T) {
 	for _, record := range records {
 		byCluster[record.Cluster] = record
 	}
-	skipped, ok := byCluster["kodama-t-100-abcdef01"]
+	skipped, ok := byCluster["kodema-t-100-abcdef01"]
 	if !ok {
 		t.Fatalf("skipped cluster was not recorded: %+v", records)
 	}
 	if skipped.Result != "skipped" {
 		t.Fatalf("skipped cluster result = %q; want %q", skipped.Result, "skipped")
 	}
-	passed, ok := byCluster["kodama-t-100-abcdef02"]
+	passed, ok := byCluster["kodema-t-100-abcdef02"]
 	if !ok {
 		t.Fatalf("passed cluster was not recorded: %+v", records)
 	}

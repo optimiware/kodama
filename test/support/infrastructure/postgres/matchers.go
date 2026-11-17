@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/shell/receipt"
+	"github.com/optimiware/kodema/internal/shell/receipt"
 )
 
 // matcherKind names the closed set of non-exact comparisons a golden row may

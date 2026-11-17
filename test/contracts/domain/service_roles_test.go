@@ -11,7 +11,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/shell/tenancy"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
 )
 
 func TestAssignableServiceRolesDropsAdminAndUnknownValues(t *testing.T) {

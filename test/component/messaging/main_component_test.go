@@ -6,8 +6,8 @@ import (
 	"os"
 	"testing"
 
-	"github.com/optimiware/kodama/test/support/infrastructure/harness"
-	support "github.com/optimiware/kodama/test/support/infrastructure/messaging"
+	"github.com/optimiware/kodema/test/support/infrastructure/harness"
+	support "github.com/optimiware/kodema/test/support/infrastructure/messaging"
 )
 
 // TestMain creates this process's evidence run directory before the tests so

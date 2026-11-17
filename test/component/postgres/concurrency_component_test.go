@@ -8,14 +8,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	pgdriver "github.com/optimiware/kodama/internal/shell/app/drivers/postgres"
-	"github.com/optimiware/kodama/internal/shell/event"
-	"github.com/optimiware/kodama/internal/shell/receipt"
-	"github.com/optimiware/kodama/internal/shell/store"
-	storepg "github.com/optimiware/kodama/internal/shell/store/postgres"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
-	"github.com/optimiware/kodama/test/support/infrastructure/postgres"
+	"github.com/optimiware/kodema/internal/fault"
+	pgdriver "github.com/optimiware/kodema/internal/shell/app/drivers/postgres"
+	"github.com/optimiware/kodema/internal/shell/event"
+	"github.com/optimiware/kodema/internal/shell/receipt"
+	"github.com/optimiware/kodema/internal/shell/store"
+	storepg "github.com/optimiware/kodema/internal/shell/store/postgres"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
+	"github.com/optimiware/kodema/test/support/infrastructure/postgres"
 )
 
 // TestExpectedVersionRace proves exactly one winner on a real optimistic
@@ -558,7 +558,7 @@ func TestLockOrderSerializesOppositeAcquisition(t *testing.T) {
 	shard.SeedExecution(ctx, scope, "execution-1", "queued", 1, "", "")
 	runtime := shard.Runtime(4)
 	defer runtime.Close()
-	pgtest.RequireNonOwnerSession(t, ctx, runtime, "kodama_runtime")
+	pgtest.RequireNonOwnerSession(t, ctx, runtime, "kodema_runtime")
 	executor := storepg.New(runtime)
 
 	// The holder owns the tasks row for the whole interleaving. The units must

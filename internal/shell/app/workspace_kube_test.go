@@ -99,14 +99,14 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/installation"
-	"github.com/optimiware/kodama/internal/kernel"
-	kernelengine "github.com/optimiware/kodama/internal/kernel/engine"
-	driverkube "github.com/optimiware/kodama/internal/shell/app/drivers/kube"
-	runtimekube "github.com/optimiware/kodama/internal/shell/runtime/kube"
-	"github.com/optimiware/kodama/internal/shell/store"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/installation"
+	"github.com/optimiware/kodema/internal/kernel"
+	kernelengine "github.com/optimiware/kodema/internal/kernel/engine"
+	driverkube "github.com/optimiware/kodema/internal/shell/app/drivers/kube"
+	runtimekube "github.com/optimiware/kodema/internal/shell/runtime/kube"
+	"github.com/optimiware/kodema/internal/shell/store"
 )
 
 const (
@@ -293,7 +293,7 @@ func TestKubernetesProvisioningDoesNotWaitForClaimBinding(t *testing.T) {
 	provisioner := &recordingClaimProvisioner{create: func(_ context.Context, spec driverkube.ClaimSpec) (runtimekube.Claim, error) {
 		// A freshly created claim has no binding evidence: no resource version,
 		// no annotations, no deletion timestamp.
-		return runtimekube.Claim{Name: "kodama-workspace-unbound", Namespace: spec.Namespace}, nil
+		return runtimekube.Claim{Name: "kodema-workspace-unbound", Namespace: spec.Namespace}, nil
 	}}
 	activation := &fakeActivation{tenant: kubeTestTenant}
 	decorated := newTestKubeProvisioningWorkspace(t, inner, provisioner, activation, kubeTestTemplate())
@@ -493,7 +493,7 @@ func TestKubernetesProvisioningIdempotentRetryAfterLostResponse(t *testing.T) {
 		if attempts == 1 {
 			return runtimekube.Claim{}, fmt.Errorf("%w: response was lost", driverkube.ErrAmbiguous)
 		}
-		return runtimekube.Claim{Name: "kodama-workspace-retry", Namespace: spec.Namespace}, nil
+		return runtimekube.Claim{Name: "kodema-workspace-retry", Namespace: spec.Namespace}, nil
 	}}
 	activation := &fakeActivation{tenant: kubeTestTenant}
 	decorated := newTestKubeProvisioningWorkspace(t, inner, provisioner, activation, kubeTestTemplate())

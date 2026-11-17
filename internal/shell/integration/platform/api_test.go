@@ -54,10 +54,10 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/shell/authorize"
-	"github.com/optimiware/kodama/internal/shell/identity"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/shell/authorize"
+	"github.com/optimiware/kodema/internal/shell/identity"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
 )
 
 type testApplication struct {
@@ -75,15 +75,15 @@ func testOAuthClient() identity.OAuthClientConfig {
 		ClientSecretRef: "secret/platform-client",
 		Audience:        "platform-api",
 		Scopes:          []string{"openid", "profile"},
-		RedirectURL:     "https://kodama.example/oauth/callback",
+		RedirectURL:     "https://kodema.example/oauth/callback",
 	}
 }
 
 func testOAuthClaims() identity.OAuthClaims {
 	return identity.OAuthClaims{
-		TenantClaim: "https://kodama/tenant",
+		TenantClaim: "https://kodema/tenant",
 		Tenant:      "tenant-a",
-		RoleClaim:   "https://kodama/roles",
+		RoleClaim:   "https://kodema/roles",
 		Role:        "operator",
 		Subject:     "auth0|abc123",
 	}

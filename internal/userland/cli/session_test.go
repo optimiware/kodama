@@ -9,17 +9,17 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/client"
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/userland/cli"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/client"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/userland/cli"
 )
 
 // TestFileSessionStoreRoundTrip pins human-session persistence: JSON shape,
 // mode 0600, a fresh read on every Load and no token in errors.
 func TestFileSessionStoreRoundTrip(t *testing.T) {
 	filesystem := newFakeFS()
-	path := "/home/engineer/.kodama/session.json"
+	path := "/home/engineer/.kodema/session.json"
 	store := cli.FileSessionStore{Path: path, Files: filesystem, Now: testNow}
 	credential := humanCredential()
 
@@ -80,7 +80,7 @@ func TestFileSessionStoreRoundTrip(t *testing.T) {
 // TestFileSessionStoreSaveRefusals pins that login persistence refuses
 // non-human, missing, expired and unwritable sessions.
 func TestFileSessionStoreSaveRefusals(t *testing.T) {
-	path := "/home/engineer/.kodama/session.json"
+	path := "/home/engineer/.kodema/session.json"
 	expired := humanCredential()
 	expired.ExpiresAt = testNow().Add(-time.Second)
 	cases := []struct {
@@ -122,13 +122,13 @@ func TestFileSessionStoreSaveRefusals(t *testing.T) {
 func TestFileSessionStoreSaveCreatesMissingParents(t *testing.T) {
 	filesystem := newFakeFS()
 	filesystem.dirs["/home"] = 0o755
-	path := "/home/engineer/.config/kodama/session.json"
+	path := "/home/engineer/.config/kodema/session.json"
 	store := cli.FileSessionStore{Path: path, Files: filesystem, Now: testNow}
 
 	if err := store.Save(context.Background(), humanCredential()); err != nil {
 		t.Fatalf("Save(first login): %v", err)
 	}
-	for _, dir := range []string{"/home/engineer/.config", "/home/engineer/.config/kodama"} {
+	for _, dir := range []string{"/home/engineer/.config", "/home/engineer/.config/kodema"} {
 		mode, ok := filesystem.dirs[dir]
 		if !ok {
 			t.Errorf("Save did not create parent %s", dir)
@@ -163,7 +163,7 @@ func TestFileSessionStoreSaveCreatesMissingParents(t *testing.T) {
 // both gone.
 func TestFileSessionStoreSaveReplacesExistingFile(t *testing.T) {
 	filesystem := newFakeFS()
-	path := "/home/engineer/.kodama/session.json"
+	path := "/home/engineer/.kodema/session.json"
 	filesystem.files[path] = []byte(`{"kind":"session","token":"kodex.human-1.old","expires_at":"2026-02-03T05:05:06Z"}`)
 	filesystem.modes[path] = 0o644
 	store := cli.FileSessionStore{Path: path, Files: filesystem, Now: testNow}
@@ -191,7 +191,7 @@ func TestFileSessionStoreSaveReplacesExistingFile(t *testing.T) {
 // token material.
 func TestFileSessionStoreSaveReplaceFailure(t *testing.T) {
 	filesystem := newFakeFS()
-	path := "/home/engineer/.kodama/session.json"
+	path := "/home/engineer/.kodema/session.json"
 	previous := []byte(`{"kind":"session","token":"kodex.human-1.previous","expires_at":"2026-02-03T05:05:06Z"}`)
 	filesystem.files[path] = append([]byte(nil), previous...)
 	filesystem.modes[path] = 0o644
@@ -222,7 +222,7 @@ func TestFileSessionStoreSaveReplaceFailure(t *testing.T) {
 // TestFileSessionStoreLoadRefusals pins that every unusable persisted session
 // refuses with the stable unauthenticated class and no credential material.
 func TestFileSessionStoreLoadRefusals(t *testing.T) {
-	path := "/home/engineer/.kodama/session.json"
+	path := "/home/engineer/.kodema/session.json"
 	cases := []struct {
 		name    string
 		content string
@@ -263,7 +263,7 @@ func TestFileSessionStoreLoadRefusals(t *testing.T) {
 // session file and preserving it when refresh fails.
 func TestRunLoginPersistsSessionFile(t *testing.T) {
 	filesystem := newFakeFS()
-	path := "/home/engineer/.kodama/session.json"
+	path := "/home/engineer/.kodema/session.json"
 	store := cli.FileSessionStore{Path: path, Files: filesystem, Now: testNow}
 	source := &scriptedSource{credentials: []client.Credential{humanCredential()}}
 	ports, out, errOut := testPorts(&scriptedTransport{})

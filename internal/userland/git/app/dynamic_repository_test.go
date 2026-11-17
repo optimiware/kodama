@@ -10,10 +10,10 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/userland/git"
-	"github.com/optimiware/kodama/internal/userland/git/app/actors"
-	"github.com/optimiware/kodama/internal/userland/git/app/native"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/userland/git"
+	"github.com/optimiware/kodema/internal/userland/git/app/actors"
+	"github.com/optimiware/kodema/internal/userland/git/app/native"
 )
 
 type dynamicVerifyClient struct {
@@ -158,7 +158,7 @@ repo pinned/app
 	}
 
 	denied := httptest.NewRequest(http.MethodGet, "/my-app.git/info/refs?service=git-upload-pack", nil)
-	denied.SetBasicAuth("kodama", "viewer-token")
+	denied.SetBasicAuth("kodema", "viewer-token")
 	deniedRec := httptest.NewRecorder()
 	server.Handler().ServeHTTP(deniedRec, denied)
 	if deniedRec.Code != http.StatusNotFound {
@@ -170,7 +170,7 @@ repo pinned/app
 
 	// 2. Static --resource pin disagreed with by policy option resource is refused with 403.
 	mismatchReq := httptest.NewRequest(http.MethodGet, "/pinned/app.git/info/refs?service=git-upload-pack", nil)
-	mismatchReq.SetBasicAuth("kodama", "engineer-token")
+	mismatchReq.SetBasicAuth("kodema", "engineer-token")
 	mismatchRec := httptest.NewRecorder()
 	server.Handler().ServeHTTP(mismatchRec, mismatchReq)
 	if mismatchRec.Code != http.StatusForbidden {
@@ -191,7 +191,7 @@ repo pinned/app
 				target = "/team/service.git/info/refs?service=git-upload-pack"
 			}
 			req := httptest.NewRequest(http.MethodGet, target, nil)
-			req.SetBasicAuth("kodama", "engineer-token")
+			req.SetBasicAuth("kodema", "engineer-token")
 			rec := httptest.NewRecorder()
 			server.Handler().ServeHTTP(rec, req)
 			codes[idx] = rec.Code

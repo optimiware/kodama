@@ -13,10 +13,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	driverkube "github.com/optimiware/kodama/internal/shell/app/drivers/kube"
-	kubesupport "github.com/optimiware/kodama/test/support/infrastructure/kubernetes"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	driverkube "github.com/optimiware/kodema/internal/shell/app/drivers/kube"
+	kubesupport "github.com/optimiware/kodema/test/support/infrastructure/kubernetes"
 )
 
 // TestServiceAccountTokenFileAuthentication proves the real API accepts the
@@ -29,9 +29,9 @@ func TestServiceAccountTokenFileAuthentication(t *testing.T) {
 	fx, ctx := newFixture(t, id.WorkspaceID("workspace-kube-incluster"), fixtureOptions{})
 
 	const (
-		serviceAccount = "kodama-incluster-proof"
-		configMapName  = "kodama-incluster-proof"
-		proofPath      = "/kodama/incluster-proof"
+		serviceAccount = "kodema-incluster-proof"
+		configMapName  = "kodema-incluster-proof"
+		proofPath      = "/kodema/incluster-proof"
 		proofValue     = "service-account-token"
 	)
 	if _, err := fx.Cluster.Apply(ctx, inClusterFixtureYAML(serviceAccount, configMapName)); err != nil {
@@ -194,7 +194,7 @@ func writeInClusterTokenFile(t *testing.T, path, token string) {
 // ConfigMap uses binaryData with the driver's activation-path key encoding so
 // the driver can decode it.
 func inClusterFixtureYAML(serviceAccount, configMap string) string {
-	key := base64.RawURLEncoding.EncodeToString([]byte("/kodama/incluster-proof"))
+	key := base64.RawURLEncoding.EncodeToString([]byte("/kodema/incluster-proof"))
 	value := base64.StdEncoding.EncodeToString([]byte("service-account-token"))
 	return fmt.Sprintf(`apiVersion: v1
 kind: ServiceAccount

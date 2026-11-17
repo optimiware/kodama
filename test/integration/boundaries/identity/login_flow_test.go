@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/userland/cli"
-	idfix "github.com/optimiware/kodama/test/support/boundaries/identity"
+	"github.com/optimiware/kodema/internal/userland/cli"
+	idfix "github.com/optimiware/kodema/test/support/boundaries/identity"
 )
 
 // TestBrowserLoginWritesVersion2Session drives the real kodactl binary through
@@ -482,7 +482,7 @@ func TestHelperReturnsFreshTokenForRegisteredOriginOnly(t *testing.T) {
 	if fresh.Token == initial.Token {
 		t.Fatalf("helper did not obtain a fresh access token: %+v", fresh)
 	}
-	if want := "username=kodama\npassword=" + fresh.Token + "\n"; stdout != want {
+	if want := "username=kodema\npassword=" + fresh.Token + "\n"; stdout != want {
 		t.Fatalf("helper stdout = %q; want %q", stdout, want)
 	}
 	if calls := refreshTokenCalls(harness.provider); calls != 1 {

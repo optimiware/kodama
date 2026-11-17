@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/shell/app/bridges"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/shell/app/bridges"
 )
 
 func TestIDsAllocateDistinctTypedIdentities(t *testing.T) {

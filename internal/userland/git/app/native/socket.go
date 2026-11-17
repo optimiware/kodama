@@ -14,7 +14,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/optimiware/kodama/internal/id"
+	"github.com/optimiware/kodema/internal/id"
 )
 
 // ErrSocketUnavailable reports a hook callback channel that cannot be created
@@ -133,7 +133,7 @@ func SocketPath(baseDirectory string, tenant id.TenantID) (string, error) {
 	if _, err := rand.Read(raw[:]); err != nil {
 		return "", fmt.Errorf("generate hook socket name: %w", err)
 	}
-	name := "kodama-git-hook-" + string(tenant) + "-" + hex.EncodeToString(raw[:])
+	name := "kodema-git-hook-" + string(tenant) + "-" + hex.EncodeToString(raw[:])
 	return filepath.Join(absolute, name, "hook.sock"), nil
 }
 

@@ -36,7 +36,7 @@
 //	    Cluster   Cluster
 //	    Namespace string       // the tenant namespace this adapter is bound to
 //	    TenantID  id.TenantID  // tenant ownership label expected on that namespace
-//	    KodamaURL string       // reserved KODAMA_URL value
+//	    KodemaURL string       // reserved KODEMA_URL value
 //	    Policy    Policy
 //	    Cleanup   CleanupPolicy
 //	    Clock     Clock        // optional; nil means a real clock
@@ -80,8 +80,8 @@
 // engine.EffectIdentity.WorkloadID (never GenerateName), the tenant/execution/
 // action/workload/workspace labels below, and the idempotency-key annotation.
 // A Job mounts the pre-existing retained workspace claim at /workspace, the
-// immutable activation ConfigMap at /kodama and the credential Secret at
-// /kodama/secrets. Pods carry the workload label so ListPods can select them.
+// immutable activation ConfigMap at /kodema and the credential Secret at
+// /kodema/secrets. Pods carry the workload label so ListPods can select them.
 //
 // Sentinel errors: ErrNotFound, ErrAlreadyExists and ErrConflict. They are
 // wrapped by the fake and interpreted by the adapter; an object that is absent
@@ -130,10 +130,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/kernel/engine"
-	"github.com/optimiware/kodama/internal/shell/runtime"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/kernel/engine"
+	"github.com/optimiware/kodema/internal/shell/runtime"
 )
 
 // TestAdapterSatisfiesRuntimeClient is a compile-time proof that the adapter
@@ -251,7 +251,7 @@ func TestNewRefusesIncompleteConfiguration(t *testing.T) {
 		{name: "nil cluster", mutate: func(config *Config) { config.Cluster = nil }},
 		{name: "empty namespace", mutate: func(config *Config) { config.Namespace = "" }},
 		{name: "empty tenant", mutate: func(config *Config) { config.TenantID = "" }},
-		{name: "empty url", mutate: func(config *Config) { config.KodamaURL = "" }},
+		{name: "empty url", mutate: func(config *Config) { config.KodemaURL = "" }},
 		{name: "empty cpu limit", mutate: func(config *Config) { config.Policy.CPULimit = "" }},
 		{name: "zero ttl", mutate: func(config *Config) { config.Policy.JobTTLSeconds = 0 }},
 		{name: "zero cleanup attempts", mutate: func(config *Config) { config.Cleanup.Attempts = 0 }},
@@ -275,12 +275,12 @@ func TestNewRefusesIncompleteConfiguration(t *testing.T) {
 // and pod selectors share, so a deployment network policy and the adapter agree.
 func TestPinnedLabelVocabulary(t *testing.T) {
 	pairs := map[string]string{
-		LabelTenant:              "kodama.dev/tenant",
-		LabelExecution:           "kodama.dev/execution",
-		LabelAction:              "kodama.dev/action",
-		LabelWorkload:            "kodama.dev/workload",
-		LabelWorkspace:           "kodama.dev/workspace",
-		AnnotationIdempotencyKey: "kodama.dev/idempotency-key",
+		LabelTenant:              "kodema.dev/tenant",
+		LabelExecution:           "kodema.dev/execution",
+		LabelAction:              "kodema.dev/action",
+		LabelWorkload:            "kodema.dev/workload",
+		LabelWorkspace:           "kodema.dev/workspace",
+		AnnotationIdempotencyKey: "kodema.dev/idempotency-key",
 	}
 	for got, want := range pairs {
 		if got != want {

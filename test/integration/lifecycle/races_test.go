@@ -33,8 +33,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/test/support/factory"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/test/support/factory"
 )
 
 const (
@@ -55,7 +55,7 @@ const raceIntegrateGate = `while [ ! -e ` + raceIntegrateReleasePath + ` ]; do s
 // a receipt/event field and disappears with the retained workspace.
 func raceBlockingCommands() []string {
 	return []string{
-		`cat /kodama/secrets/KODAMA_TOKEN > ` + raceWorkloadTokenPath,
+		`cat /kodema/secrets/KODEMA_TOKEN > ` + raceWorkloadTokenPath,
 		`while [ ! -e ` + raceWorkloadReleasePath + ` ]; do sleep 1; done`,
 		`exit 0`,
 	}

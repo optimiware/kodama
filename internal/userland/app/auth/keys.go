@@ -14,7 +14,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/optimiware/kodama/internal/fault"
+	"github.com/optimiware/kodema/internal/fault"
 )
 
 const (
@@ -270,7 +270,7 @@ func readPrivateFile0600(path string) ([]byte, error) {
 // links it into place so concurrent initializers never clobber an existing file.
 func createPrivateFileOnce0600(path string, content []byte) (bool, error) {
 	parent := filepath.Dir(path)
-	temp, err := os.CreateTemp(parent, ".kodama-auth-*")
+	temp, err := os.CreateTemp(parent, ".kodema-auth-*")
 	if err != nil {
 		return false, fault.Wrap(fault.DependencyUnavailable, "create temporary state file", err)
 	}
@@ -306,7 +306,7 @@ func replacePrivateFile0600(path string, content []byte) error {
 		return fault.New(fault.InvalidInput, "destination state file is not a regular file")
 	}
 	parent := filepath.Dir(path)
-	temp, err := os.CreateTemp(parent, ".kodama-auth-*")
+	temp, err := os.CreateTemp(parent, ".kodema-auth-*")
 	if err != nil {
 		return fault.Wrap(fault.DependencyUnavailable, "create temporary state file", err)
 	}

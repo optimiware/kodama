@@ -22,7 +22,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
+	"github.com/optimiware/kodema/api"
 )
 
 const (
@@ -34,14 +34,14 @@ const (
 func discoveryTestConfig(issuer string) *DiscoveryConfig {
 	return &DiscoveryConfig{
 		Issuer:                      issuer,
-		ClientID:                    "kodama-cli",
-		Audience:                    "kodama",
+		ClientID:                    "kodema-cli",
+		Audience:                    "kodema",
 		AuthorizationEndpoint:       issuer + "/authorize",
 		TokenEndpoint:               issuer + "/token",
 		DeviceAuthorizationEndpoint: issuer + "/device",
 		RevocationEndpoint:          issuer + "/revoke",
 		Scopes:                      []string{"openid", "profile", "email", "offline_access"},
-		APIURL:                      "https://api.example.com/kodama&cli",
+		APIURL:                      "https://api.example.com/kodema&cli",
 	}
 }
 
@@ -50,14 +50,14 @@ func discoveryTestConfig(issuer string) *DiscoveryConfig {
 func discoveryTestDocument(issuer, audience string) api.DiscoveryDocument {
 	return api.DiscoveryDocument{
 		Issuer:                      issuer,
-		ClientID:                    "kodama-cli",
+		ClientID:                    "kodema-cli",
 		Audience:                    audience,
 		AuthorizationEndpoint:       issuer + "/authorize",
 		TokenEndpoint:               issuer + "/token",
 		DeviceAuthorizationEndpoint: issuer + "/device",
 		RevocationEndpoint:          issuer + "/revoke",
 		Scopes:                      []string{"openid", "profile", "email", "offline_access"},
-		APIURL:                      "https://api.example.com/kodama&cli",
+		APIURL:                      "https://api.example.com/kodema&cli",
 	}
 }
 
@@ -152,7 +152,7 @@ func TestDevelopmentCompositionServesDiscoveryOnTheInjectedListener(t *testing.T
 		t.Fatalf("discovery status = %d; want 200", status)
 	}
 	document := decodeDiscovery(t, body)
-	if want := discoveryTestDocument(discoveryTestIssuer, "kodama"); !reflect.DeepEqual(document, want) {
+	if want := discoveryTestDocument(discoveryTestIssuer, "kodema"); !reflect.DeepEqual(document, want) {
 		t.Fatalf("served discovery = %+v; want %+v", document, want)
 	}
 }
@@ -182,7 +182,7 @@ func TestTestCompositionServesDiscovery(t *testing.T) {
 		t.Fatalf("Content-Type = %q; want %q", header.Get("Content-Type"), api.MediaType)
 	}
 	document := decodeDiscovery(t, body)
-	if want := discoveryTestDocument(discoveryTestIssuer, "kodama"); !reflect.DeepEqual(document, want) {
+	if want := discoveryTestDocument(discoveryTestIssuer, "kodema"); !reflect.DeepEqual(document, want) {
 		t.Fatalf("served discovery = %+v; want %+v", document, want)
 	}
 }
@@ -223,7 +223,7 @@ func TestProductionCompositionServesDiscoveryAndReusesOIDC(t *testing.T) {
 	// The issuer and audience deliberately come only from the OIDC verifier.
 	discovery.Issuer = ""
 	discovery.Audience = ""
-	discovery.APIURL = "https://kodama.example"
+	discovery.APIURL = "https://kodema.example"
 	config.Production.Discovery = discovery
 
 	app, err := New(context.Background(), config)
@@ -243,9 +243,9 @@ func TestProductionCompositionServesDiscoveryAndReusesOIDC(t *testing.T) {
 		t.Fatalf("discovery status = %d; want 200; body=%s", status, string(body))
 	}
 	document := decodeDiscovery(t, body)
-	want := discoveryTestDocument("https://issuer.example", "kodama")
-	want.ClientID = "kodama-cli"
-	want.APIURL = "https://kodama.example"
+	want := discoveryTestDocument("https://issuer.example", "kodema")
+	want.ClientID = "kodema-cli"
+	want.APIURL = "https://kodema.example"
 	if !reflect.DeepEqual(document, want) {
 		t.Fatalf("served discovery = %+v; want %+v", document, want)
 	}
@@ -404,7 +404,7 @@ func TestServedDiscoveryCarriesNoSecretOrKeyMaterial(t *testing.T) {
 	discovery := discoveryTestConfig("https://issuer.example")
 	discovery.Issuer = ""
 	discovery.Audience = ""
-	discovery.APIURL = "https://kodama.example"
+	discovery.APIURL = "https://kodema.example"
 	production.Production.Discovery = discovery
 	productionApp, err := New(context.Background(), production)
 	if err != nil {
@@ -441,7 +441,7 @@ func TestServedDiscoveryCarriesNoSecretOrKeyMaterial(t *testing.T) {
 // TestStaticDiscoveryReturnsIndependentCopies pins that no caller can mutate
 // the shared configuration, including under concurrent requests.
 func TestStaticDiscoveryReturnsIndependentCopies(t *testing.T) {
-	want := discoveryTestDocument(discoveryTestIssuer, "kodama")
+	want := discoveryTestDocument(discoveryTestIssuer, "kodema")
 	provider, err := newStaticDiscovery(want)
 	if err != nil {
 		t.Fatalf("newStaticDiscovery: %v", err)

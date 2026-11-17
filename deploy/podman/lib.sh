@@ -6,19 +6,19 @@
 # configurable. This file never writes, reads aloud or prints a secret.
 #
 # The bundle runs PostgreSQL, JetStream NATS, OAuthSonas (with a host-side TLS
-# terminator), `kodama server --profile test` and `kodama git serve` as
+# terminator), `kodema server --profile test` and `kodema git serve` as
 # containers on the same rootless Podman store. Secrets live only in 0600
 # files under the state directory and reach containers through --env-file.
 
 set -euo pipefail
 
 die() {
-	printf 'kodama-local: %s\n' "$*" >&2
+	printf 'kodema-local: %s\n' "$*" >&2
 	exit 1
 }
 
 log() {
-	printf 'kodama-local: %s\n' "$*" >&2
+	printf 'kodema-local: %s\n' "$*" >&2
 }
 
 bundle_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -76,7 +76,7 @@ marker_prefix() {
 #   purge:   the directory must exist, be non-empty and carry this prefix.
 check_state_dir() {
 	local path=$1 prefix=$2 mode=$3 marker recorded
-	marker="${path}/.kodama-local"
+	marker="${path}/.kodema-local"
 	case "$mode" in
 	install | purge) ;;
 	*) return 2 ;;
@@ -110,34 +110,34 @@ validate_port() {
 
 # ---- naming and network ----------------------------------------------------
 
-PREFIX="${KODAMA_LOCAL_PREFIX:-kodama-local}"
+PREFIX="${KODEMA_LOCAL_PREFIX:-kodema-local}"
 case "$PREFIX" in
 "" | *[!a-z0-9-]* | [!a-z0-9]*)
-	die "KODAMA_LOCAL_PREFIX must be a lower-case DNS label (it names containers, labels and the state marker): ${PREFIX}"
+	die "KODEMA_LOCAL_PREFIX must be a lower-case DNS label (it names containers, labels and the state marker): ${PREFIX}"
 	;;
 esac
 
-STATE_DIR="${KODAMA_LOCAL_STATE_DIR:-${XDG_STATE_HOME:-${HOME}/.local/state}/kodama/podman/${PREFIX}}"
+STATE_DIR="${KODEMA_LOCAL_STATE_DIR:-${XDG_STATE_HOME:-${HOME}/.local/state}/kodema/podman/${PREFIX}}"
 STATE_DIR="$(validate_state_path "$STATE_DIR")" ||
-	die "KODAMA_LOCAL_STATE_DIR must be an absolute, non-degenerate directory (not /, the home directory or its parent): ${KODAMA_LOCAL_STATE_DIR:-}"
+	die "KODEMA_LOCAL_STATE_DIR must be an absolute, non-degenerate directory (not /, the home directory or its parent): ${KODEMA_LOCAL_STATE_DIR:-}"
 
-HTTPS_PORT="${KODAMA_LOCAL_HTTPS_PORT:-18443}"
-OIDC_PORT="${KODAMA_LOCAL_OIDC_PORT:-18444}"
-GIT_PORT="${KODAMA_LOCAL_GIT_PORT:-18081}"
-GIT_HTTPS_PORT="${KODAMA_LOCAL_GIT_HTTPS_PORT:-18445}"
-POSTGRES_PORT="${KODAMA_LOCAL_POSTGRES_PORT:-15432}"
-NATS_PORT="${KODAMA_LOCAL_NATS_PORT:-14222}"
-NATS_MONITOR_PORT="${KODAMA_LOCAL_NATS_MONITOR_PORT:-18222}"
-OAUTH_UPSTREAM_PORT="${KODAMA_LOCAL_OAUTH_UPSTREAM_PORT:-18181}"
+HTTPS_PORT="${KODEMA_LOCAL_HTTPS_PORT:-18443}"
+OIDC_PORT="${KODEMA_LOCAL_OIDC_PORT:-18444}"
+GIT_PORT="${KODEMA_LOCAL_GIT_PORT:-18081}"
+GIT_HTTPS_PORT="${KODEMA_LOCAL_GIT_HTTPS_PORT:-18445}"
+POSTGRES_PORT="${KODEMA_LOCAL_POSTGRES_PORT:-15432}"
+NATS_PORT="${KODEMA_LOCAL_NATS_PORT:-14222}"
+NATS_MONITOR_PORT="${KODEMA_LOCAL_NATS_MONITOR_PORT:-18222}"
+OAUTH_UPSTREAM_PORT="${KODEMA_LOCAL_OAUTH_UPSTREAM_PORT:-18181}"
 
-validate_port KODAMA_LOCAL_HTTPS_PORT "$HTTPS_PORT"
-validate_port KODAMA_LOCAL_OIDC_PORT "$OIDC_PORT"
-validate_port KODAMA_LOCAL_GIT_PORT "$GIT_PORT"
-validate_port KODAMA_LOCAL_GIT_HTTPS_PORT "$GIT_HTTPS_PORT"
-validate_port KODAMA_LOCAL_POSTGRES_PORT "$POSTGRES_PORT"
-validate_port KODAMA_LOCAL_NATS_PORT "$NATS_PORT"
-validate_port KODAMA_LOCAL_NATS_MONITOR_PORT "$NATS_MONITOR_PORT"
-validate_port KODAMA_LOCAL_OAUTH_UPSTREAM_PORT "$OAUTH_UPSTREAM_PORT"
+validate_port KODEMA_LOCAL_HTTPS_PORT "$HTTPS_PORT"
+validate_port KODEMA_LOCAL_OIDC_PORT "$OIDC_PORT"
+validate_port KODEMA_LOCAL_GIT_PORT "$GIT_PORT"
+validate_port KODEMA_LOCAL_GIT_HTTPS_PORT "$GIT_HTTPS_PORT"
+validate_port KODEMA_LOCAL_POSTGRES_PORT "$POSTGRES_PORT"
+validate_port KODEMA_LOCAL_NATS_PORT "$NATS_PORT"
+validate_port KODEMA_LOCAL_NATS_MONITOR_PORT "$NATS_MONITOR_PORT"
+validate_port KODEMA_LOCAL_OAUTH_UPSTREAM_PORT "$OAUTH_UPSTREAM_PORT"
 declare -A seen_ports=()
 for entry in "https:${HTTPS_PORT}" "oidc:${OIDC_PORT}" "git:${GIT_PORT}" "git-https:${GIT_HTTPS_PORT}" "postgres:${POSTGRES_PORT}" \
 	"nats:${NATS_PORT}" "nats-monitor:${NATS_MONITOR_PORT}" "oauth-upstream:${OAUTH_UPSTREAM_PORT}"; do
@@ -148,62 +148,62 @@ for entry in "https:${HTTPS_PORT}" "oidc:${OIDC_PORT}" "git:${GIT_PORT}" "git-ht
 done
 unset seen_ports
 
-TENANT="${KODAMA_LOCAL_TENANT:-tenant-local}"
-PROJECT="${KODAMA_LOCAL_PROJECT:-$TENANT}"
-SERVICE="${KODAMA_LOCAL_GIT_SERVICE:-git}"
-ENGINEER_SERVICE="${KODAMA_LOCAL_ENGINEER_SERVICE:-engineer}"
-GIT_RESOURCES="${KODAMA_LOCAL_GIT_RESOURCES:-admin=git-admin}"
-INSTALLATION_ID="${KODAMA_LOCAL_INSTALLATION_ID:-installation-${PREFIX}}"
-DATABASE="${KODAMA_LOCAL_DATABASE:-kodama}"
-HOST_ALIAS="${KODAMA_LOCAL_HOST_ALIAS:-host.containers.internal}"
+TENANT="${KODEMA_LOCAL_TENANT:-tenant-local}"
+PROJECT="${KODEMA_LOCAL_PROJECT:-$TENANT}"
+SERVICE="${KODEMA_LOCAL_GIT_SERVICE:-git}"
+ENGINEER_SERVICE="${KODEMA_LOCAL_ENGINEER_SERVICE:-engineer}"
+GIT_RESOURCES="${KODEMA_LOCAL_GIT_RESOURCES:-admin=git-admin}"
+INSTALLATION_ID="${KODEMA_LOCAL_INSTALLATION_ID:-installation-${PREFIX}}"
+DATABASE="${KODEMA_LOCAL_DATABASE:-kodema}"
+HOST_ALIAS="${KODEMA_LOCAL_HOST_ALIAS:-host.containers.internal}"
 
 case "$GIT_RESOURCES" in
-"" | ,* | *, | *,,*) die "KODAMA_LOCAL_GIT_RESOURCES must be a comma-separated repository=resource list" ;;
+"" | ,* | *, | *,,*) die "KODEMA_LOCAL_GIT_RESOURCES must be a comma-separated repository=resource list" ;;
 esac
 IFS=',' read -r -a git_resource_mappings <<<"$GIT_RESOURCES"
 for mapping in "${git_resource_mappings[@]}"; do
 	case "$mapping" in
 	*=*) ;;
-	*) die "KODAMA_LOCAL_GIT_RESOURCES mapping '${mapping}' must be repository=resource-id" ;;
+	*) die "KODEMA_LOCAL_GIT_RESOURCES mapping '${mapping}' must be repository=resource-id" ;;
 	esac
 done
 unset git_resource_mappings
 
-PUBLIC_URL="${KODAMA_LOCAL_PUBLIC_URL:-https://localhost:${HTTPS_PORT}}"
-WORKLOAD_URL="${KODAMA_LOCAL_WORKLOAD_URL:-https://${HOST_ALIAS}:${HTTPS_PORT}}"
-GIT_PUBLIC_URL="${KODAMA_LOCAL_GIT_PUBLIC_URL:-https://localhost:${GIT_HTTPS_PORT}}"
-GIT_WORKLOAD_URL="${KODAMA_LOCAL_GIT_WORKLOAD_URL:-https://${HOST_ALIAS}:${GIT_HTTPS_PORT}}"
-OIDC_ISSUER="${KODAMA_LOCAL_OIDC_ISSUER:-https://localhost:${OIDC_PORT}}"
-OIDC_AUDIENCE="${KODAMA_LOCAL_OIDC_AUDIENCE:-$PUBLIC_URL}"
-OIDC_REDIRECT="${KODAMA_LOCAL_OIDC_REDIRECT:-http://127.0.0.1:52790/callback}"
-OIDC_CLIENT_ID="${KODAMA_LOCAL_OIDC_CLIENT_ID:-kodactl}"
-DISCOVERY_AUTHORIZATION_ENDPOINT="${KODAMA_LOCAL_DISCOVERY_AUTHORIZATION_ENDPOINT:-${OIDC_ISSUER}/oauth2/auth}"
-DISCOVERY_TOKEN_ENDPOINT="${KODAMA_LOCAL_DISCOVERY_TOKEN_ENDPOINT:-${OIDC_ISSUER}/oauth2/token}"
-DISCOVERY_DEVICE_AUTHORIZATION_ENDPOINT="${KODAMA_LOCAL_DISCOVERY_DEVICE_AUTHORIZATION_ENDPOINT:-${OIDC_ISSUER}/oauth2/device}"
-DISCOVERY_REVOCATION_ENDPOINT="${KODAMA_LOCAL_DISCOVERY_REVOCATION_ENDPOINT:-${OIDC_ISSUER}/oauth2/revoke}"
-DISCOVERY_SCOPES="${KODAMA_LOCAL_DISCOVERY_SCOPES:-openid,profile,email}"
+PUBLIC_URL="${KODEMA_LOCAL_PUBLIC_URL:-https://localhost:${HTTPS_PORT}}"
+WORKLOAD_URL="${KODEMA_LOCAL_WORKLOAD_URL:-https://${HOST_ALIAS}:${HTTPS_PORT}}"
+GIT_PUBLIC_URL="${KODEMA_LOCAL_GIT_PUBLIC_URL:-https://localhost:${GIT_HTTPS_PORT}}"
+GIT_WORKLOAD_URL="${KODEMA_LOCAL_GIT_WORKLOAD_URL:-https://${HOST_ALIAS}:${GIT_HTTPS_PORT}}"
+OIDC_ISSUER="${KODEMA_LOCAL_OIDC_ISSUER:-https://localhost:${OIDC_PORT}}"
+OIDC_AUDIENCE="${KODEMA_LOCAL_OIDC_AUDIENCE:-$PUBLIC_URL}"
+OIDC_REDIRECT="${KODEMA_LOCAL_OIDC_REDIRECT:-http://127.0.0.1:52790/callback}"
+OIDC_CLIENT_ID="${KODEMA_LOCAL_OIDC_CLIENT_ID:-kodactl}"
+DISCOVERY_AUTHORIZATION_ENDPOINT="${KODEMA_LOCAL_DISCOVERY_AUTHORIZATION_ENDPOINT:-${OIDC_ISSUER}/oauth2/auth}"
+DISCOVERY_TOKEN_ENDPOINT="${KODEMA_LOCAL_DISCOVERY_TOKEN_ENDPOINT:-${OIDC_ISSUER}/oauth2/token}"
+DISCOVERY_DEVICE_AUTHORIZATION_ENDPOINT="${KODEMA_LOCAL_DISCOVERY_DEVICE_AUTHORIZATION_ENDPOINT:-${OIDC_ISSUER}/oauth2/device}"
+DISCOVERY_REVOCATION_ENDPOINT="${KODEMA_LOCAL_DISCOVERY_REVOCATION_ENDPOINT:-${OIDC_ISSUER}/oauth2/revoke}"
+DISCOVERY_SCOPES="${KODEMA_LOCAL_DISCOVERY_SCOPES:-openid,profile,email}"
 
 # Images that run with installation or operator credentials are pinned by tag
 # and manifest digest, exactly like the deployment chart. A digest-only override
 # is accepted; a bare tag is refused.
-POSTGRES_IMAGE="${KODAMA_LOCAL_POSTGRES_IMAGE:-docker.io/library/postgres:18-alpine@sha256:300ebd02c6d4de9ee27ad7f6855d5d21b4d3a4a5117767c1197d284c635d9736}"
-NATS_IMAGE="${KODAMA_LOCAL_NATS_IMAGE:-docker.io/library/nats:2.15-alpine@sha256:89c5c61b5969261e05106a98e465ccb85c7f4bf4e94c1e70786c189759d79e7e}"
-OAUTHSONAS_IMAGE="${KODAMA_LOCAL_OAUTHSONAS_IMAGE:-ghcr.io/optimiware/oauthsonas:1.5.0@sha256:39f371048640a95aef951d4ffbc5efd58168f58910e9bb4b972694fa7e82d178}"
-WORKLOAD_IMAGE="${KODAMA_LOCAL_WORKLOAD_IMAGE:-docker.io/library/buildpack-deps:trixie-scm@sha256:712f969c9d81a35f9f00cce701faae521891d42a20b592b61bd0e6c5328fad7c}"
-EXTERNAL_HARNESS_IMAGE="${KODAMA_LOCAL_EXTERNAL_HARNESS_IMAGE:-docker.io/library/alpine:3.24@sha256:0f49f331d9212aff11b932863be4eb01cdf962969aa86dab7d1ee21ac6f5f52b}"
-KODAMA_IMAGE="${KODAMA_LOCAL_KODAMA_IMAGE:-}"
-KODAMA_IMAGE_TAG="${KODAMA_LOCAL_KODAMA_IMAGE_TAG:-local}"
+POSTGRES_IMAGE="${KODEMA_LOCAL_POSTGRES_IMAGE:-docker.io/library/postgres:18-alpine@sha256:300ebd02c6d4de9ee27ad7f6855d5d21b4d3a4a5117767c1197d284c635d9736}"
+NATS_IMAGE="${KODEMA_LOCAL_NATS_IMAGE:-docker.io/library/nats:2.15-alpine@sha256:89c5c61b5969261e05106a98e465ccb85c7f4bf4e94c1e70786c189759d79e7e}"
+OAUTHSONAS_IMAGE="${KODEMA_LOCAL_OAUTHSONAS_IMAGE:-ghcr.io/optimiware/oauthsonas:1.5.0@sha256:39f371048640a95aef951d4ffbc5efd58168f58910e9bb4b972694fa7e82d178}"
+WORKLOAD_IMAGE="${KODEMA_LOCAL_WORKLOAD_IMAGE:-docker.io/library/buildpack-deps:trixie-scm@sha256:712f969c9d81a35f9f00cce701faae521891d42a20b592b61bd0e6c5328fad7c}"
+EXTERNAL_HARNESS_IMAGE="${KODEMA_LOCAL_EXTERNAL_HARNESS_IMAGE:-docker.io/library/alpine:3.24@sha256:0f49f331d9212aff11b932863be4eb01cdf962969aa86dab7d1ee21ac6f5f52b}"
+KODEMA_IMAGE="${KODEMA_LOCAL_KODEMA_IMAGE:-}"
+KODEMA_IMAGE_TAG="${KODEMA_LOCAL_KODEMA_IMAGE_TAG:-local}"
 
 for image_ref in "$POSTGRES_IMAGE" "$NATS_IMAGE" "$OAUTHSONAS_IMAGE" "$WORKLOAD_IMAGE" "$EXTERNAL_HARNESS_IMAGE"; do
 	validate_image_pin "$image_ref" || die "image ${image_ref} must be pinned as repository[:tag]@sha256:<64 hex>"
 done
 unset image_ref
 
-PODMAN_SOCKET="${KODAMA_LOCAL_PODMAN_SOCKET:-${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/podman/podman.sock}"
+PODMAN_SOCKET="${KODEMA_LOCAL_PODMAN_SOCKET:-${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/podman/podman.sock}"
 
 # ---- state layout ----------------------------------------------------------
 
-marker_file="${STATE_DIR}/.kodama-local"
+marker_file="${STATE_DIR}/.kodema-local"
 tls_dir="${STATE_DIR}/tls"
 secrets_dir="${STATE_DIR}/secrets"
 versions_dir="${STATE_DIR}/service-versions"
@@ -320,24 +320,24 @@ config_hash() {
 # podman_rm_own removes only containers carrying this installation's label.
 podman_rm_own() {
 	local ids
-	ids="$(podman ps -aq --filter "label=kodama.local.prefix=${PREFIX}" 2>/dev/null || true)"
+	ids="$(podman ps -aq --filter "label=kodema.local.prefix=${PREFIX}" 2>/dev/null || true)"
 	[ -n "$ids" ] || return 0
 	# shellcheck disable=SC2086
 	podman rm -f -- $ids >/dev/null
 }
 
-# kodama_run <env-file> <args>... runs one short-lived kodama command in the
+# kodema_run <env-file> <args>... runs one short-lived kodema command in the
 # bundle image with the state directory mounted at its host-absolute path.
-kodama_run() {
+kodema_run() {
 	local env_file=$1
 	shift
 	podman run --rm --network=host \
 		--userns=keep-id:uid=65532,gid=65532 \
-		--label "kodama.local.prefix=${PREFIX}" \
-		--label "kodama.local.command=one-shot" \
+		--label "kodema.local.prefix=${PREFIX}" \
+		--label "kodema.local.command=one-shot" \
 		-v "${STATE_DIR}:${STATE_DIR}" \
 		--env-file "$env_file" \
-		"$KODAMA_IMAGE" "$@"
+		"$KODEMA_IMAGE" "$@"
 }
 
 # image_exists reports whether a local image reference is present.
@@ -652,7 +652,7 @@ membership_version() {
 		status="$(cat -- "${out}.status" 2>/dev/null || true)"
 		code="$(api_code "$out")"
 		message="$(api_message "$out")"
-		printf 'kodama-local: membership.list answered HTTP %s (%s: %s)\n' \
+		printf 'kodema-local: membership.list answered HTTP %s (%s: %s)\n' \
 			"${status:-none}" "${code:-no code}" "${message:-no message}" >&2
 		rm -f -- "$out" "${out}.status"
 		return 1
@@ -798,7 +798,7 @@ require_fresh_state_dir() {
 # exist. It prints what it found; the caller decides how to report it.
 smoke_require_no_podman_resources() {
 	local prefix=$1 existing volume found=""
-	existing="$(podman ps -a --filter "label=kodama.local.prefix=${prefix}" --format '{{.Names}}' 2>/dev/null || true)"
+	existing="$(podman ps -a --filter "label=kodema.local.prefix=${prefix}" --format '{{.Names}}' 2>/dev/null || true)"
 	if [ -n "$existing" ]; then
 		printf 'containers %s' "$(printf '%s' "$existing" | tr '\n' ' ')"
 		return 1

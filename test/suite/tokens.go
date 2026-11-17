@@ -144,7 +144,7 @@ func OpenStageTokens(ctx context.Context, installation string, getenv func(strin
 	if _, taken := tokens.refresher.Files[second]; taken {
 		return nil, fmt.Errorf("Q02_SECOND_ADMIN_PERSONA=%s is one of the first tenant's personas", second)
 	}
-	if tokens.directory, err = os.MkdirTemp("", "kodama-suite-tokens-"); err != nil {
+	if tokens.directory, err = os.MkdirTemp("", "kodema-suite-tokens-"); err != nil {
 		return nil, fmt.Errorf("create the private token directory: %w", err)
 	}
 	tokens.SecondAdminFile = filepath.Join(tokens.directory, "second-admin.token")

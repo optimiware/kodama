@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
+	"github.com/optimiware/kodema/api"
 )
 
 func TestDispatchGateBlocksNewDispatchUntilEnabled(t *testing.T) {

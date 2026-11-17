@@ -13,10 +13,10 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/shell/integration/keys"
-	"github.com/optimiware/kodama/internal/shell/secret"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/shell/integration/keys"
+	"github.com/optimiware/kodema/internal/shell/secret"
 )
 
 func TestSealOpenRoundTrip(t *testing.T) {
@@ -282,7 +282,7 @@ func TestGoldenAssociatedDataRoundTrip(t *testing.T) {
 	blob := []byte("golden-encrypted-kek")
 	client := newFakeKMS(map[string][]byte{string(blob): testKEK()})
 	provider, err := keys.NewAWS(client, keys.CloudConfig{
-		KeyRef:   secret.KeyRef(keys.AWSKeyRefPrefix + "alias/kodama"),
+		KeyRef:   secret.KeyRef(keys.AWSKeyRefPrefix + "alias/kodema"),
 		Current:  associated.KeyVersion,
 		Versions: map[secret.KeyVersion][]byte{associated.KeyVersion: blob},
 	}, deterministicRandom(0x11))

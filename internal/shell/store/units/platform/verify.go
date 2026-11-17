@@ -8,16 +8,16 @@ import (
 	"io"
 	"sort"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/kernel/definition"
-	"github.com/optimiware/kodama/internal/shell/event"
-	"github.com/optimiware/kodama/internal/shell/identity"
-	"github.com/optimiware/kodama/internal/shell/receipt"
-	"github.com/optimiware/kodama/internal/shell/request"
-	"github.com/optimiware/kodama/internal/shell/resource"
-	"github.com/optimiware/kodama/internal/shell/store"
-	"github.com/optimiware/kodama/internal/shell/verify"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/kernel/definition"
+	"github.com/optimiware/kodema/internal/shell/event"
+	"github.com/optimiware/kodema/internal/shell/identity"
+	"github.com/optimiware/kodema/internal/shell/receipt"
+	"github.com/optimiware/kodema/internal/shell/request"
+	"github.com/optimiware/kodema/internal/shell/resource"
+	"github.com/optimiware/kodema/internal/shell/store"
+	"github.com/optimiware/kodema/internal/shell/verify"
 )
 
 // reportOperation is the declared registry operation a verified report commits
@@ -267,7 +267,7 @@ func acceptedReportEvent(envelopes []event.Envelope) (event.Envelope, error) {
 // definition.Subject the request-activation adapter persisted (an object keyed
 // by field name with literal/reference values). A request used as approval
 // evidence carries its `operation` and `resource` in that subject alongside the
-// effect fields (KODAMA.md, S05 §4), so the reader derives both from the stored
+// effect fields (KODEMA.md, S05 §4), so the reader derives both from the stored
 // literals instead of echoing the query. This reader decodes that exact shape
 // strictly and converts it to verify.Subject; a reference that was never
 // resolved, an unknown value shape or an empty recorded subject is an
@@ -375,7 +375,7 @@ func decodeEvidenceRow(row store.Row, query verify.EvidenceQuery) (verify.Eviden
 }
 
 // The stored request subject field names that carry the approval's operation
-// and resource (KODAMA.md, S05 §4).
+// and resource (KODEMA.md, S05 §4).
 const (
 	approvalOperationField = "operation"
 	approvalResourceField  = "resource"

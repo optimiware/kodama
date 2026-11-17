@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/api"
+	"github.com/optimiware/kodema/api"
 )
 
 // TestHarnessCredentialScan proves issued credential text and the configured
@@ -40,7 +40,7 @@ func TestHarnessCredentialScan(t *testing.T) {
 func TestHarnessCredentialScanHandlesLongAndUnpaddedMaterial(t *testing.T) {
 	for _, size := range []int{300, 380, 500, 900, api.MaxCredentialBytes} {
 		token := Secret(strings.Repeat("a", size))
-		basic := base64.StdEncoding.EncodeToString([]byte("kodama:" + token.Reveal()))
+		basic := base64.StdEncoding.EncodeToString([]byte("kodema:" + token.Reveal()))
 		bare := base64.StdEncoding.EncodeToString([]byte(token.Reveal()))
 		for _, value := range []string{
 			basic,
@@ -58,7 +58,7 @@ func TestHarnessCredentialScanHandlesLongAndUnpaddedMaterial(t *testing.T) {
 	}
 
 	token := Secret(strings.Repeat("b", 900))
-	leak := base64.StdEncoding.EncodeToString([]byte("kodama:" + token.Reveal()))
+	leak := base64.StdEncoding.EncodeToString([]byte("kodema:" + token.Reveal()))
 	var leading strings.Builder
 	for range 100 {
 		leading.WriteString(strings.Repeat("z", 40))
@@ -75,7 +75,7 @@ func TestHarnessCredentialScanHandlesLongAndUnpaddedMaterial(t *testing.T) {
 func TestHarnessCredentialScanDecodesBasic(t *testing.T) {
 	secret := Secret("project-token-value")
 	for _, basic := range []string{
-		base64.StdEncoding.EncodeToString([]byte("kodama:project-token-value")),
+		base64.StdEncoding.EncodeToString([]byte("kodema:project-token-value")),
 		base64.StdEncoding.EncodeToString([]byte("token:project-token-value")),
 		base64.StdEncoding.EncodeToString([]byte("kodex.issued-credential")),
 	} {

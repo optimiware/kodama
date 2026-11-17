@@ -10,7 +10,7 @@
 //     the moment kubectl reads it, and is removed on failure and on a signal;
 //   - every descriptor-controlled value is validated before the first kubectl
 //     call, including absent ("null") fields and values that would rewrite the
-//     DSN (a database name such as "kodama?sslmode=disable");
+//     DSN (a database name such as "kodema?sslmode=disable");
 //   - the image build context keeps key, certificate, kubeconfig, tfvars and
 //     environment files out of the image.
 package deploy
@@ -176,7 +176,7 @@ func assertDSN(t *testing.T, label, raw, wantUser, wantPassword, wantHost, wantP
 	if got := query.Get("sslmode"); got != "verify-full" {
 		t.Errorf("%s sslmode = %q, want verify-full", label, got)
 	}
-	if got := query.Get("sslrootcert"); got != "/etc/kodama/pg-ca/ca.crt" {
+	if got := query.Get("sslrootcert"); got != "/etc/kodema/pg-ca/ca.crt" {
 		t.Errorf("%s sslrootcert = %q, want the mounted provider CA", label, got)
 	}
 	if len(query) != 2 {
@@ -203,19 +203,19 @@ func TestBootstrapSecretsAcceptsURLSafePasswordsEverywhere(t *testing.T) {
 		key  string
 		user string
 	}{
-		{key: "database_url", user: "kodama_runtime"},
-		{key: "controller_url", user: "kodama_controller"},
-		{key: "publisher_url", user: "kodama_publisher"},
-		{key: "auth_url", user: "kodama_auth"},
+		{key: "database_url", user: "kodema_runtime"},
+		{key: "controller_url", user: "kodema_controller"},
+		{key: "publisher_url", user: "kodema_publisher"},
+		{key: "auth_url", user: "kodema_auth"},
 	}
 	for _, password := range passwords {
 		t.Run(password.name, func(t *testing.T) {
 			box := newSandbox(t).
 				withEnv(
-					"KODAMA_DB_RUNTIME_PASSWORD="+password.value,
-					"KODAMA_DB_CONTROLLER_PASSWORD="+password.value,
-					"KODAMA_DB_PUBLISHER_PASSWORD="+password.value,
-					"KODAMA_DB_AUTH_PASSWORD="+password.value,
+					"KODEMA_DB_RUNTIME_PASSWORD="+password.value,
+					"KODEMA_DB_CONTROLLER_PASSWORD="+password.value,
+					"KODEMA_DB_PUBLISHER_PASSWORD="+password.value,
+					"KODEMA_DB_AUTH_PASSWORD="+password.value,
 					"TF_VAR_postgres_admin_password="+password.value,
 				)
 			code, output := box.run(t, false)
@@ -225,7 +225,7 @@ func TestBootstrapSecretsAcceptsURLSafePasswordsEverywhere(t *testing.T) {
 			records := box.envFileRecords(t)
 			for _, role := range roles {
 				record := dsnRecord(t, records, role.key)
-				assertDSN(t, role.key, record.values[role.key], role.user, password.value, "db.example", "5432", "kodama")
+				assertDSN(t, role.key, record.values[role.key], role.user, password.value, "db.example", "5432", "kodema")
 				if record.mode != "600" {
 					t.Errorf("%s env-file %s mode = %s, want 600", role.key, record.path, record.mode)
 				}
@@ -234,7 +234,7 @@ func TestBootstrapSecretsAcceptsURLSafePasswordsEverywhere(t *testing.T) {
 				}
 			}
 			admin := dsnRecord(t, records, "admin_url")
-			assertDSN(t, "admin_url", admin.values["admin_url"], "kodama_admin", password.value, "db.example", "5432", "kodama")
+			assertDSN(t, "admin_url", admin.values["admin_url"], "kodema_admin", password.value, "db.example", "5432", "kodema")
 			if admin.mode != "600" {
 				t.Errorf("admin env-file %s mode = %s, want 600", admin.path, admin.mode)
 			}
@@ -288,14 +288,14 @@ func TestBootstrapSecretsEnvFilesArePrivateAtReadTime(t *testing.T) {
 // of every wrapped command. The KEK is checked in base64, hex and raw form.
 func TestBootstrapSecretsNeverPassesAnySecretOnArgv(t *testing.T) {
 	box := newSandbox(t).
-		withEnv("TF_VAR_postgres_admin_password="+adminPasswordSentinel, "KODAMA_WITH_OAUTHSONAS=1")
+		withEnv("TF_VAR_postgres_admin_password="+adminPasswordSentinel, "KODEMA_WITH_OAUTHSONAS=1")
 	installOAuthSonasPKI(t, box)
 	code, output := box.run(t, false)
 	if code != 0 {
 		t.Fatalf("bootstrap-secrets failed: exit %d\n%s", code, output)
 	}
 	forms := kubectlCredentialForms(stubKEKMaterial(), dbForms())
-	// create_secret_mixed merges the CA file into the kodama-database manifest.
+	// create_secret_mixed merges the CA file into the kodema-database manifest.
 	// Its bytes must reach jq on stdin: an `--arg v "$(base64 ...)"`
 	// form puts the base64 value on jq's argv. The CA content is known (fake
 	// tofu emits TOFU_CA_PEM plus a newline), so both the raw and base64 forms
@@ -328,8 +328,8 @@ func TestBootstrapSecretsCleansCredentialFilesWhenKubectlFails(t *testing.T) {
 		admin   bool
 		oauth   bool
 	}{
-		{name: "admin_env_file", pattern: "create secret generic kodama-database-admin", prefix: "admin-env.", admin: true},
-		{name: "kms_credentials_env_file", pattern: "create secret generic kodama-kms-credentials", prefix: "creds-env."},
+		{name: "admin_env_file", pattern: "create secret generic kodema-database-admin", prefix: "admin-env.", admin: true},
+		{name: "kms_credentials_env_file", pattern: "create secret generic kodema-kms-credentials", prefix: "creds-env."},
 		{name: "oauth_access_file", pattern: "create secret generic oauthsonas-access", prefix: "oauth-access.", oauth: true},
 	}
 	for _, testCase := range cases {
@@ -339,7 +339,7 @@ func TestBootstrapSecretsCleansCredentialFilesWhenKubectlFails(t *testing.T) {
 				box.withEnv("TF_VAR_postgres_admin_password=" + adminPasswordSentinel)
 			}
 			if testCase.oauth {
-				box.withEnv("KODAMA_WITH_OAUTHSONAS=1")
+				box.withEnv("KODEMA_WITH_OAUTHSONAS=1")
 				installOAuthSonasPKI(t, box)
 			}
 			box.withEnv("KUBECTL_FAIL_PATTERN=" + testCase.pattern)
@@ -373,8 +373,8 @@ func TestBootstrapSecretsCleansCredentialFilesOnSignal(t *testing.T) {
 		admin     bool
 		oauth     bool
 	}{
-		{name: "admin_env_file", pattern: "create secret generic kodama-database-admin", logNeedle: "create\tsecret\tgeneric\tkodama-database-admin", prefix: "admin-env.", admin: true},
-		{name: "kms_credentials_env_file", pattern: "create secret generic kodama-kms-credentials", logNeedle: "create\tsecret\tgeneric\tkodama-kms-credentials", prefix: "creds-env."},
+		{name: "admin_env_file", pattern: "create secret generic kodema-database-admin", logNeedle: "create\tsecret\tgeneric\tkodema-database-admin", prefix: "admin-env.", admin: true},
+		{name: "kms_credentials_env_file", pattern: "create secret generic kodema-kms-credentials", logNeedle: "create\tsecret\tgeneric\tkodema-kms-credentials", prefix: "creds-env."},
 		{name: "oauth_access_file", pattern: "create secret generic oauthsonas-access", logNeedle: "create\tsecret\tgeneric\toauthsonas-access", prefix: "oauth-access.", oauth: true},
 	}
 	for _, testCase := range cases {
@@ -384,7 +384,7 @@ func TestBootstrapSecretsCleansCredentialFilesOnSignal(t *testing.T) {
 				box.withEnv("TF_VAR_postgres_admin_password=" + adminPasswordSentinel)
 			}
 			if testCase.oauth {
-				box.withEnv("KODAMA_WITH_OAUTHSONAS=1")
+				box.withEnv("KODEMA_WITH_OAUTHSONAS=1")
 				installOAuthSonasPKI(t, box)
 			}
 			box.withEnv("KUBECTL_HANG_PATTERN=" + testCase.pattern)
@@ -447,7 +447,7 @@ func (b *sandbox) readLogForTest(path string) string {
 // exit code cannot come from a later unrelated failure. One role is unset at a
 // time (the other three keep their sentinels), which kills each of the four
 // declarations merged back into `local` individually as well as all four at
-// once: a swallowed failure then reaches `kubectl create secret kodama-database`
+// once: a swallowed failure then reaches `kubectl create secret kodema-database`
 // with an empty password and exits zero.
 func TestBootstrapSecretsFailsWhenPasswordGenerationFails(t *testing.T) {
 	roles := []struct {
@@ -455,10 +455,10 @@ func TestBootstrapSecretsFailsWhenPasswordGenerationFails(t *testing.T) {
 		env  string
 		dsn  string
 	}{
-		{name: "runtime", env: "KODAMA_DB_RUNTIME_PASSWORD", dsn: "database_url=postgres://kodama_runtime:@"},
-		{name: "controller", env: "KODAMA_DB_CONTROLLER_PASSWORD", dsn: "controller_url=postgres://kodama_controller:@"},
-		{name: "publisher", env: "KODAMA_DB_PUBLISHER_PASSWORD", dsn: "publisher_url=postgres://kodama_publisher:@"},
-		{name: "auth", env: "KODAMA_DB_AUTH_PASSWORD", dsn: "auth_url=postgres://kodama_auth:@"},
+		{name: "runtime", env: "KODEMA_DB_RUNTIME_PASSWORD", dsn: "database_url=postgres://kodema_runtime:@"},
+		{name: "controller", env: "KODEMA_DB_CONTROLLER_PASSWORD", dsn: "controller_url=postgres://kodema_controller:@"},
+		{name: "publisher", env: "KODEMA_DB_PUBLISHER_PASSWORD", dsn: "publisher_url=postgres://kodema_publisher:@"},
+		{name: "auth", env: "KODEMA_DB_AUTH_PASSWORD", dsn: "auth_url=postgres://kodema_auth:@"},
 	}
 	for _, role := range roles {
 		t.Run(role.name, func(t *testing.T) {
@@ -473,8 +473,8 @@ func TestBootstrapSecretsFailsWhenPasswordGenerationFails(t *testing.T) {
 				t.Errorf("bootstrap-secrets succeeded although the %s password generation failed:\n%s", role.name, output)
 			}
 			for _, line := range box.readKubectlArgv(t) {
-				if strings.Contains(line, "create\tsecret\tgeneric\tkodama-database") {
-					t.Errorf("a failed %s password generation still reached `kubectl create secret kodama-database`: %s", role.name, line)
+				if strings.Contains(line, "create\tsecret\tgeneric\tkodema-database") {
+					t.Errorf("a failed %s password generation still reached `kubectl create secret kodema-database`: %s", role.name, line)
 				}
 			}
 			secretLog := box.readLogForTest(box.kubectlSecretLog)
@@ -485,10 +485,10 @@ func TestBootstrapSecretsFailsWhenPasswordGenerationFails(t *testing.T) {
 				t.Fatalf("the fake kubectl recorded no secret file content; the empty-password check would be vacuous:\n%s", secretLog)
 			}
 			for _, empty := range []string{
-				"database_url=postgres://kodama_runtime:@",
-				"controller_url=postgres://kodama_controller:@",
-				"publisher_url=postgres://kodama_publisher:@",
-				"auth_url=postgres://kodama_auth:@",
+				"database_url=postgres://kodema_runtime:@",
+				"controller_url=postgres://kodema_controller:@",
+				"publisher_url=postgres://kodema_publisher:@",
+				"auth_url=postgres://kodema_auth:@",
 			} {
 				if strings.Contains(secretLog, empty) {
 					t.Errorf("the fake kubectl received a DSN with an empty password (%s) although openssl failed:\n%s", role.dsn, secretLog)
@@ -630,12 +630,12 @@ func TestBootstrapSecretsRefusesInvalidDescriptorValues(t *testing.T) {
 	}
 
 	for _, invalid := range []struct{ name, value string }{
-		{"newline", "kodama\nEVIL=1"},
-		{"question", "kodama?sslmode=disable"},
-		{"hash", "kodama#fragment"},
-		{"ampersand", "kodama&sslmode=disable"},
-		{"slash", "kodama/path"},
-		{"space", "kodama db"},
+		{"newline", "kodema\nEVIL=1"},
+		{"question", "kodema?sslmode=disable"},
+		{"hash", "kodema#fragment"},
+		{"ampersand", "kodema&sslmode=disable"},
+		{"slash", "kodema/path"},
+		{"space", "kodema db"},
 	} {
 		add("database_name_"+invalid.name, "database", setPostgres("database_name", invalid.value))
 	}
@@ -644,9 +644,9 @@ func TestBootstrapSecretsRefusesInvalidDescriptorValues(t *testing.T) {
 	add("database_name_null", "database", setPostgres("database_name", nil))
 
 	for _, invalid := range []struct{ name, value string }{
-		{"newline", "kodama_admin\nEVIL=1"},
-		{"question", "kodama?admin"},
-		{"space", "kodama admin"},
+		{"newline", "kodema_admin\nEVIL=1"},
+		{"question", "kodema?admin"},
+		{"space", "kodema admin"},
 	} {
 		add("admin_user_"+invalid.name, "admin_user", setPostgres("admin_user", invalid.value), adminEnv...)
 	}
@@ -654,9 +654,9 @@ func TestBootstrapSecretsRefusesInvalidDescriptorValues(t *testing.T) {
 	add("admin_user_missing", "admin_user", deletePostgres("admin_user"), adminEnv...)
 
 	for _, invalid := range []struct{ name, value string }{
-		{"newline", "kodama\nEVIL=1"},
-		{"question", "kodama?sslmode=disable"},
-		{"space", "kodama db"},
+		{"newline", "kodema\nEVIL=1"},
+		{"question", "kodema?sslmode=disable"},
+		{"space", "kodema db"},
 	} {
 		add("admin_database_"+invalid.name, "admin_database", setPostgres("admin_database", invalid.value), adminEnv...)
 	}
@@ -778,7 +778,7 @@ func TestBootstrapSecretsAcceptsBracketedIPv6Host(t *testing.T) {
 				t.Fatalf("bootstrap-secrets refused the bracketed host %s: exit %d\n%s", testCase.host, code, output)
 			}
 			record := dsnRecord(t, box.envFileRecords(t), "database_url")
-			assertDSN(t, "database_url", record.values["database_url"], "kodama_runtime", dbSentinels[0], testCase.hostname, "5432", "kodama")
+			assertDSN(t, "database_url", record.values["database_url"], "kodema_runtime", dbSentinels[0], testCase.hostname, "5432", "kodema")
 			if !strings.Contains(record.values["database_url"], "@"+testCase.host+":5432/") {
 				t.Errorf("DSN did not put the port outside the bracketed host: %q", record.values["database_url"])
 			}
@@ -837,7 +837,7 @@ func TestBootstrapSecretsAcceptsPortBoundaries(t *testing.T) {
 				t.Fatalf("bootstrap-secrets refused the boundary port %s: exit %d\n%s", port, code, output)
 			}
 			record := dsnRecord(t, box.envFileRecords(t), "database_url")
-			assertDSN(t, "database_url", record.values["database_url"], "kodama_runtime", dbSentinels[0], "db.example", port, "kodama")
+			assertDSN(t, "database_url", record.values["database_url"], "kodema_runtime", dbSentinels[0], "db.example", port, "kodema")
 		})
 	}
 }

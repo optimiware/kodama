@@ -22,19 +22,19 @@ kind: Secret
 metadata:
   name: workload-credential
   labels:
-    kodama.dev/execution: exec-1
+    kodema.dev/execution: exec-1
 data:
-  KODAMA_TOKEN: %s
+  KODEMA_TOKEN: %s
 stringData:
-  KODAMA_TOKEN: %s
+  KODEMA_TOKEN: %s
 `, encoded, token)
 	output := SanitizeDiagnostic(secret, token)
-	for _, forbidden := range []string{encoded, token, "KODAMA_TOKEN: " + encoded, "KODAMA_TOKEN: " + token} {
+	for _, forbidden := range []string{encoded, token, "KODEMA_TOKEN: " + encoded, "KODEMA_TOKEN: " + token} {
 		if strings.Contains(output, forbidden) {
 			t.Fatalf("sanitized Secret still contains %q:\n%s", forbidden, output)
 		}
 	}
-	for _, required := range []string{"workload-credential", "kodama.dev/execution", "exec-1"} {
+	for _, required := range []string{"workload-credential", "kodema.dev/execution", "exec-1"} {
 		if !strings.Contains(output, required) {
 			t.Fatalf("sanitized Secret lost the diagnostic metadata %q:\n%s", required, output)
 		}
@@ -50,7 +50,7 @@ items:
   metadata:
     name: workload-credential
   data:
-    KODAMA_TOKEN: %s
+    KODEMA_TOKEN: %s
 `, encoded)
 	listOutput := SanitizeDiagnostic(list)
 	for _, forbidden := range []string{encoded, token} {
@@ -80,7 +80,7 @@ items:
 
 	// Invalid YAML still falls back to dropping a data block rather than
 	// returning it.
-	broken := "kind: Secret\n\tdata:\n\t  KODAMA_TOKEN: " + encoded + "\n"
+	broken := "kind: Secret\n\tdata:\n\t  KODEMA_TOKEN: " + encoded + "\n"
 	brokenOutput := SanitizeDiagnostic(broken)
 	if strings.Contains(brokenOutput, encoded) {
 		t.Fatalf("fallback sanitizer returned a Secret payload:\n%s", brokenOutput)
@@ -91,7 +91,7 @@ items:
 // kubectl argument builder cannot ask for Secret data: a Secret kind is rendered
 // as a name list, while other kinds keep the YAML detail.
 func TestDiagnosticKubectlGetArgsNeverRequestsSecretPayloads(t *testing.T) {
-	secretArgs := DiagnosticKubectlGetArgs("secrets", "-l", "kodama.dev/execution=exec-1")
+	secretArgs := DiagnosticKubectlGetArgs("secrets", "-l", "kodema.dev/execution=exec-1")
 	joined := strings.Join(secretArgs, " ")
 	if strings.Contains(joined, "yaml") || strings.Contains(joined, "json") {
 		t.Fatalf("Secret diagnostic args request a payload-bearing output: %q", joined)
@@ -104,7 +104,7 @@ func TestDiagnosticKubectlGetArgsNeverRequestsSecretPayloads(t *testing.T) {
 	}
 
 	for _, resource := range []string{"jobs", "pods", "configmaps", "persistentvolumeclaim"} {
-		args := DiagnosticKubectlGetArgs(resource, "-l", "kodama.dev/execution=exec-1")
+		args := DiagnosticKubectlGetArgs(resource, "-l", "kodema.dev/execution=exec-1")
 		if !strings.Contains(strings.Join(args, " "), "-o yaml") {
 			t.Fatalf("%s diagnostic args = %v; want YAML", resource, args)
 		}

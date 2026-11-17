@@ -11,7 +11,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/installation"
+	"github.com/optimiware/kodema/internal/installation"
 )
 
 type orderedRestore struct {

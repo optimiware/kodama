@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/kernel/definition"
-	"github.com/optimiware/kodama/internal/shell/pipeline"
+	"github.com/optimiware/kodema/internal/kernel/definition"
+	"github.com/optimiware/kodema/internal/shell/pipeline"
 )
 
 // TestHarnessPipelineDocumentBuildsExactYAML proves the builder renders the
@@ -137,11 +137,11 @@ func TestHarnessPipelineBuilderMatchesRealDecoderRefusals(t *testing.T) {
 			yaml: `actions:
   - name: build
     image: docker.io/library/node:26.13.0-alpine
-    secrets: [KODAMA_TOKEN]
+    secrets: [KODEMA_TOKEN]
     commands: [true]
 `,
 			document: Document{Actions: []Action{{
-				Name: "build", Image: DefaultImage, Secrets: []string{"KODAMA_TOKEN"}, Commands: []string{"true"},
+				Name: "build", Image: DefaultImage, Secrets: []string{"KODEMA_TOKEN"}, Commands: []string{"true"},
 			}}},
 		},
 		{
@@ -210,7 +210,7 @@ func TestHarnessPipelineDocumentRefusals(t *testing.T) {
 		},
 		{
 			name:     "reserved environment",
-			document: Document{Env: map[string]string{"KODAMA_URL": "x"}, Actions: []Action{{Name: "build", Image: image}}},
+			document: Document{Env: map[string]string{"KODEMA_URL": "x"}, Actions: []Action{{Name: "build", Image: image}}},
 		},
 		{
 			name:     "bad timeout",
@@ -218,7 +218,7 @@ func TestHarnessPipelineDocumentRefusals(t *testing.T) {
 		},
 		{
 			name:     "reserved secret name",
-			document: Document{Actions: []Action{{Name: "build", Image: image, Secrets: []string{"KODAMA_TOKEN"}}}},
+			document: Document{Actions: []Action{{Name: "build", Image: image, Secrets: []string{"KODEMA_TOKEN"}}}},
 		},
 	}
 	for _, testCase := range cases {
@@ -236,7 +236,7 @@ func TestHarnessPipelineDocumentRefusals(t *testing.T) {
 // per-action idempotency key, bounds responses, refuses redirects and embeds no
 // credential value.
 func TestHarnessOutputSubmissionScript(t *testing.T) {
-	caPath := "/kodama/secrets/W49_CA_TEST"
+	caPath := "/kodema/secrets/W49_CA_TEST"
 	script, err := OutputSubmissionScript(map[string]string{"artifact": "ac12-ok"}, caPath)
 	if err != nil {
 		t.Fatalf("build submission script: %v", err)
@@ -245,10 +245,10 @@ func TestHarnessOutputSubmissionScript(t *testing.T) {
 		"python3",
 		"import ssl",
 		"import urllib.request",
-		`"/kodama/secrets/KODAMA_TOKEN"`,
+		`"/kodema/secrets/KODEMA_TOKEN"`,
 		caPath,
-		`"KODAMA_EXECUTION"`,
-		`"KODAMA_ACTION"`,
+		`"KODEMA_EXECUTION"`,
+		`"KODEMA_ACTION"`,
 		`"artifact": "ac12-ok"`,
 		"action_id",
 		"idempotency_key",
@@ -296,7 +296,7 @@ func TestHarnessOutputSubmissionScript(t *testing.T) {
 // submissionProgram extracts the heredoc body from the generated command.
 func submissionProgram(t *testing.T, command string) string {
 	t.Helper()
-	const marker = "KODAMA_E2E_SUBMIT"
+	const marker = "KODEMA_E2E_SUBMIT"
 	_, after, ok := strings.Cut(command, "<<'"+marker+"'\n")
 	if !ok {
 		t.Fatalf("submission command has no heredoc: %s", command)

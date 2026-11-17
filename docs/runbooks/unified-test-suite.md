@@ -1,6 +1,6 @@
 # Unified test suite
 
-`scripts/test-suite` runs Kodama's real-infrastructure suites as waves of
+`scripts/test-suite` runs Kodema's real-infrastructure suites as waves of
 concurrent lanes. One orchestrator (`test/suite`) plans every target:
 
 | Target | What runs |
@@ -60,21 +60,21 @@ a plain `go test` run reads it too:
 
 | Variable | Default | Package |
 |---|---|---|
-| `KODAMA_E2E_CONCURRENCY` | 6 | `test/e2e` live scenarios |
-| `KODAMA_STAGE_CONCURRENCY` | 1 (the suite sets 6) | `test/qualification/production` wave 1 probes |
-| `KODAMA_Q03_CONCURRENCY` | 4 | `test/qualification/restore` local drills |
-| `KODAMA_LIFECYCLE_KIND_CONCURRENCY` | 3 | `test/integration/lifecycle` kind clusters |
+| `KODEMA_E2E_CONCURRENCY` | 6 | `test/e2e` live scenarios |
+| `KODEMA_STAGE_CONCURRENCY` | 1 (the suite sets 6) | `test/qualification/production` wave 1 probes |
+| `KODEMA_Q03_CONCURRENCY` | 4 | `test/qualification/restore` local drills |
+| `KODEMA_LIFECYCLE_KIND_CONCURRENCY` | 3 | `test/integration/lifecycle` kind clusters |
 
 `0` or `1` runs the package sequentially. The orchestrator always sets the four
 variables, and its Podman e2e lane uses 8 unless `--concurrency` says
 otherwise. In a plain `go test` run the restore and lifecycle defaults drop to
-`KODAMA_STACK_SLOTS` and `KODAMA_KIND_SLOTS` when a host sets those lower. A scenario takes its slot before it starts its clock, its deadline or
+`KODEMA_STACK_SLOTS` and `KODEMA_KIND_SLOTS` when a host sets those lower. A scenario takes its slot before it starts its clock, its deadline or
 reads a credential, so time spent queued is never measured.
 
 ### Portable e2e proofs
 
 `test/e2e` reads only an installation descriptor, so the same proofs run on
-`kodama server --profile test` under Podman and on a Kubernetes installation.
+`kodema server --profile test` under Podman and on a Kubernetes installation.
 The suite selects `^TestE2E_(AC|Parity$|InstallationAccess$)`: the 24 tests of
 `suite.PortableE2ETests`. `TestReleaseSmoke` is left out because the AC04, AC05,
 AC14, AC17 and AC18 tests run its five scenarios.
@@ -107,10 +107,10 @@ run) and purges it. That mode needs the complete port set of the disposable
 installation:
 
 ```sh
-KODAMA_LOCAL_HTTPS_PORT=26201 KODAMA_LOCAL_OIDC_PORT=26202 \
-KODAMA_LOCAL_GIT_PORT=26203 KODAMA_LOCAL_GIT_HTTPS_PORT=26204 \
-KODAMA_LOCAL_POSTGRES_PORT=26205 KODAMA_LOCAL_NATS_PORT=26206 \
-KODAMA_LOCAL_NATS_MONITOR_PORT=26207 KODAMA_LOCAL_OAUTH_UPSTREAM_PORT=26208 \
+KODEMA_LOCAL_HTTPS_PORT=26201 KODEMA_LOCAL_OIDC_PORT=26202 \
+KODEMA_LOCAL_GIT_PORT=26203 KODEMA_LOCAL_GIT_HTTPS_PORT=26204 \
+KODEMA_LOCAL_POSTGRES_PORT=26205 KODEMA_LOCAL_NATS_PORT=26206 \
+KODEMA_LOCAL_NATS_MONITOR_PORT=26207 KODEMA_LOCAL_OAUTH_UPSTREAM_PORT=26208 \
 make suite-podman
 ```
 
@@ -127,7 +127,7 @@ named `TestKubernetes*` and starts with `acquireLifecycleKindSlot(t)`
 (`TestLifecycleKindTestsFollowTheLaneSplit`).
 
 Every lane takes its own slot through `scripts/infra-slot.sh`, so the host's
-`KODAMA_STACK_SLOTS`, `KODAMA_KIND_SLOTS` and load bound still apply.
+`KODEMA_STACK_SLOTS`, `KODEMA_KIND_SLOTS` and load bound still apply.
 
 #### Kernel key quota
 
@@ -147,19 +147,19 @@ Raise the quota once per host before running lanes in parallel:
 
 ```sh
 sudo sysctl -w kernel.keys.maxkeys=2000 kernel.keys.maxbytes=200000
-printf 'kernel.keys.maxkeys = 2000\nkernel.keys.maxbytes = 200000\n' | sudo tee /etc/sysctl.d/60-kodama-keys.conf
+printf 'kernel.keys.maxkeys = 2000\nkernel.keys.maxbytes = 200000\n' | sudo tee /etc/sysctl.d/60-kodema-keys.conf
 ```
 
 `scripts/infra-slot.sh` prints one warning per lane while the quota is below
-`KODAMA_KEYS_MIN` (default 2000). `/proc/key-users` shows the current use.
-Without root, lower the pressure instead: `KODAMA_KIND_SLOTS=1` and
-`KODAMA_LIFECYCLE_KIND_CONCURRENCY=1`.
+`KODEMA_KEYS_MIN` (default 2000). `/proc/key-users` shows the current use.
+Without root, lower the pressure instead: `KODEMA_KIND_SLOTS=1` and
+`KODEMA_LIFECYCLE_KIND_CONCURRENCY=1`.
 
 ## Stage
 
 `scripts/test-suite --target=stage` is one stage session:
 
-1. It holds the host-wide stage lock (`KODAMA_STAGE_LOCK`, default `scw-stage`)
+1. It holds the host-wide stage lock (`KODEMA_STAGE_LOCK`, default `scw-stage`)
    for the whole run.
 2. `test/e2e/internal/harness/run-stage.sh` opens the port-forwards, acquires
    the four persona token files, describes the installation, and removes all of
@@ -183,15 +183,15 @@ outage and a stage that already failed is not disrupted further. Every
 (`TestHarnessStageWavesClassifyEveryLiveProbe`); a new probe needs that
 decision before it can run.
 
-The RDB drill restores into `kodama-restore-<run-id>` through the Scaleway
+The RDB drill restores into `kodema-restore-<run-id>` through the Scaleway
 control plane and never touches the cluster, so it takes its own lock
-(`KODAMA_Q03_STAGE_LOCK`, default `scw-stage-rdb`) instead of the stage lock.
+(`KODEMA_Q03_STAGE_LOCK`, default `scw-stage-rdb`) instead of the stage lock.
 A standalone `scripts/q03-stage-drill` therefore no longer waits for a cluster
 run, and the stage session runs it beside the cluster lanes.
 
 **`restore` mode fails on Scaleway (DEF-12).** The drill confirms the restored
 database over SQL from the operator host
-(`KODAMA_Q03_RESTORE_DATABASE_URL`). The stage RDB has a private endpoint
+(`KODEMA_Q03_RESTORE_DATABASE_URL`). The stage RDB has a private endpoint
 only, and a database created by `scw rdb backup restore` gives the bootstrap
 admin no right to connect. The lane therefore ends with `restore accepted ...
 and not confirmed` and the stage target reports a failed lane. Verify the
@@ -205,11 +205,11 @@ Inputs:
   `Q01_SMOKE_REPOSITORY` and `Q01_SMOKE_RESOURCE_ID`: without it the Git proofs
   are skipped, or the preflight fails when the descriptor is generated. The
   live subscription proofs need a port-forward to `svc/nats`, `Q01_NATS_URL`,
-  `Q01_NATS_TLS_SERVER_NAME` and the client pair from `Secret kodama-broker`
+  `Q01_NATS_TLS_SERVER_NAME` and the client pair from `Secret kodema-broker`
   as `Q01_NATS_CLIENT_CERT_FILE` and `Q01_NATS_CLIENT_KEY_FILE`, as that
   script documents.
 - The production probes read the same descriptor: API, CA, project, tenant,
-  namespace (`kodama-tenant-<tenant>`), Git service (`kodama-git-<tenant>`),
+  namespace (`kodema-tenant-<tenant>`), Git service (`kodema-git-<tenant>`),
   image and repository are derived from it, and the admin credential is the
   session's token file (`Q02_ADMIN_TOKEN_FILE`). Any `Q02_*` input you export
   wins, for example a `Q02_NETWORK_IMAGE` for the network isolation probe. The second tenant is never derived: export `Q02_SECOND_TENANT_ID`,
@@ -221,8 +221,8 @@ Inputs:
   probe with a missing input fails instead of skipping. The workspace-loss
   probe deletes a tenant claim and therefore needs
   `Q02_WORKSPACE_LOSS_NAMESPACE` and `Q02_WORKSPACE_LOSS_CONFIRM=destroy-claim`.
-- The drill's `KODAMA_Q03_STAGE_*` inputs (see `scripts/q03-stage-drill`).
-  `restore` and `drop` also need `KODAMA_Q03_STAGE_APPLY=1`.
+- The drill's `KODEMA_Q03_STAGE_*` inputs (see `scripts/q03-stage-drill`).
+  `restore` and `drop` also need `KODEMA_Q03_STAGE_APPLY=1`.
 
 A missing descriptor, cluster context or drill input is an error. Leave a part
 out with `--skip-q03` or `--skip-chaos`. The lanes are plain `go test -v` runs,
@@ -231,7 +231,7 @@ before counting a run as complete.
 
 Not covered by `scripts/test-suite --target=stage`: the pre-gate reset and
 bootstrap, the backup
-that the `restore` drill needs (`KODAMA_Q03_STAGE_BACKUP_ID`), the check of
+that the `restore` drill needs (`KODEMA_Q03_STAGE_BACKUP_ID`), the check of
 the restored database, the `drop` that follows it, and the `TestReleaseSmoke`
 run ([release-smoke.md](release-smoke.md)).
 

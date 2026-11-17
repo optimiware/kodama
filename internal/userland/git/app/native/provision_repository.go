@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/userland/git"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/userland/git"
 )
 
 // Sentinel refusals of repository provisioning. They are exported so the app
@@ -81,7 +81,7 @@ func repositoryPolicyCommitMessage(repository string) string {
 	return "repo " + repository
 }
 
-// defaultRepositoryPolicy is the exact `conf/git.conf` block KODAMA.md defines
+// defaultRepositoryPolicy is the exact `conf/git.conf` block KODEMA.md defines
 // for a provisioned repository: read for every principal in scope, forced
 // writes below refs/heads/work/ for engineers and executions, fast-forward
 // writes to the default branch for executions, and reviewer approval for every

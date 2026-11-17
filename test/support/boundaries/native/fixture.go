@@ -26,16 +26,16 @@ import (
 	"sync"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/client"
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	shelloidc "github.com/optimiware/kodama/internal/shell/integration/oidc"
-	"github.com/optimiware/kodama/internal/userland/git"
-	gitapp "github.com/optimiware/kodama/internal/userland/git/app"
-	actorapp "github.com/optimiware/kodama/internal/userland/git/app/actors"
-	"github.com/optimiware/kodama/internal/userland/git/app/native"
-	idfix "github.com/optimiware/kodama/test/support/boundaries/identity"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/client"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	shelloidc "github.com/optimiware/kodema/internal/shell/integration/oidc"
+	"github.com/optimiware/kodema/internal/userland/git"
+	gitapp "github.com/optimiware/kodema/internal/userland/git/app"
+	actorapp "github.com/optimiware/kodema/internal/userland/git/app/actors"
+	"github.com/optimiware/kodema/internal/userland/git/app/native"
+	idfix "github.com/optimiware/kodema/test/support/boundaries/identity"
 )
 
 // Fixture identities. Tokens are opaque fixture values authenticated by the
@@ -98,7 +98,7 @@ type TB interface {
 
 // Options configures one composed native Git harness.
 type Options struct {
-	// BinaryPath is the built kodama binary the installed hooks exec.
+	// BinaryPath is the built kodema binary the installed hooks exec.
 	BinaryPath string
 	// Verification overrides the real public verification client (used for the
 	// slow-service timeout test).
@@ -151,9 +151,9 @@ type Harness struct {
 func NewHarness(tb TB, options Options) (*Harness, error) {
 	tb.Helper()
 	if strings.TrimSpace(options.BinaryPath) == "" {
-		return nil, fmt.Errorf("fixture kodama binary path is empty")
+		return nil, fmt.Errorf("fixture kodema binary path is empty")
 	}
-	root, err := os.MkdirTemp("", "kodama-i03c-")
+	root, err := os.MkdirTemp("", "kodema-i03c-")
 	if err != nil {
 		return nil, fmt.Errorf("create fixture root: %w", err)
 	}
@@ -530,7 +530,7 @@ func seedCommittedPolicy(root, repositoryPath, policy string) (string, error) {
 	}
 	tree = strings.TrimSpace(tree)
 	commit, err := seedGit(root, "", "--git-dir="+repositoryPath,
-		"-c", "user.name=kodama", "-c", "user.email=kodama@example.invalid",
+		"-c", "user.name=kodema", "-c", "user.email=kodema@example.invalid",
 		"commit-tree", tree, "-p", parent, "-m", "fixture committed policy")
 	if err != nil {
 		return "", fmt.Errorf("commit fixture policy: %w", err)
@@ -571,7 +571,7 @@ func seedBareHistory(root, repositoryPath, name, content string) (string, error)
 		return "", err
 	}
 	if _, err := seedGit(root, worktree,
-		"-c", "user.name=kodama", "-c", "user.email=kodama@example.invalid",
+		"-c", "user.name=kodema", "-c", "user.email=kodema@example.invalid",
 		"commit", "--quiet", "-m", "seed"); err != nil {
 		return "", err
 	}
@@ -750,7 +750,7 @@ func (harness *Harness) Commit(tb TB, directory, message string) string {
 	if _, stderr, code := harness.GitIn(tb, directory, "add", "."); code != 0 {
 		tb.Fatalf("git add: %s", stderr)
 	}
-	if _, stderr, code := harness.GitIn(tb, directory, "-c", "user.name=kodama", "-c", "user.email=kodama@example.invalid", "commit", "-m", message); code != 0 {
+	if _, stderr, code := harness.GitIn(tb, directory, "-c", "user.name=kodema", "-c", "user.email=kodema@example.invalid", "commit", "-m", message); code != 0 {
 		tb.Fatalf("git commit: %s", stderr)
 	}
 	stdout, stderr, code := harness.GitIn(tb, directory, "rev-parse", "HEAD")
@@ -812,9 +812,9 @@ func (harness *Harness) JournalEntriesFor(tb TB, ref string) []git.JournalEntry 
 	return matching
 }
 
-// basicHeader returns the Basic authorization value for the kodama username.
+// basicHeader returns the Basic authorization value for the kodema username.
 func basicHeader(token string) string {
-	return "Authorization: Basic " + base64.StdEncoding.EncodeToString([]byte("kodama:"+token))
+	return "Authorization: Basic " + base64.StdEncoding.EncodeToString([]byte("kodema:"+token))
 }
 
 // AdmissionVerifier is the smart-HTTP admission actor-verification fixture. It

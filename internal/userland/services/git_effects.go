@@ -20,7 +20,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/optimiware/kodama/internal/id"
+	"github.com/optimiware/kodema/internal/id"
 )
 
 // ErrMergeBaseMoved reports that the remote target ref no longer points at the
@@ -357,7 +357,7 @@ func (effects *GitMergeEffects) remoteEnvironment(remoteURL string) ([]string, e
 	if token == "" {
 		return nil, fmt.Errorf("merge credential file is empty")
 	}
-	basic := base64.StdEncoding.EncodeToString([]byte("kodama:" + token))
+	basic := base64.StdEncoding.EncodeToString([]byte("kodema:" + token))
 	return []string{
 		"GIT_CONFIG_COUNT=1",
 		"GIT_CONFIG_KEY_0=http." + remoteURL + ".extraHeader",

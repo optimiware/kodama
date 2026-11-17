@@ -7,10 +7,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/shell/transport/mcp"
-	"github.com/optimiware/kodama/internal/shell/transport/ops"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/shell/transport/mcp"
+	"github.com/optimiware/kodema/internal/shell/transport/ops"
 )
 
 func TestMCPInitializePinsProtocolVersionAndServerInfo(t *testing.T) {
@@ -36,7 +36,7 @@ func TestMCPInitializePinsProtocolVersionAndServerInfo(t *testing.T) {
 	if result.ProtocolVersion != api.MCPProtocolVersion {
 		t.Fatalf("protocol version = %q; want %q", result.ProtocolVersion, api.MCPProtocolVersion)
 	}
-	if result.ServerInfo.Name != "kodama" || result.ServerInfo.Version != "test" {
+	if result.ServerInfo.Name != "kodema" || result.ServerInfo.Version != "test" {
 		t.Fatalf("server info = %+v; want the configured identity", result.ServerInfo)
 	}
 	if got := router.callCount(); got != 0 {
@@ -558,10 +558,10 @@ func TestMCPNewEdgeRejectsInvalidConfig(t *testing.T) {
 		name   string
 		config mcp.Config
 	}{
-		{"nil router", mcp.Config{ServerInfo: api.MCPImplementation{Name: "kodama", Version: "test"}}},
+		{"nil router", mcp.Config{ServerInfo: api.MCPImplementation{Name: "kodema", Version: "test"}}},
 		{"empty server info", mcp.Config{Router: &fakeRouter{}}},
 		{"empty server name", mcp.Config{Router: &fakeRouter{}, ServerInfo: api.MCPImplementation{Version: "test"}}},
-		{"empty server version", mcp.Config{Router: &fakeRouter{}, ServerInfo: api.MCPImplementation{Name: "kodama"}}},
+		{"empty server version", mcp.Config{Router: &fakeRouter{}, ServerInfo: api.MCPImplementation{Name: "kodema"}}},
 	}
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {

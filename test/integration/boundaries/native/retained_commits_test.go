@@ -14,8 +14,8 @@ import (
 	"strings"
 	"testing"
 
-	git "github.com/optimiware/kodama/internal/userland/git"
-	nativefix "github.com/optimiware/kodama/test/support/boundaries/native"
+	git "github.com/optimiware/kodema/internal/userland/git"
+	nativefix "github.com/optimiware/kodema/test/support/boundaries/native"
 )
 
 func TestRetainedCommitSurvivesGCAfterRewindAndIsReleased(t *testing.T) {
@@ -60,7 +60,7 @@ func TestRetainedCommitSurvivesGCAfterRewindAndIsReleased(t *testing.T) {
 		t.Fatalf("resolve tree: %s", stderr)
 	}
 	unreferenced, stderr, code := harness.Git(t, "-C", repository,
-		"-c", "user.name=kodama", "-c", "user.email=kodama@example.invalid",
+		"-c", "user.name=kodema", "-c", "user.email=kodema@example.invalid",
 		"commit-tree", strings.TrimSpace(tree), "-m", "unreferenced")
 	if code != 0 {
 		t.Fatalf("commit-tree: %s", stderr)

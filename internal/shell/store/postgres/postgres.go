@@ -31,9 +31,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/shell/store"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/shell/store"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
 )
 
 // Conn is one physical database connection. It is the narrow seam the adapter
@@ -59,17 +59,17 @@ var ErrNoTransaction = errors.New("postgres: transaction is not active")
 
 // scopeTenantSetting is the transaction-local tenant setting the RLS policies
 // read. It is set for every transaction, never at session level.
-const scopeTenantSetting = "kodama.tenant_id"
+const scopeTenantSetting = "kodema.tenant_id"
 
 // scopeProjectSetting is the transaction-local project setting. A tenant-scoped
 // transaction sets it to the empty string so a policy cannot see a stale
 // project from a reused connection.
-const scopeProjectSetting = "kodama.project_id"
+const scopeProjectSetting = "kodema.project_id"
 
 // scopeCredentialSetting is the transaction-local exact-row identity the auth
 // role's exact_row policy reads. It is set only inside one credential lookup
 // transaction and resets with it, so the lookup can never list or range-scan.
-const scopeCredentialSetting = "kodama.credential_id"
+const scopeCredentialSetting = "kodema.credential_id"
 
 // establishScopeSQL sets both transaction-local settings in one statement. The
 // third set_config argument is true, which makes the value transaction-local:

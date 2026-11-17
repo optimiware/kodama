@@ -32,7 +32,7 @@ if [[ "$args" == *" -f - "* ]]; then
 fi
 case "$args" in
   *" config current-context "*)
-    printf '%s\n' "${KUBECTL_CONTEXT:-admin@kodama-stage-k8s}"
+    printf '%s\n' "${KUBECTL_CONTEXT:-admin@kodema-stage-k8s}"
     exit 0
     ;;
   *" get secret "*)
@@ -44,11 +44,11 @@ case "$args" in
     done
     exit 0
     ;;
-  *" get deployment/kodama -o go-template="*)
-    printf '%s\n' "${KUBECTL_SELECTOR:-app.kubernetes.io/name=kodama,}"
+  *" get deployment/kodema -o go-template="*)
+    printf '%s\n' "${KUBECTL_SELECTOR:-app.kubernetes.io/name=kodema,}"
     exit 0
     ;;
-  *" get deployment/kodama "*|*" get deployment/kodama"*)
+  *" get deployment/kodema "*|*" get deployment/kodema"*)
     printf '%s\n' "${KUBECTL_REPLICAS:-0}"
     exit 0
     ;;
@@ -60,7 +60,7 @@ case "$args" in
     count=$((count + 1))
     printf '%s\n' "$count" >"$KUBECTL_PODS_COUNTER"
     if (( count <= ${KUBECTL_PODS_REMAIN_FOR:-0} )); then
-      printf 'pod/kodama-%s 1/1 Running 0 1m\n' "$count"
+      printf 'pod/kodema-%s 1/1 Running 0 1m\n' "$count"
     fi
     exit 0
     ;;
@@ -82,13 +82,13 @@ case "$args" in
     fi
     count=$((count + 1))
     printf '%s\n' "$count" >"$KUBECTL_POD_COUNTER"
-    printf 'pod/kodama-stage-reset-%s\n' "$count"
+    printf 'pod/kodema-stage-reset-%s\n' "$count"
     exit 0
     ;;
   *" delete pod/"*)
     exit 0
     ;;
-  *" scale deployment/kodama "*)
+  *" scale deployment/kodema "*)
     exit 0
     ;;
   *" delete namespace "*|*" delete pvc/"*)
@@ -163,11 +163,11 @@ func newResetSandbox(t *testing.T) *resetSandbox {
 	box.env = append(os.Environ(),
 		"PATH="+box.bin+string(os.PathListSeparator)+os.Getenv("PATH"),
 		"KUBECONFIG="+box.kubeconfig,
-		"KODAMA_STAGE_CONTEXT=admin@kodama-stage-k8s",
-		"KODAMA_STAGE_NAMESPACE=kodama-system",
-		"KODAMA_STAGE_TENANT_NAMESPACE=kodama-tenant-tenant-a",
-		"KODAMA_STAGE_EVIDENCE_DIR="+box.evidence,
-		"KODAMA_STAGE_RESET_CONFIRM=reset-kodama-stage",
+		"KODEMA_STAGE_CONTEXT=admin@kodema-stage-k8s",
+		"KODEMA_STAGE_NAMESPACE=kodema-system",
+		"KODEMA_STAGE_TENANT_NAMESPACE=kodema-tenant-tenant-a",
+		"KODEMA_STAGE_EVIDENCE_DIR="+box.evidence,
+		"KODEMA_STAGE_RESET_CONFIRM=reset-kodema-stage",
 		"KUBECTL_ARGV_LOG="+box.kubectlLog,
 		"KUBECTL_STDIN_LOG="+box.kubectlIn,
 		"KUBECTL_POD_COUNTER="+box.counter,
@@ -338,7 +338,7 @@ func (b *resetSandbox) assertReadOnlyCallsOnly(t *testing.T, label string) {
 	}
 }
 
-var resetRoleLine = regexp.MustCompile(`(?m)^DROP ROLE IF EXISTS (kodama_[a-z]+);$`)
+var resetRoleLine = regexp.MustCompile(`(?m)^DROP ROLE IF EXISTS (kodema_[a-z]+);$`)
 
 // TestStageResetRefusesUnsafeTargets proves the static and read-only guards
 // stop every wrong stage identity, confirmation or target before a mutation.
@@ -359,8 +359,8 @@ func TestStageResetRefusesUnsafeTargets(t *testing.T) {
 		},
 		{
 			name:   "wrong configured context",
-			mutate: func(t *testing.T, box *resetSandbox) { box.withEnv("KODAMA_STAGE_CONTEXT=admin@other") },
-			want:   "KODAMA_STAGE_CONTEXT",
+			mutate: func(t *testing.T, box *resetSandbox) { box.withEnv("KODEMA_STAGE_CONTEXT=admin@other") },
+			want:   "KODEMA_STAGE_CONTEXT",
 		},
 		{
 			name:   "current context mismatch",
@@ -369,51 +369,51 @@ func TestStageResetRefusesUnsafeTargets(t *testing.T) {
 		},
 		{
 			name:   "wrong namespace",
-			mutate: func(t *testing.T, box *resetSandbox) { box.withEnv("KODAMA_STAGE_NAMESPACE=kodama-other") },
-			want:   "KODAMA_STAGE_NAMESPACE",
+			mutate: func(t *testing.T, box *resetSandbox) { box.withEnv("KODEMA_STAGE_NAMESPACE=kodema-other") },
+			want:   "KODEMA_STAGE_NAMESPACE",
 		},
 		{
 			name: "wrong tenant namespace",
 			mutate: func(t *testing.T, box *resetSandbox) {
-				box.withEnv("KODAMA_STAGE_TENANT_NAMESPACE=kodama-tenant-tenant-b")
+				box.withEnv("KODEMA_STAGE_TENANT_NAMESPACE=kodema-tenant-tenant-b")
 			},
-			want: "KODAMA_STAGE_TENANT_NAMESPACE",
+			want: "KODEMA_STAGE_TENANT_NAMESPACE",
 		},
 		{
 			name: "prefix tenant namespace",
 			mutate: func(t *testing.T, box *resetSandbox) {
-				box.withEnv("KODAMA_STAGE_TENANT_NAMESPACE=kodama-tenant-tenant-a-extra")
+				box.withEnv("KODEMA_STAGE_TENANT_NAMESPACE=kodema-tenant-tenant-a-extra")
 			},
-			want: "KODAMA_STAGE_TENANT_NAMESPACE",
+			want: "KODEMA_STAGE_TENANT_NAMESPACE",
 		},
 		{
 			name:   "wildcard tenant namespace",
-			mutate: func(t *testing.T, box *resetSandbox) { box.withEnv("KODAMA_STAGE_TENANT_NAMESPACE=kodama-tenant-*") },
-			want:   "KODAMA_STAGE_TENANT_NAMESPACE",
+			mutate: func(t *testing.T, box *resetSandbox) { box.withEnv("KODEMA_STAGE_TENANT_NAMESPACE=kodema-tenant-*") },
+			want:   "KODEMA_STAGE_TENANT_NAMESPACE",
 		},
 		{
 			name:   "missing confirmation",
-			mutate: func(t *testing.T, box *resetSandbox) { box.withEnv("KODAMA_STAGE_RESET_CONFIRM=") },
-			want:   "KODAMA_STAGE_RESET_CONFIRM",
+			mutate: func(t *testing.T, box *resetSandbox) { box.withEnv("KODEMA_STAGE_RESET_CONFIRM=") },
+			want:   "KODEMA_STAGE_RESET_CONFIRM",
 		},
 		{
 			name:   "wrong confirmation",
-			mutate: func(t *testing.T, box *resetSandbox) { box.withEnv("KODAMA_STAGE_RESET_CONFIRM=reset-kodama-stag") },
-			want:   "KODAMA_STAGE_RESET_CONFIRM",
+			mutate: func(t *testing.T, box *resetSandbox) { box.withEnv("KODEMA_STAGE_RESET_CONFIRM=reset-kodema-stag") },
+			want:   "KODEMA_STAGE_RESET_CONFIRM",
 		},
 		{
 			name:   "relative evidence directory",
-			mutate: func(t *testing.T, box *resetSandbox) { box.withEnv("KODAMA_STAGE_EVIDENCE_DIR=relative/evidence") },
+			mutate: func(t *testing.T, box *resetSandbox) { box.withEnv("KODEMA_STAGE_EVIDENCE_DIR=relative/evidence") },
 			want:   "absolute",
 		},
 		{
 			name:   "missing Secret",
-			mutate: func(t *testing.T, box *resetSandbox) { box.withEnv("KUBECTL_MISSING_SECRETS=kodama-broker") },
+			mutate: func(t *testing.T, box *resetSandbox) { box.withEnv("KUBECTL_MISSING_SECRETS=kodema-broker") },
 			want:   "Secret",
 		},
 		{
 			name:   "missing NATS auth Secret",
-			mutate: func(t *testing.T, box *resetSandbox) { box.withEnv("KUBECTL_MISSING_SECRETS=kodama-nats-auth") },
+			mutate: func(t *testing.T, box *resetSandbox) { box.withEnv("KUBECTL_MISSING_SECRETS=kodema-nats-auth") },
 			want:   "Secret",
 		},
 		{
@@ -448,7 +448,7 @@ func TestStageResetPrintPlanIsExactAndMutationFree(t *testing.T) {
 	box := newResetSandbox(t)
 	// The plan mode is the dry run: it must not require the mutation
 	// confirmation variable.
-	box.withEnv("KODAMA_STAGE_RESET_CONFIRM=")
+	box.withEnv("KODEMA_STAGE_RESET_CONFIRM=")
 	code, output := box.run(t, "--print-plan")
 	if code != 0 {
 		t.Fatalf("stage-reset --print-plan failed: exit %d\n%s", code, output)
@@ -465,19 +465,19 @@ func TestStageResetPrintPlanIsExactAndMutationFree(t *testing.T) {
 	}
 
 	for _, wanted := range []string{
-		`GRANT kodama_owner TO :"admin" WITH INHERIT TRUE;`,
-		`GRANT kodama_owner TO :"admin" WITH INHERIT FALSE;`,
+		`GRANT kodema_owner TO :"admin" WITH INHERIT TRUE;`,
+		`GRANT kodema_owner TO :"admin" WITH INHERIT FALSE;`,
 		`ALTER DATABASE :"db" OWNER TO :"admin";`,
 		`SELECT current_database() AS db, current_user AS admin \gset`,
 		`DROP SCHEMA IF EXISTS public CASCADE;`,
-		`DROP SCHEMA IF EXISTS kodama_meta CASCADE;`,
+		`DROP SCHEMA IF EXISTS kodema_meta CASCADE;`,
 		`CREATE SCHEMA public AUTHORIZATION pg_database_owner;`,
 		`GRANT USAGE ON SCHEMA public TO :"admin" WITH GRANT OPTION;`,
-		"KODAMA_EVENTS",
-		"KODAMA_INVALIDATIONS",
-		"kodama-tenant-tenant-a",
-		"kodama-retained-logs",
-		"deployment/kodama",
+		"KODEMA_EVENTS",
+		"KODEMA_INVALIDATIONS",
+		"kodema-tenant-tenant-a",
+		"kodema-retained-logs",
+		"deployment/kodema",
 	} {
 		if !strings.Contains(output, wanted) {
 			t.Errorf("--print-plan is missing %q:\n%s", wanted, output)
@@ -486,8 +486,8 @@ func TestStageResetPrintPlanIsExactAndMutationFree(t *testing.T) {
 	for _, forbidden := range []string{
 		"DROP OWNED",
 		"DROP DATABASE",
-		"kodama_%",
-		"DROP ROLE IF EXISTS kodama_admin",
+		"kodema_%",
+		"DROP ROLE IF EXISTS kodema_admin",
 	} {
 		if strings.Contains(output, forbidden) {
 			t.Errorf("--print-plan contains the unsafe statement %q:\n%s", forbidden, output)
@@ -499,8 +499,8 @@ func TestStageResetPrintPlanIsExactAndMutationFree(t *testing.T) {
 		t.Fatalf("--print-plan drops %d roles; want the five migration roles:\n%s", len(roles), output)
 	}
 	want := map[string]bool{
-		"kodama_owner": true, "kodama_runtime": true, "kodama_controller": true,
-		"kodama_publisher": true, "kodama_auth": true,
+		"kodema_owner": true, "kodema_runtime": true, "kodema_controller": true,
+		"kodema_publisher": true, "kodema_auth": true,
 	}
 	for _, match := range roles {
 		if !want[match[1]] {
@@ -536,18 +536,18 @@ func TestStageResetApplyIsPrivateAndCleansUp(t *testing.T) {
 	}
 	text := string(manifests)
 	for _, wanted := range []string{
-		"secretKeyRef: {name: kodama-database-admin, key: admin_url}",
-		"secretName: kodama-database",
+		"secretKeyRef: {name: kodema-database-admin, key: admin_url}",
+		"secretName: kodema-database",
 		"key: ca.crt",
-		"secretName: kodama-broker",
+		"secretName: kodema-broker",
 		"docker.io/library/postgres@sha256:3540c0362c809df084ffac0ae69fe794515f9de92692f02178bcdce0ef0302ac",
 		"docker.io/natsio/nats-box@sha256:9d5f35d286c3dcfca18bb2339b51345f9f89b580b237ab16ddfe609bdca9c72d",
-		"tls://nats.kodama-system.svc.cluster.local:4222",
+		"tls://nats.kodema-system.svc.cluster.local:4222",
 		// The historical executions are read as the migration owner with the
 		// stage tenant pinned; the setup administrator cannot pass FORCE RLS.
-		"SET ROLE kodama_owner;",
-		"SET kodama.tenant_id = 'tenant-a';",
-		"SET kodama.project_id = '';",
+		"SET ROLE kodema_owner;",
+		"SET kodema.tenant_id = 'tenant-a';",
+		"SET kodema.project_id = '';",
 	} {
 		if !strings.Contains(text, wanted) {
 			t.Errorf("one-shot pod manifests are missing %q:\n%s", wanted, text)
@@ -598,14 +598,14 @@ func TestStageResetApplyIsPrivateAndCleansUp(t *testing.T) {
 	if got := strings.TrimSpace(string(countBody)); got != "3" {
 		t.Errorf("pod-list polls = %q; want 3 (two with a remaining pod, one empty)", got)
 	}
-	if indexOfLine(lines, "get\tpods\t-l\tapp.kubernetes.io/name=kodama") < 0 {
+	if indexOfLine(lines, "get\tpods\t-l\tapp.kubernetes.io/name=kodema") < 0 {
 		t.Errorf("quiesce never listed pods by the deployment selector:\n%s", strings.Join(lines, "\n"))
 	}
 	quiesce, err := os.ReadFile(filepath.Join(box.evidence, "quiesce.log"))
 	if err != nil {
 		t.Fatalf("read quiesce log: %v", err)
 	}
-	if !strings.Contains(string(quiesce), "selector app.kubernetes.io/name=kodama") {
+	if !strings.Contains(string(quiesce), "selector app.kubernetes.io/name=kodema") {
 		t.Errorf("quiesce log does not record the selector:\n%s", quiesce)
 	}
 	// The summary is the one non-secret record printed to the operator.
@@ -756,13 +756,13 @@ func TestStageResetNATSBoxPodsHaveWritableHome(t *testing.T) {
 			case "NATS_USER":
 				valueFrom := mapAt(t, env, "valueFrom")
 				ref := mapAt(t, valueFrom, "secretKeyRef")
-				if ref["name"] == "kodama-nats-auth" && ref["key"] == "shell-user" {
+				if ref["name"] == "kodema-nats-auth" && ref["key"] == "shell-user" {
 					natsUserRef = true
 				}
 			case "NATS_PASSWORD":
 				valueFrom := mapAt(t, env, "valueFrom")
 				ref := mapAt(t, valueFrom, "secretKeyRef")
-				if ref["name"] == "kodama-nats-auth" && ref["key"] == "shell-password" {
+				if ref["name"] == "kodema-nats-auth" && ref["key"] == "shell-password" {
 					natsPasswordRef = true
 				}
 			}
@@ -771,7 +771,7 @@ func TestStageResetNATSBoxPodsHaveWritableHome(t *testing.T) {
 			t.Errorf("nats pod %d sets no HOME=/tmp", index)
 		}
 		if !natsUserRef || !natsPasswordRef {
-			t.Errorf("nats pod %d missing kodama-nats-auth shell bypass secretKeyRef (user=%v password=%v)", index, natsUserRef, natsPasswordRef)
+			t.Errorf("nats pod %d missing kodema-nats-auth shell bypass secretKeyRef (user=%v password=%v)", index, natsUserRef, natsPasswordRef)
 		}
 
 		tmpMounted := false
@@ -848,32 +848,32 @@ func TestStageResetNATSBoxPodsHaveWritableHome(t *testing.T) {
 func TestStageResetReadOnlyAllowlistRejectsNonAllowlistedCalls(t *testing.T) {
 	allowed := []string{
 		"kubectl\t--kubeconfig\t/tmp/kc\tconfig\tcurrent-context",
-		"kubectl\t--kubeconfig=/tmp/kc\t--context=admin@kodama-stage-k8s\tconfig\tcurrent-context",
-		"kubectl\t--kubeconfig\t/tmp/kc\t--context\tadmin@kodama-stage-k8s\t-n\tkodama-system\tget\tsecret\tkodama-broker",
-		"kubectl\t--kubeconfig\t/tmp/kc\t--context\tadmin@kodama-stage-k8s\tget\tnamespace\tkodama-tenant-tenant-a\t-o\tname",
-		"helm\t--kubeconfig\t/tmp/kc\t--kube-context\tadmin@kodama-stage-k8s\tstatus\tkodama-stage\t-n\tkodama-system",
-		"helm\t--kubeconfig=/tmp/kc\t--kube-context=admin@kodama-stage-k8s\t--namespace=kodama-system\tstatus\tkodama-stage",
+		"kubectl\t--kubeconfig=/tmp/kc\t--context=admin@kodema-stage-k8s\tconfig\tcurrent-context",
+		"kubectl\t--kubeconfig\t/tmp/kc\t--context\tadmin@kodema-stage-k8s\t-n\tkodema-system\tget\tsecret\tkodema-broker",
+		"kubectl\t--kubeconfig\t/tmp/kc\t--context\tadmin@kodema-stage-k8s\tget\tnamespace\tkodema-tenant-tenant-a\t-o\tname",
+		"helm\t--kubeconfig\t/tmp/kc\t--kube-context\tadmin@kodema-stage-k8s\tstatus\tkodema-stage\t-n\tkodema-system",
+		"helm\t--kubeconfig=/tmp/kc\t--kube-context=admin@kodema-stage-k8s\t--namespace=kodema-system\tstatus\tkodema-stage",
 	}
 	if got := mutationCall(allowed); got != "" {
 		t.Fatalf("allowlist rejected legitimate read-only call: %q", got)
 	}
 
 	rejected := []string{
-		"kubectl\t--kubeconfig\t/tmp/kc\tpatch\tdeployment/kodama\t-p\t{}",
+		"kubectl\t--kubeconfig\t/tmp/kc\tpatch\tdeployment/kodema\t-p\t{}",
 		"kubectl\t--kubeconfig\t/tmp/kc\treplace\t-f\t-",
 		"kubectl\t--kubeconfig\t/tmp/kc\texec\tpod/x\t--\tsh",
-		"kubectl\t--kubeconfig\t/tmp/kc\trollout\trestart\tdeployment/kodama",
-		"kubectl\t--kubeconfig\t/tmp/kc\tlabel\tnamespace\tkodama-system\tx=y",
-		"kubectl\t--kubeconfig\t/tmp/kc\tannotate\tnamespace\tkodama-system\tx=y",
+		"kubectl\t--kubeconfig\t/tmp/kc\trollout\trestart\tdeployment/kodema",
+		"kubectl\t--kubeconfig\t/tmp/kc\tlabel\tnamespace\tkodema-system\tx=y",
+		"kubectl\t--kubeconfig\t/tmp/kc\tannotate\tnamespace\tkodema-system\tx=y",
 		"kubectl\t--kubeconfig\t/tmp/kc\tconfig\tuse-context\tother",
 		"kubectl\t--kubeconfig\t/tmp/kc\tconfig\tset-context\tother",
 		"kubectl\t--kubeconfig\t/tmp/kc\tget\t-f\t-",
 		"kubectl\t--kubeconfig\t/tmp/kc\tget\tpods\t--watch",
 		"kubectl\t--kubeconfig",
-		"helm\t--kubeconfig\t/tmp/kc\t--kube-context\tadmin@kodama-stage-k8s\tupgrade\tkodama-stage\t.",
-		"helm\t--kubeconfig\t/tmp/kc\t--kube-context\tadmin@kodama-stage-k8s\tuninstall\tkodama-stage\t-n\tkodama-system",
-		"helm\t--kubeconfig\t/tmp/kc\t--kube-context\tadmin@kodama-stage-k8s\trollback\tkodama-stage\t1",
-		"helm\t--kubeconfig\t/tmp/kc\t--kube-context\tadmin@kodama-stage-k8s\thistory\tkodama-stage\t-n\tkodama-system",
+		"helm\t--kubeconfig\t/tmp/kc\t--kube-context\tadmin@kodema-stage-k8s\tupgrade\tkodema-stage\t.",
+		"helm\t--kubeconfig\t/tmp/kc\t--kube-context\tadmin@kodema-stage-k8s\tuninstall\tkodema-stage\t-n\tkodema-system",
+		"helm\t--kubeconfig\t/tmp/kc\t--kube-context\tadmin@kodema-stage-k8s\trollback\tkodema-stage\t1",
+		"helm\t--kubeconfig\t/tmp/kc\t--kube-context\tadmin@kodema-stage-k8s\thistory\tkodema-stage\t-n\tkodema-system",
 		"helm\t--kubeconfig\t/tmp/kc\tstatus\t--show-resources",
 		"tofu\tapply",
 	}

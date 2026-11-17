@@ -22,15 +22,15 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/shell/authorize"
-	"github.com/optimiware/kodama/internal/shell/event"
-	shellidentity "github.com/optimiware/kodama/internal/shell/identity"
-	"github.com/optimiware/kodama/internal/shell/resource"
-	"github.com/optimiware/kodama/internal/shell/store"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
-	tenancyadmin "github.com/optimiware/kodama/internal/shell/tenancy/admin"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/shell/authorize"
+	"github.com/optimiware/kodema/internal/shell/event"
+	shellidentity "github.com/optimiware/kodema/internal/shell/identity"
+	"github.com/optimiware/kodema/internal/shell/resource"
+	"github.com/optimiware/kodema/internal/shell/store"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
+	tenancyadmin "github.com/optimiware/kodema/internal/shell/tenancy/admin"
 )
 
 // membershipGrantUnitFor builds one first-grant unit over the supplied
@@ -489,7 +489,7 @@ func registerAs(actorScope, scope tenancy.Scope, actor id.PrincipalID, binding, 
 		TrustedOrigins:   []string{"https://git.example"},
 		Operations:       []resource.Operation{resource.OperationGitRefUpdate},
 		ReportableEvents: []string{"git.ref.updated"},
-		Metadata:         map[string]string{"repo": "kodama"},
+		Metadata:         map[string]string{"repo": "kodema"},
 		CallerKey:        caller,
 		Content:          requestContent(caller),
 	}

@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/shell/execution"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
+	"github.com/optimiware/kodema/internal/shell/execution"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
 )
 
 // TestStartReturnsCommittedExecutionVersion pins the additive result field: a

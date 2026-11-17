@@ -22,14 +22,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/client"
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/userland/git"
-	gitapp "github.com/optimiware/kodama/internal/userland/git/app"
-	actorapp "github.com/optimiware/kodama/internal/userland/git/app/actors"
-	actorfix "github.com/optimiware/kodama/test/support/boundaries/actors"
-	idfix "github.com/optimiware/kodama/test/support/boundaries/identity"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/client"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/userland/git"
+	gitapp "github.com/optimiware/kodema/internal/userland/git/app"
+	actorapp "github.com/optimiware/kodema/internal/userland/git/app/actors"
+	actorfix "github.com/optimiware/kodema/test/support/boundaries/actors"
+	idfix "github.com/optimiware/kodema/test/support/boundaries/identity"
 )
 
 const fixturePolicy = `
@@ -411,7 +411,7 @@ func newHook(t *testing.T, fixture *actorfix.Fixture, source git.ActorSource, en
 
 func serve(ctx context.Context, handler http.Handler, method, target, credential string) *httptest.ResponseRecorder {
 	request := httptest.NewRequest(method, target, nil).WithContext(ctx)
-	request.SetBasicAuth("kodama", credential)
+	request.SetBasicAuth("kodema", credential)
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, request)
 	return recorder
@@ -423,13 +423,13 @@ func serveWithHeaders(ctx context.Context, handler http.Handler, handles []strin
 		target += "&actor_ref=" + handles[0]
 	}
 	request := httptest.NewRequest(http.MethodGet, target, nil).WithContext(ctx)
-	request.SetBasicAuth("kodama", actorfix.ExecutionToken)
+	request.SetBasicAuth("kodema", actorfix.ExecutionToken)
 	for index, handle := range handles {
 		switch index {
 		case 0:
-			request.Header.Set("KODAMA_ACTOR_REF", handle)
+			request.Header.Set("KODEMA_ACTOR_REF", handle)
 		case 1:
-			request.Header.Set("X-Kodama-Actor-Ref", handle)
+			request.Header.Set("X-Kodema-Actor-Ref", handle)
 		default:
 			request.Header.Set("X-Actor-Handle", handle)
 		}

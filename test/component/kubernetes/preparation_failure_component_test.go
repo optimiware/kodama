@@ -12,9 +12,9 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/kernel/engine"
-	runtimekube "github.com/optimiware/kodama/internal/shell/runtime/kube"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/kernel/engine"
+	runtimekube "github.com/optimiware/kodema/internal/shell/runtime/kube"
 )
 
 // TestPreparationFailureReleasesUnconsumedClaimAndPartialResources prepares one

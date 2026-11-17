@@ -21,9 +21,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/shell/runtime/kube"
-	"github.com/optimiware/kodama/test/support/factory"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/shell/runtime/kube"
+	"github.com/optimiware/kodema/test/support/factory"
 )
 
 // uncertainStopReplyBudget bounds the version_conflict retry of one reply. The
@@ -215,10 +215,10 @@ func workloadContainerRunning(document map[string]any) bool {
 
 // uncertainStopPipeline renders the TERM-resistant first execution and the
 // marker-only replacement. The reply's answer is part of the admitted task
-// snapshot, so the same action distinguishes them by reading /kodama/task.json.
+// snapshot, so the same action distinguishes them by reading /kodema/task.json.
 func uncertainStopPipeline(t *testing.T, image, answer, firstMarker, replacementMarker, timerMarker string) []byte {
 	t.Helper()
-	command := "if grep -q '" + answer + "' /kodama/task.json 2>/dev/null; then\n" +
+	command := "if grep -q '" + answer + "' /kodema/task.json 2>/dev/null; then\n" +
 		"  echo " + replacementMarker + "\n" +
 		"  exit 0\n" +
 		"fi\n" +

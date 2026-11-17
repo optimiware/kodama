@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/userland/cli"
+	"github.com/optimiware/kodema/internal/userland/cli"
 )
 
 // TestLoopbackListenerBindsLoopbackAndAcceptsOneRequest pins the listener

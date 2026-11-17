@@ -3,7 +3,7 @@ package postgres
 import (
 	"testing"
 
-	"github.com/optimiware/kodama/internal/shell/store/storetest"
+	"github.com/optimiware/kodema/internal/shell/store/storetest"
 )
 
 // TestSharedConformanceSuite runs the adapter-neutral store scenarios against
@@ -14,7 +14,7 @@ import (
 func TestSharedConformanceSuite(t *testing.T) {
 	storetest.Run(t, func(t *testing.T) storetest.Backend {
 		t.Helper()
-		adapter := New(newEmuDB("kodama_runtime", testTime()))
+		adapter := New(newEmuDB("kodema_runtime", testTime()))
 		return storetest.Backend{Executor: adapter}
 	})
 }

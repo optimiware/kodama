@@ -18,8 +18,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/userland/git"
-	pgtest "github.com/optimiware/kodama/test/support/infrastructure/postgres"
+	"github.com/optimiware/kodema/internal/userland/git"
+	pgtest "github.com/optimiware/kodema/test/support/infrastructure/postgres"
 )
 
 // VerificationRow is one durable verification record. The schema carries no

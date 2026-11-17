@@ -11,7 +11,7 @@ package factorytest
 //     target-ref and expected-base inputs, creates a task with the registered
 //     project resource identity, the protected ref and the seeded base, reads
 //     the open task and starts it at the observed lifecycle version;
-//   - a Shell-launched container verifies KODAMA_TASK and /kodama/task.json,
+//   - a Shell-launched container verifies KODEMA_TASK and /kodema/task.json,
 //     clones through the workload relay, commits one candidate C on a granted
 //     work ref and submits the declared `candidate` output;
 //   - a second container reuses the retained checkout and marker, proves HEAD

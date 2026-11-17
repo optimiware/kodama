@@ -27,7 +27,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
+	"github.com/optimiware/kodema/api"
 )
 
 func TestDetectRuntimeDeterministicOrderAndOverrides(t *testing.T) {
@@ -241,13 +241,13 @@ func TestResolveStateDirAndPurgeSafety(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ResolveStateDir default failed: %v", err)
 	}
-	wantDefault := filepath.Join(evalExistingAncestors(home), ".kodama", "instances", "dev-stack")
+	wantDefault := filepath.Join(evalExistingAncestors(home), ".kodema", "instances", "dev-stack")
 	if gotDefault != wantDefault {
 		t.Fatalf("default state dir = %q, want %q", gotDefault, wantDefault)
 	}
 
 	// Refuse /tmp, /var/tmp, and non-$HOME paths on darwin unless AllowUnsharedStateDir is set.
-	for _, unshared := range []string{"/tmp/kodama-test", "/var/tmp/kodama-test", "/opt/kodama"} {
+	for _, unshared := range []string{"/tmp/kodema-test", "/var/tmp/kodema-test", "/opt/kodema"} {
 		_, err := ResolveStateDir(StateDirOptions{
 			GOOS:             "darwin",
 			HomeDir:          home,
@@ -283,7 +283,7 @@ func TestResolveStateDirAndPurgeSafety(t *testing.T) {
 	}
 
 	// Marker and safe purge behavior: unknown files keep marker intact so a retry works.
-	stateDir := filepath.Join(home, ".kodama", "instances", "alpha")
+	stateDir := filepath.Join(home, ".kodema", "instances", "alpha")
 	if err := EnsureInstanceStateDir(stateDir, "alpha"); err != nil {
 		t.Fatalf("EnsureInstanceStateDir: %v", err)
 	}
@@ -301,7 +301,7 @@ func TestResolveStateDirAndPurgeSafety(t *testing.T) {
 		t.Fatal(err)
 	}
 	// The quickstart has the reader store a Git credential in the instance.
-	if err := os.WriteFile(filepath.Join(stateDir, "git-credentials"), []byte("https://kodama:token@127.0.0.1%3a8443\n"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(stateDir, "git-credentials"), []byte("https://kodema:token@127.0.0.1%3a8443\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := PurgeInstanceStateDir(stateDir, "alpha"); err != nil {
@@ -316,7 +316,7 @@ func TestEnsureTLSStrictRFC5280AndReuse(t *testing.T) {
 	tlsDir := filepath.Join(t.TempDir(), "tls")
 	first, err := EnsureTLS(TLSConfig{
 		Dir:   tlsDir,
-		Hosts: []string{"127.0.0.1:8443", "kodama.local"},
+		Hosts: []string{"127.0.0.1:8443", "kodema.local"},
 	})
 	if err != nil {
 		t.Fatalf("EnsureTLS first call failed: %v", err)
@@ -380,7 +380,7 @@ func TestEnsureTLSStrictRFC5280AndReuse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, host := range []string{"localhost", "127.0.0.1", "::1", "host.containers.internal", "host.docker.internal", "kodama.local"} {
+	for _, host := range []string{"localhost", "127.0.0.1", "::1", "host.containers.internal", "host.docker.internal", "kodema.local"} {
 		if _, err := leafCert.Verify(x509.VerifyOptions{
 			DNSName:   host,
 			Roots:     pool,
@@ -393,7 +393,7 @@ func TestEnsureTLSStrictRFC5280AndReuse(t *testing.T) {
 	// Second call with identical SANs must reuse both CA and leaf.
 	second, err := EnsureTLS(TLSConfig{
 		Dir:   tlsDir,
-		Hosts: []string{"127.0.0.1:8443", "kodama.local"},
+		Hosts: []string{"127.0.0.1:8443", "kodema.local"},
 	})
 	if err != nil {
 		t.Fatalf("EnsureTLS second call failed: %v", err)
@@ -551,7 +551,7 @@ func TestSingleOriginGatewayRoutingHeadersAndSSE(t *testing.T) {
 		"/api/v1/projects/p1/executions",
 		"/mcp",
 		"/llm/v1/chat/completions",
-		"/.well-known/kodama-configuration",
+		"/.well-known/kodema-configuration",
 		"/healthz",
 		"/readyz",
 	} {
@@ -865,7 +865,7 @@ func TestStackUpStatusAndDownWithMockEngine(t *testing.T) {
 				"Id": %q,
 				"Name": "/%s",
 				"State": {"Status": "running", "Running": true, "ExitCode": 0},
-				"Config": {"Labels": {"kodama.up.instance": "test"}},
+				"Config": {"Labels": {"kodema.up.instance": "test"}},
 				"NetworkSettings": {"Ports": {"8443/tcp": [{"HostIp":"127.0.0.1","HostPort":"28443"}], "8081/tcp": [{"HostIp":"127.0.0.1","HostPort":"28081"}]}}
 			}`, name, name)
 		default:
@@ -928,7 +928,7 @@ func TestStackUpStatusAndDownWithMockEngine(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read env.sh: %v", err)
 	}
-	for _, want := range []string{"KODAMA_URL=", "KODAMA_CA_FILE=", "KODAMA_TOKEN=", "KODAMA_PROJECT="} {
+	for _, want := range []string{"KODEMA_URL=", "KODEMA_CA_FILE=", "KODEMA_TOKEN=", "KODEMA_PROJECT="} {
 		if !strings.Contains(string(envSh), want) {
 			t.Fatalf("env.sh missing %q:\n%s", want, envSh)
 		}
@@ -1052,7 +1052,7 @@ func TestUpNeedsPodman(t *testing.T) {
 }
 
 // TestProvisionCreatesWhatIsMissingAndRenewsTheGitCredential drives provision
-// against a public API that already holds the project (a repeated `kodama up`)
+// against a public API that already holds the project (a repeated `kodema up`)
 // and has no Git credential yet.
 func TestProvisionCreatesWhatIsMissingAndRenewsTheGitCredential(t *testing.T) {
 	var (

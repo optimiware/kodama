@@ -20,7 +20,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/optimiware/kodama/internal/userland/cli"
+	"github.com/optimiware/kodema/internal/userland/cli"
 )
 
 // DefaultPollInterval is the default delay between non-blocking lock attempts

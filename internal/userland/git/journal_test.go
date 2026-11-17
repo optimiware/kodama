@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	git "github.com/optimiware/kodama/internal/userland/git"
+	git "github.com/optimiware/kodema/internal/userland/git"
 )
 
 func sampleEntry(state git.JournalState) git.JournalEntry {

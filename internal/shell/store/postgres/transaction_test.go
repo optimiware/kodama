@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/shell/store"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/shell/store"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
 )
 
 func TestStoreImplementsTheScopedConnection(t *testing.T) {
@@ -50,7 +50,7 @@ func TestBeginEstablishesTransactionLocalScope(t *testing.T) {
 		scopeArgs = append(scopeArgs, call.args...)
 	}
 	text := strings.ToLower(scopeSQL.String())
-	for _, setting := range []string{"kodama.tenant_id", "kodama.project_id"} {
+	for _, setting := range []string{"kodema.tenant_id", "kodema.project_id"} {
 		if !strings.Contains(text, setting) {
 			t.Errorf("scope statement does not set %q: %s", setting, scopeSQL.String())
 		}
@@ -105,7 +105,7 @@ func TestBeginTenantScopeSetsAnEmptyProject(t *testing.T) {
 		text.WriteString(" ")
 		args = append(args, call.args...)
 	}
-	if !strings.Contains(text.String(), "kodama.project_id") {
+	if !strings.Contains(text.String(), "kodema.project_id") {
 		t.Fatalf("tenant scope does not reset the project setting: %s", text.String())
 	}
 	if !argContains(args, "") && !argContains(args, nil) {

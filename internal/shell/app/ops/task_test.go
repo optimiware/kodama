@@ -3,7 +3,7 @@ package opsapp_test
 import (
 	"testing"
 
-	"github.com/optimiware/kodama/api"
+	"github.com/optimiware/kodema/api"
 )
 
 // TestTaskFamily drives the real task service through its full conversation

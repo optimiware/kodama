@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/test/support/infrastructure/harness"
+	"github.com/optimiware/kodema/test/support/infrastructure/harness"
 )
 
 // ImageAlpineTag is the pinned deterministic workload image. The tag is fixed;

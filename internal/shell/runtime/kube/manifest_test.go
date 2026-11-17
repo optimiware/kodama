@@ -7,12 +7,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/kernel/definition"
-	"github.com/optimiware/kodama/internal/kernel/engine"
-	"github.com/optimiware/kodama/internal/kernel/script"
-	"github.com/optimiware/kodama/internal/shell/workspace"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/kernel/definition"
+	"github.com/optimiware/kodema/internal/kernel/engine"
+	"github.com/optimiware/kodema/internal/kernel/script"
+	"github.com/optimiware/kodema/internal/shell/workspace"
 )
 
 func testSetup(t *testing.T) (*fakeCluster, *fakeClock, *Adapter) {
@@ -84,9 +84,9 @@ func TestPrepareMaterializesConfinedActivationSnapshot(t *testing.T) {
 	}
 
 	wantFiles := map[string]string{
-		"/kodama/inputs/input-a":      "line1\nline2",
-		"/kodama/outputs/build/out-a": "out",
-		"/kodama/task.json":           `{"id":"task-1"}`,
+		"/kodema/inputs/input-a":      "line1\nline2",
+		"/kodema/outputs/build/out-a": "out",
+		"/kodema/task.json":           `{"id":"task-1"}`,
 	}
 	if len(configMap.Data) != len(wantFiles) {
 		t.Fatalf("activation configmap has %d files; want %d: %v", len(configMap.Data), len(wantFiles), configMap.Data)
@@ -120,7 +120,7 @@ func TestPrepareMaterializesConfinedActivationSnapshot(t *testing.T) {
 		t.Fatal("credential secret is immutable; credential refresh must be possible without a restart")
 	}
 	if got := string(secret.Data[id.SecretTokenName]); got != request.Credential {
-		t.Errorf("credential secret KODAMA_TOKEN = %q; want the execution credential", got)
+		t.Errorf("credential secret KODEMA_TOKEN = %q; want the execution credential", got)
 	}
 	if got := string(secret.Data["API_KEY"]); got != "s3cr3t" {
 		t.Errorf("credential secret API_KEY = %q; want %q", got, "s3cr3t")
@@ -274,7 +274,7 @@ func TestPrepareIsIdempotentAndRefusesChangedContent(t *testing.T) {
 		t.Fatalf("changed-content refusal class = %v (present=%v); want %q", class, ok, fault.ChangedIdempotencyContent)
 	}
 	configMap := fake.configMapsSnapshot()[0]
-	if string(configMap.Data["/kodama/inputs/input-a"]) != "line1\nline2" {
+	if string(configMap.Data["/kodema/inputs/input-a"]) != "line1\nline2" {
 		t.Fatal("changed Prepare overwrote the original activation snapshot")
 	}
 
@@ -472,8 +472,8 @@ func TestStartBuildsPinnedFailFastJob(t *testing.T) {
 		t.Errorf("job resources = %+v; want %+v", spec.Resources, wantResources)
 	}
 
-	if got, ok := testEnvValue(spec.Env, id.EnvURL); !ok || got != testKodamaURL {
-		t.Errorf("%s = %q (present=%v); want %q", id.EnvURL, got, ok, testKodamaURL)
+	if got, ok := testEnvValue(spec.Env, id.EnvURL); !ok || got != testKodemaURL {
+		t.Errorf("%s = %q (present=%v); want %q", id.EnvURL, got, ok, testKodemaURL)
 	}
 	if got, ok := testEnvValue(spec.Env, id.EnvExecution); !ok || got != string(request.Identity.ExecutionID) {
 		t.Errorf("%s = %q (present=%v); want %q", id.EnvExecution, got, ok, request.Identity.ExecutionID)
@@ -501,7 +501,7 @@ func TestStartBuildsPinnedFailFastJob(t *testing.T) {
 	}
 
 	configMap := fake.configMapsSnapshot()[0]
-	activationVolume := testVolumeAt(t, spec, "/kodama")
+	activationVolume := testVolumeAt(t, spec, "/kodema")
 	if !activationVolume.ReadOnly {
 		t.Error("activation volume is writable")
 	}
@@ -572,7 +572,7 @@ func TestStartOmitsTaskContextWhenTaskFree(t *testing.T) {
 	}
 	job := fake.jobsSnapshot()[0]
 	if _, ok := testEnvValue(job.Spec.Env, id.EnvTask); ok {
-		t.Fatal("task-free workload injected KODAMA_TASK")
+		t.Fatal("task-free workload injected KODEMA_TASK")
 	}
 }
 

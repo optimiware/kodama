@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/shell/transport/httpapi"
+	"github.com/optimiware/kodema/internal/shell/transport/httpapi"
 )
 
 func metricsHandler(t *testing.T, metrics httpapi.MetricsSource) http.Handler {
@@ -28,7 +28,7 @@ func metricsHandler(t *testing.T, metrics httpapi.MetricsSource) http.Handler {
 }
 
 func TestMetricsRouteServesTheSourceExposition(t *testing.T) {
-	body := []byte("# TYPE kodama_publication_backlog gauge\nkodama_publication_backlog 2\n")
+	body := []byte("# TYPE kodema_publication_backlog gauge\nkodema_publication_backlog 2\n")
 	handler := metricsHandler(t, func(context.Context) ([]byte, error) { return body, nil })
 
 	get := healthCall(t, handler, http.MethodGet, httpapi.MetricsPath)

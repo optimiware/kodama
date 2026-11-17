@@ -27,11 +27,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/optimiware/kodama/client"
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/shell/app/drivers/sessionlock"
-	"github.com/optimiware/kodama/internal/shell/app/drivers/userlandfs"
-	"github.com/optimiware/kodama/internal/userland/cli"
+	"github.com/optimiware/kodema/client"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/shell/app/drivers/sessionlock"
+	"github.com/optimiware/kodema/internal/shell/app/drivers/userlandfs"
+	"github.com/optimiware/kodema/internal/userland/cli"
 )
 
 // defaultSessionLockTimeout bounds one acquisition of the cross-process session
@@ -79,24 +79,24 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer, deps cliD
 	}
 	flags := flag.NewFlagSet("kodactl", flag.ContinueOnError)
 	flags.SetOutput(stderr)
-	configFile := flags.String("config", envOr("KODAMA_CONFIG", defaultConfigFile()), "kodactl configuration file")
-	serverDefault := firstEnv("KODAMA_SERVER", "KODAMA_SERVER_URL", "KODAMA_URL")
+	configFile := flags.String("config", envOr("KODEMA_CONFIG", defaultConfigFile()), "kodactl configuration file")
+	serverDefault := firstEnv("KODEMA_SERVER", "KODEMA_SERVER_URL", "KODEMA_URL")
 	serverURL := serverDefault
 	flags.StringVar(&serverURL, "server", serverDefault, "public server base URL")
 	flags.StringVar(&serverURL, "server-url", serverDefault, "alias for --server")
 	flags.StringVar(&serverURL, "url", serverDefault, "alias for --server")
-	caFile := flags.String("ca-file", envOr("KODAMA_CA_FILE", ""), "PEM CA certificate bundle file")
-	credentialFile := flags.String("credential-file", envOr("KODAMA_CREDENTIAL_FILE", ""), "mounted execution credential file")
-	output := flags.String("output", envOr("KODAMA_OUTPUT", ""), "output format (table|json)")
-	project := flags.String("project", envOr("KODAMA_PROJECT", ""), "project identity")
-	sessionDefault := firstEnv("KODAMA_SESSION", "KODAMA_SESSION_FILE")
+	caFile := flags.String("ca-file", envOr("KODEMA_CA_FILE", ""), "PEM CA certificate bundle file")
+	credentialFile := flags.String("credential-file", envOr("KODEMA_CREDENTIAL_FILE", ""), "mounted execution credential file")
+	output := flags.String("output", envOr("KODEMA_OUTPUT", ""), "output format (table|json)")
+	project := flags.String("project", envOr("KODEMA_PROJECT", ""), "project identity")
+	sessionDefault := firstEnv("KODEMA_SESSION", "KODEMA_SESSION_FILE")
 	if sessionDefault == "" {
 		sessionDefault = defaultSessionFile()
 	}
 	sessionFile := sessionDefault
 	flags.StringVar(&sessionFile, "session", sessionDefault, "human session file")
 	flags.StringVar(&sessionFile, "session-file", sessionDefault, "alias for --session")
-	lockDefault := envDuration("KODAMA_SESSION_LOCK_TIMEOUT", defaultSessionLockTimeout)
+	lockDefault := envDuration("KODEMA_SESSION_LOCK_TIMEOUT", defaultSessionLockTimeout)
 	lockTimeout := lockDefault
 	flags.DurationVar(&lockTimeout, "session-lock-timeout", lockDefault, "maximum wait for the human-session lock")
 	trustedOrigins := stringList{}
@@ -527,7 +527,7 @@ func validateBrowserTarget(raw string) error {
 // file, an unreadable/invalid --ca-file and an invalid configuration are usage
 // refusals.
 func loadConfig(flags *flag.FlagSet, configFile, serverURL, caFile, credentialFile, output, project string, trustedOrigins stringList, stderr io.Writer) (cli.Config, *x509.CertPool, int) {
-	explicitConfig := flagSet(flags, "config") || envSet("KODAMA_CONFIG")
+	explicitConfig := flagSet(flags, "config") || envSet("KODEMA_CONFIG")
 	config := cli.Config{}
 	if configPath := strings.TrimSpace(configFile); configPath != "" {
 		data, err := os.ReadFile(configPath)
@@ -545,24 +545,24 @@ func loadConfig(flags *flag.FlagSet, configFile, serverURL, caFile, credentialFi
 		}
 	}
 	explicitServer := flagSet(flags, "server") || flagSet(flags, "server-url") || flagSet(flags, "url") ||
-		envSet("KODAMA_SERVER") || envSet("KODAMA_SERVER_URL") || envSet("KODAMA_URL")
+		envSet("KODEMA_SERVER") || envSet("KODEMA_SERVER_URL") || envSet("KODEMA_URL")
 	if explicitServer {
 		config.ServerURL = serverURL
 	}
-	if flagSet(flags, "ca-file") || envSet("KODAMA_CA_FILE") {
+	if flagSet(flags, "ca-file") || envSet("KODEMA_CA_FILE") {
 		trimmedCA := strings.TrimSpace(caFile)
 		if trimmedCA == "" && flagSet(flags, "ca-file") {
 			return cli.Config{}, nil, usage(stderr, "--ca-file requires a path")
 		}
 		config.CAFile = trimmedCA
 	}
-	if flagSet(flags, "credential-file") || envSet("KODAMA_CREDENTIAL_FILE") {
+	if flagSet(flags, "credential-file") || envSet("KODEMA_CREDENTIAL_FILE") {
 		config.CredentialFile = credentialFile
 	}
-	if flagSet(flags, "output") || envSet("KODAMA_OUTPUT") {
+	if flagSet(flags, "output") || envSet("KODEMA_OUTPUT") {
 		config.Output = cli.OutputFormat(output)
 	}
-	if flagSet(flags, "project") || envSet("KODAMA_PROJECT") {
+	if flagSet(flags, "project") || envSet("KODEMA_PROJECT") {
 		config.Project = project
 	}
 	if config.Output == "" {
@@ -689,7 +689,7 @@ func defaultSessionFile() string {
 	if err != nil {
 		return ""
 	}
-	return filepath.Join(directory, "kodama", "session.json")
+	return filepath.Join(directory, "kodema", "session.json")
 }
 
 // defaultConfigFile returns the kodactl configuration path under the user
@@ -699,5 +699,5 @@ func defaultConfigFile() string {
 	if err != nil {
 		return ""
 	}
-	return filepath.Join(directory, "kodama", "config.json")
+	return filepath.Join(directory, "kodema", "config.json")
 }

@@ -3,7 +3,7 @@ package memory
 import (
 	"testing"
 
-	"github.com/optimiware/kodama/internal/shell/store/storetest"
+	"github.com/optimiware/kodema/internal/shell/store/storetest"
 )
 
 // TestSharedConformanceSuite runs the adapter-neutral store scenarios against

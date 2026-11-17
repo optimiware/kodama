@@ -1,6 +1,6 @@
 package cli
 
 import (
-	_ "kodama/api"
-	_ "kodama/client"
+	_ "kodema/api"
+	_ "kodema/client"
 )

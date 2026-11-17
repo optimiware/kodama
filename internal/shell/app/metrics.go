@@ -15,11 +15,11 @@ import (
 	"strings"
 	"sync/atomic"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/shell/event"
-	"github.com/optimiware/kodama/internal/shell/store"
-	"github.com/optimiware/kodama/internal/shell/trigger"
-	"github.com/optimiware/kodama/internal/shell/verify"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/shell/event"
+	"github.com/optimiware/kodema/internal/shell/store"
+	"github.com/optimiware/kodema/internal/shell/trigger"
+	"github.com/optimiware/kodema/internal/shell/verify"
 )
 
 // metricsSampleLimit bounds one gauge sample. It matches the store's maximum
@@ -92,24 +92,24 @@ func (source *metricsSource) collect(ctx context.Context) ([]byte, error) {
 		return nil, err
 	}
 	var builder strings.Builder
-	fmt.Fprintf(&builder, "# HELP kodama_publication_backlog Committed events not yet acknowledged by the broker; sampled up to %d.\n", metricsSampleLimit)
-	builder.WriteString("# TYPE kodama_publication_backlog gauge\n")
-	fmt.Fprintf(&builder, "kodama_publication_backlog %d\n", publication)
-	builder.WriteString("# HELP kodama_consumer_lag Committed events the push consumer has not completed; sampled up to the same bound.\n")
-	builder.WriteString("# TYPE kodama_consumer_lag gauge\n")
-	fmt.Fprintf(&builder, "kodama_consumer_lag %d\n", lag)
-	builder.WriteString("# HELP kodama_pending_cleanup Executions whose declared cleanup is still owed; sampled up to the same bound.\n")
-	builder.WriteString("# TYPE kodama_pending_cleanup gauge\n")
-	fmt.Fprintf(&builder, "kodama_pending_cleanup %d\n", cleanup)
-	builder.WriteString("# HELP kodama_refused_pushes_total Permanent push starts refused by the trigger processor.\n")
-	builder.WriteString("# TYPE kodama_refused_pushes_total counter\n")
-	fmt.Fprintf(&builder, "kodama_refused_pushes_total %d\n", source.counters.refusedPushes.Load())
-	builder.WriteString("# HELP kodama_refused_reports_total Verified resource reports permanently refused.\n")
-	builder.WriteString("# TYPE kodama_refused_reports_total counter\n")
-	fmt.Fprintf(&builder, "kodama_refused_reports_total %d\n", source.counters.refusedReports.Load())
-	builder.WriteString("# HELP kodama_dependency_errors_total Dependency failures observed by readiness and publication.\n")
-	builder.WriteString("# TYPE kodama_dependency_errors_total counter\n")
-	fmt.Fprintf(&builder, "kodama_dependency_errors_total %d\n", source.counters.dependencyError.Load())
+	fmt.Fprintf(&builder, "# HELP kodema_publication_backlog Committed events not yet acknowledged by the broker; sampled up to %d.\n", metricsSampleLimit)
+	builder.WriteString("# TYPE kodema_publication_backlog gauge\n")
+	fmt.Fprintf(&builder, "kodema_publication_backlog %d\n", publication)
+	builder.WriteString("# HELP kodema_consumer_lag Committed events the push consumer has not completed; sampled up to the same bound.\n")
+	builder.WriteString("# TYPE kodema_consumer_lag gauge\n")
+	fmt.Fprintf(&builder, "kodema_consumer_lag %d\n", lag)
+	builder.WriteString("# HELP kodema_pending_cleanup Executions whose declared cleanup is still owed; sampled up to the same bound.\n")
+	builder.WriteString("# TYPE kodema_pending_cleanup gauge\n")
+	fmt.Fprintf(&builder, "kodema_pending_cleanup %d\n", cleanup)
+	builder.WriteString("# HELP kodema_refused_pushes_total Permanent push starts refused by the trigger processor.\n")
+	builder.WriteString("# TYPE kodema_refused_pushes_total counter\n")
+	fmt.Fprintf(&builder, "kodema_refused_pushes_total %d\n", source.counters.refusedPushes.Load())
+	builder.WriteString("# HELP kodema_refused_reports_total Verified resource reports permanently refused.\n")
+	builder.WriteString("# TYPE kodema_refused_reports_total counter\n")
+	fmt.Fprintf(&builder, "kodema_refused_reports_total %d\n", source.counters.refusedReports.Load())
+	builder.WriteString("# HELP kodema_dependency_errors_total Dependency failures observed by readiness and publication.\n")
+	builder.WriteString("# TYPE kodema_dependency_errors_total counter\n")
+	fmt.Fprintf(&builder, "kodema_dependency_errors_total %d\n", source.counters.dependencyError.Load())
 	return []byte(builder.String()), nil
 }
 

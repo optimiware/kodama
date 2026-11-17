@@ -3,9 +3,9 @@ package domaincontract
 import (
 	"testing"
 
-	"github.com/optimiware/kodama/internal/shell/resource"
-	"github.com/optimiware/kodama/internal/shell/store"
-	"github.com/optimiware/kodama/internal/shell/verify"
+	"github.com/optimiware/kodema/internal/shell/resource"
+	"github.com/optimiware/kodema/internal/shell/store"
+	"github.com/optimiware/kodema/internal/shell/verify"
 )
 
 // TestBindingResourceIDPersistsThroughSchema is the cross-contract consumer

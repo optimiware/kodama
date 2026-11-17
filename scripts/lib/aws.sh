@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# AWS backend, kubeconfig, and KMS helpers for Kodama deployments.
+# AWS backend, kubeconfig, and KMS helpers for Kodema deployments.
 
 set -euo pipefail
 
 aws_resolve_account_id() {
-  local account_id="${KODAMA_AWS_ACCOUNT_ID:-${TF_VAR_account_id:-}}"
+  local account_id="${KODEMA_AWS_ACCOUNT_ID:-${TF_VAR_account_id:-}}"
   if [[ -z "$account_id" ]] && command -v aws >/dev/null 2>&1; then
     account_id="$(aws sts get-caller-identity --query Account --output text 2>/dev/null || true)"
   fi
-  [[ -n "$account_id" ]] || die "AWS account ID is required (set KODAMA_AWS_ACCOUNT_ID, TF_VAR_account_id, or --account)"
+  [[ -n "$account_id" ]] || die "AWS account ID is required (set KODEMA_AWS_ACCOUNT_ID, TF_VAR_account_id, or --account)"
   printf '%s\n' "$account_id"
 }
 
@@ -16,7 +16,7 @@ aws_state_key_for_cluster() {
   local account_id="$1"
   local cluster_region="$2"
   local cluster="$3"
-  printf 'kodama/aws/%s/%s/%s/infrastructure.tfstate\n' "$account_id" "$cluster_region" "$cluster"
+  printf 'kodema/aws/%s/%s/%s/infrastructure.tfstate\n' "$account_id" "$cluster_region" "$cluster"
 }
 
 aws_write_backend_config() {

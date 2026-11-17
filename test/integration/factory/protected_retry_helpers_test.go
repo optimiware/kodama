@@ -34,9 +34,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/userland/git"
-	"github.com/optimiware/kodama/test/support/factory"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/userland/git"
+	"github.com/optimiware/kodema/test/support/factory"
 )
 
 const (
@@ -79,7 +79,7 @@ const (
 	protectedRetryFailIntegrate = "/workspace/protected-retry-fail-integrate"
 	// protectedRetryAttemptFile is committed into every implement candidate so
 	// two attempts can never produce the same object identity.
-	protectedRetryAttemptFile = "kodama-attempt.txt"
+	protectedRetryAttemptFile = "kodema-attempt.txt"
 )
 
 // protectedRetryAttemptOptions selects the durable checkpoint one attempt
@@ -245,9 +245,9 @@ func protectedRetryImplementCommands(t *testing.T, fixture *gitHarness, spec fac
 	stamped := make([]string, 0, len(commands)+2)
 	for _, command := range commands {
 		switch {
-		case strings.HasPrefix(command, "chmod 0755 ") && strings.Contains(command, "kodama-test.sh"):
+		case strings.HasPrefix(command, "chmod 0755 ") && strings.Contains(command, "kodema-test.sh"):
 			stamped = append(stamped, command)
-			stamped = append(stamped, "printf '%s\\n' \"$KODAMA_EXECUTION\" > "+protectedRetryAttemptFile)
+			stamped = append(stamped, "printf '%s\\n' \"$KODEMA_EXECUTION\" > "+protectedRetryAttemptFile)
 			continue
 		case strings.HasPrefix(command, "git add -- "):
 			command += " " + protectedRetryAttemptFile
@@ -258,7 +258,7 @@ func protectedRetryImplementCommands(t *testing.T, fixture *gitHarness, spec fac
 	}
 	stamped = append(stamped,
 		"if [ -e "+protectedRetryRetainPrior+" ]; then\n"+
-			"  git_kodama push --quiet origin \"HEAD:"+protectedRetryPriorRef+"\"\n"+
+			"  git_kodema push --quiet origin \"HEAD:"+protectedRetryPriorRef+"\"\n"+
 			"  printf 'prior-candidate-retained\\n'\n"+
 			"fi",
 	)
@@ -277,12 +277,12 @@ func protectedRetryTestCommands(t *testing.T, fixture *gitHarness, spec factory.
 	}
 	commands = append(commands,
 		"if [ -e "+protectedRetryProbe+" ]; then\n"+
-			"  git_kodama fetch --quiet origin "+shellQuoteForSubject(protectedRetryPriorRef)+"\n"+
-			"  kodama_retry_prior=$(git rev-parse FETCH_HEAD)\n"+
-			"  test -n \"$kodama_retry_prior\"\n"+
-			"  if git_kodama push --quiet "+
+			"  git_kodema fetch --quiet origin "+shellQuoteForSubject(protectedRetryPriorRef)+"\n"+
+			"  kodema_retry_prior=$(git rev-parse FETCH_HEAD)\n"+
+			"  test -n \"$kodema_retry_prior\"\n"+
+			"  if git_kodema push --quiet "+
 			shellQuoteForSubject("--force-with-lease="+gitMainRef+":"+base)+
-			" origin \"$kodama_retry_prior\":"+gitMainRef+" 2>"+protectedRetryProbeError+"; then\n"+
+			" origin \"$kodema_retry_prior\":"+gitMainRef+" 2>"+protectedRetryProbeError+"; then\n"+
 			"    printf 'prior-approval-push-accepted\\n' >&2\n"+
 			"    exit 1\n"+
 			"  fi\n"+
@@ -378,11 +378,11 @@ func protectedRetryRunAttempt(
 	waitProtectedActionRunning(t, fixture, attempt.executionID, "implement")
 	implementContainer := waitProtectedGoldenContainer(t, fixture, attempt.executionID, "implement")
 	implementToken := waitProtectedGoldenCredential(t, fixture, attempt.executionID, "implement")
-	if got := protectedGoldenExec(t, fixture, implementContainer, "printenv", "KODAMA_TASK"); got != taskID {
-		t.Fatalf("%s implement KODAMA_TASK = %q; want the task %q", startKey, got, taskID)
+	if got := protectedGoldenExec(t, fixture, implementContainer, "printenv", "KODEMA_TASK"); got != taskID {
+		t.Fatalf("%s implement KODEMA_TASK = %q; want the task %q", startKey, got, taskID)
 	}
 	if snapshot := protectedGoldenRead(t, fixture, implementContainer, protectedGoldenTaskFile); !json.Valid([]byte(snapshot)) {
-		t.Fatalf("%s implement /kodama/task.json is not valid JSON: %q", startKey, snapshot)
+		t.Fatalf("%s implement /kodema/task.json is not valid JSON: %q", startKey, snapshot)
 	}
 	if options.retainPrior {
 		if err := fixture.TouchContainerFile(t.Context(), implementContainer, protectedRetryRetainPrior); err != nil {

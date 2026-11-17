@@ -1,5 +1,5 @@
 locals {
-  kms_key_ref = "${module.context.key_ref_prefix}${google_kms_crypto_key.kodama.id}"
+  kms_key_ref = "${module.context.key_ref_prefix}${google_kms_crypto_key.kodema.id}"
 
   deployment_descriptor = {
     cloud                 = module.context.cloud
@@ -19,13 +19,13 @@ locals {
       apiserver_url         = "https://${google_container_cluster.main.endpoint}"
       cni                   = "cilium-dataplane-v2"
       storage_class         = var.workspace_storage_class
-      service_account_name  = "kodama"
-      workload_identity_ref = google_service_account.kodama_controller.email
+      service_account_name  = "kodema"
+      workload_identity_ref = google_service_account.kodema_controller.email
     }
     postgres = {
       instance_id   = google_sql_database_instance.main.id
       instance_name = google_sql_database_instance.main.name
-      database_name = google_sql_database.kodama.name
+      database_name = google_sql_database.kodema.name
       host          = google_sql_database_instance.main.private_ip_address
       port          = 5432
       admin_user    = var.postgres_admin_user
@@ -33,9 +33,9 @@ locals {
     }
     kms = {
       key_adapter  = module.context.key_adapter
-      key_id       = google_kms_crypto_key.kodama.id
+      key_id       = google_kms_crypto_key.kodema.id
       key_ref      = local.kms_key_ref
-      iam_identity = google_service_account.kodama_controller.email
+      iam_identity = google_service_account.kodema_controller.email
     }
   }
 }
@@ -52,6 +52,6 @@ output "database_ca_certificate" {
 }
 
 output "kms_key_ref" {
-  description = "Kodama KMS key reference string."
+  description = "Kodema KMS key reference string."
   value       = local.kms_key_ref
 }

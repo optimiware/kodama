@@ -1,11 +1,11 @@
 //go:build integration
 
-// Package native_test proves the real `kodama git serve` command boundary.
+// Package native_test proves the real `kodema git serve` command boundary.
 //
 // The contract server in this file is a fixture of Shell facts, not full
 // factory composition: it authenticates the calling service, verifies the
 // forwarded actor for the declared operations and records reports. The real
-// boundaries under test are the built kodama binary, its production flag and
+// boundaries under test are the built kodema binary, its production flag and
 // composition path, the host git binary, the installed native hooks and the
 // private hook socket.
 package native_test
@@ -30,13 +30,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/id"
-	shelloidc "github.com/optimiware/kodama/internal/shell/integration/oidc"
-	gitapp "github.com/optimiware/kodama/internal/userland/git/app"
-	"github.com/optimiware/kodama/internal/userland/git/app/native"
-	idfix "github.com/optimiware/kodama/test/support/boundaries/identity"
-	nativefix "github.com/optimiware/kodama/test/support/boundaries/native"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/id"
+	shelloidc "github.com/optimiware/kodema/internal/shell/integration/oidc"
+	gitapp "github.com/optimiware/kodema/internal/userland/git/app"
+	"github.com/optimiware/kodema/internal/userland/git/app/native"
+	idfix "github.com/optimiware/kodema/test/support/boundaries/identity"
+	nativefix "github.com/optimiware/kodema/test/support/boundaries/native"
 )
 
 // The fixture identities used by the command-boundary tests. They never enter
@@ -60,7 +60,7 @@ repo shop/web
     RW refs/heads/ = @engineer
 `
 
-// scFixture is one started `kodama git serve` command boundary.
+// scFixture is one started `kodema git serve` command boundary.
 type scFixture struct {
 	t *testing.T
 
@@ -93,9 +93,9 @@ func scEnvironment(home string) []string {
 	}
 }
 
-// scBasicHeader builds the Basic authorization value for the kodama username.
+// scBasicHeader builds the Basic authorization value for the kodema username.
 func scBasicHeader(token string) string {
-	return "Authorization: Basic " + base64.StdEncoding.EncodeToString([]byte("kodama:"+token))
+	return "Authorization: Basic " + base64.StdEncoding.EncodeToString([]byte("kodema:"+token))
 }
 
 // lockedText is a concurrency-safe child stderr buffer.
@@ -169,7 +169,7 @@ func scSeedPolicy(t *testing.T, environment []string, adminPath, policy string) 
 		"update-index", "--add", "--cacheinfo", "100644,"+blob+",conf/git.conf")
 	tree := strings.TrimSpace(scGitOK(t, indexEnvironment, "", "--git-dir="+adminPath, "write-tree"))
 	commit := strings.TrimSpace(scGitOK(t, environment, "", "--git-dir="+adminPath,
-		"-c", "user.name=kodama", "-c", "user.email=kodama@example.invalid",
+		"-c", "user.name=kodema", "-c", "user.email=kodema@example.invalid",
 		"commit-tree", tree, "-p", parent, "-m", "fixture committed policy"))
 	scGitOK(t, environment, "", "--git-dir="+adminPath, "update-ref", "refs/heads/main", commit)
 	if observed := strings.TrimSpace(scGitOK(t, environment, "",
@@ -198,7 +198,7 @@ func scSeedRepository(t *testing.T, environment []string, root, repositoryPath s
 	}
 	scGitOK(t, environment, worktree, "add", "--all")
 	scGitOK(t, environment, worktree,
-		"-c", "user.name=kodama", "-c", "user.email=kodama@example.invalid",
+		"-c", "user.name=kodema", "-c", "user.email=kodema@example.invalid",
 		"commit", "--quiet", "-m", "seed")
 	scGitOK(t, environment, worktree, "push", "--quiet", repositoryPath, "HEAD:refs/heads/main")
 	return strings.TrimSpace(scGitOK(t, environment, worktree, "rev-parse", "HEAD"))
@@ -279,7 +279,7 @@ func scStartContract(t *testing.T) (*idfix.ContractServer, string) {
 	return contract, human.Value
 }
 
-// scStart builds the repository state and starts the real `kodama git serve`
+// scStart builds the repository state and starts the real `kodema git serve`
 // binary. hostile enables the hostile home, global and system configuration.
 func scStart(t *testing.T, hostile bool) *scFixture {
 	t.Helper()
@@ -302,7 +302,7 @@ func scStart(t *testing.T, hostile bool) *scFixture {
 		TenantID:         id.TenantID(scTenantID),
 		StorageRoot:      fixture.storageRoot,
 		JournalDirectory: fixture.journalDirectory,
-		HookBinary:       kodamaBinary,
+		HookBinary:       kodemaBinary,
 		Environment:      seedEnvironment,
 	})
 	if err != nil {
@@ -340,7 +340,7 @@ func scStart(t *testing.T, hostile bool) *scFixture {
 		environment = append(environment, scHostileEnvironment(t, root)...)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	command := exec.CommandContext(ctx, kodamaBinary,
+	command := exec.CommandContext(ctx, kodemaBinary,
 		"git", "serve",
 		"--tenant", scTenantID,
 		"--storage-root", fixture.storageRoot,
@@ -357,7 +357,7 @@ func scStart(t *testing.T, hostile bool) *scFixture {
 	command.Stdout = io.Discard
 	if err := command.Start(); err != nil {
 		cancel()
-		t.Fatalf("start kodama git serve: %v", err)
+		t.Fatalf("start kodema git serve: %v", err)
 	}
 	done := make(chan error, 1)
 	go func() { done <- command.Wait() }()
@@ -369,7 +369,7 @@ func scStart(t *testing.T, hostile bool) *scFixture {
 		select {
 		case <-done:
 		case <-time.After(10 * time.Second):
-			t.Errorf("kodama git serve did not exit")
+			t.Errorf("kodema git serve did not exit")
 		}
 	})
 
@@ -377,7 +377,7 @@ func scStart(t *testing.T, hostile bool) *scFixture {
 	for {
 		select {
 		case err := <-done:
-			t.Fatalf("kodama git serve exited early: %v: %s", err, fixture.stderr.String())
+			t.Fatalf("kodema git serve exited early: %v: %s", err, fixture.stderr.String())
 		default:
 		}
 		connection, err := net.DialTimeout("tcp", address, 200*time.Millisecond)
@@ -386,7 +386,7 @@ func scStart(t *testing.T, hostile bool) *scFixture {
 			break
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("kodama git serve did not listen: %v: %s", err, fixture.stderr.String())
+			t.Fatalf("kodema git serve did not listen: %v: %s", err, fixture.stderr.String())
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
@@ -492,7 +492,7 @@ func (fixture *scFixture) commit(environment []string, directory, message string
 	}
 	scGitOK(fixture.t, environment, directory, "add", "--all")
 	scGitOK(fixture.t, environment, directory,
-		"-c", "user.name=kodama", "-c", "user.email=kodama@example.invalid",
+		"-c", "user.name=kodema", "-c", "user.email=kodema@example.invalid",
 		"commit", "--quiet", "-m", message)
 	return strings.TrimSpace(scGitOK(fixture.t, environment, directory, "rev-parse", "HEAD"))
 }
@@ -584,7 +584,7 @@ func TestGitServeBinaryIgnoresHostGitConfiguration(t *testing.T) {
 	if code == 0 {
 		t.Fatalf("prohibited push was accepted; hostile configuration disabled the installed hooks\nserve stderr: %s", fixture.stderr.String())
 	}
-	if !strings.Contains(stderr, "kodama git: update rejected") {
+	if !strings.Contains(stderr, "kodema git: update rejected") {
 		t.Fatalf("prohibited push stderr = %q; want the sanitized rejection", stderr)
 	}
 	if observed := fixture.remoteRef(environment, "refs/heads/blocked/main"); observed != "" {

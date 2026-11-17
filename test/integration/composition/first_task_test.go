@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/id"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/id"
 )
 
 // lifecycleFacts is the bounded payload of one projected lifecycle event.
@@ -128,7 +128,7 @@ func TestFirstTaskFlowThroughTheComposedApp(t *testing.T) {
 	}, nil, "")
 	var grant api.EventSubscribeResult
 	environment.decode(subscribe, &grant)
-	if len(grant.Subjects) != 1 || grant.Subjects[0] != "kodama.v1.tenant-1.project-1.events" {
+	if len(grant.Subjects) != 1 || grant.Subjects[0] != "kodema.v1.tenant-1.project-1.events" {
 		t.Fatalf("subscribe subjects = %v; want the project-1 subject only", grant.Subjects)
 	}
 	if grant.Cursor == "" {

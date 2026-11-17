@@ -10,12 +10,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/userland/git"
-	gitapp "github.com/optimiware/kodama/internal/userland/git/app"
-	"github.com/optimiware/kodama/internal/userland/git/app/native"
-	idfix "github.com/optimiware/kodama/test/support/boundaries/identity"
-	recoveryfix "github.com/optimiware/kodama/test/support/boundaries/recovery"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/userland/git"
+	gitapp "github.com/optimiware/kodema/internal/userland/git/app"
+	"github.com/optimiware/kodema/internal/userland/git/app/native"
+	idfix "github.com/optimiware/kodema/test/support/boundaries/identity"
+	recoveryfix "github.com/optimiware/kodema/test/support/boundaries/recovery"
 )
 
 // TestRecoverJournalLoadFailureKeepsTheEntry proves a corrupt durable entry is a
@@ -265,7 +265,7 @@ func TestPostReceiveHookChannelUnreachableKeepsIntentRecoverable(t *testing.T) {
 
 	script := "#!/bin/sh\n" +
 		"set -u\n" +
-		"export KODAMA_HOOK_SOCKET=/nonexistent/kodama-hook.sock\n" +
+		"export KODEMA_HOOK_SOCKET=/nonexistent/kodema-hook.sock\n" +
 		"exec " + shellQuote(harness.BinaryPath) + " git hook post-receive\n"
 	harness.WriteHook(t, recoveryfix.Repository, "post-receive", script)
 

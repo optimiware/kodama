@@ -3,7 +3,7 @@ package authorize
 import (
 	"context"
 
-	"github.com/optimiware/kodama/internal/shell/tenancy"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
 )
 
 // CurrentPrincipal authenticates one presented credential and returns the

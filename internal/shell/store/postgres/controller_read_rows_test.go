@@ -13,7 +13,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/fault"
+	"github.com/optimiware/kodema/internal/fault"
 )
 
 // TestControllerReadCommitsAfterClosingRows guards against scanning the single
@@ -21,7 +21,7 @@ import (
 // which real PostgreSQL via pgx reports as "conn busy".
 func TestControllerReadCommitsAfterClosingRows(t *testing.T) {
 	now := controllerEventClock()
-	db := newEmuDB("kodama_controller", now)
+	db := newEmuDB("kodema_controller", now)
 	seedEmulator(t, db, seamSeed{Rows: controllerEventSeedRows()}, now)
 	controller := NewController(db)
 
@@ -50,7 +50,7 @@ func TestControllerReadCommitsAfterClosingRows(t *testing.T) {
 // completes no transaction with an open iterator.
 func TestControllerReadMissingRowIsNotFound(t *testing.T) {
 	now := controllerEventClock()
-	db := newEmuDB("kodama_controller", now)
+	db := newEmuDB("kodema_controller", now)
 	seedEmulator(t, db, seamSeed{Rows: controllerEventSeedRows()}, now)
 	controller := NewController(db)
 
@@ -72,7 +72,7 @@ func TestControllerReadMissingRowIsNotFound(t *testing.T) {
 // refusal instead of silently accepting a transaction completed mid-iteration.
 func TestEmulatorRefusesCommitWithOpenRows(t *testing.T) {
 	ctx := context.Background()
-	db := newEmuDB("kodama_controller", controllerEventClock())
+	db := newEmuDB("kodema_controller", controllerEventClock())
 	db.seed("executions", map[string]any{"id": "execution-1", "tenant_id": "tenant-1", "project_id": "project-1", "version": int64(1)})
 	conn, err := db.Begin(ctx)
 	if err != nil {
@@ -101,7 +101,7 @@ func TestEmulatorRefusesCommitWithOpenRows(t *testing.T) {
 // pgx refuses to reuse the connection while an iterator is open.
 func TestEmulatorRefusesRollbackWithOpenRows(t *testing.T) {
 	ctx := context.Background()
-	db := newEmuDB("kodama_controller", controllerEventClock())
+	db := newEmuDB("kodema_controller", controllerEventClock())
 	db.seed("executions", map[string]any{"id": "execution-1", "tenant_id": "tenant-1", "project_id": "project-1", "version": int64(1)})
 	conn, err := db.Begin(ctx)
 	if err != nil {
@@ -132,7 +132,7 @@ func TestEmulatorRefusesRollbackWithOpenRows(t *testing.T) {
 // close first.
 func TestEmulatorExhaustedRowsAllowCommit(t *testing.T) {
 	ctx := context.Background()
-	db := newEmuDB("kodama_controller", controllerEventClock())
+	db := newEmuDB("kodema_controller", controllerEventClock())
 	db.seed("executions", map[string]any{"id": "execution-1", "tenant_id": "tenant-1", "project_id": "project-1", "version": int64(1)})
 	conn, err := db.Begin(ctx)
 	if err != nil {

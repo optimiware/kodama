@@ -11,9 +11,9 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/test/support/factory"
-	pgtest "github.com/optimiware/kodama/test/support/infrastructure/postgres"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/test/support/factory"
+	pgtest "github.com/optimiware/kodema/test/support/infrastructure/postgres"
 )
 
 // inlineRESTStart posts one inline-YAML pipeline.start to the task-free

@@ -1,6 +1,6 @@
 # S02 — Kernel lifecycle and recovery
 
-Source: [pipeline execution](../../KODAMA.md#2-pipeline-execution), [recovery](../../KODAMA.md#lifecycle-and-recovery). Owners: K01–K05. AC: 1, 4, 6, 9, 11–13, 16.
+Source: [pipeline execution](../../KODEMA.md#2-pipeline-execution), [recovery](../../KODEMA.md#lifecycle-and-recovery). Owners: K01–K05. AC: 1, 4, 6, 9, 11–13, 16.
 
 ## 1. Durable model
 
@@ -57,7 +57,7 @@ One nullable JSON object contains at most eight declared UTF-8 string values, ea
 
 Container submission is accepted only for the current running container action and becomes immutable staging. An identical map retry converges; a different map is refused. A runtime-confirmed successful settlement promotes it. Failure/cancel/timeout discards it. The runtime never reads container output files.
 
-Request response values undergo declared-schema validation within settlement. Failed-request answers remain inspectable in the decision record and never appear in downstream materialization. Only earlier succeeded actions are visible to subject lookup or `/kodama/outputs`.
+Request response values undergo declared-schema validation within settlement. Failed-request answers remain inspectable in the decision record and never appear in downstream materialization. Only earlier succeeded actions are visible to subject lookup or `/kodema/outputs`.
 
 ## 5. Reconciler algorithm
 

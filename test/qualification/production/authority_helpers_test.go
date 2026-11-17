@@ -20,7 +20,7 @@ import (
 
 	"go.yaml.in/yaml/v3"
 
-	"github.com/optimiware/kodama/api"
+	"github.com/optimiware/kodema/api"
 )
 
 // serviceCredentialPrefix is the frozen derived service-credential prefix.
@@ -428,9 +428,9 @@ func stageRenewalProbe(image string) renewalProbe {
 		PollAttempts:  renewalPollAttempts,
 		PollInterval:  renewalPollInterval,
 		Paths: renewalPaths{
-			TokenFile:     "/kodama/secrets/KODAMA_TOKEN",
-			CAFile:        "/etc/kodama/ca/ca.crt",
-			SettledOutput: "/kodama/outputs/short-lived/fingerprint",
+			TokenFile:     "/kodema/secrets/KODEMA_TOKEN",
+			CAFile:        "/etc/kodema/ca/ca.crt",
+			SettledOutput: "/kodema/outputs/short-lived/fingerprint",
 		},
 	}
 }
@@ -459,9 +459,9 @@ func (probe renewalProbe) validateLive() error {
 	if probe.PollAttempts != renewalPollAttempts || probe.PollInterval != renewalPollInterval {
 		return fmt.Errorf("the renewal probe's poll window %d x %s is not the pinned %d x %s", probe.PollAttempts, probe.PollInterval, renewalPollAttempts, renewalPollInterval)
 	}
-	if probe.Paths.TokenFile != "/kodama/secrets/KODAMA_TOKEN" ||
-		probe.Paths.CAFile != "/etc/kodama/ca/ca.crt" ||
-		probe.Paths.SettledOutput != "/kodama/outputs/short-lived/fingerprint" {
+	if probe.Paths.TokenFile != "/kodema/secrets/KODEMA_TOKEN" ||
+		probe.Paths.CAFile != "/etc/kodema/ca/ca.crt" ||
+		probe.Paths.SettledOutput != "/kodema/outputs/short-lived/fingerprint" {
 		return fmt.Errorf("the renewal probe paths are not the frozen workload mounts")
 	}
 	if probe.Paths.TokenFile == "" || probe.Paths.CAFile == "" || probe.Paths.SettledOutput == "" {
@@ -495,7 +495,7 @@ func (probe renewalProbe) document() ([]byte, error) {
 
 // firstCommands prove the freshly mounted execution credential authenticates,
 // then submit only its sha256 fingerprint through the public output operation.
-// KODAMA_ACTION is the action slug, so the action id comes from the execution
+// KODEMA_ACTION is the action slug, so the action id comes from the execution
 // inspection (the first action is index 0); a version conflict is retried from a
 // fresh inspection with a new idempotency key, exactly like the integration
 // workload output submission.
@@ -509,7 +509,7 @@ func (probe renewalProbe) firstCommands() []string {
 		`test -n "$FIRST_SHA"`,
 		`attempt=0`,
 		`submitted=0`,
-		`while [ "$attempt" -lt 20 ]; do attempt=$((attempt+1)); INSPECT_CODE=$(curl -sS -X GET -o /dev/null -w '%{http_code}' --cacert ` + ca + ` -H "Authorization: Bearer $(cat ` + token + `)" -H 'Content-Type: application/json' --data-binary '{}' "$KODAMA_URL/api/v1/executions/$KODAMA_EXECUTION"); if [ "$INSPECT_CODE" != "200" ]; then echo "q02: the mounted execution credential was refused with status $INSPECT_CODE" >&2; exit 1; fi; INSPECT=$(curl -sS -X GET --cacert ` + ca + ` -H "Authorization: Bearer $(cat ` + token + `)" -H 'Content-Type: application/json' --data-binary '{}' "$KODAMA_URL/api/v1/executions/$KODAMA_EXECUTION"); case "$INSPECT" in *'"operation":"execution.inspect"'*) ;; *) echo "q02: the execution inspection did not return a public result" >&2; exit 1 ;; esac; VERSION=$(printf '%s' "$INSPECT" | grep -o '"version":[0-9]*' | head -n 1 | cut -d: -f2); ACTION=$(printf '%s' "$INSPECT" | grep -o '"action_id":"[^"]*"' | head -n 1 | cut -d'"' -f4); test -n "$VERSION" || { echo "q02: the inspection carried no execution version" >&2; exit 1; }; test -n "$ACTION" || { echo "q02: the inspection carried no action id" >&2; exit 1; }; BODY=$(printf '{"input":{"outputs":{"fingerprint":"%s"}},"expected_version":%s,"idempotency_key":"q02-out-%s-%s"}' "$FIRST_SHA" "$VERSION" "$attempt" "$FIRST_SHA"); OUTPUT_CODE=$(curl -sS -X PUT -o /dev/null -w '%{http_code}' --cacert ` + ca + ` -H "Authorization: Bearer $(cat ` + token + `)" -H 'Content-Type: application/json' --data-binary "$BODY" "$KODAMA_URL/api/v1/executions/$KODAMA_EXECUTION/actions/$ACTION/outputs"); case "$OUTPUT_CODE" in 200) submitted=1; break ;; 409) continue ;; *) echo "q02: the fingerprint output submission was refused with status $OUTPUT_CODE" >&2; exit 1 ;; esac; done`,
+		`while [ "$attempt" -lt 20 ]; do attempt=$((attempt+1)); INSPECT_CODE=$(curl -sS -X GET -o /dev/null -w '%{http_code}' --cacert ` + ca + ` -H "Authorization: Bearer $(cat ` + token + `)" -H 'Content-Type: application/json' --data-binary '{}' "$KODEMA_URL/api/v1/executions/$KODEMA_EXECUTION"); if [ "$INSPECT_CODE" != "200" ]; then echo "q02: the mounted execution credential was refused with status $INSPECT_CODE" >&2; exit 1; fi; INSPECT=$(curl -sS -X GET --cacert ` + ca + ` -H "Authorization: Bearer $(cat ` + token + `)" -H 'Content-Type: application/json' --data-binary '{}' "$KODEMA_URL/api/v1/executions/$KODEMA_EXECUTION"); case "$INSPECT" in *'"operation":"execution.inspect"'*) ;; *) echo "q02: the execution inspection did not return a public result" >&2; exit 1 ;; esac; VERSION=$(printf '%s' "$INSPECT" | grep -o '"version":[0-9]*' | head -n 1 | cut -d: -f2); ACTION=$(printf '%s' "$INSPECT" | grep -o '"action_id":"[^"]*"' | head -n 1 | cut -d'"' -f4); test -n "$VERSION" || { echo "q02: the inspection carried no execution version" >&2; exit 1; }; test -n "$ACTION" || { echo "q02: the inspection carried no action id" >&2; exit 1; }; BODY=$(printf '{"input":{"outputs":{"fingerprint":"%s"}},"expected_version":%s,"idempotency_key":"q02-out-%s-%s"}' "$FIRST_SHA" "$VERSION" "$attempt" "$FIRST_SHA"); OUTPUT_CODE=$(curl -sS -X PUT -o /dev/null -w '%{http_code}' --cacert ` + ca + ` -H "Authorization: Bearer $(cat ` + token + `)" -H 'Content-Type: application/json' --data-binary "$BODY" "$KODEMA_URL/api/v1/executions/$KODEMA_EXECUTION/actions/$ACTION/outputs"); case "$OUTPUT_CODE" in 200) submitted=1; break ;; 409) continue ;; *) echo "q02: the fingerprint output submission was refused with status $OUTPUT_CODE" >&2; exit 1 ;; esac; done`,
 		`test "$submitted" = "1" || { echo "q02: the fingerprint output submission did not converge" >&2; exit 1; }`,
 	}
 }
@@ -535,7 +535,7 @@ func (probe renewalProbe) secondCommands() []string {
 		fmt.Sprintf(`attempt=0; while [ "$attempt" -lt %d ] && [ "$NOW_SHA" = "$FIRST_SHA" ]; do sleep %d; NOW_SHA=$(sha256sum %s | cut -d' ' -f1); attempt=$((attempt+1)); done`,
 			probe.PollAttempts, int(probe.PollInterval.Seconds()), token),
 		`if [ "$NOW_SHA" = "$FIRST_SHA" ]; then echo "q02: the mounted credential was not renewed after the first action deadline" >&2; exit 1; fi`,
-		`NOW_CODE=$(curl -sS -X GET -o /dev/null -w '%{http_code}' --cacert ` + ca + ` -H "Authorization: Bearer $(cat ` + token + `)" -H 'Content-Type: application/json' --data-binary '{}' "$KODAMA_URL/api/v1/executions/$KODAMA_EXECUTION")`,
+		`NOW_CODE=$(curl -sS -X GET -o /dev/null -w '%{http_code}' --cacert ` + ca + ` -H "Authorization: Bearer $(cat ` + token + `)" -H 'Content-Type: application/json' --data-binary '{}' "$KODEMA_URL/api/v1/executions/$KODEMA_EXECUTION")`,
 		`if [ "$NOW_CODE" != "200" ]; then echo "q02: the renewed mounted credential was refused with status $NOW_CODE" >&2; exit 1; fi`,
 		`echo "q02-renewal: the mounted credential was renewed and authenticated after the first action deadline"`,
 	}

@@ -52,8 +52,8 @@ func testPKI(t *testing.T) (string, tls.Certificate) {
 	}
 	leafTemplate := &x509.Certificate{
 		SerialNumber: big.NewInt(2),
-		Subject:      pkix.Name{CommonName: "kodama.test"},
-		DNSNames:     []string{"kodama.test"},
+		Subject:      pkix.Name{CommonName: "kodema.test"},
+		DNSNames:     []string{"kodema.test"},
 		IPAddresses:  []net.IP{net.ParseIP("127.0.0.1")},
 		NotBefore:    now.Add(-time.Hour),
 		NotAfter:     now.Add(time.Hour),
@@ -92,10 +92,10 @@ func validConfigEnv(t *testing.T) map[string]string {
 	return map[string]string{
 		string(InputAPIURL):           "https://127.0.0.1:18443",
 		string(InputCAPEM):            caPath,
-		string(InputTLSServerName):    "kodama.kodama-system.svc.cluster.local",
+		string(InputTLSServerName):    "kodema.kodema-system.svc.cluster.local",
 		string(InputToken):            "project-token-value",
 		string(InputProjectID):        "tenant-a",
-		string(InputKubeContext):      "kodama-stage-k8s",
+		string(InputKubeContext):      "kodema-stage-k8s",
 		string(InputImage):            "docker.io/library/node:26.13.0-alpine",
 		string(InputEvidenceDir):      t.TempDir(),
 		string(InputHarnessRevision):  "be43abd",

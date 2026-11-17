@@ -1,6 +1,6 @@
 package installation
 
-// Pod-security and single-replica broker hardening checks for the kodama-stack
+// Pod-security and single-replica broker hardening checks for the kodema-stack
 // chart. Inspected as text and via the bounded JSON-Schema subset without
 // invoking helm or external YAML decoders.
 

@@ -7,9 +7,9 @@ import (
 	"strconv"
 	"testing"
 
-	pgdriver "github.com/optimiware/kodama/internal/shell/app/drivers/postgres"
-	"github.com/optimiware/kodama/internal/shell/store"
-	"github.com/optimiware/kodama/test/support/infrastructure/postgres"
+	pgdriver "github.com/optimiware/kodema/internal/shell/app/drivers/postgres"
+	"github.com/optimiware/kodema/internal/shell/store"
+	"github.com/optimiware/kodema/test/support/infrastructure/postgres"
 )
 
 // TestSystemRoleRLSPoliciesOnPostgreSQL is a CATALOG-POLICY PROOF ONLY: every
@@ -150,7 +150,7 @@ func requireAuthRow(t *testing.T, ctx context.Context, auth *pgdriver.DB, creden
 		t.Fatalf("%s: begin: %v", label, err)
 	}
 	defer func() { _ = conn.Rollback(context.WithoutCancel(ctx)) }()
-	if _, err := conn.Exec(ctx, `SELECT set_config('kodama.credential_id', $1, true)`, credential); err != nil {
+	if _, err := conn.Exec(ctx, `SELECT set_config('kodema.credential_id', $1, true)`, credential); err != nil {
 		t.Fatalf("%s: set credential: %v", label, err)
 	}
 	rows, err := pgtest.QueryRows(ctx, conn, 1, `SELECT count(*) FROM (`+query+`) AS visible`)

@@ -6,8 +6,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/userland/git/app"
-	"github.com/optimiware/kodama/internal/userland/git/app/native"
+	"github.com/optimiware/kodema/internal/userland/git/app"
+	"github.com/optimiware/kodema/internal/userland/git/app/native"
 )
 
 // TestNativeGitMeetsDeclaredMinimum proves the actual host executable that the

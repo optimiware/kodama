@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Multi-cloud OpenTofu + Helm deployment orchestrator for Kodama.
+# Multi-cloud OpenTofu + Helm deployment orchestrator for Kodema.
 #
 # Supports deploying multiple independent clusters per cloud (e.g., "stage",
 # "preview") with isolated remote state keys, local working directories,
@@ -33,18 +33,18 @@ Actions:
   kubeconfig       Fetch and isolate the cluster kubeconfig (0600)
   render-values    Render Helm values from descriptor.json
   migrate          Create the database, apply migrations and set role passwords (one-shot pod; run before helm)
-  helm             Install or upgrade the deploy/charts/kodama-stack Helm release
+  helm             Install or upgrade the deploy/charts/kodema-stack Helm release
   status           Print isolated paths and deployment status for the selected cluster
 
 Options:
-  --cluster <name>             Cluster name (default: $KODAMA_CLUSTER or "stage")
+  --cluster <name>             Cluster name (default: $KODEMA_CLUSTER or "stage")
   --project, --account <id>    Cloud project ID (scw, gcp) or account ID (aws)
   --region <region>            Cloud region override
   --state-bucket <name>        Remote state bucket name override
   --state-region <region>      Remote state bucket region override
   --var-file <path>            Explicit OpenTofu .tfvars or .tfvars.json file
   --skip-helm-uninstall        Skip Helm release uninstall before OpenTofu destroy
-  --allow-placeholder-image    Permit installing the chart with registry.example.com/kodama
+  --allow-placeholder-image    Permit installing the chart with registry.example.com/kodema
   --auto-approve               Pass -auto-approve on apply/destroy
   --dry-run                    Render files/commands without contacting cloud APIs
   -h, --help                   Show this help message
@@ -119,7 +119,7 @@ main() {
 
   validate_cloud "$cloud"
 
-  local cluster="${KODAMA_CLUSTER:-stage}"
+  local cluster="${KODEMA_CLUSTER:-stage}"
   local project_or_account=""
   local region=""
   local state_bucket=""
@@ -208,9 +208,9 @@ main() {
 
   load_state_backend_env "$cloud" "$project_or_account" "$region"
 
-  region="${region:-${KODAMA_STATE_REGION:-$(default_region_for_cloud "$cloud")}}"
-  project_or_account="${project_or_account:-${KODAMA_STATE_PROJECT_OR_ACCOUNT:-}}"
-  state_region="${state_region:-${KODAMA_STATE_REGION:-$region}}"
+  region="${region:-${KODEMA_STATE_REGION:-$(default_region_for_cloud "$cloud")}}"
+  project_or_account="${project_or_account:-${KODEMA_STATE_PROJECT_OR_ACCOUNT:-}}"
+  state_region="${state_region:-${KODEMA_STATE_REGION:-$region}}"
 
   local work_dir iac_dir tf_data_dir backend_file plan_file descriptor_file kubeconfig_file values_file
   work_dir="$(ensure_cluster_work_dir "$cloud" "$cluster")"
@@ -228,7 +228,7 @@ main() {
       if [[ -z "$state_bucket" ]]; then
         local short_id="${project_or_account//[^a-zA-Z0-9]/}"
         short_id="$(printf '%s' "$short_id" | tr '[:upper:]' '[:lower:]' | cut -c1-16)"
-        state_bucket="${KODAMA_STATE_BUCKET:-kodama-tofu-state-${cloud}-${short_id}-${state_region}}"
+        state_bucket="${KODEMA_STATE_BUCKET:-kodema-tofu-state-${cloud}-${short_id}-${state_region}}"
       fi
       write_cluster_backend_config "$cloud" "$cluster" "$state_bucket" "$project_or_account" "$region" "$state_region" "$backend_file"
       log_info "wrote backend config for ${cloud}/${cluster} to ${backend_file}"
@@ -252,7 +252,7 @@ main() {
         esac
       fi
       if [[ -z "$state_bucket" ]]; then
-        state_bucket="${KODAMA_STATE_BUCKET:-}"
+        state_bucket="${KODEMA_STATE_BUCKET:-}"
         [[ -n "$state_bucket" ]] || die "remote state bucket is required (run 'scripts/bootstrap-state ${cloud}' or pass --state-bucket)"
       fi
       write_cluster_backend_config "$cloud" "$cluster" "$state_bucket" "$project_or_account" "$region" "$state_region" "$backend_file"
@@ -338,9 +338,9 @@ main() {
       fi
       if [[ "$skip_helm_uninstall" != "true" && -f "$kubeconfig_file" && -f "$descriptor_file" ]] && command -v helm >/dev/null 2>&1; then
         local release_ns
-        release_ns="$(jq -r '.release_namespace // "kodama-system"' "$descriptor_file")"
-        log_info "uninstalling Helm release kodama-${cluster} in ${release_ns} before infrastructure teardown"
-        helm uninstall "kodama-${cluster}" --kubeconfig "$kubeconfig_file" --namespace "$release_ns" --wait --ignore-not-found >/dev/null 2>&1 || true
+        release_ns="$(jq -r '.release_namespace // "kodema-system"' "$descriptor_file")"
+        log_info "uninstalling Helm release kodema-${cluster} in ${release_ns} before infrastructure teardown"
+        helm uninstall "kodema-${cluster}" --kubeconfig "$kubeconfig_file" --namespace "$release_ns" --wait --ignore-not-found >/dev/null 2>&1 || true
       fi
       build_tofu_var_args "$cloud" "$cluster" "$project_or_account" "$region" "$var_file"
       if [[ "$cloud" == "scw" ]]; then
@@ -390,27 +390,27 @@ main() {
       verify_descriptor_identity "$descriptor_file" "$cloud" "$cluster"
       local release_ns migrate_image
       release_ns="$(jq -r '.release_namespace' "$descriptor_file")"
-      [[ -n "${KODAMA_IMAGE_REPOSITORY:-}" && -n "${KODAMA_IMAGE_DIGEST:-}" ]] ||
-        die "export KODAMA_IMAGE_REPOSITORY and KODAMA_IMAGE_DIGEST (scripts/image prints them)"
+      [[ -n "${KODEMA_IMAGE_REPOSITORY:-}" && -n "${KODEMA_IMAGE_DIGEST:-}" ]] ||
+        die "export KODEMA_IMAGE_REPOSITORY and KODEMA_IMAGE_DIGEST (scripts/image prints them)"
       # The values are interpolated into the heredoc manifest. Reject anything
       # that is not a registry reference and a sha256 digest so a value from the
       # environment cannot add a YAML document or field.
-      [[ "$KODAMA_IMAGE_REPOSITORY" =~ ^[A-Za-z0-9][A-Za-z0-9._:/-]*$ ]] ||
-        die "invalid KODAMA_IMAGE_REPOSITORY '${KODAMA_IMAGE_REPOSITORY}': letters, digits and . _ : / - only"
-      [[ "$KODAMA_IMAGE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]] ||
-        die "invalid KODAMA_IMAGE_DIGEST '${KODAMA_IMAGE_DIGEST}': want sha256:<64 lowercase hex>"
-      migrate_image="${KODAMA_IMAGE_REPOSITORY}@${KODAMA_IMAGE_DIGEST}"
-      # A one-shot pod, not a chart Job: the chart declares no Job (Kodama never
+      [[ "$KODEMA_IMAGE_REPOSITORY" =~ ^[A-Za-z0-9][A-Za-z0-9._:/-]*$ ]] ||
+        die "invalid KODEMA_IMAGE_REPOSITORY '${KODEMA_IMAGE_REPOSITORY}': letters, digits and . _ : / - only"
+      [[ "$KODEMA_IMAGE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]] ||
+        die "invalid KODEMA_IMAGE_DIGEST '${KODEMA_IMAGE_DIGEST}': want sha256:<64 lowercase hex>"
+      migrate_image="${KODEMA_IMAGE_REPOSITORY}@${KODEMA_IMAGE_DIGEST}"
+      # A one-shot pod, not a chart Job: the chart declares no Job (Kodema never
       # replays work), and the administrator URL is mounted into this pod alone.
-      # It runs `kodama migrate`, which is idempotent, then is removed.
+      # It runs `kodema migrate`, which is idempotent, then is removed.
       local migrate_manifest
       migrate_manifest="$(cat <<MIGRATE_POD
 apiVersion: v1
 kind: Pod
 metadata:
-  generateName: kodama-migrate-
+  generateName: kodema-migrate-
   labels:
-    app.kubernetes.io/name: kodama
+    app.kubernetes.io/name: kodema
     app.kubernetes.io/component: migrate
 spec:
   restartPolicy: Never
@@ -425,24 +425,24 @@ spec:
       image: "${migrate_image}"
       args: ["migrate"]
       env:
-        - {name: KODAMA_ADMIN_DATABASE_URL, valueFrom: {secretKeyRef: {name: kodama-database-admin, key: admin_url}}}
-        - {name: KODAMA_DATABASE_URL, valueFrom: {secretKeyRef: {name: kodama-database, key: database_url}}}
-        - {name: KODAMA_CONTROLLER_DATABASE_URL, valueFrom: {secretKeyRef: {name: kodama-database, key: controller_url}}}
-        - {name: KODAMA_PUBLISHER_DATABASE_URL, valueFrom: {secretKeyRef: {name: kodama-database, key: publisher_url}}}
-        - {name: KODAMA_AUTH_DATABASE_URL, valueFrom: {secretKeyRef: {name: kodama-database, key: auth_url}}}
+        - {name: KODEMA_ADMIN_DATABASE_URL, valueFrom: {secretKeyRef: {name: kodema-database-admin, key: admin_url}}}
+        - {name: KODEMA_DATABASE_URL, valueFrom: {secretKeyRef: {name: kodema-database, key: database_url}}}
+        - {name: KODEMA_CONTROLLER_DATABASE_URL, valueFrom: {secretKeyRef: {name: kodema-database, key: controller_url}}}
+        - {name: KODEMA_PUBLISHER_DATABASE_URL, valueFrom: {secretKeyRef: {name: kodema-database, key: publisher_url}}}
+        - {name: KODEMA_AUTH_DATABASE_URL, valueFrom: {secretKeyRef: {name: kodema-database, key: auth_url}}}
       securityContext:
         allowPrivilegeEscalation: false
         readOnlyRootFilesystem: true
         capabilities: {drop: ["ALL"]}
       volumeMounts:
-        - {name: database-ca, mountPath: /etc/kodama/pg-ca, readOnly: true}
+        - {name: database-ca, mountPath: /etc/kodema/pg-ca, readOnly: true}
       resources:
         requests: {cpu: 50m, memory: 64Mi}
         limits: {cpu: 500m, memory: 256Mi}
   volumes:
     - name: database-ca
       secret:
-        secretName: kodama-database
+        secretName: kodema-database
         items: [{key: ca.crt, path: ca.crt}]
 MIGRATE_POD
 )"
@@ -468,8 +468,8 @@ MIGRATE_POD
       trap 'cleanup_migrate_pod; exit 130' INT
       trap 'cleanup_migrate_pod; exit 143' TERM
 
-      kubectl --kubeconfig "$kubeconfig_file" -n "$release_ns" get secret kodama-database-admin >/dev/null 2>&1 ||
-        die "Secret ${release_ns}/kodama-database-admin is missing (run bootstrap-secrets with TF_VAR_postgres_admin_password set)"
+      kubectl --kubeconfig "$kubeconfig_file" -n "$release_ns" get secret kodema-database-admin >/dev/null 2>&1 ||
+        die "Secret ${release_ns}/kodema-database-admin is missing (run bootstrap-secrets with TF_VAR_postgres_admin_password set)"
       pod="$(printf '%s' "$migrate_manifest" | kubectl --kubeconfig "$kubeconfig_file" -n "$release_ns" create -o name -f -)" ||
         die "could not create the migration pod"
       [[ -n "$pod" ]] || die "kubectl create returned no pod name"
@@ -493,22 +493,22 @@ MIGRATE_POD
       render_helm_values_from_descriptor "$descriptor_file" "$values_file"
 
       local -a extra_values=()
-      if [[ -n "${KODAMA_HELM_EXTRA_VALUES:-}" ]]; then
-        [[ -f "$KODAMA_HELM_EXTRA_VALUES" ]] || die "KODAMA_HELM_EXTRA_VALUES file not found: ${KODAMA_HELM_EXTRA_VALUES}"
-        extra_values=(--values "$KODAMA_HELM_EXTRA_VALUES")
+      if [[ -n "${KODEMA_HELM_EXTRA_VALUES:-}" ]]; then
+        [[ -f "$KODEMA_HELM_EXTRA_VALUES" ]] || die "KODEMA_HELM_EXTRA_VALUES file not found: ${KODEMA_HELM_EXTRA_VALUES}"
+        extra_values=(--values "$KODEMA_HELM_EXTRA_VALUES")
       fi
 
       local release_ns tmp_charts_dir stack_chart
       release_ns="$(jq -r '.release_namespace' "$descriptor_file")"
       tmp_charts_dir="$(mktemp -d "${work_dir}/charts.XXXXXX")"
-      cp -R "${KODAMA_REPO_ROOT}/deploy/charts/." "$tmp_charts_dir/"
-      stack_chart="${tmp_charts_dir}/kodama-stack"
+      cp -R "${KODEMA_REPO_ROOT}/deploy/charts/." "$tmp_charts_dir/"
+      stack_chart="${tmp_charts_dir}/kodema-stack"
 
       helm dependency build --skip-refresh "$stack_chart" >/dev/null
 
       if [[ "$dry_run" == "true" ]]; then
         log_info "dry-run: rendering Helm templates for ${cloud}/${cluster}"
-        helm template "kodama-${cluster}" "$stack_chart" \
+        helm template "kodema-${cluster}" "$stack_chart" \
           --namespace "$release_ns" \
           --values "$values_file" \
           ${extra_values[@]+"${extra_values[@]}"} >/dev/null
@@ -518,33 +518,33 @@ MIGRATE_POD
       fi
 
       local configured_repo configured_digest configured_env
-      configured_repo="$(jq -r '.kodama.image.repository // empty' "$values_file")"
-      if [[ "$configured_repo" == "registry.example.com/kodama" && "$allow_placeholder_image" != "true" ]]; then
+      configured_repo="$(jq -r '.kodema.image.repository // empty' "$values_file")"
+      if [[ "$configured_repo" == "registry.example.com/kodema" && "$allow_placeholder_image" != "true" ]]; then
         rm -rf "$tmp_charts_dir"
-        die "refusing live Helm install with placeholder image '${configured_repo}' (export KODAMA_IMAGE_REPOSITORY and KODAMA_IMAGE_DIGEST, or pass --allow-placeholder-image)"
+        die "refusing live Helm install with placeholder image '${configured_repo}' (export KODEMA_IMAGE_REPOSITORY and KODEMA_IMAGE_DIGEST, or pass --allow-placeholder-image)"
       fi
 
-      configured_digest="$(jq -r '.kodama.image.digest // empty' "$values_file")"
-      if [[ -z "${KODAMA_IMAGE_DIGEST:-}" || ! "${KODAMA_IMAGE_DIGEST}" =~ ^sha256:[0-9a-f]{64}$ || ! "$configured_digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+      configured_digest="$(jq -r '.kodema.image.digest // empty' "$values_file")"
+      if [[ -z "${KODEMA_IMAGE_DIGEST:-}" || ! "${KODEMA_IMAGE_DIGEST}" =~ ^sha256:[0-9a-f]{64}$ || ! "$configured_digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
         rm -rf "$tmp_charts_dir"
-        die "refusing live Helm install without a valid KODAMA_IMAGE_DIGEST (want sha256:<64 lowercase hex>)"
+        die "refusing live Helm install without a valid KODEMA_IMAGE_DIGEST (want sha256:<64 lowercase hex>)"
       fi
 
-      configured_env="$(jq -r '.kodama.environment // "production"' "$values_file")"
+      configured_env="$(jq -r '.kodema.environment // "production"' "$values_file")"
       if [[ "$configured_env" == "production" ]]; then
         local has_env_oidc="false" has_file_oidc="false"
-        if [[ -n "${KODAMA_OIDC_ISSUER:-}" && -n "${KODAMA_OIDC_AUDIENCE:-}" && -n "${KODAMA_OIDC_TENANT_CLAIM:-}" ]]; then
+        if [[ -n "${KODEMA_OIDC_ISSUER:-}" && -n "${KODEMA_OIDC_AUDIENCE:-}" && -n "${KODEMA_OIDC_TENANT_CLAIM:-}" ]]; then
           has_env_oidc="true"
         fi
-        if [[ -n "${KODAMA_HELM_EXTRA_VALUES:-}" ]] &&
-          grep -Eq 'KODAMA_OIDC_ISSUER' "$KODAMA_HELM_EXTRA_VALUES" &&
-          grep -Eq 'KODAMA_OIDC_AUDIENCE' "$KODAMA_HELM_EXTRA_VALUES" &&
-          grep -Eq 'KODAMA_OIDC_TENANT_CLAIM' "$KODAMA_HELM_EXTRA_VALUES"; then
+        if [[ -n "${KODEMA_HELM_EXTRA_VALUES:-}" ]] &&
+          grep -Eq 'KODEMA_OIDC_ISSUER' "$KODEMA_HELM_EXTRA_VALUES" &&
+          grep -Eq 'KODEMA_OIDC_AUDIENCE' "$KODEMA_HELM_EXTRA_VALUES" &&
+          grep -Eq 'KODEMA_OIDC_TENANT_CLAIM' "$KODEMA_HELM_EXTRA_VALUES"; then
           has_file_oidc="true"
         fi
         if [[ "$has_env_oidc" != "true" && "$has_file_oidc" != "true" ]]; then
           rm -rf "$tmp_charts_dir"
-          die "refusing live production Helm install without OIDC configuration (set KODAMA_OIDC_ISSUER, KODAMA_OIDC_AUDIENCE, and KODAMA_OIDC_TENANT_CLAIM, or supply them via KODAMA_HELM_EXTRA_VALUES)"
+          die "refusing live production Helm install without OIDC configuration (set KODEMA_OIDC_ISSUER, KODEMA_OIDC_AUDIENCE, and KODEMA_OIDC_TENANT_CLAIM, or supply them via KODEMA_HELM_EXTRA_VALUES)"
         fi
       fi
 
@@ -552,12 +552,12 @@ MIGRATE_POD
         rm -rf "$tmp_charts_dir"
         die "kubeconfig not found at ${kubeconfig_file} (run 'scripts/deploy ${cloud} kubeconfig --cluster ${cluster}' first)"
       }
-      # KODAMA_HELM_NO_WAIT=1 returns once the release is applied, for iterating
+      # KODEMA_HELM_NO_WAIT=1 returns once the release is applied, for iterating
       # on a cluster whose workload is known not to be ready yet.
       local -a wait_args=(--wait)
-      [[ -z "${KODAMA_HELM_NO_WAIT:-}" ]] || wait_args=()
-      log_info "installing/upgrading Helm release kodama-${cluster} in namespace ${release_ns}"
-      helm upgrade --install "kodama-${cluster}" "$stack_chart" \
+      [[ -z "${KODEMA_HELM_NO_WAIT:-}" ]] || wait_args=()
+      log_info "installing/upgrading Helm release kodema-${cluster} in namespace ${release_ns}"
+      helm upgrade --install "kodema-${cluster}" "$stack_chart" \
         --kubeconfig "$kubeconfig_file" \
         --namespace "$release_ns" \
         --create-namespace \

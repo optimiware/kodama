@@ -4,7 +4,7 @@ package nats
 //
 // The reference broker authenticates every external connection through a
 // signed authorization callout instead of one shared client credential. A
-// client presents its current Kodama credential (the same bearer token used by
+// client presents its current Kodema credential (the same bearer token used by
 // HTTP and MCP) as the NATS auth token. The broker forwards the request to this
 // service, which resolves the credential's current principal, asks the one
 // authorizer for the scope's event grants and returns a short-lived user JWT
@@ -29,10 +29,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/shell/authorize"
-	"github.com/optimiware/kodama/internal/shell/identity"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/shell/authorize"
+	"github.com/optimiware/kodema/internal/shell/identity"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
 )
 
 const (
@@ -73,7 +73,7 @@ type CalloutRequest struct {
 
 // CalloutConnection is the narrow broker connection the authorization service
 // needs. It is deliberately raw: the system authorization subject is not a
-// scope-qualified Kodama subject, and the service only ever receives requests
+// scope-qualified Kodema subject, and the service only ever receives requests
 // and publishes replies to the request's reply inbox.
 type CalloutConnection interface {
 	SubscribeCallout(context.Context, string, func(context.Context, CalloutRequest) error) (Subscription, error)
@@ -95,9 +95,9 @@ type CalloutConfig struct {
 	// configured with the matching public account key as auth_callout.issuer.
 	IssuerSeed string
 	// Account is the broker account admitted users are bound to. It must name
-	// the account that holds the Kodama streams and the bypass users.
+	// the account that holds the Kodema streams and the bypass users.
 	Account string
-	// Principal resolves the presented Kodama credential.
+	// Principal resolves the presented Kodema credential.
 	Principal authorize.CurrentPrincipal
 	// Authorizer is the one grant matrix shared by HTTP, MCP and NATS.
 	Authorizer authorize.Authorizer

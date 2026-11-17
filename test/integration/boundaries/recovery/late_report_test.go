@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/userland/git"
-	idfix "github.com/optimiware/kodama/test/support/boundaries/identity"
-	recoveryfix "github.com/optimiware/kodama/test/support/boundaries/recovery"
+	"github.com/optimiware/kodema/internal/userland/git"
+	idfix "github.com/optimiware/kodema/test/support/boundaries/identity"
+	recoveryfix "github.com/optimiware/kodema/test/support/boundaries/recovery"
 )
 
 // TestLateReportFailureLeavesAcceptedEntryAndRecoversExactlyOnce proves the

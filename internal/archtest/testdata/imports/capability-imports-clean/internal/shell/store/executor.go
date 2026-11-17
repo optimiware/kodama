@@ -1,3 +1,3 @@
 package store
 
-import _ "kodama/internal/shell/event"
+import _ "kodema/internal/shell/event"

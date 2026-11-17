@@ -13,18 +13,18 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/test/support/factory"
-	"github.com/optimiware/kodama/test/support/infrastructure/harness"
-	kubesupport "github.com/optimiware/kodama/test/support/infrastructure/kubernetes"
-	runtimesupport "github.com/optimiware/kodama/test/support/infrastructure/runtime"
+	"github.com/optimiware/kodema/test/support/factory"
+	"github.com/optimiware/kodema/test/support/infrastructure/harness"
+	kubesupport "github.com/optimiware/kodema/test/support/infrastructure/kubernetes"
+	runtimesupport "github.com/optimiware/kodema/test/support/infrastructure/runtime"
 )
 
 // TestMain installs the shared signal/orphan cleanup for both infrastructure
 // families this suite uses. Every container and volume this suite creates
 // is run-labelled, and every kind cluster is uniquely named and registered by
 // kubesupport, so a killed test process is swept instead of leaking
-// infrastructure. The protected cluster kodama-probe and any cluster outside
-// the generated kodama-t-<pid>-<random> namespace are never touched.
+// infrastructure. The protected cluster kodema-probe and any cluster outside
+// the generated kodema-t-<pid>-<random> namespace are never touched.
 //
 // Only a leak this process caused changes the exit code. A dead-owner sweep
 // error can belong to another lane whose resources another process removed

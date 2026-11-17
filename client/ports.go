@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/fault"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/fault"
 )
 
 // CredentialSource supplies the current credential for one authentication. It

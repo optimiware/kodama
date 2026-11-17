@@ -17,11 +17,11 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/kernel/definition"
-	runtimepodman "github.com/optimiware/kodama/internal/shell/runtime/podman"
-	pgtest "github.com/optimiware/kodama/test/support/infrastructure/postgres"
-	runtimesupport "github.com/optimiware/kodama/test/support/infrastructure/runtime"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/kernel/definition"
+	runtimepodman "github.com/optimiware/kodema/internal/shell/runtime/podman"
+	pgtest "github.com/optimiware/kodema/test/support/infrastructure/postgres"
+	runtimesupport "github.com/optimiware/kodema/test/support/infrastructure/runtime"
 )
 
 // ExecutionWorkspaceID reads the durable retained workspace identity of one
@@ -104,7 +104,7 @@ func (h *Harness) ExecutionCredential(ctx context.Context, executionID, actionNa
 	if row.WorkloadID == "" {
 		return "", fmt.Errorf("action %s/%s has no workload identity yet", executionID, actionName)
 	}
-	path := filepath.Join(h.runtimeRoot, row.WorkloadID, "kodama", "secrets", id.SecretTokenName)
+	path := filepath.Join(h.runtimeRoot, row.WorkloadID, "kodema", "secrets", id.SecretTokenName)
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return "", fmt.Errorf("read materialized execution credential: %w", err)

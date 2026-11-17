@@ -4,7 +4,7 @@ package lifecycle
 
 // Broker outage on the real factory composition.
 //
-// Coverage map (docs/specs/11-verification.md, AC 15; KODAMA.md "Broker
+// Coverage map (docs/specs/11-verification.md, AC 15; KODEMA.md "Broker
 // independence"; docs/specs/08-operations-events.md §5):
 //   - With NATS unavailable, execution observation/advancement, request
 //     settlement, deadlines, task reply/queue and dispatch continue from
@@ -53,8 +53,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/test/support/factory"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/test/support/factory"
 )
 
 const (
@@ -110,9 +110,9 @@ func testOutageProgression(t *testing.T, harness *factory.Harness) {
 					// The sleep keeps the outage window inside the run instead
 					// of racing an instant action.
 					"sleep 2",
-					fmt.Sprintf(`test "$(cat /kodama/inputs/seed)" = %q`, seed),
+					fmt.Sprintf(`test "$(cat /kodema/inputs/seed)" = %q`, seed),
 					`printf 'shared workspace\n' > /workspace/marker`,
-					`ARTIFACT="built:$(cat /kodama/inputs/seed)"`,
+					`ARTIFACT="built:$(cat /kodema/inputs/seed)"`,
 					submitScript("artifact", "ARTIFACT"),
 				},
 			},
@@ -124,8 +124,8 @@ func testOutageProgression(t *testing.T, harness *factory.Harness) {
 				Commands: []string{
 					"sleep 2",
 					`test "$(cat /workspace/marker)" = "shared workspace"`,
-					fmt.Sprintf(`test "$(cat /kodama/outputs/prepare/artifact)" = %q`, artifact),
-					`FINAL="consumed:$(cat /kodama/outputs/prepare/artifact)"`,
+					fmt.Sprintf(`test "$(cat /kodema/outputs/prepare/artifact)" = %q`, artifact),
+					`FINAL="consumed:$(cat /kodema/outputs/prepare/artifact)"`,
 					submitScript("final", "FINAL"),
 				},
 			},
@@ -238,9 +238,9 @@ func testOutageReply(t *testing.T, harness *factory.Harness) {
 			Image:   harness.Image.Reference,
 			Timeout: containerTimeout,
 			Commands: []string{
-				`test -n "${KODAMA_TASK:-}"`,
-				`test -e /kodama/task.json`,
-				`if [ -s /kodama/task.json ] && grep -q '` + answerMarker + `' /kodama/task.json; then echo restored; exit 0; fi`,
+				`test -n "${KODEMA_TASK:-}"`,
+				`test -e /kodema/task.json`,
+				`if [ -s /kodema/task.json ] && grep -q '` + answerMarker + `' /kodema/task.json; then echo restored; exit 0; fi`,
 				`echo awaiting-handoff`,
 				`sleep 600`,
 			},
@@ -469,7 +469,7 @@ func requireOutageDedupeWindow(t *testing.T, result catchUpResult) {
 // is duplicated or unaccounted for, and each stored message carries the
 // committed event identity as its dedupe header.
 func comparePublication(events []api.Event, stream []factory.StreamEvent, requireOrder bool) string {
-	expectedSubject := fmt.Sprintf("kodama.v1.%s.%s.events", factory.TenantID, factory.ProjectID)
+	expectedSubject := fmt.Sprintf("kodema.v1.%s.%s.events", factory.TenantID, factory.ProjectID)
 
 	durableOrder := make([]string, 0, len(events))
 	subjectOf := make(map[string]string, len(events))

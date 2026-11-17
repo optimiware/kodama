@@ -1,4 +1,4 @@
-module github.com/optimiware/kodama
+module github.com/optimiware/kodema
 
 go 1.27.3
 

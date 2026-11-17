@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/userland/git/app/native"
-	"github.com/optimiware/kodama/test/support/infrastructure/harness"
+	"github.com/optimiware/kodema/internal/userland/git/app/native"
+	"github.com/optimiware/kodema/test/support/infrastructure/harness"
 )
 
 // TestServiceOutputConcurrentRead pins the capture invariant: the service

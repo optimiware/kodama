@@ -4,8 +4,8 @@
 set -eu
 marker=${SMOKE_MARKER:?}
 ready=${SMOKE_PREPARE_READY:?}
-execution=${KODAMA_EXECUTION:?}
-if [ -e /kodama/task.json ]; then
+execution=${KODEMA_EXECUTION:?}
+if [ -e /kodema/task.json ]; then
 	printf 'a task-free request-wait preparation materialized a task snapshot\n' >&2
 	exit 1
 fi

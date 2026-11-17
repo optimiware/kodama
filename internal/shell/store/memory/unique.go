@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/optimiware/kodama/internal/shell/store"
+	"github.com/optimiware/kodema/internal/shell/store"
 )
 
 // uniqueRule is one declared uniqueness rule the adapter checks against the

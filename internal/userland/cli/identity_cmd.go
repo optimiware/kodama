@@ -10,10 +10,10 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"github.com/optimiware/kodama/api"
+	"github.com/optimiware/kodema/api"
 )
 
-// DeriveOIDCPrincipalID derives the deterministic Kodama human principal ID
+// DeriveOIDCPrincipalID derives the deterministic Kodema human principal ID
 // ("oidc-" + lowercase hex of sha256(issuer + "\x00" + subject)[:16]).
 func DeriveOIDCPrincipalID(issuer, subject string) (string, error) {
 	if issuer == "" {
@@ -351,7 +351,7 @@ func runMemberList(ctx context.Context, config Config, args []string, ports Port
 	}
 	projectID := resolveProject(projectFlag, config, deps)
 	if projectID == "" {
-		return usage(ports.Err, "member list requires --project <id> or KODAMA_PROJECT")
+		return usage(ports.Err, "member list requires --project <id> or KODEMA_PROJECT")
 	}
 	if err := (api.MembershipListRequest{ProjectID: projectID}).Validate(); err != nil {
 		return usage(ports.Err, publicMessage(err))
@@ -442,7 +442,7 @@ func runMemberGrant(ctx context.Context, config Config, args []string, ports Por
 	}
 	projectID := resolveProject(projectFlag, config, deps)
 	if projectID == "" {
-		return usage(ports.Err, "member grant requires --project <id> or KODAMA_PROJECT")
+		return usage(ports.Err, "member grant requires --project <id> or KODEMA_PROJECT")
 	}
 	roles := parseRoleList(roleFlags)
 	if len(roles) == 0 {
@@ -567,7 +567,7 @@ func runMemberRevoke(ctx context.Context, config Config, args []string, ports Po
 	}
 	projectID := resolveProject(projectFlag, config, deps)
 	if projectID == "" {
-		return usage(ports.Err, "member revoke requires --project <id> or KODAMA_PROJECT")
+		return usage(ports.Err, "member revoke requires --project <id> or KODEMA_PROJECT")
 	}
 
 	positionalTarget := ""
@@ -730,7 +730,7 @@ func resolveMemberPrincipal(
 }
 
 // resolveOIDCIssuer resolves the installation's OIDC issuer via explicit flag,
-// injected expectation, /.well-known/kodama-configuration discovery, or the
+// injected expectation, /.well-known/kodema-configuration discovery, or the
 // persisted human session / JWT.
 func resolveOIDCIssuer(ctx context.Context, config Config, ports Ports, deps CommandDeps, explicit string) (string, error) {
 	if trimmed := strings.TrimSpace(explicit); trimmed != "" {

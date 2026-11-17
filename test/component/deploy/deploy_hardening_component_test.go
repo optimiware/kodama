@@ -217,25 +217,25 @@ func TestAWSPostgresEngineVersionAndContextTenantsValidation(t *testing.T) {
 	}
 }
 
-// TestKodamaChartRefusesEmptyOIDCValues renders the real chart with an empty
+// TestKodemaChartRefusesEmptyOIDCValues renders the real chart with an empty
 // value in an otherwise complete production document. An empty OIDC issuer,
 // audience, JWKS URL, tenant claim or discovery client id must fail the render
 // and name the setting; a silent empty environment value is not accepted.
-func TestKodamaChartRefusesEmptyOIDCValues(t *testing.T) {
+func TestKodemaChartRefusesEmptyOIDCValues(t *testing.T) {
 	helm, charts := stagedCharts(t)
-	chart := filepath.Join(charts, "kodama")
+	chart := filepath.Join(charts, "kodema")
 
 	names := []string{
-		"KODAMA_OIDC_ISSUER",
-		"KODAMA_OIDC_AUDIENCE",
-		"KODAMA_OIDC_JWKS_URL",
-		"KODAMA_OIDC_TENANT_CLAIM",
-		"KODAMA_DISCOVERY_CLIENT_ID",
+		"KODEMA_OIDC_ISSUER",
+		"KODEMA_OIDC_AUDIENCE",
+		"KODEMA_OIDC_JWKS_URL",
+		"KODEMA_OIDC_TENANT_CLAIM",
+		"KODEMA_DISCOVERY_CLIENT_ID",
 	}
 	for _, name := range names {
 		t.Run(name, func(t *testing.T) {
-			rendered, err := renderChartArgs(t, helm, "kodama", chart,
-				kodamaProductionArgs("--set", "config.extraEnv."+name+"=")...)
+			rendered, err := renderChartArgs(t, helm, "kodema", chart,
+				kodemaProductionArgs("--set", "config.extraEnv."+name+"=")...)
 			if err == nil {
 				t.Fatalf("helm template accepted an empty config.extraEnv.%s:\n%s", name, rendered)
 			}
@@ -245,7 +245,7 @@ func TestKodamaChartRefusesEmptyOIDCValues(t *testing.T) {
 		})
 	}
 
-	if _, err := renderChartArgs(t, helm, "kodama", chart, kodamaProductionArgs()...); err != nil {
+	if _, err := renderChartArgs(t, helm, "kodema", chart, kodemaProductionArgs()...); err != nil {
 		t.Fatalf("helm template refused the complete non-empty production document: %v", err)
 	}
 }
@@ -256,7 +256,7 @@ func TestKodamaChartRefusesEmptyOIDCValues(t *testing.T) {
 // so the render must fail and name the empty member.
 func TestOAuthSonasChartRefusesEmptyOIDCValues(t *testing.T) {
 	helm, chart := stageStackChart(t)
-	const issuer = "https://oauthsonas.kodama-system.svc.cluster.local:8443"
+	const issuer = "https://oauthsonas.kodema-system.svc.cluster.local:8443"
 	cases := []struct {
 		name   string
 		config string
@@ -301,7 +301,7 @@ func TestOAuthSonasChartRefusesEmptyOIDCValues(t *testing.T) {
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
 			values := oauthSonasValuesFile(t, "oauthsonas:\n  enabled: true\n  config: |\n    "+strings.ReplaceAll(testCase.config, "\n", "\n    "))
-			rendered, err := oauthSonasRender(t, helm, chart, "kodama-system", values)
+			rendered, err := oauthSonasRender(t, helm, chart, "kodema-system", values)
 			if err == nil {
 				t.Fatalf("render accepted %s:\n%s", testCase.name, rendered)
 			}
@@ -314,7 +314,7 @@ func TestOAuthSonasChartRefusesEmptyOIDCValues(t *testing.T) {
 	// A public client without a secret stays valid: the guard only refuses an
 	// explicitly empty secret, not the absence of one.
 	values := oauthSonasValuesFile(t, oauthSonasBaseValues)
-	if _, err := oauthSonasRender(t, helm, chart, "kodama-system", values); err != nil {
+	if _, err := oauthSonasRender(t, helm, chart, "kodema-system", values); err != nil {
 		t.Fatalf("render refused a valid public OAuthSonas client: %v", err)
 	}
 }

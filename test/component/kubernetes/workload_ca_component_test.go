@@ -16,11 +16,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/kernel"
-	"github.com/optimiware/kodama/internal/kernel/definition"
-	"github.com/optimiware/kodama/internal/kernel/engine"
-	runtimekube "github.com/optimiware/kodama/internal/shell/runtime/kube"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/kernel"
+	"github.com/optimiware/kodema/internal/kernel/definition"
+	"github.com/optimiware/kodema/internal/kernel/engine"
+	runtimekube "github.com/optimiware/kodema/internal/shell/runtime/kube"
 )
 
 // workloadCAImage is the ordinary smoke workload used by this test. It is the
@@ -29,8 +29,8 @@ import (
 // component images.
 const (
 	workloadCAImage       = "docker.io/curlimages/curl:8.10.1"
-	workloadCASecret      = "kodama-workload-ca"
-	workloadCAWrongSecret = "kodama-workload-ca-wrong"
+	workloadCASecret      = "kodema-workload-ca"
+	workloadCAWrongSecret = "kodema-workload-ca-wrong"
 )
 
 // TestWorkloadMountedCAHTTPS proves the mounted installation CA is usable by an
@@ -114,7 +114,7 @@ func newWorkloadCAAdapter(t *testing.T, fx *fixture, secretName string) *runtime
 		Cluster:   fx.Client,
 		Namespace: testNamespace,
 		TenantID:  testTenant(),
-		KodamaURL: testKodamaURL,
+		KodemaURL: testKodemaURL,
 		Policy: runtimekube.Policy{
 			CPURequest:    "50m",
 			CPULimit:      "200m",
@@ -283,7 +283,7 @@ func generateWrongCA(t *testing.T) string {
 	}
 	template := &x509.Certificate{
 		SerialNumber:          big.NewInt(1),
-		Subject:               pkix.Name{CommonName: "kodama-wrong-workload-ca"},
+		Subject:               pkix.Name{CommonName: "kodema-wrong-workload-ca"},
 		NotBefore:             time.Now().Add(-time.Hour),
 		NotAfter:              time.Now().Add(time.Hour),
 		IsCA:                  true,

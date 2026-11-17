@@ -13,15 +13,15 @@ import (
 	"maps"
 	"sort"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/kernel/engine"
-	"github.com/optimiware/kodama/internal/kernel/script"
-	"github.com/optimiware/kodama/internal/shell/workspace"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/kernel/engine"
+	"github.com/optimiware/kodema/internal/kernel/script"
+	"github.com/optimiware/kodema/internal/shell/workspace"
 )
 
 // activationRoot is the read-only mount of the immutable activation snapshot.
-const activationRoot = "/kodama"
+const activationRoot = "/kodema"
 
 // readOnlyMode is the explicit read-only mode for every projected file.
 const readOnlyMode = 0o444
@@ -31,18 +31,18 @@ const workloadCAVolumeName = "workload-ca"
 
 // activationConfigMapName returns the stable activation snapshot name.
 func activationConfigMapName(workload id.WorkloadID) string {
-	return "kodama-activation-" + stableDigest(string(workload))
+	return "kodema-activation-" + stableDigest(string(workload))
 }
 
 // credentialSecretName returns the stable credential Secret name.
 func credentialSecretName(workload id.WorkloadID) string {
-	return "kodama-credential-" + stableDigest(string(workload))
+	return "kodema-credential-" + stableDigest(string(workload))
 }
 
 // workloadJobName returns the stable Job name. A retry must find exactly this
 // Job, never a generated replacement.
 func workloadJobName(workload id.WorkloadID) string {
-	return "kodama-job-" + stableDigest(string(workload))
+	return "kodema-job-" + stableDigest(string(workload))
 }
 
 // labels returns the pinned tenant/execution/action/workload/workspace labels
@@ -168,7 +168,7 @@ func (a *Adapter) preparationDigest(request engine.PrepareRequest, materializati
 		writeDigestString(digest, string(entry.Name))
 		writeDigestString(digest, entry.Value)
 	}
-	writeDigestString(digest, a.kodamaURL)
+	writeDigestString(digest, a.kodemaURL)
 	writeDigestCount(digest, len(materialization.Files))
 	for _, file := range materialization.Files {
 		writeDigestString(digest, file.Path)
@@ -235,7 +235,7 @@ func (a *Adapter) jobManifest(prepared preparedWorkload, identity engine.EffectI
 		env = append(env, EnvVar{Name: string(entry.Name), Value: entry.Value})
 	}
 	env = append(env,
-		EnvVar{Name: id.EnvURL, Value: a.kodamaURL},
+		EnvVar{Name: id.EnvURL, Value: a.kodemaURL},
 		EnvVar{Name: id.EnvExecution, Value: string(identity.ExecutionID)},
 		EnvVar{Name: id.EnvAction, Value: string(prepared.actionName)},
 	)

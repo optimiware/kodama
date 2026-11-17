@@ -5,12 +5,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/shell/pipeline"
+	"github.com/optimiware/kodema/internal/shell/pipeline"
 )
 
 // deliveryPhrases are the statements the delivery example must make: external
 // registry ownership, digest pinning and attribution, retry without rebuilding,
-// receipt/idempotency convergence, the unshadowable KODAMA_* context, and
+// receipt/idempotency convergence, the unshadowable KODEMA_* context, and
 // readiness as an observed result rather than a command exit.
 var deliveryPhrases = []string{
 	"external registry",
@@ -20,12 +20,12 @@ var deliveryPhrases = []string{
 	"idempotenc",
 	"receipt",
 	"readiness",
-	"not a kodama entity",
-	"KODAMA_URL",
-	"KODAMA_EXECUTION",
-	"KODAMA_ACTION",
-	"KODAMA_TASK",
-	"KODAMA_TOKEN",
+	"not a kodema entity",
+	"KODEMA_URL",
+	"KODEMA_EXECUTION",
+	"KODEMA_ACTION",
+	"KODEMA_TASK",
+	"KODEMA_TOKEN",
 }
 
 // deliveryHeadings are the required delivery README sections.
@@ -38,7 +38,7 @@ var deliveryHeadings = []string{
 
 // TestDeliveryReadmeDocumentsRegistryAndRetries checks the delivery README for
 // the pinned-image, external-registry, attribution, retry, idempotency,
-// KODAMA_* and readiness statements.
+// KODEMA_* and readiness statements.
 func TestDeliveryReadmeDocumentsRegistryAndRetries(t *testing.T) {
 	const rel = "delivery/README.md"
 	data := readExample(t, rel)
@@ -64,9 +64,9 @@ func TestDeliveryReadmeDocumentsRegistryAndRetries(t *testing.T) {
 }
 
 // TestDeliveryReadmeQualifiesExecutionContext checks the delivery README's
-// execution-context statement precisely: KODAMA_ACTION is the current action
-// slug, and KODAMA_TASK is present only when the execution has an associated
-// task and unset for task-free runs. The README must not claim KODAMA_TASK is
+// execution-context statement precisely: KODEMA_ACTION is the current action
+// slug, and KODEMA_TASK is present only when the execution has an associated
+// task and unset for task-free runs. The README must not claim KODEMA_TASK is
 // supplied to every action.
 func TestDeliveryReadmeQualifiesExecutionContext(t *testing.T) {
 	const rel = "delivery/README.md"
@@ -74,24 +74,24 @@ func TestDeliveryReadmeQualifiesExecutionContext(t *testing.T) {
 	if section == "" {
 		t.Fatalf("%s must document the unshadowable execution context", rel)
 	}
-	actionSentence := sentenceContaining(section, "KODAMA_ACTION")
+	actionSentence := sentenceContaining(section, "KODEMA_ACTION")
 	if actionSentence == "" {
-		t.Fatalf("%s must describe KODAMA_ACTION", rel)
+		t.Fatalf("%s must describe KODEMA_ACTION", rel)
 	}
 	if !strings.Contains(actionSentence, "action slug") {
-		t.Fatalf("%s must state KODAMA_ACTION is the current action slug; sentence = %q", rel, actionSentence)
+		t.Fatalf("%s must state KODEMA_ACTION is the current action slug; sentence = %q", rel, actionSentence)
 	}
-	taskSentence := sentenceContaining(section, "KODAMA_TASK")
+	taskSentence := sentenceContaining(section, "KODEMA_TASK")
 	if taskSentence == "" {
-		t.Fatalf("%s must describe KODAMA_TASK", rel)
+		t.Fatalf("%s must describe KODEMA_TASK", rel)
 	}
 	for _, want := range []string{"associated task", "unset", "task-free"} {
 		if !strings.Contains(taskSentence, want) {
-			t.Fatalf("%s KODAMA_TASK statement must state %q; sentence = %q", rel, want, taskSentence)
+			t.Fatalf("%s KODEMA_TASK statement must state %q; sentence = %q", rel, want, taskSentence)
 		}
 	}
 	if strings.Contains(taskSentence, "every action") {
-		t.Fatalf("%s must not claim KODAMA_TASK is supplied to every action; sentence = %q", rel, taskSentence)
+		t.Fatalf("%s must not claim KODEMA_TASK is supplied to every action; sentence = %q", rel, taskSentence)
 	}
 	if !strings.Contains(section, "plain.yaml") {
 		t.Fatalf("%s must name a task-free example pipeline; section = %q", rel, section)

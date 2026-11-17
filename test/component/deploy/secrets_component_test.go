@@ -40,12 +40,12 @@ const stubKEKRaw = "0123456789abcdef0123456789abcdef"
 // KEK, its 44-byte base64 form, its 64-byte hex form and the 30+ byte database
 // sentinels), so a real split leaves at least one fragment of 12 or more
 // bytes. Shorter fragments carry too little information to reconstruct the
-// credential and would make ordinary tokens such as "kodama" or "tls://"
+// credential and would make ordinary tokens such as "kodema" or "tls://"
 // plausible false positives.
 const minimumSplitNeedle = 12
 
 // dbSentinels are the four known database passwords injected through the
-// documented KODAMA_DB_* environment variables. They must appear in the
+// documented KODEMA_DB_* environment variables. They must appear in the
 // env-file handed to `kubectl create secret` and must not survive the run on
 // disk, in either the failing or the succeeding path.
 var dbSentinels = []string{
@@ -116,7 +116,7 @@ func argvRecorder(name string) string {
 // fakeKubectl answers the bootstrap-secrets queries. Every `get secret` is
 // reported missing so every reconcile branch runs; everything else succeeds.
 // It also records the mode of every path passed through --from-file (notably
-// the KEK ciphertext handed to `kubectl create secret kodama-keys`) and the
+// the KEK ciphertext handed to `kubectl create secret kodema-keys`) and the
 // content of every --from-env-file (the database URLs and passwords), which is
 // the only way to observe those temporary files before the trap removes them.
 // Client-side dry-run calls emit the manifest kubectl would have produced, so
@@ -226,8 +226,8 @@ for ((index = 0; index < ${#args[@]}; index++)); do
       exit 0
     fi
     if [[ "${KUBECTL_SECRETS_PRESENT:-0}" == "1" ]]; then
-      if [[ "$get_name" == "kodama-nats-auth" ]]; then
-        printf '%s\n' '{"apiVersion":"v1","kind":"Secret","metadata":{"name":"kodama-nats-auth"},"data":{"issuer.seed":"c2VlZA==","issuer.pub":"cHVi","shell-user":"c2hlbGw=","shell-password":"c2gtcGFzcw==","callout-user":"Y2FsbG91dA==","callout-password":"Y2wtcGFzcw==","account":"S09EQU1B"}}'
+      if [[ "$get_name" == "kodema-nats-auth" ]]; then
+        printf '%s\n' '{"apiVersion":"v1","kind":"Secret","metadata":{"name":"kodema-nats-auth"},"data":{"issuer.seed":"c2VlZA==","issuer.pub":"cHVi","shell-user":"c2hlbGw=","shell-password":"c2gtcGFzcw==","callout-user":"Y2FsbG91dA==","callout-password":"Y2wtcGFzcw==","account":"S09ERU1B"}}'
       fi
       exit 0
     fi
@@ -347,7 +347,7 @@ set -u
 } >> "$ALL_ARGV_LOG"
 for arg in "$@"; do
   case "$arg" in
-    */kodama-scw-kek.*/plaintext)
+    */kodema-scw-kek.*/plaintext)
       {
         printf 'chmod_path=%s\n' "$arg"
         printf 'chmod_requested=%s\n' "${1:-}"
@@ -493,8 +493,8 @@ func newSandbox(t *testing.T) *sandbox {
   "environment": "production",
   "account_or_project_id": "project-1",
   "region": "fr-par",
-  "release_namespace": "kodama-system",
-  "postgres": {"host": "db.example", "port": 5432, "database_name": "kodama", "admin_user": "kodama_admin"},
+  "release_namespace": "kodema-system",
+  "postgres": {"host": "db.example", "port": 5432, "database_name": "kodema", "admin_user": "kodema_admin"},
   "kms": {"key_id": "fr-par/00000000-0000-0000-0000-000000000000", "key_ref": "scw-kms:fr-par/00000000-0000-0000-0000-000000000000", "key_adapter": "scw-kms"},
   "kubernetes": {"cluster_name": "stage", "storage_class": "sbs-default"},
   "tenants": ["tenant-a"]
@@ -504,7 +504,7 @@ func newSandbox(t *testing.T) *sandbox {
 	writeFile(t, filepath.Join(box.workDir, "kubeconfig.yaml"), "")
 	// generate_cluster_pki reuses an existing complete PKI; the fakes never
 	// read these files, so their content is irrelevant.
-	for _, name := range []string{"ca.crt", "ca.key", "kodama.crt", "nats.crt", "client.crt"} {
+	for _, name := range []string{"ca.crt", "ca.key", "kodema.crt", "nats.crt", "client.crt"} {
 		writeFile(t, filepath.Join(box.workDir, "pki", name), "test-"+name)
 	}
 
@@ -512,12 +512,12 @@ func newSandbox(t *testing.T) *sandbox {
 		"PATH="+filepath.Join(root, "bin")+string(os.PathListSeparator)+os.Getenv("PATH"),
 		"HOME="+filepath.Join(root, "home"),
 		"TMPDIR="+box.tempDir,
-		"KODAMA_DEPLOY_STATE_DIR="+box.stateDir,
-		"KODAMA_CLUSTER=stage",
-		"KODAMA_DB_RUNTIME_PASSWORD="+dbSentinels[0],
-		"KODAMA_DB_CONTROLLER_PASSWORD="+dbSentinels[1],
-		"KODAMA_DB_PUBLISHER_PASSWORD="+dbSentinels[2],
-		"KODAMA_DB_AUTH_PASSWORD="+dbSentinels[3],
+		"KODEMA_DEPLOY_STATE_DIR="+box.stateDir,
+		"KODEMA_CLUSTER=stage",
+		"KODEMA_DB_RUNTIME_PASSWORD="+dbSentinels[0],
+		"KODEMA_DB_CONTROLLER_PASSWORD="+dbSentinels[1],
+		"KODEMA_DB_PUBLISHER_PASSWORD="+dbSentinels[2],
+		"KODEMA_DB_AUTH_PASSWORD="+dbSentinels[3],
 		"SCW_ARGV_LOG="+box.argvLog,
 		"SCW_SECRET_LOG="+box.secretLog,
 		"KUBECTL_ARGV_LOG="+box.kubectlLog,
@@ -531,7 +531,7 @@ func newSandbox(t *testing.T) *sandbox {
 		"REAL_OPENSSL="+realOpenssl,
 		"REAL_CHMOD="+realChmod,
 		"ALL_ARGV_LOG="+box.allArgvLog,
-		"KODAMA_NATS_AUTH_KEY_TOOL="+natsAuthKeyToolPath,
+		"KODEMA_NATS_AUTH_KEY_TOOL="+natsAuthKeyToolPath,
 	)
 	box.env = append(box.env, realCommands...)
 	return box
@@ -577,7 +577,7 @@ func (b *sandbox) runArgs(t *testing.T, failScw bool, umask string, extra ...str
 		"--descriptor", filepath.Join(b.workDir, "descriptor.json"),
 		"--kubeconfig", filepath.Join(b.workDir, "kubeconfig.yaml")}
 	args = append(args, extra...)
-	args = append([]string{"bash", "-c", `umask "$1"; shift; exec "$@"`, "kodama-umask", umask}, args...)
+	args = append([]string{"bash", "-c", `umask "$1"; shift; exec "$@"`, "kodema-umask", umask}, args...)
 	command := exec.Command(args[0], args[1:]...)
 	env := append([]string(nil), b.env...)
 	env = append(env, b.extraEnv...)
@@ -1053,20 +1053,20 @@ func assertKubectlArgvCarriesNoCredentials(t credentialReporter, lines []string,
 		return false
 	}
 
-	database := createSecret("kodama-database")
+	database := createSecret("kodema-database")
 	if database == nil {
-		t.Fatal("no `kubectl create secret kodama-database` argv was recorded; the argv check would be vacuous")
+		t.Fatal("no `kubectl create secret kodema-database` argv was recorded; the argv check would be vacuous")
 	}
 	if !hasArg(database, "--from-env-file=") {
-		t.Errorf("kodama-database create call did not hand the passwords to kubectl through --from-env-file: %v", database)
+		t.Errorf("kodema-database create call did not hand the passwords to kubectl through --from-env-file: %v", database)
 	}
 	if wantKeySecret {
-		keys := createSecret("kodama-keys")
+		keys := createSecret("kodema-keys")
 		if keys == nil {
-			t.Fatal("no `kubectl create secret kodama-keys` argv was recorded; the argv check would be vacuous")
+			t.Fatal("no `kubectl create secret kodema-keys` argv was recorded; the argv check would be vacuous")
 		}
 		if !hasArg(keys, "--from-file=kek-v1.blob=") {
-			t.Errorf("kodama-keys create call did not hand the KEK ciphertext to kubectl through --from-file: %v", keys)
+			t.Errorf("kodema-keys create call did not hand the KEK ciphertext to kubectl through --from-file: %v", keys)
 		}
 	}
 }
@@ -1211,7 +1211,7 @@ func (b *sandbox) kubectlFileRecords(t *testing.T) []kubectlFileRecord {
 }
 
 // assertKubernetesKeyFileMode proves the KEK ciphertext handed to
-// `kubectl create secret kodama-keys` was a 0600 file inside a 0700 directory.
+// `kubectl create secret kodema-keys` was a 0600 file inside a 0700 directory.
 // A 0755 KEK directory or a 0644 ciphertext would expose the wrapped key to
 // other local users.
 func assertKubernetesKeyFileMode(t *testing.T, box *sandbox) {
@@ -1230,7 +1230,7 @@ func assertKubernetesKeyFileMode(t *testing.T, box *sandbox) {
 		}
 	}
 	if !found {
-		t.Fatal("fake kubectl never recorded the kodama-keys --from-file=kek-v1.blob argument")
+		t.Fatal("fake kubectl never recorded the kodema-keys --from-file=kek-v1.blob argument")
 	}
 }
 
@@ -1454,12 +1454,12 @@ func TestCredentialArgvChecksRejectEveryEncoding(t *testing.T) {
 	}
 
 	cleanKubectl := []string{
-		"kubectl\t-n\tkodama-system\tcreate\tsecret\tgeneric\tkodama-database\t--from-env-file=/state/scw/stage/db-env.abc\t--from-file=ca.crt=/state/scw/stage/db-ca.abc",
-		"kubectl\t-n\tkodama-system\tcreate\tsecret\tgeneric\tkodama-keys\t--from-env-file=/state/scw/stage/kek.abc/keys-env\t--from-file=kek-v1.blob=/state/scw/stage/kek.abc/ciphertext",
-		"kubectl\t-n\tkodama-system\tget\tsecret\tkodama-keys",
+		"kubectl\t-n\tkodema-system\tcreate\tsecret\tgeneric\tkodema-database\t--from-env-file=/state/scw/stage/db-env.abc\t--from-file=ca.crt=/state/scw/stage/db-ca.abc",
+		"kubectl\t-n\tkodema-system\tcreate\tsecret\tgeneric\tkodema-keys\t--from-env-file=/state/scw/stage/kek.abc/keys-env\t--from-file=kek-v1.blob=/state/scw/stage/kek.abc/ciphertext",
+		"kubectl\t-n\tkodema-system\tget\tsecret\tkodema-keys",
 	}
 	cleanScw := []string{
-		"scw\tkeymanager\tkey\tencrypt\t00000000-0000-0000-0000-000000000000\tregion=fr-par\tplaintext=@/tmp/kodama-scw-kek.abc/plaintext\t-o\tjson",
+		"scw\tkeymanager\tkey\tencrypt\t00000000-0000-0000-0000-000000000000\tregion=fr-par\tplaintext=@/tmp/kodema-scw-kek.abc/plaintext\t-o\tjson",
 	}
 
 	recorder := &recordingReporter{}

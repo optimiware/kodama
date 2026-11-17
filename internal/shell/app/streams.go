@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	natsdriver "github.com/optimiware/kodama/internal/shell/app/drivers/nats"
-	natsbroker "github.com/optimiware/kodama/internal/shell/integration/nats"
+	"github.com/optimiware/kodema/internal/fault"
+	natsdriver "github.com/optimiware/kodema/internal/shell/app/drivers/nats"
+	natsbroker "github.com/optimiware/kodema/internal/shell/integration/nats"
 )
 
 // StreamConfig configures the two JetStream streams the production composition

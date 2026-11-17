@@ -17,10 +17,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/kernel/engine"
-	"github.com/optimiware/kodama/internal/shell/runtime"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/kernel/engine"
+	"github.com/optimiware/kodema/internal/shell/runtime"
 )
 
 const (
@@ -140,8 +140,8 @@ type Config struct {
 	Root string
 	// WorkspaceRoot is the parent of existing workspace directories; absolute.
 	WorkspaceRoot string
-	// KodamaURL is the reserved KODAMA_URL value injected into workloads.
-	KodamaURL string
+	// KodemaURL is the reserved KODEMA_URL value injected into workloads.
+	KodemaURL string
 	// Executor is the process effect boundary.
 	Executor Executor
 	// Observer is the process-group evidence boundary.
@@ -158,7 +158,7 @@ type Config struct {
 type Adapter struct {
 	root          string
 	workspaceRoot string
-	kodamaURL     string
+	kodemaURL     string
 	executor      Executor
 	observer      Observer
 	files         Files
@@ -192,8 +192,8 @@ func New(config Config) (*Adapter, error) {
 	if root == workspaceRoot || pathWithin(root, workspaceRoot) || pathWithin(workspaceRoot, root) {
 		return nil, fault.New(fault.InvalidInput, "process adapter resource and workspace roots must be disjoint")
 	}
-	if strings.TrimSpace(config.KodamaURL) == "" {
-		return nil, fault.New(fault.InvalidInput, "process adapter requires the Kodama URL")
+	if strings.TrimSpace(config.KodemaURL) == "" {
+		return nil, fault.New(fault.InvalidInput, "process adapter requires the Kodema URL")
 	}
 	if config.Cleanup.Attempts < 1 {
 		return nil, fault.New(fault.InvalidInput, "process adapter requires at least one cleanup attempt")
@@ -208,7 +208,7 @@ func New(config Config) (*Adapter, error) {
 	return &Adapter{
 		root:          root,
 		workspaceRoot: workspaceRoot,
-		kodamaURL:     config.KodamaURL,
+		kodemaURL:     config.KodemaURL,
 		executor:      config.Executor,
 		observer:      config.Observer,
 		files:         config.Files,
@@ -252,7 +252,7 @@ func GroupName(workload id.WorkloadID) (GroupID, error) {
 	if _, err := id.ParseWorkloadID(string(workload)); err != nil {
 		return "", fault.Wrap(fault.InvalidInput, "workload id is invalid", err)
 	}
-	return GroupID("kodama-process-" + stableDigest(string(workload))), nil
+	return GroupID("kodema-process-" + stableDigest(string(workload))), nil
 }
 
 // ResourceRoot returns the adapter-owned resource root for one workload

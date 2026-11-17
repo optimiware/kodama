@@ -37,11 +37,11 @@ docs-check:
 # ---------------------------------------------------------------------------
 # Build and release artifacts (docs/runbooks/release.md).
 #
-#   make build   # bin/kodama and bin/kodactl for this host
-#   make dist    # dist/: kodama and kodactl archives per platform, both Helm charts, SHA256SUMS
+#   make build   # bin/kodema and bin/kodactl for this host
+#   make dist    # dist/: kodema and kodactl archives per platform, both Helm charts, SHA256SUMS
 #
 # Both stamp the binaries with the VERSION file and the git revision, which
-# `kodama version` and `kodactl version` print. A plain `go build` reports
+# `kodema version` and `kodactl version` print. A plain `go build` reports
 # version "dev".
 VERSION := $(shell cat VERSION)
 REVISION ?= $(shell git rev-parse HEAD 2>/dev/null)
@@ -49,17 +49,17 @@ BUILD = CGO_ENABLED=0 $(GO) build -trimpath -buildvcs=false \
 	-ldflags '-s -w -X main.version=$(VERSION) -X main.revision=$(REVISION)'
 
 build:
-	$(BUILD) -o bin/kodama ./cmd/kodama
+	$(BUILD) -o bin/kodema ./cmd/kodema
 	$(BUILD) -o bin/kodactl ./cmd/kodactl
 
 dist:
 	rm -rf dist
 	scripts/dist
 
-# make image builds the image `kodama up` starts by default for this checkout:
+# make image builds the image `kodema up` starts by default for this checkout:
 # the released repository, tagged with this checkout's version.
 image:
-	scripts/image build --repository ghcr.io/optimiware/kodama/kodama --tag "$(VERSION)"
+	scripts/image build --repository ghcr.io/optimiware/kodema/kodema --tag "$(VERSION)"
 
 # make release-prepare VERSION=0.2.0 sets the version of the checkout in every
 # file that carries it (docs/runbooks/release.md). Nothing is pushed.
@@ -121,7 +121,7 @@ test-e2e-hermetic:
 # rows and fails at the end. Each row prints one result line with its duration,
 # and a summary repeats them. Under `make -n` the rows print as the bare
 # commands; a real run executes the same commands, echoing each one first.
-SUITE_TEST = env KODAMA_REQUIRE_INFRA=1 $(GO) test -race -count=1
+SUITE_TEST = env KODEMA_REQUIRE_INFRA=1 $(GO) test -race -count=1
 
 SUITE_integration-factory = $(SLOT) stack -- $(SUITE_TEST) -timeout 60m -tags=integration ./test/integration/factory/
 SUITE_integration-services = $(SLOT) stack -- $(SUITE_TEST) -timeout 40m -tags=integration ./test/integration/services/

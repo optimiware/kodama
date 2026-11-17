@@ -27,7 +27,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
+	"github.com/optimiware/kodema/internal/fault"
 )
 
 // Operational route paths.

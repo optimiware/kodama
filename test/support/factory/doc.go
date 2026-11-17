@@ -15,7 +15,7 @@
 //
 // WithGitService adds one optional host-only Git smart-HTTP composition beside
 // the factory: real tenant provisioning (gitapp.ProvisionTenant), the real
-// native pre/post-receive hooks execing a fixture-built ./cmd/kodama, a private
+// native pre/post-receive hooks execing a fixture-built ./cmd/kodema, a private
 // hook socket, the public file-credential transport and the shared actor
 // registry, all verified by the served Shell. The harness exposes it as
 // Harness.Git. The optional service always selects the private-CA TLS edge.

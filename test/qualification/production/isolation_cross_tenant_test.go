@@ -20,7 +20,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
+	"github.com/optimiware/kodema/api"
 )
 
 // isolationService is one service account and its issued credential.
@@ -627,11 +627,11 @@ func isolationGitProbe(t *testing.T, runtime *isolationRuntime, config Config) {
 
 	serviceA := config.GitServiceA
 	if serviceA == "" {
-		serviceA = "kodama-git-" + runtime.A.ID
+		serviceA = "kodema-git-" + runtime.A.ID
 	}
 	serviceB := config.GitServiceB
 	if serviceB == "" {
-		serviceB = "kodama-git-" + runtime.B.ID
+		serviceB = "kodema-git-" + runtime.B.ID
 	}
 	if !dnsLabelPattern.MatchString(serviceA) || !dnsLabelPattern.MatchString(serviceB) {
 		t.Fatalf("the Git service names are not kubernetes service names")
@@ -677,7 +677,7 @@ func isolationGitProbe(t *testing.T, runtime *isolationRuntime, config Config) {
 // isolationGitToken reads the service credential Secret the chart mounts for
 // one tenant's Git service.
 func isolationGitToken(ctx context.Context, runtime *isolationRuntime, tenantID string) (Secret, error) {
-	name := "kodama-git-" + tenantID
+	name := "kodema-git-" + tenantID
 	if !dnsLabelPattern.MatchString(name) {
 		return "", fmt.Errorf("Git credential Secret name %q is not a kubernetes name", name)
 	}

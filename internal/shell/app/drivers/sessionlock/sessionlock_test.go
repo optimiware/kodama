@@ -45,14 +45,14 @@ func TestNewSessionLockValidatesSessionPath(t *testing.T) {
 		}
 	}
 
-	lock, err := NewSessionLock("/home/engineer/.config/kodama/session.json")
+	lock, err := NewSessionLock("/home/engineer/.config/kodema/session.json")
 	if err != nil {
 		t.Fatalf("NewSessionLock(valid): %v", err)
 	}
-	if got, want := lock.lockPath, "/home/engineer/.config/kodama/.session.lock"; got != want {
+	if got, want := lock.lockPath, "/home/engineer/.config/kodema/.session.lock"; got != want {
 		t.Fatalf("lock path = %q; want %q", got, want)
 	}
-	if got, want := lock.dir, "/home/engineer/.config/kodama"; got != want {
+	if got, want := lock.dir, "/home/engineer/.config/kodema"; got != want {
 		t.Fatalf("session directory = %q; want %q", got, want)
 	}
 }
@@ -79,7 +79,7 @@ func TestAcquireCreatesPrivateLockFileAndSessionDirectory(t *testing.T) {
 	if err := os.Chmod(existing, 0o750); err != nil {
 		t.Fatalf("Chmod: %v", err)
 	}
-	sessionPath := filepath.Join(existing, "kodama", "nested", "session.json")
+	sessionPath := filepath.Join(existing, "kodema", "nested", "session.json")
 	lock := newLock(t, sessionPath, Options{})
 	release, err := lock.Acquire(context.Background())
 	if err != nil {
@@ -88,8 +88,8 @@ func TestAcquireCreatesPrivateLockFileAndSessionDirectory(t *testing.T) {
 	defer release()
 
 	for _, dir := range []string{
-		filepath.Join(existing, "kodama"),
-		filepath.Join(existing, "kodama", "nested"),
+		filepath.Join(existing, "kodema"),
+		filepath.Join(existing, "kodema", "nested"),
 	} {
 		info, err := os.Stat(dir)
 		if err != nil {
@@ -110,7 +110,7 @@ func TestAcquireCreatesPrivateLockFileAndSessionDirectory(t *testing.T) {
 		t.Fatalf("existing directory mode = %o; want 750 untouched", info.Mode().Perm())
 	}
 
-	lockPath := filepath.Join(existing, "kodama", "nested", ".session.lock")
+	lockPath := filepath.Join(existing, "kodema", "nested", ".session.lock")
 	info, err = os.Stat(lockPath)
 	if err != nil {
 		t.Fatalf("Stat(lock): %v", err)
@@ -404,7 +404,7 @@ func TestAcquireRefusesDirectoryAtLockPath(t *testing.T) {
 }
 
 // helperEnv marks the re-executed helper process that holds the lock.
-const helperEnv = "KODAMA_SESSIONLOCK_HELPER_PATH"
+const helperEnv = "KODEMA_SESSIONLOCK_HELPER_PATH"
 
 // TestSessionLockHelperProcess is not a normal test: when the environment
 // names a session path it acquires that lock and holds it until the parent

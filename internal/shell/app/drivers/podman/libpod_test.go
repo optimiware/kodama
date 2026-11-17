@@ -17,8 +17,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	runtimepodman "github.com/optimiware/kodama/internal/shell/runtime/podman"
+	"github.com/optimiware/kodema/internal/fault"
+	runtimepodman "github.com/optimiware/kodema/internal/shell/runtime/podman"
 )
 
 // unixServer starts an httptest server on a private Unix socket and returns the
@@ -63,36 +63,36 @@ func TestCreateContainerMapsSpecAndReturnsIdentity(t *testing.T) {
 		writeJSON(w, http.StatusCreated, map[string]string{"Id": "container-1"})
 	}))
 	state, err := client.CreateContainer(context.Background(), runtimepodman.ContainerSpec{
-		Name:       "kodama-workload-1",
+		Name:       "kodema-workload-1",
 		Image:      "registry.example.com/tools/build@sha256:" + strings.Repeat("a", 64),
-		Entrypoint: []string{"/bin/sh", "/kodama/script"},
-		Env:        []string{"BUILD_MODE=release", "KODAMA_URL=https://kodama.example.com"},
-		Labels:     map[string]string{"kodama.dev/workload": "workload-1"},
+		Entrypoint: []string{"/bin/sh", "/kodema/script"},
+		Env:        []string{"BUILD_MODE=release", "KODEMA_URL=https://kodema.example.com"},
+		Labels:     map[string]string{"kodema.dev/workload": "workload-1"},
 		Mounts: []runtimepodman.Mount{
-			{Type: "bind", Source: "/host/kodama", Destination: "/kodama", ReadOnly: true},
-			{Type: "volume", Source: "kodama-workspace-1", Destination: "/workspace"},
+			{Type: "bind", Source: "/host/kodema", Destination: "/kodema", ReadOnly: true},
+			{Type: "volume", Source: "kodema-workspace-1", Destination: "/workspace"},
 		},
 		RestartPolicy: "no",
 	})
 	if err != nil {
 		t.Fatalf("CreateContainer: %v", err)
 	}
-	if state.ID != "container-1" || state.Name != "kodama-workload-1" || state.Status != runtimepodman.ContainerStatusCreated {
+	if state.ID != "container-1" || state.Name != "kodema-workload-1" || state.Status != runtimepodman.ContainerStatusCreated {
 		t.Fatalf("created state = %+v", state)
 	}
-	if got.Name != "kodama-workload-1" || got.RestartPolicy != "no" {
+	if got.Name != "kodema-workload-1" || got.RestartPolicy != "no" {
 		t.Fatalf("create body name/restart = %q/%q", got.Name, got.RestartPolicy)
 	}
-	if len(got.Entrypoint) != 2 || got.Entrypoint[1] != "/kodama/script" {
+	if len(got.Entrypoint) != 2 || got.Entrypoint[1] != "/kodema/script" {
 		t.Fatalf("create body entrypoint = %v", got.Entrypoint)
 	}
-	if got.Env["BUILD_MODE"] != "release" || got.Env["KODAMA_URL"] != "https://kodama.example.com" {
+	if got.Env["BUILD_MODE"] != "release" || got.Env["KODEMA_URL"] != "https://kodema.example.com" {
 		t.Fatalf("create body env = %v", got.Env)
 	}
 	if len(got.Mounts) != 1 || got.Mounts[0].Type != "bind" || !contains(got.Mounts[0].Options, "ro") {
 		t.Fatalf("create body bind mounts = %+v", got.Mounts)
 	}
-	if len(got.Volumes) != 1 || got.Volumes[0].Name != "kodama-workspace-1" || got.Volumes[0].Dest != "/workspace" {
+	if len(got.Volumes) != 1 || got.Volumes[0].Name != "kodema-workspace-1" || got.Volumes[0].Dest != "/workspace" {
 		t.Fatalf("create body volumes = %+v", got.Volumes)
 	}
 	if got.ResourceLimits == nil || got.ResourceLimits.CPU == nil || got.ResourceLimits.Memory == nil {
@@ -243,28 +243,28 @@ func TestListContainersEncodesLabelFilters(t *testing.T) {
 		gotFilters = r.URL.Query().Get("filters")
 		writeJSON(w, http.StatusOK, []map[string]any{{
 			"Id":     "1",
-			"Names":  []string{"kodama-workload-1"},
+			"Names":  []string{"kodema-workload-1"},
 			"Image":  "img",
 			"State":  "exited",
 			"Exited": true,
 			"Pid":    0,
-			"Labels": map[string]string{"kodama.dev/workspace": "workspace-1"},
+			"Labels": map[string]string{"kodema.dev/workspace": "workspace-1"},
 		}})
 	}))
 	containers, err := client.ListContainers(context.Background(), map[string]string{
-		"kodama.dev/workspace": "workspace-1",
+		"kodema.dev/workspace": "workspace-1",
 	})
 	if err != nil {
 		t.Fatalf("ListContainers: %v", err)
 	}
-	if len(containers) != 1 || containers[0].Name != "kodama-workload-1" || !containers[0].WholeStopped {
+	if len(containers) != 1 || containers[0].Name != "kodema-workload-1" || !containers[0].WholeStopped {
 		t.Fatalf("containers = %+v", containers)
 	}
 	var decoded map[string]map[string]bool
 	if err := json.Unmarshal([]byte(gotFilters), &decoded); err != nil {
 		t.Fatalf("filters %q: %v", gotFilters, err)
 	}
-	if !decoded["label"]["kodama.dev/workspace=workspace-1"] {
+	if !decoded["label"]["kodema.dev/workspace=workspace-1"] {
 		t.Fatalf("filters = %v", decoded)
 	}
 }
@@ -385,8 +385,8 @@ func TestRemoveVolumeAndInspectVolume(t *testing.T) {
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet {
 			writeJSON(w, status, map[string]any{
-				"Name":   "kodama-workspace-1",
-				"Labels": map[string]string{"kodama.dev/workspace": "workspace-1"},
+				"Name":   "kodema-workspace-1",
+				"Labels": map[string]string{"kodema.dev/workspace": "workspace-1"},
 			})
 			return
 		}
@@ -395,14 +395,14 @@ func TestRemoveVolumeAndInspectVolume(t *testing.T) {
 		}
 		w.WriteHeader(status)
 	}))
-	volume, err := client.InspectVolume(context.Background(), "kodama-workspace-1")
+	volume, err := client.InspectVolume(context.Background(), "kodema-workspace-1")
 	if err != nil {
 		t.Fatalf("InspectVolume: %v", err)
 	}
-	if volume.Name != "kodama-workspace-1" || volume.Labels["kodama.dev/workspace"] != "workspace-1" {
+	if volume.Name != "kodema-workspace-1" || volume.Labels["kodema.dev/workspace"] != "workspace-1" {
 		t.Fatalf("volume = %+v", volume)
 	}
-	if err := client.RemoveVolume(context.Background(), "kodama-workspace-1"); err != nil {
+	if err := client.RemoveVolume(context.Background(), "kodema-workspace-1"); err != nil {
 		t.Fatalf("RemoveVolume: %v", err)
 	}
 	// Volume removal must not force: force would delete every container still
@@ -432,7 +432,7 @@ func TestRemoveVolumeInUseIsUncertain(t *testing.T) {
 		}
 		w.WriteHeader(http.StatusConflict)
 	}))
-	err := client.RemoveVolume(context.Background(), "kodama-workspace-1")
+	err := client.RemoveVolume(context.Background(), "kodema-workspace-1")
 	if err == nil {
 		t.Fatal("in-use volume removal reported success")
 	}

@@ -13,9 +13,9 @@
 //
 //   - live_log_test.go composes the real NATS adapter over a JetStream broker
 //     that the infrastructure harness starts as a Podman container;
-//   - registry_credentials_test.go builds the real kodama binary and drives
+//   - registry_credentials_test.go builds the real kodema binary and drives
 //     its production entry;
-//   - the three files behind the component build tag (the two kodama migrate
+//   - the three files behind the component build tag (the two kodema migrate
 //     proofs and the installable test profile) use real PostgreSQL and, for
 //     the test profile, JetStream NATS and a private Podman API service. They
 //     compile only with -tags=component and run in the component-stack suite,

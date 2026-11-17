@@ -6,23 +6,23 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	kernelengine "github.com/optimiware/kodama/internal/kernel/engine"
-	"github.com/optimiware/kodama/internal/shell/app/bridges"
-	natsdriver "github.com/optimiware/kodama/internal/shell/app/drivers/nats"
-	pgdriver "github.com/optimiware/kodama/internal/shell/app/drivers/postgres"
-	retentiondriver "github.com/optimiware/kodama/internal/shell/app/drivers/retention"
-	"github.com/optimiware/kodama/internal/shell/authorize"
-	"github.com/optimiware/kodama/internal/shell/integration/keys"
-	natsbroker "github.com/optimiware/kodama/internal/shell/integration/nats"
-	"github.com/optimiware/kodama/internal/shell/integration/oidc"
-	"github.com/optimiware/kodama/internal/shell/integration/registry"
-	shelllog "github.com/optimiware/kodama/internal/shell/log"
-	"github.com/optimiware/kodama/internal/shell/secret"
-	"github.com/optimiware/kodama/internal/shell/store/postgres"
-	identitystore "github.com/optimiware/kodama/internal/shell/store/units/identity"
-	"github.com/optimiware/kodama/internal/shell/store/units/readers"
-	"github.com/optimiware/kodama/internal/shell/token"
+	"github.com/optimiware/kodema/internal/fault"
+	kernelengine "github.com/optimiware/kodema/internal/kernel/engine"
+	"github.com/optimiware/kodema/internal/shell/app/bridges"
+	natsdriver "github.com/optimiware/kodema/internal/shell/app/drivers/nats"
+	pgdriver "github.com/optimiware/kodema/internal/shell/app/drivers/postgres"
+	retentiondriver "github.com/optimiware/kodema/internal/shell/app/drivers/retention"
+	"github.com/optimiware/kodema/internal/shell/authorize"
+	"github.com/optimiware/kodema/internal/shell/integration/keys"
+	natsbroker "github.com/optimiware/kodema/internal/shell/integration/nats"
+	"github.com/optimiware/kodema/internal/shell/integration/oidc"
+	"github.com/optimiware/kodema/internal/shell/integration/registry"
+	shelllog "github.com/optimiware/kodema/internal/shell/log"
+	"github.com/optimiware/kodema/internal/shell/secret"
+	"github.com/optimiware/kodema/internal/shell/store/postgres"
+	identitystore "github.com/optimiware/kodema/internal/shell/store/units/identity"
+	"github.com/optimiware/kodema/internal/shell/store/units/readers"
+	"github.com/optimiware/kodema/internal/shell/token"
 )
 
 // persistentDatabases are the four least-privilege role connection strings
@@ -119,7 +119,7 @@ func startNATSCallout(
 ) error {
 	callout := services.natsAuth.Callout
 	calloutConfig := brokerConfig
-	calloutConfig.Name = "kodama-auth-callout"
+	calloutConfig.Name = "kodema-auth-callout"
 	calloutConfig.User = callout.User
 	calloutConfig.Password = callout.Password
 	client, err := dial(ctx, calloutConfig)

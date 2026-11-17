@@ -1,6 +1,6 @@
 package installation
 
-// Tests for the config.extraEnv contract of the Kodama chart.
+// Tests for the config.extraEnv contract of the Kodema chart.
 //
 // config.extraEnv is a pass-through for the optional server environment the Go
 // composition reads. It must never be able to override a fixed production
@@ -22,7 +22,7 @@ import (
 
 // extraEnvAllowlistPattern is the single allowlist expression. It must appear
 // verbatim in values.schema.json (propertyNames) and in _extraenv.tpl.
-const extraEnvAllowlistPattern = `^(KODAMA_OIDC_(ISSUER|AUDIENCE|JWKS_URL|TENANT_CLAIM|SUBJECT_CLAIM|PROJECT_CLAIM|CA_FILE)|KODAMA_DISCOVERY_(ISSUER|CLIENT_ID|AUDIENCE|AUTHORIZATION_ENDPOINT|TOKEN_ENDPOINT|DEVICE_AUTHORIZATION_ENDPOINT|REVOCATION_ENDPOINT|SCOPES|API_URL)|KODAMA_TENANT_NAMESPACE|KODAMA_WORKLOAD_(CPU|MEMORY)_(REQUEST|LIMIT))$`
+const extraEnvAllowlistPattern = `^(KODEMA_OIDC_(ISSUER|AUDIENCE|JWKS_URL|TENANT_CLAIM|SUBJECT_CLAIM|PROJECT_CLAIM|CA_FILE)|KODEMA_DISCOVERY_(ISSUER|CLIENT_ID|AUDIENCE|AUTHORIZATION_ENDPOINT|TOKEN_ENDPOINT|DEVICE_AUTHORIZATION_ENDPOINT|REVOCATION_ENDPOINT|SCOPES|API_URL)|KODEMA_TENANT_NAMESPACE|KODEMA_WORKLOAD_(CPU|MEMORY)_(REQUEST|LIMIT))$`
 
 // extraEnvUserinfoPattern refuses scheme://user:password@host.
 const extraEnvUserinfoPattern = `://[^/@]*:[^@]*@`
@@ -32,10 +32,10 @@ const extraEnvUserinfoPattern = `://[^/@]*:[^@]*@`
 func extraEnvValues(entries map[string]any) map[string]any {
 	values := fqdnValues([]any{})
 	merged := map[string]any{
-		"KODAMA_OIDC_ISSUER":       "https://issuer.example",
-		"KODAMA_OIDC_AUDIENCE":     "kodama",
-		"KODAMA_OIDC_JWKS_URL":     "https://issuer.example/jwks",
-		"KODAMA_OIDC_TENANT_CLAIM": "org_id",
+		"KODEMA_OIDC_ISSUER":       "https://issuer.example",
+		"KODEMA_OIDC_AUDIENCE":     "kodema",
+		"KODEMA_OIDC_JWKS_URL":     "https://issuer.example/jwks",
+		"KODEMA_OIDC_TENANT_CLAIM": "org_id",
 	}
 	maps.Copy(merged, entries)
 	values["config"] = map[string]any{"extraEnv": merged}
@@ -95,7 +95,7 @@ func checkExtraEnvSchema(schema map[string]any) error {
 
 // checkExtraEnvGuard verifies the template layer.
 func checkExtraEnvGuard(deployment, guard string) error {
-	if !regexp.MustCompile(`(?m)^\{\{-?[ \t]*include[ \t]+"kodama\.validateExtraEnv"[ \t]+\.`).MatchString(deployment) {
+	if !regexp.MustCompile(`(?m)^\{\{-?[ \t]*include[ \t]+"kodema\.validateExtraEnv"[ \t]+\.`).MatchString(deployment) {
 		return fmt.Errorf("deployment.yaml does not include the extraEnv guard")
 	}
 	if !regexp.MustCompile(`(?m)^[ \t]*-[ \t]*name:[ \t]*\{\{[ \t]*\$name[ \t]*\|[ \t]*quote[ \t]*\}\}[ \t]*$`).MatchString(deployment) {
@@ -123,7 +123,7 @@ func checkExtraEnvGuard(deployment, guard string) error {
 	}{
 		{`kindIs[ \t]+"string"`, "object/valueFrom refusal"},
 		{`has[ \t]+\$name[ \t]+\$fixed`, "fixed-name collision refusal"},
-		{`hasPrefix[ \t]+"KODAMA_DEV_"`, "development token refusal"},
+		{`hasPrefix[ \t]+"KODEMA_DEV_"`, "development token refusal"},
 		{`regexMatch[ \t]+"\^\(SCW\|AWS\|GOOGLE\)_"`, "cloud credential refusal"},
 		{`regexMatch[ \t]+"\(\?i\)\(token\|secret\|password\|passwd\|credential\|private\|key\)"`, "credential-shaped name refusal"},
 		{`regexMatch[ \t]+"_FILE\$"`, "mounted file exception"},
@@ -159,14 +159,14 @@ func TestExtraEnvSchemaAllowlistIsExact(t *testing.T) {
 		}
 	}
 	for _, name := range []string{
-		"KODAMA_DEV_TOKEN",
-		"KODAMA_DEV_PROFILE",
+		"KODEMA_DEV_TOKEN",
+		"KODEMA_DEV_PROFILE",
 		"SCW_SECRET_KEY",
 		"AWS_ACCESS_KEY_ID",
-		"KODAMA_OIDC_TOKEN",
-		"KODAMA_SECRET_VALUE",
-		"KODAMA_PRIVATE_KEY",
-		"KODAMA_OIDC_ISSUER_EXTRA",
+		"KODEMA_OIDC_TOKEN",
+		"KODEMA_SECRET_VALUE",
+		"KODEMA_PRIVATE_KEY",
+		"KODEMA_OIDC_ISSUER_EXTRA",
 		"FOO",
 	} {
 		if err := validateAgainstSchema(schema, extraEnvValues(map[string]any{name: "x"}), "values"); err == nil {
@@ -183,7 +183,7 @@ func TestExtraEnvSchemaRejectsCredentialURLAndObjectValues(t *testing.T) {
 		"https://user:pass@issuer.example",
 		"tls://client:secret@nats:4222",
 	} {
-		if err := validateAgainstSchema(schema, extraEnvValues(map[string]any{"KODAMA_OIDC_ISSUER": value}), "values"); err == nil {
+		if err := validateAgainstSchema(schema, extraEnvValues(map[string]any{"KODEMA_OIDC_ISSUER": value}), "values"); err == nil {
 			t.Errorf("schema accepted URL userinfo value %q", value)
 		}
 	}
@@ -191,15 +191,15 @@ func TestExtraEnvSchemaRejectsCredentialURLAndObjectValues(t *testing.T) {
 		"https://issuer.example",
 		"registry.example.com",
 		"250m",
-		"postgres://kodama@database:5432/kodama",
+		"postgres://kodema@database:5432/kodema",
 	} {
-		if err := validateAgainstSchema(schema, extraEnvValues(map[string]any{"KODAMA_OIDC_ISSUER": value}), "values"); err != nil {
+		if err := validateAgainstSchema(schema, extraEnvValues(map[string]any{"KODEMA_OIDC_ISSUER": value}), "values"); err != nil {
 			t.Errorf("schema refused an ordinary string value %q: %v", value, err)
 		}
 	}
 
 	object := extraEnvValues(map[string]any{
-		"KODAMA_OIDC_ISSUER": map[string]any{
+		"KODEMA_OIDC_ISSUER": map[string]any{
 			"valueFrom": map[string]any{"secretKeyRef": map[string]any{"name": "x", "key": "y"}},
 		},
 	})
@@ -231,7 +231,7 @@ func TestExtraEnvTemplateGuardMutationSensitivity(t *testing.T) {
 			return regexp.MustCompile(`(?m)^.*has \$name \$fixed.*\r?\n.*collides with a fixed variable.*\r?\n`).ReplaceAllString(body, "")
 		}},
 		{"development guard removed", guard, func(body string) string {
-			return regexp.MustCompile(`(?m)^.*hasPrefix "KODAMA_DEV_".*\r?\n.*development token.*\r?\n`).ReplaceAllString(body, "")
+			return regexp.MustCompile(`(?m)^.*hasPrefix "KODEMA_DEV_".*\r?\n.*development token.*\r?\n`).ReplaceAllString(body, "")
 		}},
 		{"userinfo guard removed", guard, func(body string) string {
 			return regexp.MustCompile(`(?m)^.*regexMatch "://\[\^/@\]\*:\[\^@\]\*@".*\r?\n.*inline userinfo.*\r?\n`).ReplaceAllString(body, "")
@@ -256,7 +256,7 @@ func TestExtraEnvTemplateGuardMutationSensitivity(t *testing.T) {
 	}
 
 	// The include is the only thing that runs the guard.
-	noInclude := strings.Replace(deployment, `{{- include "kodama.validateExtraEnv" . }}`, "", 1)
+	noInclude := strings.Replace(deployment, `{{- include "kodema.validateExtraEnv" . }}`, "", 1)
 	if noInclude == deployment {
 		t.Fatal("test mutation did not remove the guard include")
 	}

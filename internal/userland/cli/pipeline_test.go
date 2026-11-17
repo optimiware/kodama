@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/client"
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/userland/cli"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/client"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/userland/cli"
 )
 
 // pipelineInput is the decoded pipeline.apply input.
@@ -41,7 +41,7 @@ func pipelineKeys(t *testing.T, invocations []api.Invocation) map[string]string 
 // TestRunPipelineApply pins deterministic enumeration, exact YAML bytes, the
 // filename mapping and stable per-pipeline caller keys.
 func TestRunPipelineApply(t *testing.T) {
-	directory := "/repo/.kodama"
+	directory := "/repo/.kodema"
 	filesystem := newFakeFS()
 	filesystem.entries[directory] = []cli.DirEntry{
 		{Name: "z.yaml"},
@@ -149,7 +149,7 @@ func TestRunPipelineApply(t *testing.T) {
 // TestRunPipelineApplyPartialFailure pins visible partial failure: every file
 // is attempted in order and prior successes are not rolled back.
 func TestRunPipelineApplyPartialFailure(t *testing.T) {
-	directory := "/repo/.kodama"
+	directory := "/repo/.kodema"
 	filesystem := newFakeFS()
 	filesystem.entries[directory] = []cli.DirEntry{{Name: "a.yaml"}, {Name: "b.yaml"}, {Name: "z.yaml"}}
 	for _, name := range []string{"a.yaml", "b.yaml", "z.yaml"} {
@@ -188,7 +188,7 @@ func TestRunPipelineApplyPartialFailure(t *testing.T) {
 // TestRunPipelineApplyDuplicateMapping pins that a .yaml and .yml with the same
 // base name are a visible mapping failure and are not sent.
 func TestRunPipelineApplyDuplicateMapping(t *testing.T) {
-	directory := "/repo/.kodama"
+	directory := "/repo/.kodema"
 	filesystem := newFakeFS()
 	filesystem.entries[directory] = []cli.DirEntry{{Name: "dup.yaml"}, {Name: "dup.yml"}, {Name: "ok.yaml"}}
 	filesystem.files[directory+"/dup.yaml"] = []byte("name: dup-yaml\n")
@@ -222,7 +222,7 @@ func TestRunPipelineApplyDuplicateMapping(t *testing.T) {
 // TestRunPipelineApplyFileFailures pins visible per-file failures while the
 // remaining files are still attempted.
 func TestRunPipelineApplyFileFailures(t *testing.T) {
-	directory := "/repo/.kodama"
+	directory := "/repo/.kodema"
 	cases := []struct {
 		name      string
 		setup     func(*fakeFS)
@@ -282,7 +282,7 @@ func TestRunPipelineApplyFileFailures(t *testing.T) {
 
 // TestRunPipelineApplyDirectoryFailures pins the directory boundary.
 func TestRunPipelineApplyDirectoryFailures(t *testing.T) {
-	directory := "/repo/.kodama"
+	directory := "/repo/.kodema"
 
 	t.Run("read dir failure", func(t *testing.T) {
 		filesystem := newFakeFS()

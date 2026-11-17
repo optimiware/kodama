@@ -7,11 +7,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/kernel"
-	"github.com/optimiware/kodama/internal/kernel/definition"
-	"github.com/optimiware/kodama/internal/kernel/engine"
-	runtimekube "github.com/optimiware/kodama/internal/shell/runtime/kube"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/kernel"
+	"github.com/optimiware/kodema/internal/kernel/definition"
+	"github.com/optimiware/kodema/internal/kernel/engine"
+	runtimekube "github.com/optimiware/kodema/internal/shell/runtime/kube"
 )
 
 // TestAdapterActionEndToEnd proves one complete adapter action on a real
@@ -28,11 +28,11 @@ func TestAdapterActionEndToEnd(t *testing.T) {
 	}
 	identity := testIdentity("exec-e2e", "action-e2e", "workload-e2e", "idem-e2e")
 	commands := []string{
-		`cat /kodama/inputs/input-a > /workspace/input-copy.txt`,
-		`cat /kodama/task.json > /workspace/task-copy.json`,
-		`cat /kodama/outputs/earlier/out-a > /workspace/output-copy.txt`,
-		`cat /kodama/secrets/API_KEY`,
-		`cat /kodama/secrets/KODAMA_TOKEN`,
+		`cat /kodema/inputs/input-a > /workspace/input-copy.txt`,
+		`cat /kodema/task.json > /workspace/task-copy.json`,
+		`cat /kodema/outputs/earlier/out-a > /workspace/output-copy.txt`,
+		`cat /kodema/secrets/API_KEY`,
+		`cat /kodema/secrets/KODEMA_TOKEN`,
 		`printf '\n'`,
 		`printf 'stdout-line\n'`,
 		`printf 'stderr-line\n' >&2`,
@@ -79,16 +79,16 @@ func TestAdapterActionEndToEnd(t *testing.T) {
 		`printf 'OUTPUT:'`,
 		`cat /workspace/output-copy.txt`,
 		`printf '\n'`,
-		`grep -E '^KODAMA_(URL|EXECUTION|ACTION|TASK)=' /workspace/env.txt | sort | sed 's/^/ENV:/'`,
+		`grep -E '^KODEMA_(URL|EXECUTION|ACTION|TASK)=' /workspace/env.txt | sort | sed 's/^/ENV:/'`,
 	})
 	for _, want := range []string{
 		"INPUT:line1\nline2\n",
 		"TASK:{\"id\":\"task-1\"}",
 		"OUTPUT:earlier-output",
-		"ENV:KODAMA_ACTION=build",
-		"ENV:KODAMA_EXECUTION=exec-e2e",
-		"ENV:KODAMA_TASK=task-e2e",
-		"ENV:KODAMA_URL=" + testKodamaURL,
+		"ENV:KODEMA_ACTION=build",
+		"ENV:KODEMA_EXECUTION=exec-e2e",
+		"ENV:KODEMA_TASK=task-e2e",
+		"ENV:KODEMA_URL=" + testKodemaURL,
 	} {
 		if !strings.Contains(readerOutput, want) {
 			t.Fatalf("reader output is missing %q:\n%s", want, readerOutput)

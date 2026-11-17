@@ -88,7 +88,7 @@ func (probe *GitProbe) ListRefs(ctx context.Context, repository string) ([]byte,
 	}
 	request.Header.Set("Accept", "*/*")
 	if probe.token.IsSet() {
-		request.SetBasicAuth("kodama", probe.token.Reveal())
+		request.SetBasicAuth("kodema", probe.token.Reveal())
 	}
 	requestCtx := ctx
 	if probe.timeout > 0 {

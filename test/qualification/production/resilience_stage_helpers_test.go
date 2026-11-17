@@ -21,7 +21,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
+	"github.com/optimiware/kodema/api"
 )
 
 // resilienceEvidenceRecord is one deferred evidence record of a probe.
@@ -203,7 +203,7 @@ type resilienceStage struct {
 // resilienceResilienceInputs is the input set every live probe needs: the
 // public API, the guarded kubectl scope, the assigned tenant namespace and the
 // digest-pinned workload image. Q02_TENANT_NAMESPACE is the DERIVED namespace
-// kodama-tenant-<tenant> (stage: kodama-tenant-tenant-a), never the bare tenant
+// kodema-tenant-<tenant> (stage: kodema-tenant-tenant-a), never the bare tenant
 // id. The workload image needs a POSIX sh, printf, grep and sleep, and must run
 // as root or have a writable /workspace.
 func resilienceResilienceInputs() []Input {
@@ -243,16 +243,16 @@ func resilienceConnect(t *testing.T, config Config) *resilienceStage {
 	}
 }
 
-// resilienceKodamaService returns the release's public Service name. The stage
-// runbook forwards svc/kodama; an operator that renamed it can export the same
+// resilienceKodemaService returns the release's public Service name. The stage
+// runbook forwards svc/kodema; an operator that renamed it can export the same
 // variable run-stage.sh reads.
-func resilienceKodamaService() (string, error) {
-	service := strings.TrimSpace(os.Getenv("Q02_KODAMA_SERVICE"))
+func resilienceKodemaService() (string, error) {
+	service := strings.TrimSpace(os.Getenv("Q02_KODEMA_SERVICE"))
 	if service == "" {
-		service = "kodama"
+		service = "kodema"
 	}
 	if !dnsLabelPattern.MatchString(service) {
-		return "", fmt.Errorf("Q02_KODAMA_SERVICE %q is not a kubernetes service name", service)
+		return "", fmt.Errorf("Q02_KODEMA_SERVICE %q is not a kubernetes service name", service)
 	}
 	return service, nil
 }
@@ -316,7 +316,7 @@ func resilienceCloseSharedAccess() {
 // resilienceEnsureAPIAccess is called at the start of every live probe and
 // again after the controller probe deletes the endpoint pod. It first proves an
 // authenticated GET, and when the run-stage port-forward has died it re-opens a
-// guarded kubectl port-forward to svc/kodama on the SAME local port, then waits
+// guarded kubectl port-forward to svc/kodema on the SAME local port, then waits
 // for the API to answer. The forward belongs to the test process and TestMain
 // closes it after the final cleanup.
 func resilienceEnsureAPIAccess(t *testing.T, stage *resilienceStage) *resilienceStage {
@@ -328,7 +328,7 @@ func resilienceEnsureAPIAccess(t *testing.T, stage *resilienceStage) *resilience
 	if err != nil {
 		t.Fatalf("the public API is unavailable and cannot be restored: %v", err)
 	}
-	service, err := resilienceKodamaService()
+	service, err := resilienceKodemaService()
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
@@ -626,7 +626,7 @@ func resilienceAction(inspection api.ExecutionInspectResult, name string) (api.E
 func resilienceWaitWorkloadPod(ctx context.Context, stage *resilienceStage, executionID string, timeout time.Duration) (string, error) {
 	pod := ""
 	_, err := (resilienceWaiter{Timeout: timeout}).Wait(ctx, func(ctx context.Context) (bool, error) {
-		names, err := stage.Cluster.PodNames(ctx, stage.Config.TenantNamespace, "kodama.dev/execution="+executionID)
+		names, err := stage.Cluster.PodNames(ctx, stage.Config.TenantNamespace, "kodema.dev/execution="+executionID)
 		if err != nil || len(names) != 1 {
 			return false, nil
 		}
@@ -647,7 +647,7 @@ func resilienceAssertNoOrphans(t *testing.T, stage *resilienceStage, executionID
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 	for _, resource := range []string{"jobs", "pods"} {
-		names, err := stage.Cluster.ResourceNames(ctx, stage.Config.TenantNamespace, resource, "kodama.dev/execution="+executionID)
+		names, err := stage.Cluster.ResourceNames(ctx, stage.Config.TenantNamespace, resource, "kodema.dev/execution="+executionID)
 		if err != nil {
 			t.Errorf("read attributable %s for execution %s: %v", resource, executionID, err)
 			continue
@@ -660,7 +660,7 @@ func resilienceAssertNoOrphans(t *testing.T, stage *resilienceStage, executionID
 		t.Errorf("execution %s completed cleanup without a workspace identity; orphan claims are not attributable", executionID)
 		return
 	}
-	names, err := stage.Cluster.ResourceNames(ctx, stage.Config.TenantNamespace, "persistentvolumeclaims", "kodama.dev/workspace="+workspaceID)
+	names, err := stage.Cluster.ResourceNames(ctx, stage.Config.TenantNamespace, "persistentvolumeclaims", "kodema.dev/workspace="+workspaceID)
 	if err != nil {
 		t.Errorf("read attributable claims for workspace %s: %v", workspaceID, err)
 		return
@@ -673,7 +673,7 @@ func resilienceAssertNoOrphans(t *testing.T, stage *resilienceStage, executionID
 		}
 		if retained {
 			// SH06/S02 retain a workspace across request waits and controller
-			// restarts; kube/workspace.go Release clears kodama.dev/retained and
+			// restarts; kube/workspace.go Release clears kodema.dev/retained and
 			// deletes the claim only when cleanup completes. A retained claim is
 			// therefore a documented retention exception, not an orphan.
 			t.Logf("workspace %s retained claim %s after cleanup (documented retention; not counted as an orphan)", workspaceID, name)

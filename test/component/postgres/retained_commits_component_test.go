@@ -17,9 +17,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/installation"
-	retentiondriver "github.com/optimiware/kodama/internal/shell/app/drivers/retention"
-	pgtest "github.com/optimiware/kodama/test/support/infrastructure/postgres"
+	"github.com/optimiware/kodema/internal/installation"
+	retentiondriver "github.com/optimiware/kodema/internal/shell/app/drivers/retention"
+	pgtest "github.com/optimiware/kodema/test/support/infrastructure/postgres"
 )
 
 func TestRetainedCommitsReturnsOnlyRetainedEvidence(t *testing.T) {
@@ -91,7 +91,7 @@ func TestRetainedCommitsReturnsOnlyRetainedEvidence(t *testing.T) {
 
 	runtime := shard.Runtime(4)
 	defer runtime.Close()
-	pgtest.RequireNonOwnerSession(t, ctx, runtime, "kodama_runtime")
+	pgtest.RequireNonOwnerSession(t, ctx, runtime, "kodema_runtime")
 	store := retentiondriver.NewRetentionStore(runtime)
 
 	commits, err := store.RetainedCommits(ctx, installation.RetentionScope{TenantID: "tenant-1", ProjectID: "project-1"}, now)

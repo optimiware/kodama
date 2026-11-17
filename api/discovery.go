@@ -12,7 +12,7 @@ import (
 // DiscoveryPath is the one unauthenticated public discovery route. It is a
 // fixed root path outside the 58-operation registry: it is not returned by
 // Routes, not resolvable by Match or LookupRoute, and carries no credential.
-const DiscoveryPath = "/.well-known/kodama-configuration"
+const DiscoveryPath = "/.well-known/kodema-configuration"
 
 // OAuthProtectedResourcePath is the RFC 9728 OAuth 2.0 Protected Resource
 // Metadata route served alongside DiscoveryPath when public discovery is

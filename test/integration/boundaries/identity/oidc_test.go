@@ -13,10 +13,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	shellidentity "github.com/optimiware/kodama/internal/shell/identity"
-	shelloidc "github.com/optimiware/kodama/internal/shell/integration/oidc"
-	idfix "github.com/optimiware/kodama/test/support/boundaries/identity"
+	"github.com/optimiware/kodema/internal/fault"
+	shellidentity "github.com/optimiware/kodema/internal/shell/identity"
+	shelloidc "github.com/optimiware/kodema/internal/shell/integration/oidc"
+	idfix "github.com/optimiware/kodema/test/support/boundaries/identity"
 )
 
 func newVerifier(t *testing.T, provider *idfix.Provider) shellidentity.OIDCVerifier {
@@ -806,11 +806,11 @@ func TestOIDCTokenEndpointAuthorizationCodeAndRefreshRotation(t *testing.T) {
 	if err := provider.RegisterClient("kodactl", "client-secret", claims); err != nil {
 		t.Fatalf("RegisterClient: %v", err)
 	}
-	code, err := provider.IssueAuthorizationCode("kodactl", "https://kodama.example/callback", claims)
+	code, err := provider.IssueAuthorizationCode("kodactl", "https://kodema.example/callback", claims)
 	if err != nil {
 		t.Fatalf("IssueAuthorizationCode: %v", err)
 	}
-	first, err := provider.ExchangeCode(context.Background(), code, "kodactl", "client-secret", "https://kodama.example/callback")
+	first, err := provider.ExchangeCode(context.Background(), code, "kodactl", "client-secret", "https://kodema.example/callback")
 	if err != nil {
 		t.Fatalf("ExchangeCode: %v", err)
 	}

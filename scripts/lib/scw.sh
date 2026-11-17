@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Scaleway (scw) backend, kubeconfig, and KMS helpers for Kodama deployments.
+# Scaleway (scw) backend, kubeconfig, and KMS helpers for Kodema deployments.
 
 set -euo pipefail
 
 scw_resolve_project_id() {
-  local project_id="${KODAMA_SCW_PROJECT_ID:-${SCW_DEFAULT_PROJECT_ID:-${TF_VAR_project_id:-}}}"
-  [[ -n "$project_id" ]] || die "Scaleway project ID is required (set SCW_DEFAULT_PROJECT_ID, KODAMA_SCW_PROJECT_ID, or --project)"
+  local project_id="${KODEMA_SCW_PROJECT_ID:-${SCW_DEFAULT_PROJECT_ID:-${TF_VAR_project_id:-}}}"
+  [[ -n "$project_id" ]] || die "Scaleway project ID is required (set SCW_DEFAULT_PROJECT_ID, KODEMA_SCW_PROJECT_ID, or --project)"
   printf '%s\n' "$project_id"
 }
 
@@ -13,7 +13,7 @@ scw_state_key_for_cluster() {
   local project_id="$1"
   local cluster_region="$2"
   local cluster="$3"
-  printf 'kodama/scw/%s/%s/%s/infrastructure.tfstate\n' "$project_id" "$cluster_region" "$cluster"
+  printf 'kodema/scw/%s/%s/%s/infrastructure.tfstate\n' "$project_id" "$cluster_region" "$cluster"
 }
 
 scw_write_backend_config() {
@@ -88,7 +88,7 @@ scw_kms_encrypt_blob() {
   (
     set -euo pipefail
     local tmp_dir plaintext_file
-    tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/kodama-scw-kek.XXXXXX")"
+    tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/kodema-scw-kek.XXXXXX")"
     chmod 700 "$tmp_dir"
     cleanup_scw_kek() {
       if [[ -n "${tmp_dir:-}" ]]; then

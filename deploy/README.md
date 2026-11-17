@@ -1,19 +1,19 @@
-# Kodama deployment
+# Kodema deployment
 
 This directory holds the multi-cloud OpenTofu infrastructure-as-code roots,
-shared context module, and Helm charts for deploying Kodama across Scaleway,
+shared context module, and Helm charts for deploying Kodema across Scaleway,
 GCP, and AWS with named clusters (defaulting to `stage`). They are reference
 deployments: production operators adapt them and own their production
 infrastructure, following the [production deployment guide](../docs/runbooks/production-deployment.md).
 
 ## Repository layout
 
-- [charts/kodama](charts/kodama/Chart.yaml): Kodama application chart
-  ([values.yaml](charts/kodama/values.yaml),
-  [values.schema.json](charts/kodama/values.schema.json)).
-- [charts/kodama-stack](charts/kodama-stack/Chart.yaml): full stage/production
-  stack chart bundling `kodama` with a pinned TLS NATS JetStream broker
-  ([values.yaml](charts/kodama-stack/values.yaml)).
+- [charts/kodema](charts/kodema/Chart.yaml): Kodema application chart
+  ([values.yaml](charts/kodema/values.yaml),
+  [values.schema.json](charts/kodema/values.schema.json)).
+- [charts/kodema-stack](charts/kodema-stack/Chart.yaml): full stage/production
+  stack chart bundling `kodema` with a pinned TLS NATS JetStream broker
+  ([values.yaml](charts/kodema-stack/values.yaml)).
 - [podman/](podman/): single-host rootless Podman install of the `test`
   environment ([quickstart](../docs/runbooks/podman-quickstart.md)).
 - [modules/context](modules/context/main.tf): shared OpenTofu module enforcing
@@ -36,7 +36,7 @@ infrastructure, following the [production deployment guide](../docs/runbooks/pro
   `openssl`.
 - Go `>= 1.27.3` (the version in `go.mod`) when `scripts/bootstrap-secrets`
   needs to build `tools/nats-auth-key` for the callout issuer pair. Set
-  `KODAMA_NATS_AUTH_KEY_TOOL` to a prebuilt `tools/nats-auth-key` binary to
+  `KODEMA_NATS_AUTH_KEY_TOOL` to a prebuilt `tools/nats-auth-key` binary to
   skip the `go run` invocation; the component tests use the same hook to build
   the tool once.
 - A Kubernetes cluster with the ability to create namespaces, a Deployment,
@@ -50,7 +50,7 @@ infrastructure, following the [production deployment guide](../docs/runbooks/pro
   `gcp-kms`. Scaleway is the only live-qualified target: the AWS and GCP KMS
   clients, roots and scripts are implemented but have no live evidence yet
   (DEF-11).
-- Network reachability to Kodama, the configured Git endpoint and
+- Network reachability to Kodema, the configured Git endpoint and
   policy-allowed services. Tenant namespaces start from a default-deny
   network policy.
 - A migrated database: run `scripts/deploy <cloud> migrate` before `helm`.
@@ -68,7 +68,7 @@ infrastructure, following the [production deployment guide](../docs/runbooks/pro
 Select exactly **one** cloud KMS for a production installation by setting both
 the key adapter and the key reference to the same provider family:
 
-| Selected adapter | Required `KODAMA_KEY_REF` prefix | Root that creates the key |
+| Selected adapter | Required `KODEMA_KEY_REF` prefix | Root that creates the key |
 |---|---|---|
 | `scw-kms` | `scw-kms:` | `deploy/scw` (Scaleway Key Manager) |
 | `gcp-kms` | `gcp-kms:` | `deploy/gcp` (Cloud KMS) |
@@ -84,7 +84,7 @@ change.
 
 One successful provider check never qualifies the others; each advertised
 target needs its own runtime, KMS and deployment evidence. Today only
-`scw-kms` has it: `cmd/kodama/production.go` also builds the `gcp-kms` and
+`scw-kms` has it: `cmd/kodema/production.go` also builds the `gcp-kms` and
 `aws-kms` clients, but neither has run against its real cloud (DEF-11).
 
 ## Multi-cluster state and deployment workflow
@@ -93,15 +93,15 @@ Each deployment is uniquely identified by `(cloud, account_or_project_id, region
 A single versioned state bucket per cloud account/project stores independent,
 natively locked state files per cluster:
 
-- Scaleway: `kodama/scw/<project_id>/<region>/<cluster_name>/infrastructure.tfstate`
-- GCP: `kodama/gcp/<project_id>/<region>/<cluster_name>/default.tfstate`
-- AWS: `kodama/aws/<account_id>/<region>/<cluster_name>/infrastructure.tfstate`
+- Scaleway: `kodema/scw/<project_id>/<region>/<cluster_name>/infrastructure.tfstate`
+- GCP: `kodema/gcp/<project_id>/<region>/<cluster_name>/default.tfstate`
+- AWS: `kodema/aws/<account_id>/<region>/<cluster_name>/infrastructure.tfstate`
 
 Local working state, saved plans, isolated `0600` kubeconfigs, and generated
 Helm values are kept outside the repository, under
 `<state root>/<cloud>/<cluster_name>/`. The state root is
-`KODAMA_DEPLOY_STATE_DIR` when set, otherwise
-`${XDG_STATE_HOME:-$HOME/.local/state}/kodama/deploy`. Two clusters on the same
+`KODEMA_DEPLOY_STATE_DIR` when set, otherwise
+`${XDG_STATE_HOME:-$HOME/.local/state}/kodema/deploy`. Two clusters on the same
 cloud (for example `stage` and `preview` on Scaleway) therefore never collide:
 
 ```bash
@@ -114,8 +114,8 @@ cloud (for example `stage` and `preview` on Scaleway) therefore never collide:
 ./scripts/deploy scw apply
 ./scripts/deploy scw kubeconfig
 ./scripts/bootstrap-secrets scw
-./scripts/image build-push --repository <registry>/<path>/kodama --tag <tag>
-export KODAMA_IMAGE_REPOSITORY=<registry>/<path>/kodama KODAMA_IMAGE_DIGEST=sha256:<64 hex>
+./scripts/image build-push --repository <registry>/<path>/kodema --tag <tag>
+export KODEMA_IMAGE_REPOSITORY=<registry>/<path>/kodema KODEMA_IMAGE_DIGEST=sha256:<64 hex>
 ./scripts/deploy scw migrate
 ./scripts/deploy scw helm
 
@@ -132,13 +132,13 @@ export KODAMA_IMAGE_REPOSITORY=<registry>/<path>/kodama KODAMA_IMAGE_DIGEST=sha2
 ## Chart contents
 
 The chart also has two optional blocks, off by default: `gitService` (one
-`kodama git serve` StatefulSet per tenant) and `services` (one
-`kodama services` Deployment per entry). They are described in the
+`kodema git serve` StatefulSet per tenant) and `services` (one
+`kodema services` Deployment per entry). They are described in the
 [production guide](../docs/runbooks/production-deployment.md#35-optional-git-service-and-service-adapters).
 
-- [Chart.yaml](charts/kodama/Chart.yaml) and
-  [values.yaml](charts/kodama/values.yaml) with
-  [values.schema.json](charts/kodama/values.schema.json).
+- [Chart.yaml](charts/kodema/Chart.yaml) and
+  [values.yaml](charts/kodema/values.yaml) with
+  [values.schema.json](charts/kodema/values.schema.json).
 - `templates/deployment.yaml`: one control-plane replica (`replicaCount: 1`)
   with `strategy.type: Recreate` so an old and a new controller never overlap;
   non-root, read-only root filesystem, dropped capabilities, liveness/readiness
@@ -162,31 +162,31 @@ The chart also has two optional blocks, off by default: `gitService` (one
   ServiceAccount with cloud workload-identity annotations, tenant-scoped RBAC
   for Jobs/Pods/Logs/PVCs/ConfigMaps/Secrets, and retained-log PVC.
 - `templates/namespaces.yaml`: one namespace and `LimitRange` per declared
-  tenant with a `kodama.dev/tenant` label. Each tenant Namespace carries
+  tenant with a `kodema.dev/tenant` label. Each tenant Namespace carries
   `pod-security.kubernetes.io/enforce: baseline` (privileged pods are refused
   outright) and `warn`/`audit: restricted` (a workload the restricted profile
   would reject is reported before enforcement moves). The Namespace set is
   exactly the configured `tenants`; the chart never creates or relabels a
   cluster namespace such as `kube-system`.
 - **Multiple tenants per installation.** `tenants` is the installation's
-  complete served set: the chart renders one namespace (`kodama-tenant-<tenant>`),
+  complete served set: the chart renders one namespace (`kodema-tenant-<tenant>`),
   RBAC role, network policy and Kubernetes runtime adapter per entry. With more
-  than one entry the Deployment sets `KODAMA_TENANTS` to the whole list as JSON;
-  a one-entry list keeps the singleton `KODAMA_TENANT` form. The server composes
+  than one entry the Deployment sets `KODEMA_TENANTS` to the whole list as JSON;
+  a one-entry list keeps the singleton `KODEMA_TENANT` form. The server composes
   one runtime and workspace adapter per listed tenant and routes every
   Runtime/Workspace operation by the execution's or workspace's durably
   persisted owning tenant; an execution whose tenant is not listed is refused
   without an effect. Tenant ids must be lowercase DNS labels (the namespace is
-  derived from the id), duplicates are refused, and `KODAMA_TENANT_NAMESPACE`
+  derived from the id), duplicates are refused, and `KODEMA_TENANT_NAMESPACE`
   is a singleton-only override refused next to a multi-tenant list. Both the
   schema and the template guard enforce these rules, so a render that skips
-  schema validation is still refused. `kodama bootstrap-admin` still defaults
-  its `--tenant` flag to `KODAMA_TENANT`, which a multi-tenant release does not
+  schema validation is still refused. `kodema bootstrap-admin` still defaults
+  its `--tenant` flag to `KODEMA_TENANT`, which a multi-tenant release does not
   set: pass `--tenant` explicitly for each administrator (the command refuses
   without a tenant).
 - `templates/networkpolicy.yaml`: one default-deny ingress and egress policy per
-  tenant namespace (`kodama-tenant-<tenant>`), with namespace-scoped explicit
-  reachability to Kodama, Git and cluster DNS. The control-plane namespace is
+  tenant namespace (`kodema-tenant-<tenant>`), with namespace-scoped explicit
+  reachability to Kodema, Git and cluster DNS. The control-plane namespace is
   not fenced because the controller needs its own database, broker, KMS and DNS
   egress.
 - `templates/ciliumpolicy.yaml`: optional egress to exact DNS names for tenant
@@ -199,49 +199,49 @@ The chart also has two optional blocks, off by default: `gitService` (one
   `cilium.io/v2/CiliumNetworkPolicy` CRD is available; on a cluster without
   Cilium FQDN support nothing renders rather than an approximation, and
   Cilium's L7 DNS proxy must be enabled for the DNS rule to take effect.
-- **Production requires OIDC.** `cmd/kodama/production.go` refuses to start
-  without `KODAMA_OIDC_ISSUER`, `KODAMA_OIDC_AUDIENCE`, `KODAMA_OIDC_JWKS_URL`
-  and `KODAMA_OIDC_TENANT_CLAIM`. Set all four in the operator extra values
-  (`kodama.config.extraEnv.*` for the stack chart). The values schema
+- **Production requires OIDC.** `cmd/kodema/production.go` refuses to start
+  without `KODEMA_OIDC_ISSUER`, `KODEMA_OIDC_AUDIENCE`, `KODEMA_OIDC_JWKS_URL`
+  and `KODEMA_OIDC_TENANT_CLAIM`. Set all four in the operator extra values
+  (`kodema.config.extraEnv.*` for the stack chart). The values schema
   (`allOf`/`if`/`then`) and the template guard abort a `production` render when
   one is missing **or empty**; an empty value is a named configuration error,
   not a silent default. A `development` or `test` profile does not require them.
-  `KODAMA_OIDC_{SUBJECT_CLAIM,PROJECT_CLAIM,CA_FILE}` stay optional, and any
+  `KODEMA_OIDC_{SUBJECT_CLAIM,PROJECT_CLAIM,CA_FILE}` stay optional, and any
   OIDC or discovery value that is present must be non-empty.
 - `config.extraEnv` is a narrow pass-through for the server variables the Go
-  composition reads: `KODAMA_OIDC_{ISSUER,AUDIENCE,JWKS_URL,TENANT_CLAIM,SUBJECT_CLAIM,PROJECT_CLAIM,CA_FILE}`,
-  `KODAMA_DISCOVERY_{ISSUER,CLIENT_ID,AUDIENCE,AUTHORIZATION_ENDPOINT,TOKEN_ENDPOINT,DEVICE_AUTHORIZATION_ENDPOINT,REVOCATION_ENDPOINT,SCOPES,API_URL}`,
-  `KODAMA_TENANT_NAMESPACE` (singleton installations only) and
-  `KODAMA_WORKLOAD_{CPU,MEMORY}_{REQUEST,LIMIT}`. `values.schema.json`
+  composition reads: `KODEMA_OIDC_{ISSUER,AUDIENCE,JWKS_URL,TENANT_CLAIM,SUBJECT_CLAIM,PROJECT_CLAIM,CA_FILE}`,
+  `KODEMA_DISCOVERY_{ISSUER,CLIENT_ID,AUDIENCE,AUTHORIZATION_ENDPOINT,TOKEN_ENDPOINT,DEVICE_AUTHORIZATION_ENDPOINT,REVOCATION_ENDPOINT,SCOPES,API_URL}`,
+  `KODEMA_TENANT_NAMESPACE` (singleton installations only) and
+  `KODEMA_WORKLOAD_{CPU,MEMORY}_{REQUEST,LIMIT}`. `values.schema.json`
   (`propertyNames`) and `templates/_extraenv.tpl` both enforce the allowlist;
   both refuse a name the chart renders itself (a duplicate env entry would
-  override the production composition), `KODAMA_DEV_*` development tokens,
+  override the production composition), `KODEMA_DEV_*` development tokens,
   `SCW_`/`AWS_`/`GOOGLE_` cloud credentials, credential-shaped names (except a
   mounted `*_FILE` path), object values (`valueFrom`) and a value containing
   URL `user:password@` userinfo. Never put a secret in it.
 - **Private registries (W31).** The production entry reads an optional Docker
   `config.json` credential file from the trusted path in
-  `KODAMA_REGISTRY_CONFIG_FILE` and uses it for immutable tag-to-digest
+  `KODEMA_REGISTRY_CONFIG_FILE` and uses it for immutable tag-to-digest
   resolution. Mount the file read-only and set the variable in the server
   environment; an unset setting keeps anonymous resolution for public
   registries, while a configured file that is missing or malformed is a startup
   refusal. No credential value is logged or written into an activation
   snapshot. Optional execution-pod pull Secrets are named in the
-  comma-separated `KODAMA_WORKLOAD_IMAGE_PULL_SECRETS` setting; each name must
+  comma-separated `KODEMA_WORKLOAD_IMAGE_PULL_SECRETS` setting; each name must
   be a DNS-1123 subdomain, and the Kubernetes runtime puts exactly those names
   in the Job's `pod.spec.imagePullSecrets`. Unset renders no field, so no
   Secret name is hard-coded. The chart does not render these two settings yet;
   inject them with the operator's deployment overlay.
 - **Cloud KMS credential, per key adapter.** Each adapter
-  (`config.keyAdapter`, rendered as `KODAMA_KEY_ADAPTER`) has exactly one
+  (`config.keyAdapter`, rendered as `KODEMA_KEY_ADAPTER`) has exactly one
   credential mode, and it is always kept apart from the binary KEK blobs
-  mounted from `kodama-keys`:
+  mounted from `kodema-keys`:
 
   | Adapter | Credential | What the chart renders in the `production` profile |
   |---|---|---|
-  | `scw-kms` | Static IAM API key in the Secret `secrets.kmsCredentials.existingSecret` (default `kodama-kms-credentials`), created by `scripts/bootstrap-secrets scw` | A **required** `envFrom` reference (`optional: false`); `cmd/kodama/production.go` reads `SCW_SECRET_KEY` from it. The render fails without the value. |
-  | `aws-kms` | EKS IRSA, no Secret. The ServiceAccount annotation `eks.amazonaws.com/role-arn` makes the EKS pod identity webhook inject `AWS_ROLE_ARN`, `AWS_WEB_IDENTITY_TOKEN_FILE`, `AWS_REGION` and the projected token. | No reference to `kodama-kms-credentials` at all. The render fails when the ServiceAccount the chart creates lacks the annotation. |
-  | `gcp-kms` | GKE Workload Identity, no Secret and no environment variable. The ServiceAccount annotation `iam.gke.io/gcp-service-account` lets the pod read a token from the metadata server. | No reference to `kodama-kms-credentials` at all. The render fails when the ServiceAccount the chart creates lacks the annotation. |
+  | `scw-kms` | Static IAM API key in the Secret `secrets.kmsCredentials.existingSecret` (default `kodema-kms-credentials`), created by `scripts/bootstrap-secrets scw` | A **required** `envFrom` reference (`optional: false`); `cmd/kodema/production.go` reads `SCW_SECRET_KEY` from it. The render fails without the value. |
+  | `aws-kms` | EKS IRSA, no Secret. The ServiceAccount annotation `eks.amazonaws.com/role-arn` makes the EKS pod identity webhook inject `AWS_ROLE_ARN`, `AWS_WEB_IDENTITY_TOKEN_FILE`, `AWS_REGION` and the projected token. | No reference to `kodema-kms-credentials` at all. The render fails when the ServiceAccount the chart creates lacks the annotation. |
+  | `gcp-kms` | GKE Workload Identity, no Secret and no environment variable. The ServiceAccount annotation `iam.gke.io/gcp-service-account` lets the pod read a token from the metadata server. | No reference to `kodema-kms-credentials` at all. The render fails when the ServiceAccount the chart creates lacks the annotation. |
 
   `scripts/deploy` sets the annotation from the descriptor's
   `kubernetes.workload_identity_ref` and names `kmsCredentials` only for
@@ -253,7 +253,7 @@ The chart also has two optional blocks, off by default: `gitService` (one
   keeps the requirement. The annotation check is skipped with
   `serviceAccount.create: false`, because the chart cannot see a ServiceAccount
   managed elsewhere. The OpenTofu roots bind the IRSA role and the Workload
-  Identity member to exactly the ServiceAccount `kodama` in the release
+  Identity member to exactly the ServiceAccount `kodema` in the release
   namespace, so keep `serviceAccount.name` at its default. `values.schema.json`
   and the template guard both state these rules. A `development` or `test`
   profile requires neither the Secret nor an annotation and marks a named
@@ -263,16 +263,16 @@ The chart also has two optional blocks, off by default: `gitService` (one
   EKS or GKE cluster**; that qualification is planned at gate G04. Scaleway is
   the only live-qualified mode.
 - The database CA Secret (`secrets.database.existingSecret`, key `ca.crt`) is
-  mounted at `/etc/kodama/pg-ca` **without** `optional: true`: a missing CA
+  mounted at `/etc/kodema/pg-ca` **without** `optional: true`: a missing CA
   stops the pod instead of starting it without a certificate root.
-- The server (`kodama`) `Deployment` uses `strategy.type: Recreate` with
+- The server (`kodema`) `Deployment` uses `strategy.type: Recreate` with
   `rollingUpdate: null`. It must already be `Recreate`, as it always has been
   on the stage. A `Deployment` cannot be switched from `RollingUpdate` to
   `Recreate` by a Helm server-side apply: the API server owns the defaulted
   `spec.strategy.rollingUpdate`, so a rendered `rollingUpdate: null` is a no-op
   and the object is rejected with `spec.strategy.rollingUpdate: Forbidden`. If
   a cluster still has it as `RollingUpdate`, the one-time operator remedy is
-  `kubectl -n kodama-system delete deployment kodama` before the upgrade (Helm
+  `kubectl -n kodema-system delete deployment kodema` before the upgrade (Helm
   recreates it from the release).
 - The `oauthsonas` `Deployment` uses `strategy.type: RollingUpdate` with
   `maxSurge: 0` and `maxUnavailable: 1`. At its single replica the old pod is
@@ -290,11 +290,11 @@ The chart also has two optional blocks, off by default: `gitService` (one
   (non-root, no privilege escalation, read-only root filesystem, dropped
   capabilities) before it ships.
 - Installation preflight: P28 removed the placeholder `pre-install,pre-upgrade`
-  installation-check Job. It referenced the release-owned `kodama`
+  installation-check Job. It referenced the release-owned `kodema`
   ServiceAccount, which Helm creates after pre-install hooks, so a fresh
   `helm upgrade --install --wait` could never schedule it, and its container ran
-  `kodama --help`, a gate that can only pass. No preflight subcommand or hook
-  exists today; the start-up preflight runs inside `kodama server`. A future
+  `kodema --help`, a gate that can only pass. No preflight subcommand or hook
+  exists today; the start-up preflight runs inside `kodema server`. A future
   hook must not depend on non-hook resources: either run without a chart ServiceAccount and set
   `automountServiceAccountToken: false`, or create a ServiceAccount that is
   itself a hook created first. Any restored hook must run a real command and
@@ -318,7 +318,7 @@ PEM bundle and the matching RDS CA identifier:
   selected region. Prefer the regional bundle from the RDS trust store; the
   published `global-bundle.pem` is large and usually exceeds a practical
   environment value, so for a large bundle use a `-var-file` outside git (for
-  example `tofu apply -var-file="$HOME/.config/kodama/aws-ca.tfvars"`) instead
+  example `tofu apply -var-file="$HOME/.config/kodema/aws-ca.tfvars"`) instead
   of `TF_VAR_*`. Never commit the bundle to `clusters/*.tfvars.json`. It
   contains public certificates only, never a private key or a credential.
 
@@ -343,9 +343,9 @@ PEM bundle and the matching RDS CA identifier:
   rotate the bundle and the identifier together in one change.
 - The root exports the bundle as the `database_ca_certificate` output, the
   exact name `scripts/bootstrap-secrets` reads. It becomes the `ca.crt` key of
-  the `kodama-database` Secret (mode 0644, public material), which the
-  controller mounts at `/etc/kodama/pg-ca/ca.crt` and references from every
-  production DSN with `sslmode=verify-full&sslrootcert=/etc/kodama/pg-ca/ca.crt`.
+  the `kodema-database` Secret (mode 0644, public material), which the
+  controller mounts at `/etc/kodema/pg-ca/ca.crt` and references from every
+  production DSN with `sslmode=verify-full&sslrootcert=/etc/kodema/pg-ca/ca.crt`.
   A missing output stops `bootstrap-secrets` before any KMS call and before the
   database Secret is created.
 - Provenance and rotation: obtain the bundle only from AWS's published RDS
@@ -353,26 +353,26 @@ PEM bundle and the matching RDS CA identifier:
   `postgres_ca_cert_identifier` in the same change before AWS retires the CA.
   Re-run `scripts/bootstrap-secrets aws` after apply so the Secret carries the
   new `ca.crt`. Alias or CA-identifier reassignment is not KEK rotation and
-  must never regenerate `kodama-keys`. Matching this bundle and the live RDS
+  must never regenerate `kodema-keys`. Matching this bundle and the live RDS
   hostname remains R5 evidence; the offline tests prove wiring and PEM parsing
   only.
 
 ## OAuthSonas (stage and preview only)
 
-The `kodama-stack` chart can render an optional OAuthSonas development
+The `kodema-stack` chart can render an optional OAuthSonas development
 identity provider (`oauthsonas.enabled`, default `false`). It exists for
 **stage and preview installations only** and must never be enabled where real
 identities matter: anyone with the panel access code can become any persona.
 It is ClusterIP-only, both images are digest-pinned, the access code comes only
 from the `oauthsonas-access` Secret, and `scripts/bootstrap-secrets` creates
-its certificate only with `KODAMA_WITH_OAUTHSONAS=1`.
+its certificate only with `KODEMA_WITH_OAUTHSONAS=1`.
 
 ## Broker authentication and per-credential authorization
 
-KODAMA.md and `docs/specs/08-operations-events.md` require broker
+KODEMA.md and `docs/specs/08-operations-events.md` require broker
 authentication and authorization on the same credential. Any pod that can reach
 `nats.<namespace>:4222` must not be able to read every tenant's events and logs.
-The `kodama-stack` chart is therefore **fail-closed**: `helm template` and
+The `kodema-stack` chart is therefore **fail-closed**: `helm template` and
 `helm upgrade` refuse to render unless a client-authentication mechanism is
 configured.
 
@@ -384,7 +384,7 @@ configured.
   asks the same authorizer HTTP and MCP use, and returns a short-lived user JWT
   limited to that credential's exact scope. Revocation, replacement, expiry,
   disablement, request entry and terminal transitions therefore stop new broker
-  connections and close established Kodama subscriptions through the live
+  connections and close established Kodema subscriptions through the live
   invalidation subject. The grant is additionally capped at 60 seconds
   (`nats.DefaultGrantLifetime`), so an established raw broker connection is
   closed when the cap elapses and its reconnect re-runs the callout with the
@@ -399,19 +399,19 @@ configured.
   the seed. The chart never embeds a seed or password, so `helm template` with
   the default values renders references only and needs no developer secret.
   `scripts/bootstrap-secrets <scw|gcp|aws> --cluster <name>` creates
-  `kodama-nats-auth` before the first chart render. The Secret carries both
+  `kodema-nats-auth` before the first chart render. The Secret carries both
   bypass pairs (`shell-user`/`shell-password`,
   `callout-user`/`callout-password`), the account key pair
   (`issuer.seed`/`issuer.pub`) and `account`, whose value is the same
-  `KODAMA` account as `nats.auth.callout.account` and
-  `kodama.secrets.natsAuth.account`. The stage values renderer writes those two
+  `KODEMA` account as `nats.auth.callout.account` and
+  `kodema.secrets.natsAuth.account`. The stage values renderer writes those two
   values explicitly, so a stage deploy does not depend on chart defaults for
   the Secret name or account.
 - Idempotency and rotation: a plain rerun reuses every existing key and fills
   only keys missing from the Secret. `--rotate-nats-auth` is the only way to
   replace the issuer pair and both bypass passwords; `--rotate-pki` never
   touches them, and `--rotate-nats-auth` never touches TLS. Rotate the callout
-  material and restart (or `helm upgrade`) the NATS and Kodama workloads
+  material and restart (or `helm upgrade`) the NATS and Kodema workloads
   together: the pods read the Secret once at start, so a rotated Secret alone
   leaves the old issuer and passwords in running processes. A seed or password
   never belongs in values or a rendered manifest.
@@ -425,20 +425,20 @@ configured.
 - The component suite renders the stack chart with the values
   `scripts/deploy render-values` generates for the stage descriptor and runs
   the real bootstrap script against fake Kubernetes/cloud binaries. It fails
-  if a `kodama-nats-auth` key that the rendered NATS `StatefulSet` or Kodama
+  if a `kodema-nats-auth` key that the rendered NATS `StatefulSet` or Kodema
   `Deployment` reads via `secretKeyRef` is absent from the bootstrap script's
-  `KODAMA_NATS_AUTH_KEYS`, if either workload stops reading the keys it needs,
-  if the rendered `KODAMA_NATS_CALLOUT_ACCOUNT` differs from the account the
+  `KODEMA_NATS_AUTH_KEYS`, if either workload stops reading the keys it needs,
+  if the rendered `KODEMA_NATS_CALLOUT_ACCOUNT` differs from the account the
   script writes, or if the chart's `existingSecret` name differs from the one
   the script creates. It renders a local chart tree; it does not inspect a
   live cluster.
 - `nats.auth.mode: mtls` verifies a client certificate against the CA in
-  `nats.auth.mtls.existingSecret` (`kodama-broker-tls`, the Secret
+  `nats.auth.mtls.existingSecret` (`kodema-broker-tls`, the Secret
   `bootstrap-secrets` creates). It is the transport floor and remains on in
-  every mode. The control plane mounts the `kodama-broker` Secret (`ca.crt`,
-  `tls.crt`, `tls.key`, `nats_url`) at `/etc/kodama/broker-tls`;
-  `KODAMA_NATS_CA_FILE`, `KODAMA_NATS_CERT_FILE` and `KODAMA_NATS_KEY_FILE` feed
-  `natsdriver.TLSConfig` in `cmd/kodama/production.go`. A live stage connection
+  every mode. The control plane mounts the `kodema-broker` Secret (`ca.crt`,
+  `tls.crt`, `tls.key`, `nats_url`) at `/etc/kodema/broker-tls`;
+  `KODEMA_NATS_CA_FILE`, `KODEMA_NATS_CERT_FILE` and `KODEMA_NATS_KEY_FILE` feed
+  `natsdriver.TLSConfig` in `cmd/kodema/production.go`. A live stage connection
   is still the proof of end-to-end mTLS (Q02); the unit chart and composition
   pins are not operational evidence.
 - `nats.auth.mode: credentials` renders a static NATS `authorization` block whose
@@ -480,7 +480,7 @@ evidence blocks dispatch instead of replaying work. Missing workspaces are
 reported as unrecoverable failures, never recreated.
 
 The recommended recovery objectives are RPO ≤ 15 minutes, RTO ≤ 4 hours and
-30-day PostgreSQL recovery. Kodama does not enforce them; a timestamped restore
+30-day PostgreSQL recovery. Kodema does not enforce them; a timestamped restore
 drill measures and reports them for this reference deployment; the unit tests in `internal/installation` are not operational
 proof. See [S10](../docs/specs/10-production.md) and
 [S07](../docs/specs/07-runtime-secrets.md).

@@ -23,7 +23,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
+	"github.com/optimiware/kodema/api"
 )
 
 // isolationRecordSkippedEvidence writes one explicit skipped-outcome record for
@@ -219,7 +219,7 @@ func isolationReadNetworkPolicy(ctx context.Context, runtime *isolationRuntime, 
 
 // isolationPodSelector is the product label that attributes a workload Pod to
 // one execution.
-const isolationExecutionLabel = "kodama.dev/execution"
+const isolationExecutionLabel = "kodema.dev/execution"
 
 // isolationWaitPod polls one execution/namespace selector until exactly one
 // Pod carries a pod address, then returns its bounded facts.
@@ -326,9 +326,9 @@ func isolationCaptureExecutionCredential(ctx context.Context, kubectl *Kubectl, 
 		case 0:
 			return false, nil
 		case 1:
-			encoded := list.Items[0].Data["KODAMA_TOKEN"]
+			encoded := list.Items[0].Data["KODEMA_TOKEN"]
 			if encoded == "" {
-				return false, fmt.Errorf("the execution credential Secret has no KODAMA_TOKEN")
+				return false, fmt.Errorf("the execution credential Secret has no KODEMA_TOKEN")
 			}
 			raw, err := base64.StdEncoding.DecodeString(encoded)
 			if err != nil || len(raw) == 0 {
@@ -452,9 +452,9 @@ func isolationNetworkServerPipeline(image, readyMarker, doneMarker string) []byt
 }
 
 // isolationNetworkClientPipeline proves tenant A cannot reach tenant B's
-// listener while it can reach the Kodama service and cannot reach the
+// listener while it can reach the Kodema service and cannot reach the
 // Kubernetes API.
-func isolationNetworkClientPipeline(image, targetIP, kodamaService, isolatedMarker string) []byte {
+func isolationNetworkClientPipeline(image, targetIP, kodemaService, isolatedMarker string) []byte {
 	command := fmt.Sprintf(
 		"reached=0\n"+
 			"for attempt in 1 2 3; do\n"+
@@ -462,11 +462,11 @@ func isolationNetworkClientPipeline(image, targetIP, kodamaService, isolatedMark
 			"  sleep 1\n"+
 			"done\n"+
 			"if [ \"$reached\" = \"1\" ]; then echo q02-cross-tenant-reachable; exit 1; fi\n"+
-			"if ! curl -sSk --noproxy '*' --connect-timeout 5 -m 10 %s >/dev/null; then echo q02-kodama-unreachable; exit 1; fi\n"+
+			"if ! curl -sSk --noproxy '*' --connect-timeout 5 -m 10 %s >/dev/null; then echo q02-kodema-unreachable; exit 1; fi\n"+
 			"if curl -sSk --noproxy '*' --connect-timeout 3 -m 5 'https://kubernetes.default.svc/api' >/dev/null 2>&1; then echo q02-api-reachable; exit 1; fi\n"+
 			"echo %s\n",
 		shellQuote("http://"+net.JoinHostPort(targetIP, "18080")+"/"),
-		shellQuote("https://"+kodamaService+"."+ReleaseNamespace+".svc.cluster.local:8443/healthz"),
+		shellQuote("https://"+kodemaService+"."+ReleaseNamespace+".svc.cluster.local:8443/healthz"),
 		shellQuote(isolatedMarker))
 	return resiliencePipelineYAML(image, "net-client", "2m", []string{command})
 }
@@ -489,7 +489,7 @@ func isolationGitAdvertisement(ctx context.Context, client *http.Client, baseURL
 		return 0, nil, nil, fmt.Errorf("build the Git advertisement request")
 	}
 	if token.IsSet() {
-		request.SetBasicAuth("kodama", token.Reveal())
+		request.SetBasicAuth("kodema", token.Reveal())
 	}
 	response, err := client.Do(request)
 	if err != nil {

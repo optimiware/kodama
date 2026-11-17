@@ -12,10 +12,10 @@ import (
 
 	"github.com/nats-io/nats.go/jetstream"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	broker "github.com/optimiware/kodama/internal/shell/integration/nats"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	broker "github.com/optimiware/kodema/internal/shell/integration/nats"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
 )
 
 // fakeStreamAdmin is the consumer-owned JetStream stream-administration seam.
@@ -351,7 +351,7 @@ func TestEnsureStreamsRefusesConflictingStream(t *testing.T) {
 		mutate func(*jetstream.StreamConfig)
 	}{
 		{"subjects", func(config *jetstream.StreamConfig) {
-			config.Subjects = []string{"kodama.v1.*.*.ingress"}
+			config.Subjects = []string{"kodema.v1.*.*.ingress"}
 		}},
 		{"storage", func(config *jetstream.StreamConfig) {
 			config.Storage = jetstream.MemoryStorage
@@ -385,7 +385,7 @@ func TestEnsureStreamsRefusesConflictingStream(t *testing.T) {
 		}},
 		{"subject transform", func(config *jetstream.StreamConfig) {
 			config.SubjectTransform = &jetstream.SubjectTransformConfig{
-				Source:      "kodama.v1.*.*.events",
+				Source:      "kodema.v1.*.*.events",
 				Destination: "other.>",
 			}
 		}},
@@ -676,10 +676,10 @@ func TestEnsureStreamsConcurrentCallsConverge(t *testing.T) {
 // the broker adapter's concrete scope-qualified builders. A filter that drifts
 // from EventSubject/InvalidationSubject would silently stop capturing events.
 func TestStreamSubjectsMatchAdapterSubjectBuilders(t *testing.T) {
-	if EventsStreamSubjects != "kodama.v1.*.*.events" {
+	if EventsStreamSubjects != "kodema.v1.*.*.events" {
 		t.Fatalf("events stream subjects = %q", EventsStreamSubjects)
 	}
-	if InvalidationsStreamSubjects != "kodama.v1.*.*.invalidations" {
+	if InvalidationsStreamSubjects != "kodema.v1.*.*.invalidations" {
 		t.Fatalf("invalidations stream subjects = %q", InvalidationsStreamSubjects)
 	}
 	for _, filter := range []string{EventsStreamSubjects, InvalidationsStreamSubjects} {
@@ -710,10 +710,10 @@ func TestStreamSubjectsMatchAdapterSubjectBuilders(t *testing.T) {
 		}
 	}
 
-	if subjectMatchesFilter(EventsStreamSubjects, "kodama.v1.tenant-a.project-a.ingress") {
+	if subjectMatchesFilter(EventsStreamSubjects, "kodema.v1.tenant-a.project-a.ingress") {
 		t.Fatal("the events filter captured an ingress subject")
 	}
-	if subjectMatchesFilter(InvalidationsStreamSubjects, "kodama.v1.tenant-a.project-a.logs.execution-1") {
+	if subjectMatchesFilter(InvalidationsStreamSubjects, "kodema.v1.tenant-a.project-a.logs.execution-1") {
 		t.Fatal("the invalidations filter captured a log subject")
 	}
 }
@@ -731,8 +731,8 @@ func validateStreamSubjectFilter(filter string) error {
 			return fmt.Errorf("has an empty or whitespace token")
 		}
 	}
-	if tokens[0] != "kodama" || tokens[1] != "v1" {
-		return fmt.Errorf("does not use the kodama.v1 prefix")
+	if tokens[0] != "kodema" || tokens[1] != "v1" {
+		return fmt.Errorf("does not use the kodema.v1 prefix")
 	}
 	if tokens[2] != "*" || tokens[3] != "*" {
 		return fmt.Errorf("does not wildcard exactly the tenant and project tokens")

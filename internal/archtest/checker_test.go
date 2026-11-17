@@ -22,7 +22,7 @@ var checkerPath string
 
 func TestMain(m *testing.M) {
 	root := repoRoot()
-	dir, err := os.MkdirTemp("", "kodama-archtest-checker-*")
+	dir, err := os.MkdirTemp("", "kodema-archtest-checker-*")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "create checker temp dir: %v\n", err)
 		os.Exit(1)
@@ -357,7 +357,7 @@ func TestUserlandAppLayerImportsOnlyPublicContracts(t *testing.T) {
 			t.Errorf("classifyPath(%q) = %s, want userland app", path, got)
 		}
 	}
-	if got := classifyPath("cmd/kodama/main.go"); got != layerComposition {
+	if got := classifyPath("cmd/kodema/main.go"); got != layerComposition {
 		t.Errorf("cmd must stay composition, got %s", got)
 	}
 	for _, imported := range []layer{layerNeutral, layerAPI, layerUserland, layerUserlandApp} {
@@ -445,7 +445,7 @@ func TestImportsTestConsumersMayImportProductLayers(t *testing.T) {
 func TestImportsProductLayersRejectTestImports(t *testing.T) {
 	root := fixturePath(t, "imports/test-import-forbidden")
 	res := runCheck(t, root, "imports")
-	assertFindings(t, res, "internal/kernel/flow/flow.go", `forbidden import "kodama/test/support/factory"`, "kernel package")
+	assertFindings(t, res, "internal/kernel/flow/flow.go", `forbidden import "kodema/test/support/factory"`, "kernel package")
 }
 
 func TestImportsAcceptsRealRepository(t *testing.T) {

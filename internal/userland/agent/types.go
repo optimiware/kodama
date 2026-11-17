@@ -252,7 +252,7 @@ func validToolFunctionName(name string) bool {
 	return true
 }
 
-// Provider function names accept only [A-Za-z0-9_-], while native Kodama tool
+// Provider function names accept only [A-Za-z0-9_-], while native Kodema tool
 // names are dotted operation names such as "task.ask". The translation
 // below is reversible and collision-free; a naive dot-to-underscore alias is
 // not, because "task.ask" and "task_ask" would merge.

@@ -70,7 +70,7 @@ type protectedWorkloadBox struct {
 
 // newProtectedWorkloadBox builds one isolated workspace, token mount, output
 // root and shim directory. Nothing is created under a real /workspace or
-// /kodama path.
+// /kodema path.
 func newProtectedWorkloadBox(t *testing.T, caPEM []byte) *protectedWorkloadBox {
 	t.Helper()
 	root := t.TempDir()
@@ -78,10 +78,10 @@ func newProtectedWorkloadBox(t *testing.T, caPEM []byte) *protectedWorkloadBox {
 		root:       root,
 		workspace:  filepath.Join(root, "workspace"),
 		repository: filepath.Join(root, "workspace", "git-protected-repository"),
-		tokenPath:  filepath.Join(root, "kodama", "secrets", "KODAMA_TOKEN"),
+		tokenPath:  filepath.Join(root, "kodema", "secrets", "KODEMA_TOKEN"),
 		caPath:     filepath.Join(root, "workspace", filepath.Base(gitWorkloadCAFile)),
-		markerPath: filepath.Join(root, "workspace", ".kodama-workspace-marker"),
-		outputs:    filepath.Join(root, "kodama", "outputs"),
+		markerPath: filepath.Join(root, "workspace", ".kodema-workspace-marker"),
+		outputs:    filepath.Join(root, "kodema", "outputs"),
 		binDir:     filepath.Join(root, "bin"),
 		caPEM:      caPEM,
 	}
@@ -146,7 +146,7 @@ func (box *protectedWorkloadBox) env(action string, extra ...string) []string {
 		switch {
 		case strings.HasPrefix(entry, "PATH="):
 			continue
-		case strings.HasPrefix(entry, "KODAMA_"):
+		case strings.HasPrefix(entry, "KODEMA_"):
 			continue
 		case strings.HasPrefix(entry, "FAKE_PROTECTED_"):
 			continue
@@ -157,9 +157,9 @@ func (box *protectedWorkloadBox) env(action string, extra ...string) []string {
 	}
 	environment = append(environment,
 		"PATH="+box.binDir+string(os.PathListSeparator)+os.Getenv("PATH"),
-		"KODAMA_URL=https://host.containers.internal:41000",
-		"KODAMA_EXECUTION="+protectedTestExecution,
-		"KODAMA_ACTION="+action,
+		"KODEMA_URL=https://host.containers.internal:41000",
+		"KODEMA_EXECUTION="+protectedTestExecution,
+		"KODEMA_ACTION="+action,
 		"FAKE_PROTECTED_GIT_ARGV="+box.gitArgv,
 		"FAKE_PROTECTED_GIT_STATE="+box.gitState,
 		"FAKE_PROTECTED_GIT_BASE="+box.gitBase,
@@ -321,7 +321,7 @@ func TestProtectedWorkloadUsesMountedCredentialAndTLS(t *testing.T) {
 		if strings.Contains(joined, "Authorization: Basic ") && !strings.Contains(joined, "Authorization: Basic $(printf") {
 			t.Fatalf("%s commands carry a literal Basic header:\n%s", name, joined)
 		}
-		if strings.Contains(joined, "KODAMA_TOKEN=") {
+		if strings.Contains(joined, "KODEMA_TOKEN=") {
 			t.Fatalf("%s commands assign the token to an environment value:\n%s", name, joined)
 		}
 	}
@@ -331,7 +331,7 @@ func TestProtectedWorkloadUsesMountedCredentialAndTLS(t *testing.T) {
 	for name, commands := range map[string][]string{"candidate": candidate, "test": testAction} {
 		joined := strings.Join(commands, "\n")
 		scan := strings.Index(joined, "scan_workspace_for_credential")
-		submit := strings.LastIndex(joined, "kodama_submit_outputs")
+		submit := strings.LastIndex(joined, "kodema_submit_outputs")
 		if scan < 0 || submit < 0 || scan > submit {
 			t.Fatalf("%s commands do not scan the workspace before submitting outputs", name)
 		}
@@ -346,13 +346,13 @@ func TestProtectedWorkloadUsesMountedCredentialAndTLS(t *testing.T) {
 		t.Fatalf("author task-associated candidate commands: %v", err)
 	}
 	taskJoined := strings.Join(taskCommands, "\n")
-	for _, required := range []string{`test -n "$KODAMA_TASK"`, protectedWorkloadTaskFile} {
+	for _, required := range []string{`test -n "$KODEMA_TASK"`, protectedWorkloadTaskFile} {
 		if !strings.Contains(taskJoined, required) {
 			t.Fatalf("task-associated candidate commands do not contain %q", required)
 		}
 	}
 	smokeJoined := strings.Join(candidate, "\n")
-	if strings.Contains(smokeJoined, `test -n "$KODAMA_TASK"`) {
+	if strings.Contains(smokeJoined, `test -n "$KODEMA_TASK"`) {
 		t.Fatalf("task-free candidate commands require a task")
 	}
 
@@ -365,7 +365,7 @@ func TestProtectedWorkloadUsesMountedCredentialAndTLS(t *testing.T) {
 	}{
 		{name: "plain http", spec: withValue(spec, func(s *protectedWorkloadSpec) { s.URL = "http://host.containers.internal:41000/repository.git" })},
 		{name: "url credentials", spec: withValue(spec, func(s *protectedWorkloadSpec) {
-			s.URL = "https://kodama:secret@host.containers.internal:41000/repository.git"
+			s.URL = "https://kodema:secret@host.containers.internal:41000/repository.git"
 		})},
 		{name: "protected work ref", spec: withValue(spec, func(s *protectedWorkloadSpec) { s.WorkRef = "refs/heads/main" })},
 		{name: "missing CA", spec: withValue(spec, func(s *protectedWorkloadSpec) { s.CAPEM = nil })},
@@ -388,7 +388,7 @@ func TestProtectedWorkloadUsesMountedCredentialAndTLS(t *testing.T) {
 }
 
 // TestProtectedWorkloadOutputsUseCurrentActionAndEnvelope proves the HTTPS
-// submitter resolves the KODAMA_ACTION slug to the real action ID, refreshes
+// submitter resolves the KODEMA_ACTION slug to the real action ID, refreshes
 // the observed state only for an explicit version_conflict, sends the complete
 // output map in the served envelope and fails closed on every other status.
 func TestProtectedWorkloadOutputsUseCurrentActionAndEnvelope(t *testing.T) {

@@ -4,11 +4,11 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/shell/identity"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/shell/identity"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
 )
 
 // TestSecretFamily drives the real secret manager: write, metadata read (both
@@ -69,9 +69,9 @@ func TestSecretFamily(t *testing.T) {
 		"project": testProject,
 		"secret":  id.SecretTokenName,
 	}); err == nil {
-		t.Fatal("secret.metadata.read accepted KODAMA_TOKEN")
+		t.Fatal("secret.metadata.read accepted KODEMA_TOKEN")
 	} else if class, ok := fault.ClassOf(err); !ok || class != fault.InvalidInput {
-		t.Fatalf("KODAMA_TOKEN metadata read class = %v (%v); want invalid_input", class, err)
+		t.Fatalf("KODEMA_TOKEN metadata read class = %v (%v); want invalid_input", class, err)
 	}
 
 	deleted, err := h.invokeVersion(t, testToken, "secret.delete", `{}`, 1, map[string]string{

@@ -3,12 +3,12 @@ package opsapp
 import (
 	"context"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/shell/event"
-	shellrequest "github.com/optimiware/kodama/internal/shell/request"
-	"github.com/optimiware/kodama/internal/shell/resource"
-	"github.com/optimiware/kodama/internal/shell/transport/ops"
-	"github.com/optimiware/kodama/internal/shell/verify"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/shell/event"
+	shellrequest "github.com/optimiware/kodema/internal/shell/request"
+	"github.com/optimiware/kodema/internal/shell/resource"
+	"github.com/optimiware/kodema/internal/shell/transport/ops"
+	"github.com/optimiware/kodema/internal/shell/verify"
 )
 
 // verifyHandlers binds actor verification and verified resource reports.

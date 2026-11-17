@@ -38,7 +38,7 @@ jobs:
       - name: Binaries report the version and revision
         run: |
           want="$(cat VERSION) (revision ${GITHUB_SHA},"
-          for binary in kodama kodactl; do
+          for binary in kodema kodactl; do
             line="$(bin/$binary version)"
             echo "$line"
             [[ "$line" == "$binary $want"* ]] || { echo "::error::$binary version does not start with '$binary $want'"; exit 1; }
@@ -53,16 +53,16 @@ jobs:
           version="$(cat VERSION)"
           mkdir -p "${RUNNER_TEMP}/releases/download"
           ln -s "${PWD}/dist" "${RUNNER_TEMP}/releases/download/v${version}"
-          KODAMA_RELEASES_URL="file://${RUNNER_TEMP}/releases" KODAMA_VERSION="$version" \
-            KODAMA_INSTALL_DIR="${RUNNER_TEMP}/bin" sh install.sh
-          for binary in kodama kodactl; do
+          KODEMA_RELEASES_URL="file://${RUNNER_TEMP}/releases" KODEMA_VERSION="$version" \
+            KODEMA_INSTALL_DIR="${RUNNER_TEMP}/bin" sh install.sh
+          for binary in kodema kodactl; do
             line="$("${RUNNER_TEMP}/bin/${binary}" version)"
             echo "$line"
             [[ "$line" == "$binary $version (revision ${GITHUB_SHA},"* ]] || { echo "::error::the installed $binary reports another version or revision"; exit 1; }
           done
       - name: Image builds and reports the version and revision
         run: |
-          ref="$(scripts/image build --repository localhost/kodama --tag ci)"
+          ref="$(scripts/image build --repository localhost/kodema --tag ci)"
           line="$(podman run --rm "$ref" version)"
           echo "$line"
-          [[ "$line" == "kodama $(cat VERSION) (revision ${GITHUB_SHA},"* ]] || { echo "::error::the image reports another version or revision"; exit 1; }
+          [[ "$line" == "kodema $(cat VERSION) (revision ${GITHUB_SHA},"* ]] || { echo "::error::the image reports another version or revision"; exit 1; }

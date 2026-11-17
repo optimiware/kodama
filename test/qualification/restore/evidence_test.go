@@ -35,13 +35,13 @@ func validEvidenceRecord() Evidence {
 	}
 }
 
-// recordDrillEvidence writes one drill record to KODAMA_EVIDENCE_DIR, or to the
+// recordDrillEvidence writes one drill record to KODEMA_EVIDENCE_DIR, or to the
 // ignored module-root scratch path <module root>/.harness/evidence/Q03 when
 // that variable is unset, and returns the written path. It lives in test code
 // so the non-test evidence helper has no testing dependency.
 func recordDrillEvidence(t testing.TB, name string, record Evidence) string {
 	t.Helper()
-	directory := os.Getenv("KODAMA_EVIDENCE_DIR")
+	directory := os.Getenv("KODEMA_EVIDENCE_DIR")
 	if directory == "" {
 		directory = defaultEvidenceDirectory()
 	}
@@ -68,7 +68,7 @@ func defaultEvidenceDirectory() string {
 			dir = parent
 		}
 	}
-	return filepath.Join(os.TempDir(), "kodama-q03-evidence")
+	return filepath.Join(os.TempDir(), "kodema-q03-evidence")
 }
 
 func TestEvidenceAllowlist(t *testing.T) {
@@ -193,7 +193,7 @@ func TestEvidenceRejectsUnsafeNames(t *testing.T) {
 
 func TestRecordEvidenceUsesTheRunDirectory(t *testing.T) {
 	directory := t.TempDir()
-	t.Setenv("KODAMA_EVIDENCE_DIR", directory)
+	t.Setenv("KODEMA_EVIDENCE_DIR", directory)
 	record := validEvidenceRecord()
 	path := recordDrillEvidence(t, "run-abc123def456.json", record)
 	if filepath.Dir(path) != directory {
@@ -239,7 +239,7 @@ func TestEvidenceValidation(t *testing.T) {
 		},
 		"connection string in unresolved resources": {
 			Drill: valid.Drill, RunID: valid.RunID, Environment: valid.Environment, Outcome: valid.Outcome, RPOBase: valid.RPOBase,
-			UnresolvedResources: []string{"postgres://user:secret@host/kodama"},
+			UnresolvedResources: []string{"postgres://user:secret@host/kodema"},
 		},
 		"jwt in unresolved resources": {
 			Drill: valid.Drill, RunID: valid.RunID, Environment: valid.Environment, Outcome: valid.Outcome, RPOBase: valid.RPOBase,

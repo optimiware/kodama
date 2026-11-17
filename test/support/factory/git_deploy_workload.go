@@ -27,7 +27,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/id"
+	"github.com/optimiware/kodema/internal/id"
 )
 
 const (
@@ -40,7 +40,7 @@ const (
 	// digest-pinned image reference.
 	deployWorkloadImagePath = "deploy/image"
 	// deployWorkloadInputImage is the admitted digest-pinned promotion input.
-	deployWorkloadInputImage = "/kodama/inputs/image"
+	deployWorkloadInputImage = "/kodema/inputs/image"
 	// deployWorkloadCandidateKey and deployWorkloadBaseKey are the release
 	// outputs the approval subject and integrate action consume.
 	deployWorkloadCandidateKey = "candidate"
@@ -180,21 +180,21 @@ func deployReleaseCommands(spec deployWorkloadSpec) ([]string, error) {
 		"test -s "+shellQuote(deployWorkloadInputImage),
 		"test \"$(cat "+shellQuote(deployWorkloadInputImage)+")\" = "+image,
 		"rm -rf -- "+directory,
-		"git_kodama clone --quiet "+shellQuote(spec.URL)+" "+directory,
+		"git_kodema clone --quiet "+shellQuote(spec.URL)+" "+directory,
 		"cd "+directory,
 		`test "$(git rev-parse HEAD)" = `+base,
 		"mkdir -p deploy",
 		"printf '%s\\n' "+image+" > "+shellQuote(deployWorkloadImagePath),
 		"git add -- "+shellQuote(deployWorkloadImagePath),
-		"git -c user.name=kodama -c user.email=kodama@example.invalid commit --quiet -m 'I06 W26 deploy candidate'",
-		"kodama_deploy_candidate=$(git rev-parse HEAD)",
-		`test "$kodama_deploy_candidate" != `+base,
+		"git -c user.name=kodema -c user.email=kodema@example.invalid commit --quiet -m 'I06 W26 deploy candidate'",
+		"kodema_deploy_candidate=$(git rev-parse HEAD)",
+		`test "$kodema_deploy_candidate" != `+base,
 		`test "$(git rev-parse HEAD^)" = `+base,
-		"git_kodama push --quiet origin "+shellQuote("HEAD:"+spec.WorkRef),
+		"git_kodema push --quiet origin "+shellQuote("HEAD:"+spec.WorkRef),
 		// The same execution cannot move the approval-guarded deploy ref
 		// without a passed human request. An accepted push here is the
 		// authority defect this control exists for.
-		"if git_kodama push --quiet origin \"$kodama_deploy_candidate:"+spec.ProtectedRef+"\" >/dev/null 2>&1; then\n"+
+		"if git_kodema push --quiet origin \"$kodema_deploy_candidate:"+spec.ProtectedRef+"\" >/dev/null 2>&1; then\n"+
 			"  printf 'unapproved-deploy-push-accepted\\n' >&2\n"+
 			"  exit 1\n"+
 			"fi",
@@ -202,7 +202,7 @@ func deployReleaseCommands(spec deployWorkloadSpec) ([]string, error) {
 	)
 	commands = append(commands, workloadScanCommands(spec.TokenPath, spec.Workspace)...)
 	commands = append(commands,
-		"kodama_submit_outputs \"candidate=$kodama_deploy_candidate\" "+
+		"kodema_submit_outputs \"candidate=$kodema_deploy_candidate\" "+
 			shellQuote("expected_base="+spec.ExpectedBase)+" "+
 			shellQuote("image="+spec.ImageReference),
 		"printf 'deploy-candidate-submitted\\n'",
@@ -229,16 +229,16 @@ func deployIntegrateCommands(spec deployWorkloadSpec) ([]string, error) {
 		"test -s "+shellQuote(baseFile),
 		"test -s "+shellQuote(imageFile),
 		"test -s "+shellQuote(approvedFile),
-		"kodama_deploy_candidate=$(cat "+shellQuote(candidateFile)+")",
-		"kodama_deploy_base=$(cat "+shellQuote(baseFile)+")",
-		"kodama_deploy_image=$(cat "+shellQuote(imageFile)+")",
-		`test "$kodama_deploy_base" = `+base,
-		`test "$kodama_deploy_image" = `+image,
+		"kodema_deploy_candidate=$(cat "+shellQuote(candidateFile)+")",
+		"kodema_deploy_base=$(cat "+shellQuote(baseFile)+")",
+		"kodema_deploy_image=$(cat "+shellQuote(imageFile)+")",
+		`test "$kodema_deploy_base" = `+base,
+		`test "$kodema_deploy_image" = `+image,
 		`test "$(cat `+shellQuote(approvedFile)+`)" = 'approved'`,
 		"cd "+directory,
-		`test "$(git rev-parse HEAD)" = "$kodama_deploy_candidate"`,
+		`test "$(git rev-parse HEAD)" = "$kodema_deploy_candidate"`,
 		`test "$(git rev-parse HEAD^)" = `+base,
-		`test "$(cat `+shellQuote(deployWorkloadImagePath)+`)" = "$kodama_deploy_image"`,
+		`test "$(cat `+shellQuote(deployWorkloadImagePath)+`)" = "$kodema_deploy_image"`,
 	)
 	lease := shellQuote("--force-with-lease=" + spec.ProtectedRef + ":" + spec.ExpectedBase)
 	if spec.LostPushURL != "" {
@@ -246,23 +246,23 @@ func deployIntegrateCommands(spec deployWorkloadSpec) ([]string, error) {
 			// The real mutation is sent once to the lossy origin. A success
 			// here would mean the fixture failed to lose the response, so the
 			// scenario must fail rather than silently claim the loss.
-			"if git_kodama push --quiet "+lease+" "+shellQuote(spec.LostPushURL)+
-				" \"$kodama_deploy_candidate:"+spec.ProtectedRef+"\"; then\n"+
+			"if git_kodema push --quiet "+lease+" "+shellQuote(spec.LostPushURL)+
+				" \"$kodema_deploy_candidate:"+spec.ProtectedRef+"\"; then\n"+
 				"  printf 'lost-response-push-unexpectedly-succeeded\\n' >&2\n"+
 				"  exit 1\n"+
 				"fi",
-			"kodama_deploy_observed=$(git_kodama ls-remote --refs "+shellQuote(spec.ObserveURL)+" "+shellQuote(spec.ProtectedRef)+" | cut -f1)",
-			`test "$kodama_deploy_observed" = "$kodama_deploy_candidate"`,
+			"kodema_deploy_observed=$(git_kodema ls-remote --refs "+shellQuote(spec.ObserveURL)+" "+shellQuote(spec.ProtectedRef)+" | cut -f1)",
+			`test "$kodema_deploy_observed" = "$kodema_deploy_candidate"`,
 			"printf 'observed-accepted-deploy-before-repetition\\n'",
 		)
 	} else {
 		commands = append(commands,
-			"git_kodama push --quiet "+lease+" origin \"$kodama_deploy_candidate:"+spec.ProtectedRef+"\"",
+			"git_kodema push --quiet "+lease+" origin \"$kodema_deploy_candidate:"+spec.ProtectedRef+"\"",
 		)
 	}
 	commands = append(commands, workloadScanCommands(spec.TokenPath, spec.Workspace)...)
 	commands = append(commands,
-		"kodama_submit_outputs \"deployed=$kodama_deploy_candidate\"",
+		"kodema_submit_outputs \"deployed=$kodema_deploy_candidate\"",
 		"printf 'protected-deploy-integrated\\n'",
 	)
 	return commands, nil

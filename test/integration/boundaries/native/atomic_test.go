@@ -7,8 +7,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/userland/git"
-	nativefix "github.com/optimiware/kodama/test/support/boundaries/native"
+	"github.com/optimiware/kodema/internal/userland/git"
+	nativefix "github.com/optimiware/kodema/test/support/boundaries/native"
 )
 
 func TestNonFastForwardPushIsRefusedAndDoesNotMoveTheRef(t *testing.T) {

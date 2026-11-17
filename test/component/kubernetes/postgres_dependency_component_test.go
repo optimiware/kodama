@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/id"
-	kubedeps "github.com/optimiware/kodama/test/support/infrastructure/kubernetes/dependencies"
+	"github.com/optimiware/kodema/internal/id"
+	kubedeps "github.com/optimiware/kodema/test/support/infrastructure/kubernetes/dependencies"
 )
 
 // TestPostgresDependencyClosePreservesSibling runs two PostgreSQL dependency
@@ -47,7 +47,7 @@ func TestPostgresDependencyClosePreservesSibling(t *testing.T) {
 	}
 
 	passwordPattern := regexp.MustCompile(`^[0-9a-f]{48}$`)
-	namespacePattern := regexp.MustCompile(`^kodama-dep-[0-9a-f]{8}$`)
+	namespacePattern := regexp.MustCompile(`^kodema-dep-[0-9a-f]{8}$`)
 	for _, dependency := range []*kubedeps.Postgres{first, second} {
 		if password := dependency.Connection().Password; !passwordPattern.MatchString(password) {
 			t.Fatalf("dependency %s password does not match %s", dependency.Name(), passwordPattern)

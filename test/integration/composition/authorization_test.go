@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
+	"github.com/optimiware/kodema/api"
 )
 
 // TestRoleRefusalIsForbiddenOnBothEdges proves the composed edge enforces the

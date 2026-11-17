@@ -4,7 +4,7 @@ package restorequal
 // (internal/installation.RetentionPolicy) rather than a parallel copy.
 //
 // Sources:
-//   - KODAMA.md line 517: default retention logs 30 days, ordinary evidence 90
+//   - KODEMA.md line 517: default retention logs 30 days, ordinary evidence 90
 //     days, audit metadata one year, extended by active references; operation
 //     receipts remain until project deletion; raw model/tool content is off by
 //     default and authorized opt-in starts at seven days.
@@ -19,8 +19,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/installation"
-	"github.com/optimiware/kodama/internal/userland/session"
+	"github.com/optimiware/kodema/internal/installation"
+	"github.com/optimiware/kodema/internal/userland/session"
 )
 
 // TestRetentionBoundaries pins the frozen lifetimes and their exact boundary.

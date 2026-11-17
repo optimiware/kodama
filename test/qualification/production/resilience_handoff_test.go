@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
+	"github.com/optimiware/kodema/api"
 )
 
 // TestStageResilienceUncertainStopBlocksHandoff is Q02 resilience probe (d).

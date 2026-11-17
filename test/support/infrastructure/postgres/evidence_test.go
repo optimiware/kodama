@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/test/support/infrastructure/harness"
+	"github.com/optimiware/kodema/test/support/infrastructure/harness"
 )
 
-// TestEvidenceRootsAreRunUnique proves KODAMA_EVIDENCE_DIR is only a parent:
+// TestEvidenceRootsAreRunUnique proves KODEMA_EVIDENCE_DIR is only a parent:
 // every run resolves a fresh, existing child directory, and two runs that share
 // one parent never write into the same files. It also proves the resolved run
 // directory (not the supplied parent) is what gets published to the harness.
@@ -100,7 +100,7 @@ func TestServerEvidencePreservesAllShards(t *testing.T) {
 			ImageTag:      "docker.io/library/postgres:18-alpine",
 			ImageDigest:   "sha256:fixture-" + shard.version,
 			ServerVersion: shard.version,
-			Database:      "kodama",
+			Database:      "kodema",
 		}
 		if err := subject.writeServerEvidence(dir); err != nil {
 			t.Fatalf("write evidence for shard %q: %v", shard.id, err)
@@ -154,7 +154,7 @@ func TestServerEvidencePreservesAllShards(t *testing.T) {
 		if got.Digest != "sha256:fixture-"+shard.version {
 			t.Fatalf("evidence for shard %q records digest %q", shard.id, got.Digest)
 		}
-		if got.Database != "kodama" {
+		if got.Database != "kodema" {
 			t.Fatalf("evidence for shard %q records database %q", shard.id, got.Database)
 		}
 		if got.RecordedAt.Before(started.UTC()) || got.RecordedAt.After(finished.UTC()) {

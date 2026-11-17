@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/id"
-	natsbroker "github.com/optimiware/kodama/internal/shell/integration/nats"
-	shelllog "github.com/optimiware/kodama/internal/shell/log"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
+	"github.com/optimiware/kodema/internal/id"
+	natsbroker "github.com/optimiware/kodema/internal/shell/integration/nats"
+	shelllog "github.com/optimiware/kodema/internal/shell/log"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
 )
 
 // TestDurableLiveLogPublisherUsesNATSSubjectAndPayload proves the durable
@@ -64,7 +64,7 @@ func TestDurableLiveLogPublisherUsesNATSSubjectAndPayload(t *testing.T) {
 	if len(subjects) != 1 || len(payloads) != 1 {
 		t.Fatalf("live publications = %d; want exactly one", len(subjects))
 	}
-	wantSubject := natsbroker.Subject(fmt.Sprintf("kodama.v1.%s.%s.logs.%s", scope.TenantID, scope.ProjectID, chunk.ExecutionID))
+	wantSubject := natsbroker.Subject(fmt.Sprintf("kodema.v1.%s.%s.logs.%s", scope.TenantID, scope.ProjectID, chunk.ExecutionID))
 	if subjects[0] != wantSubject {
 		t.Fatalf("live subject = %q; want %q", subjects[0], wantSubject)
 	}

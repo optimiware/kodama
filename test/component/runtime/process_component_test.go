@@ -12,14 +12,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/kernel"
-	"github.com/optimiware/kodama/internal/kernel/definition"
-	"github.com/optimiware/kodama/internal/kernel/engine"
-	processdriver "github.com/optimiware/kodama/internal/shell/app/drivers/process"
-	"github.com/optimiware/kodama/internal/shell/runtime/process"
-	runtimesupport "github.com/optimiware/kodama/test/support/infrastructure/runtime"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/kernel"
+	"github.com/optimiware/kodema/internal/kernel/definition"
+	"github.com/optimiware/kodema/internal/kernel/engine"
+	processdriver "github.com/optimiware/kodema/internal/shell/app/drivers/process"
+	"github.com/optimiware/kodema/internal/shell/runtime/process"
+	runtimesupport "github.com/optimiware/kodema/test/support/infrastructure/runtime"
 )
 
 // TestProcessRuntimeManifestEnvironmentPermissionsAndExit proves the Process
@@ -34,13 +34,13 @@ func TestProcessRuntimeManifestEnvironmentPermissionsAndExit(t *testing.T) {
 
 	commands := []string{
 		`env | sort > "$PWD/env.txt"`,
-		`stat -c '%a' "$RESOURCE_ROOT/kodama/inputs/input-a" > "$PWD/modes.txt"`,
-		`stat -c '%a' "$RESOURCE_ROOT/kodama/secrets/API_KEY" >> "$PWD/modes.txt"`,
+		`stat -c '%a' "$RESOURCE_ROOT/kodema/inputs/input-a" > "$PWD/modes.txt"`,
+		`stat -c '%a' "$RESOURCE_ROOT/kodema/secrets/API_KEY" >> "$PWD/modes.txt"`,
 		`stat -c '%a' "$RESOURCE_ROOT/script" >> "$PWD/modes.txt"`,
-		`cat "$RESOURCE_ROOT/kodama/inputs/input-a" > "$PWD/input-copy.txt"`,
-		`cat "$RESOURCE_ROOT/kodama/task.json" > "$PWD/task-copy.json"`,
-		`cat "$RESOURCE_ROOT/kodama/secrets/API_KEY"`,
-		`cat "$RESOURCE_ROOT/kodama/secrets/KODAMA_TOKEN"`,
+		`cat "$RESOURCE_ROOT/kodema/inputs/input-a" > "$PWD/input-copy.txt"`,
+		`cat "$RESOURCE_ROOT/kodema/task.json" > "$PWD/task-copy.json"`,
+		`cat "$RESOURCE_ROOT/kodema/secrets/API_KEY"`,
+		`cat "$RESOURCE_ROOT/kodema/secrets/KODEMA_TOKEN"`,
 		`echo done > "$PWD/done.txt"`,
 	}
 	request := testPrepareRequest(
@@ -57,16 +57,16 @@ func TestProcessRuntimeManifestEnvironmentPermissionsAndExit(t *testing.T) {
 		[]engine.SecretValue{{Name: "API_KEY", Value: "s3cr3t-value"}},
 		"tok-abc",
 	)
-	t.Setenv("KODAMA_HOST_CANARY", "must-not-leak")
+	t.Setenv("KODEMA_HOST_CANARY", "must-not-leak")
 
 	if _, err := fixture.adapter.Prepare(ctx, request); err != nil {
 		t.Fatalf("Prepare: %v", err)
 	}
 	for _, logical := range []string{
-		"/kodama/inputs/input-a",
-		"/kodama/secrets/API_KEY",
-		"/kodama/secrets/KODAMA_TOKEN",
-		"/kodama/task.json",
+		"/kodema/inputs/input-a",
+		"/kodema/secrets/API_KEY",
+		"/kodema/secrets/KODEMA_TOKEN",
+		"/kodema/task.json",
 	} {
 		host := filepath.Join(resourceRoot, logical)
 		info, err := os.Lstat(host)
@@ -106,16 +106,16 @@ func TestProcessRuntimeManifestEnvironmentPermissionsAndExit(t *testing.T) {
 	for _, want := range []string{
 		"BUILD_MODE=release",
 		"RESOURCE_ROOT=" + resourceRoot,
-		"KODAMA_URL=" + testKodamaURL,
-		"KODAMA_EXECUTION=" + string(identity.ExecutionID),
-		"KODAMA_ACTION=build",
-		"KODAMA_TASK=task-1",
+		"KODEMA_URL=" + testKodemaURL,
+		"KODEMA_EXECUTION=" + string(identity.ExecutionID),
+		"KODEMA_ACTION=build",
+		"KODEMA_TASK=task-1",
 	} {
 		if !strings.Contains(env, want+"\n") && !strings.Contains(env, want) {
 			t.Fatalf("environment is missing %q:\n%s", want, env)
 		}
 	}
-	if strings.Contains(env, "KODAMA_HOST_CANARY") {
+	if strings.Contains(env, "KODEMA_HOST_CANARY") {
 		t.Fatalf("host environment leaked into the workload:\n%s", env)
 	}
 	if strings.Contains(env, "s3cr3t-value") || strings.Contains(env, "tok-abc") {
@@ -398,7 +398,7 @@ func TestProcessRuntimeCredentialRefreshWithoutRestart(t *testing.T) {
 			`echo started >> "$PWD/starts"`,
 			`i=0`,
 			`while [ ! -f "$PWD/stop" ]; do`,
-			`  cat "$RESOURCE_ROOT/kodama/secrets/KODAMA_TOKEN" > "$PWD/token-seen"`,
+			`  cat "$RESOURCE_ROOT/kodema/secrets/KODEMA_TOKEN" > "$PWD/token-seen"`,
 			`  i=$((i+1))`,
 			`  if [ "$i" -ge 20 ]; then break; fi`,
 			`  sleep 1`,
@@ -429,11 +429,11 @@ func TestProcessRuntimeCredentialRefreshWithoutRestart(t *testing.T) {
 
 	// A lost replacement response leaves the previous token intact; a retry
 	// delivers the new value.
-	faulty := &faultFiles{Files: fixture.driver, failSuffix: "KODAMA_TOKEN"}
+	faulty := &faultFiles{Files: fixture.driver, failSuffix: "KODEMA_TOKEN"}
 	faultyAdapter, err := process.New(process.Config{
 		Root:          fixture.root,
 		WorkspaceRoot: fixture.workspaceRoot,
-		KodamaURL:     testKodamaURL,
+		KodemaURL:     testKodemaURL,
 		Executor:      fixture.driver,
 		Observer:      fixture.driver,
 		Files:         faulty,
@@ -447,7 +447,7 @@ func TestProcessRuntimeCredentialRefreshWithoutRestart(t *testing.T) {
 	} else {
 		t.Logf("failed credential write error (expected): %v", err)
 	}
-	credentialPath := filepath.Join(resourceRoot, "kodama", "secrets", "KODAMA_TOKEN")
+	credentialPath := filepath.Join(resourceRoot, "kodema", "secrets", "KODEMA_TOKEN")
 	if got := readFileString(t, credentialPath); got != "tok-new" {
 		t.Fatalf("credential after failed write = %q; want the previous tok-new", got)
 	}
@@ -548,7 +548,7 @@ func newProcessAdapterWithExecutor(t *testing.T, f *processFixture, executor pro
 	adapter, err := process.New(process.Config{
 		Root:          f.root,
 		WorkspaceRoot: f.workspaceRoot,
-		KodamaURL:     testKodamaURL,
+		KodemaURL:     testKodemaURL,
 		Executor:      executor,
 		Observer:      f.driver,
 		Files:         f.driver,

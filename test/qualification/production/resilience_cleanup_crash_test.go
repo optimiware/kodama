@@ -12,7 +12,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/optimiware/kodama/api"
+	"github.com/optimiware/kodema/api"
 )
 
 // resilienceCleanupCrashNotAttributable is the named skip reason for a cleanup

@@ -116,9 +116,9 @@ func TestContainerBuildContextExcludesLocalState(t *testing.T) {
 
 // TestContainerfileIsNonRootAndPinned pins the runtime contract the chart
 // relies on: a non-root UID, digest-pinned bases, no secret copied or set by
-// ARG/ENV, and the kodama binary as the entrypoint.
+// ARG/ENV, and the kodema binary as the entrypoint.
 func TestContainerfileIsNonRootAndPinned(t *testing.T) {
-	body, err := os.ReadFile(filepath.Join(repoRoot(t), "deploy", "images", "kodama", "Containerfile"))
+	body, err := os.ReadFile(filepath.Join(repoRoot(t), "deploy", "images", "kodema", "Containerfile"))
 	if err != nil {
 		t.Fatalf("read Containerfile: %v", err)
 	}
@@ -148,8 +148,8 @@ func TestContainerfileIsNonRootAndPinned(t *testing.T) {
 			t.Errorf("Containerfile:%d copies an environment file: %s", index+1, line)
 		}
 	}
-	if !strings.Contains(text, `ENTRYPOINT ["/usr/local/bin/kodama"]`) {
-		t.Errorf("Containerfile entrypoint is not the kodama binary")
+	if !strings.Contains(text, `ENTRYPOINT ["/usr/local/bin/kodema"]`) {
+		t.Errorf("Containerfile entrypoint is not the kodema binary")
 	}
 }
 
@@ -224,11 +224,11 @@ func TestImageScriptBuildPushPrintsRegistryDigest(t *testing.T) {
 	secretSentinel := "SCW-SECRET-SENTINEL-P28-a7"
 	box.env = append(box.env, "SCW_SECRET_KEY="+secretSentinel)
 
-	code, output := box.run(t, "build-push", "--repository", "registry.example.com/kodama", "--tag", "test-tag")
+	code, output := box.run(t, "build-push", "--repository", "registry.example.com/kodema", "--tag", "test-tag")
 	if code != 0 {
 		t.Fatalf("scripts/image build-push failed: exit %d\n%s", code, output)
 	}
-	want := "registry.example.com/kodama@sha256:1111111111111111111111111111111111111111111111111111111111111111"
+	want := "registry.example.com/kodema@sha256:1111111111111111111111111111111111111111111111111111111111111111"
 	if !strings.Contains(output, want) {
 		t.Errorf("output %q does not contain the pushed digest %q", output, want)
 	}
@@ -243,7 +243,7 @@ func TestImageScriptBuildPushPrintsRegistryDigest(t *testing.T) {
 	if !strings.HasPrefix(lines[0], "podman\tbuild\t") {
 		t.Errorf("first podman call is not build: %s", lines[0])
 	}
-	if !strings.Contains(lines[0], "-t\tregistry.example.com/kodama:test-tag") {
+	if !strings.Contains(lines[0], "-t\tregistry.example.com/kodema:test-tag") {
 		t.Errorf("build did not tag the requested reference: %s", lines[0])
 	}
 	if !strings.HasPrefix(lines[1], "podman\tpush\t") {
@@ -267,11 +267,11 @@ func TestImageScriptBuildPushPrintsRegistryDigest(t *testing.T) {
 // prints the local reference without a push.
 func TestImageScriptBuildOnlyNeverPushes(t *testing.T) {
 	box := newImageSandbox(t)
-	code, output := box.run(t, "build", "--repository", "registry.example.com/kodama", "--tag", "test-tag")
+	code, output := box.run(t, "build", "--repository", "registry.example.com/kodema", "--tag", "test-tag")
 	if code != 0 {
 		t.Fatalf("scripts/image build failed: exit %d\n%s", code, output)
 	}
-	if strings.TrimSpace(output) != "registry.example.com/kodama:test-tag" {
+	if strings.TrimSpace(output) != "registry.example.com/kodema:test-tag" {
 		t.Errorf("output = %q; want the local reference", output)
 	}
 	lines := box.podmanArgv(t)
@@ -282,7 +282,7 @@ func TestImageScriptBuildOnlyNeverPushes(t *testing.T) {
 
 // TestImageScriptStampsVersionAndRevision proves the build receives the
 // version (the VERSION file by default, --version when given) and the full
-// git revision as build arguments and labels, so `kodama version` and the
+// git revision as build arguments and labels, so `kodema version` and the
 // image labels name the same source.
 func TestImageScriptStampsVersionAndRevision(t *testing.T) {
 	versionFile, err := os.ReadFile(filepath.Join(repoRoot(t), "VERSION"))
@@ -299,7 +299,7 @@ func TestImageScriptStampsVersionAndRevision(t *testing.T) {
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
 			box := newImageSandbox(t)
-			args := append([]string{"build-push", "--repository", "registry.example.com/kodama", "--tag", "test-tag"}, testCase.args...)
+			args := append([]string{"build-push", "--repository", "registry.example.com/kodema", "--tag", "test-tag"}, testCase.args...)
 			if code, output := box.run(t, args...); code != 0 {
 				t.Fatalf("scripts/image build-push failed: exit %d\n%s", code, output)
 			}
@@ -324,7 +324,7 @@ func TestImageScriptStampsVersionAndRevision(t *testing.T) {
 
 	t.Run("refused version", func(t *testing.T) {
 		box := newImageSandbox(t)
-		code, output := box.run(t, "build-push", "--repository", "registry.example.com/kodama", "--version", "1.0 -X main.revision=x")
+		code, output := box.run(t, "build-push", "--repository", "registry.example.com/kodema", "--version", "1.0 -X main.revision=x")
 		if code == 0 {
 			t.Fatalf("scripts/image accepted a version with spaces:\n%s", output)
 		}
@@ -345,7 +345,7 @@ func TestImageScriptRejectsMissingRepositoryAndBadDigest(t *testing.T) {
 	t.Run("bad_digest", func(t *testing.T) {
 		box := newImageSandbox(t)
 		box.env = append(box.env, "PODMAN_BAD_DIGEST=1")
-		code, output := box.run(t, "build-push", "--repository", "registry.example.com/kodama", "--tag", "test-tag")
+		code, output := box.run(t, "build-push", "--repository", "registry.example.com/kodema", "--tag", "test-tag")
 		if code == 0 {
 			t.Fatalf("scripts/image accepted an invalid pushed digest:\n%s", output)
 		}
@@ -358,7 +358,7 @@ func TestImageScriptMultiArchAndAlsoTag(t *testing.T) {
 	box := newImageSandbox(t)
 	code, output := box.run(t,
 		"build-push",
-		"--repository", "registry.example.com/kodama",
+		"--repository", "registry.example.com/kodema",
 		"--tag", "0.2.0",
 		"--platforms", "linux/amd64,linux/arm64",
 		"--also-tag", "latest",
@@ -366,18 +366,18 @@ func TestImageScriptMultiArchAndAlsoTag(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("scripts/image multi-arch build-push failed: exit %d\n%s", code, output)
 	}
-	want := "registry.example.com/kodama@sha256:2222222222222222222222222222222222222222222222222222222222222222"
+	want := "registry.example.com/kodema@sha256:2222222222222222222222222222222222222222222222222222222222222222"
 	if strings.TrimSpace(output) != want {
 		t.Fatalf("output = %q; want %q", strings.TrimSpace(output), want)
 	}
 	joined := strings.Join(box.podmanArgv(t), "\n")
 	for _, expected := range []string{
 		// The name is held by a single-arch image, which is untagged first.
-		"podman\tuntag\tregistry.example.com/kodama:0.2.0\tregistry.example.com/kodama:0.2.0\npodman\tmanifest\tcreate\tregistry.example.com/kodama:0.2.0",
-		"--platform\tlinux/amd64,linux/arm64\t--manifest\tregistry.example.com/kodama:0.2.0",
+		"podman\tuntag\tregistry.example.com/kodema:0.2.0\tregistry.example.com/kodema:0.2.0\npodman\tmanifest\tcreate\tregistry.example.com/kodema:0.2.0",
+		"--platform\tlinux/amd64,linux/arm64\t--manifest\tregistry.example.com/kodema:0.2.0",
 		"podman\tmanifest\tpush\t--all\t--digestfile",
-		"docker://registry.example.com/kodama:0.2.0",
-		"podman\tmanifest\tpush\t--all\tregistry.example.com/kodama:0.2.0\tdocker://registry.example.com/kodama:latest",
+		"docker://registry.example.com/kodema:0.2.0",
+		"podman\tmanifest\tpush\t--all\tregistry.example.com/kodema:0.2.0\tdocker://registry.example.com/kodema:latest",
 	} {
 		if !strings.Contains(joined, expected) {
 			t.Errorf("multi-arch podman calls missing %q:\n%s", expected, joined)

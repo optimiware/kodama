@@ -12,14 +12,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/userland/git"
+	"github.com/optimiware/kodema/internal/userland/git"
 )
 
 // TestMain doubles as the harmless re-exec helper for the native-command
 // tests. It never starts a Git server; the helper only prints deterministic
 // bytes so the executor and CGI adapter can be exercised without a repository.
 func TestMain(m *testing.M) {
-	if os.Getenv("KODAMA_GIT_EXEC_HELPER") == "1" {
+	if os.Getenv("KODEMA_GIT_EXEC_HELPER") == "1" {
 		os.Exit(helperMain(os.Args[1:]))
 	}
 	os.Exit(m.Run())
@@ -54,7 +54,7 @@ func helperMain(args []string) int {
 		return 7
 	case "http-backend":
 		stdinBytes := int64(0)
-		if os.Getenv("KODAMA_HELPER_READ_STDIN") == "1" {
+		if os.Getenv("KODEMA_HELPER_READ_STDIN") == "1" {
 			n, _ := io.Copy(io.Discard, os.Stdin)
 			stdinBytes = n
 		}
@@ -64,11 +64,11 @@ func helperMain(args []string) int {
 		fmt.Printf("X-Query: %s\r\n", os.Getenv("QUERY_STRING"))
 		fmt.Printf("X-Content-Length: %s\r\n", os.Getenv("CONTENT_LENGTH"))
 		fmt.Printf("X-Content-Type: %s\r\n", os.Getenv("CONTENT_TYPE"))
-		if os.Getenv("KODAMA_HELPER_READ_STDIN") == "1" {
+		if os.Getenv("KODEMA_HELPER_READ_STDIN") == "1" {
 			fmt.Printf("X-Stdin-Bytes: %d\r\n", stdinBytes)
 		}
 		fmt.Printf("\r\n")
-		if rawSize := os.Getenv("KODAMA_HELPER_BODY_SIZE"); rawSize != "" {
+		if rawSize := os.Getenv("KODEMA_HELPER_BODY_SIZE"); rawSize != "" {
 			size, err := strconv.Atoi(rawSize)
 			if err != nil {
 				return 1
@@ -92,7 +92,7 @@ func helperExecutor(t *testing.T, maxOut int) *Executor {
 	t.Helper()
 	executor, err := NewExecutor(ExecutorConfig{
 		GitPath:        os.Args[0],
-		Env:            append(MinimalEnvironment(), "KODAMA_GIT_EXEC_HELPER=1"),
+		Env:            append(MinimalEnvironment(), "KODEMA_GIT_EXEC_HELPER=1"),
 		MaxOutputBytes: maxOut,
 	})
 	if err != nil {
@@ -171,9 +171,9 @@ func TestExecutorHonorsCancellation(t *testing.T) {
 }
 
 func TestExecutorUsesExplicitEnvironment(t *testing.T) {
-	t.Setenv("KODAMA_TEST_SECRET", "must-not-leak")
+	t.Setenv("KODEMA_TEST_SECRET", "must-not-leak")
 	executor := helperExecutor(t, 0)
-	result, err := executor.Run(context.Background(), git.Command{Name: "git", Args: []string{"print-env", "KODAMA_TEST_SECRET"}})
+	result, err := executor.Run(context.Background(), git.Command{Name: "git", Args: []string{"print-env", "KODEMA_TEST_SECRET"}})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -191,7 +191,7 @@ func TestExecutorKeepsExplicitEmptyEnvironmentEmpty(t *testing.T) {
 	if err != nil {
 		t.Skipf("no env executable to observe the child environment: %v", err)
 	}
-	t.Setenv("KODAMA_LEAKED_SECRET", "host-secret")
+	t.Setenv("KODEMA_LEAKED_SECRET", "host-secret")
 	executor, err := NewExecutor(ExecutorConfig{GitPath: envPath, Env: []string{}})
 	if err != nil {
 		t.Fatalf("NewExecutor: %v", err)
@@ -200,7 +200,7 @@ func TestExecutorKeepsExplicitEmptyEnvironmentEmpty(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if strings.Contains(string(result.Stdout), "KODAMA_LEAKED_SECRET=host-secret") {
+	if strings.Contains(string(result.Stdout), "KODEMA_LEAKED_SECRET=host-secret") {
 		t.Fatalf("an explicit empty environment inherited the host value: %q", result.Stdout)
 	}
 	if executor.env == nil {

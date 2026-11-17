@@ -63,17 +63,17 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/shell/identity"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/shell/identity"
 )
 
 const (
 	testIssuer       = "https://issuer.example"
-	testAudience     = "kodama-api"
+	testAudience     = "kodema-api"
 	testJWKSURL      = "https://issuer.example/.well-known/jwks.json"
-	testTenantClaim  = "https://kodama/tenant"
-	testProjectClaim = "https://kodama/project"
+	testTenantClaim  = "https://kodema/tenant"
+	testProjectClaim = "https://kodema/project"
 	testSubject      = "auth0|abc123"
 )
 

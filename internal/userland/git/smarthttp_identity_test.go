@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	git "github.com/optimiware/kodama/internal/userland/git"
+	git "github.com/optimiware/kodema/internal/userland/git"
 )
 
 // fixedActorHandles always issues the same handle and resolves it to the
@@ -67,7 +67,7 @@ func TestSmartHTTPDistinctPushIdentityDefeatsStaleReportedEntry(t *testing.T) {
 	post := func() map[string]string {
 		t.Helper()
 		request := httptest.NewRequest(http.MethodPost, "/shop/web/git-receive-pack", bytes.NewReader([]byte("commands")))
-		request.SetBasicAuth("kodama", "exec-token")
+		request.SetBasicAuth("kodema", "exec-token")
 		request.Header.Set("Content-Type", "application/x-git-receive-pack-request")
 		recorder := httptest.NewRecorder()
 		handler.ServeHTTP(recorder, request)
@@ -144,7 +144,7 @@ func TestSmartHTTPRejectsInvalidSourceEvent(t *testing.T) {
 			t.Fatalf("case %d: NewSmartHTTP: %v", index, err)
 		}
 		request := httptest.NewRequest(http.MethodPost, "/shop/web/git-receive-pack", bytes.NewReader([]byte("commands")))
-		request.SetBasicAuth("kodama", "exec-token")
+		request.SetBasicAuth("kodema", "exec-token")
 		request.Header.Set("Content-Type", "application/x-git-receive-pack-request")
 		recorder := httptest.NewRecorder()
 		handler.ServeHTTP(recorder, request)

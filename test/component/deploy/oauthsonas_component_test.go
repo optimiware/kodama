@@ -23,17 +23,17 @@ import (
 // oauthSonasBaseValues is a minimal, valid OAuthSonas configuration document.
 // OAuthSonas has a single string claim: stage maps the tenant and project
 // claims to org_id, and the project is named like the tenant.
-const oauthSonasBaseValues = `kodama:
+const oauthSonasBaseValues = `kodema:
   config:
     extraEnv:
-      KODAMA_OIDC_ISSUER: https://issuer.example
-      KODAMA_OIDC_AUDIENCE: kodama
-      KODAMA_OIDC_JWKS_URL: https://issuer.example/jwks
-      KODAMA_OIDC_TENANT_CLAIM: org_id
+      KODEMA_OIDC_ISSUER: https://issuer.example
+      KODEMA_OIDC_AUDIENCE: kodema
+      KODEMA_OIDC_JWKS_URL: https://issuer.example/jwks
+      KODEMA_OIDC_TENANT_CLAIM: org_id
 oauthsonas:
   enabled: true
   config: |
-    issuer: https://oauthsonas.kodama-system.svc.cluster.local:8443
+    issuer: https://oauthsonas.kodema-system.svc.cluster.local:8443
     clients:
       - id: kodactl
         redirect_uris:
@@ -62,11 +62,11 @@ func oauthSonasValuesFile(t *testing.T, body string) string {
 // optional raw helm arguments.
 func oauthSonasRender(t *testing.T, helm, chart, namespace, valuesFile string, extra ...string) (string, error) {
 	t.Helper()
-	args := []string{"template", "kodama-stack", chart, "--namespace", namespace}
+	args := []string{"template", "kodema-stack", chart, "--namespace", namespace}
 	if valuesFile != "" {
 		args = append(args, "-f", valuesFile)
 	}
-	args = append(args, productionOIDCArgs("kodama.")...)
+	args = append(args, productionOIDCArgs("kodema.")...)
 	args = append(args, extra...)
 	command := exec.Command(helm, args...)
 	command.Dir = chart
@@ -185,7 +185,7 @@ func oauthSonasEnvBlock(document, variable string) string {
 func TestOAuthSonasChartDisabledRendersNothing(t *testing.T) {
 	helm, chart := stageStackChart(t)
 
-	rendered, err := oauthSonasRender(t, helm, chart, "kodama-system", "")
+	rendered, err := oauthSonasRender(t, helm, chart, "kodema-system", "")
 	if err != nil {
 		t.Fatalf("helm template default values failed: %v\n%s", err, rendered)
 	}
@@ -194,7 +194,7 @@ func TestOAuthSonasChartDisabledRendersNothing(t *testing.T) {
 	}
 
 	disabled := oauthSonasValuesFile(t, strings.Replace(oauthSonasBaseValues, "enabled: true", "enabled: false", 1))
-	rendered, err = oauthSonasRender(t, helm, chart, "kodama-system", disabled)
+	rendered, err = oauthSonasRender(t, helm, chart, "kodema-system", disabled)
 	if err != nil {
 		t.Fatalf("helm template with oauthsonas disabled failed: %v\n%s", err, rendered)
 	}
@@ -209,7 +209,7 @@ func TestOAuthSonasChartDisabledRendersNothing(t *testing.T) {
 func TestOAuthSonasChartEnabledIsClusterIPOnly(t *testing.T) {
 	helm, chart := stageStackChart(t)
 	values := oauthSonasValuesFile(t, oauthSonasBaseValues)
-	rendered, err := oauthSonasRender(t, helm, chart, "kodama-system", values)
+	rendered, err := oauthSonasRender(t, helm, chart, "kodema-system", values)
 	if err != nil {
 		t.Fatalf("helm template enabled oauthsonas failed: %v\n%s", err, rendered)
 	}
@@ -248,7 +248,7 @@ func TestOAuthSonasChartEnabledIsClusterIPOnly(t *testing.T) {
 func TestOAuthSonasChartImagesPinnedByDigest(t *testing.T) {
 	helm, chart := stageStackChart(t)
 	values := oauthSonasValuesFile(t, oauthSonasBaseValues)
-	rendered, err := oauthSonasRender(t, helm, chart, "kodama-system", values)
+	rendered, err := oauthSonasRender(t, helm, chart, "kodema-system", values)
 	if err != nil {
 		t.Fatalf("helm template enabled oauthsonas failed: %v\n%s", err, rendered)
 	}
@@ -269,7 +269,7 @@ func TestOAuthSonasChartImagesPinnedByDigest(t *testing.T) {
 func TestOAuthSonasChartHardensPods(t *testing.T) {
 	helm, chart := stageStackChart(t)
 	values := oauthSonasValuesFile(t, oauthSonasBaseValues)
-	rendered, err := oauthSonasRender(t, helm, chart, "kodama-system", values)
+	rendered, err := oauthSonasRender(t, helm, chart, "kodema-system", values)
 	if err != nil {
 		t.Fatalf("helm template enabled oauthsonas failed: %v\n%s", err, rendered)
 	}
@@ -305,7 +305,7 @@ func TestOAuthSonasChartHardensPods(t *testing.T) {
 func TestOAuthSonasChartUsesTLSSidecarAndA2SecretNames(t *testing.T) {
 	helm, chart := stageStackChart(t)
 	values := oauthSonasValuesFile(t, oauthSonasBaseValues)
-	rendered, err := oauthSonasRender(t, helm, chart, "kodama-system", values)
+	rendered, err := oauthSonasRender(t, helm, chart, "kodema-system", values)
 	if err != nil {
 		t.Fatalf("helm template enabled oauthsonas failed: %v\n%s", err, rendered)
 	}
@@ -316,7 +316,7 @@ func TestOAuthSonasChartUsesTLSSidecarAndA2SecretNames(t *testing.T) {
 	if !strings.Contains(configMap, "reverse_proxy 127.0.0.1:8181") {
 		t.Errorf("Caddyfile does not proxy to the loopback listener:\n%s", configMap)
 	}
-	if !strings.Contains(configMap, "issuer: https://oauthsonas.kodama-system.svc.cluster.local:8443") {
+	if !strings.Contains(configMap, "issuer: https://oauthsonas.kodema-system.svc.cluster.local:8443") {
 		t.Errorf("rendered OAuthSonas config does not carry the https issuer:\n%s", configMap)
 	}
 
@@ -385,13 +385,13 @@ func TestOAuthSonasChartRefusesLiteralAccessCodeFromValues(t *testing.T) {
 		},
 		{
 			name: "access code inside config",
-			args: []string{"--set-string", "oauthsonas.config=issuer: https://oauthsonas.kodama-system.svc.cluster.local:8443\naccess_code: " + oauthSonasCodeSentinel},
+			args: []string{"--set-string", "oauthsonas.config=issuer: https://oauthsonas.kodema-system.svc.cluster.local:8443\naccess_code: " + oauthSonasCodeSentinel},
 			want: "access code",
 		},
 	}
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			rendered, err := oauthSonasRender(t, helm, chart, "kodama-system", values, testCase.args...)
+			rendered, err := oauthSonasRender(t, helm, chart, "kodema-system", values, testCase.args...)
 			if err == nil {
 				t.Fatalf("render accepted %s:\n%s", testCase.name, rendered)
 			}
@@ -413,7 +413,7 @@ func TestOAuthSonasChartRefusesTagOnlyImages(t *testing.T) {
 		{"oauthsonas.image=ghcr.io/optimiware/oauthsonas:1.5.0", "sha256"},
 		{"oauthsonas.tlsProxyImage=docker.io/library/caddy:2.11.9-alpine", "sha256"},
 	} {
-		rendered, err := oauthSonasRender(t, helm, chart, "kodama-system", values, "--set", testCase.flag)
+		rendered, err := oauthSonasRender(t, helm, chart, "kodema-system", values, "--set", testCase.flag)
 		if err == nil {
 			t.Errorf("render accepted a tag-only image override %q:\n%s", testCase.flag, rendered)
 			continue
@@ -454,7 +454,7 @@ func TestOAuthSonasChartRefusesNonHTTPSIssuer(t *testing.T) {
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
 			values := oauthSonasValuesFile(t, testCase.values)
-			rendered, err := oauthSonasRender(t, helm, chart, "kodama-system", values, testCase.args...)
+			rendered, err := oauthSonasRender(t, helm, chart, "kodema-system", values, testCase.args...)
 			if err == nil {
 				t.Fatalf("render accepted %s:\n%s", testCase.name, rendered)
 			}
@@ -484,7 +484,7 @@ func TestOAuthSonasChartRefusesBadHostPortAndNullValues(t *testing.T) {
 	}
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			rendered, err := oauthSonasRender(t, helm, chart, "kodama-system", values, testCase.args...)
+			rendered, err := oauthSonasRender(t, helm, chart, "kodema-system", values, testCase.args...)
 			if err == nil {
 				t.Fatalf("render accepted %s:\n%s", testCase.name, rendered)
 			}
@@ -499,7 +499,7 @@ func TestOAuthSonasChartRefusesBadHostPortAndNullValues(t *testing.T) {
 
 	// A null oauthsonas value is treated as disabled, never as a rendering
 	// crash: the chart must not evaluate fields of a nil map.
-	rendered, err := oauthSonasRender(t, helm, chart, "kodama-system", values, "--set-json", "oauthsonas=null")
+	rendered, err := oauthSonasRender(t, helm, chart, "kodema-system", values, "--set-json", "oauthsonas=null")
 	if err != nil {
 		t.Fatalf("render failed for oauthsonas=null: %v\n%s", err, rendered)
 	}
@@ -522,7 +522,7 @@ func TestOAuthSonasChartHasNoExposureKnobs(t *testing.T) {
 		"oauthsonas.nodePort=30000",
 		"oauthsonas.hostNetwork=true",
 	} {
-		rendered, err := oauthSonasRender(t, helm, chart, "kodama-system", values, "--set", flag)
+		rendered, err := oauthSonasRender(t, helm, chart, "kodema-system", values, "--set", flag)
 		if err == nil {
 			t.Errorf("render accepted unsupported exposure knob %q:\n%s", flag, rendered)
 		}
@@ -534,7 +534,7 @@ func TestOAuthSonasChartHasNoExposureKnobs(t *testing.T) {
 // namespace.
 func TestOAuthSonasChartHostFollowsReleaseNamespace(t *testing.T) {
 	helm, chart := stageStackChart(t)
-	values := oauthSonasValuesFile(t, strings.Replace(oauthSonasBaseValues, "oauthsonas.kodama-system.svc.cluster.local", "oauthsonas.preview.svc.cluster.local", 1))
+	values := oauthSonasValuesFile(t, strings.Replace(oauthSonasBaseValues, "oauthsonas.kodema-system.svc.cluster.local", "oauthsonas.preview.svc.cluster.local", 1))
 	rendered, err := oauthSonasRender(t, helm, chart, "preview", values)
 	if err != nil {
 		t.Fatalf("helm template in preview namespace failed: %v\n%s", err, rendered)
@@ -547,11 +547,11 @@ func TestOAuthSonasChartHostFollowsReleaseNamespace(t *testing.T) {
 		t.Errorf("Caddyfile does not serve the preview issuer host:\n%s", configMap)
 	}
 
-	// The kodama-system issuer must be refused in another namespace: the
+	// The kodema-system issuer must be refused in another namespace: the
 	// certificate SAN and the issuer would no longer agree.
 	base := oauthSonasValuesFile(t, oauthSonasBaseValues)
 	if rendered, err := oauthSonasRender(t, helm, chart, "preview", base); err == nil {
-		t.Errorf("render accepted a kodama-system issuer in the preview namespace:\n%s", rendered)
+		t.Errorf("render accepted a kodema-system issuer in the preview namespace:\n%s", rendered)
 	}
 }
 
@@ -577,7 +577,7 @@ func TestOAuthSonasChartRefusesInlineClientSecret(t *testing.T) {
 			doc := strings.Replace(oauthSonasBaseValues, "- id: kodactl\n", "- id: kodactl\n        "+testCase.field+"\n", 1)
 			values := oauthSonasValuesFile(t, doc)
 
-			rendered, err := oauthSonasRender(t, helm, chart, "kodama-system", values)
+			rendered, err := oauthSonasRender(t, helm, chart, "kodema-system", values)
 			if err == nil {
 				t.Fatalf("render accepted %s:\n%s", testCase.name, rendered)
 			}
@@ -585,7 +585,7 @@ func TestOAuthSonasChartRefusesInlineClientSecret(t *testing.T) {
 				t.Errorf("schema refusal echoed the inline client secret sentinel:\n%s", rendered)
 			}
 
-			rendered, err = oauthSonasRender(t, helm, chart, "kodama-system", values, "--skip-schema-validation")
+			rendered, err = oauthSonasRender(t, helm, chart, "kodema-system", values, "--skip-schema-validation")
 			if err == nil {
 				t.Fatalf("render --skip-schema-validation accepted %s:\n%s", testCase.name, rendered)
 			}

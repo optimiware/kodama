@@ -7,8 +7,8 @@ import (
 	"io"
 	"sync"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/shell/secret"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/shell/secret"
 )
 
 // Cloud key-reference prefixes. Each provider family serves exactly one prefix;

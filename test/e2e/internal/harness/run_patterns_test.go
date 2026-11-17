@@ -288,7 +288,7 @@ func TestHarnessVerifyGoTestRejectsAnEmptySelection(t *testing.T) {
 		},
 		{
 			name:     "no tests executed",
-			events:   []string{`{"Action":"pass","Package":"github.com/optimiware/kodama/test/e2e","Elapsed":1.0}`},
+			events:   []string{`{"Action":"pass","Package":"github.com/optimiware/kodema/test/e2e","Elapsed":1.0}`},
 			expected: []string{"TestE2E_AC12Outputs"},
 			wants:    "zero tests",
 			wantCode: 1,
@@ -298,11 +298,11 @@ func TestHarnessVerifyGoTestRejectsAnEmptySelection(t *testing.T) {
 			// a warning output line and a passing package, no test events.
 			name: "go test reports no tests to run",
 			events: []string{
-				`{"Action":"start","Package":"github.com/optimiware/kodama/test/e2e"}`,
-				`{"Action":"output","Package":"github.com/optimiware/kodama/test/e2e","Output":"testing: warning: no tests to run\n"}`,
-				`{"Action":"output","Package":"github.com/optimiware/kodama/test/e2e","Output":"PASS\n","OutputType":"frame"}`,
-				`{"Action":"output","Package":"github.com/optimiware/kodama/test/e2e","Output":"ok  \tgithub.com/optimiware/kodama/test/e2e\t0.003s [no tests to run]\n"}`,
-				`{"Action":"pass","Package":"github.com/optimiware/kodama/test/e2e","Elapsed":0.004}`,
+				`{"Action":"start","Package":"github.com/optimiware/kodema/test/e2e"}`,
+				`{"Action":"output","Package":"github.com/optimiware/kodema/test/e2e","Output":"testing: warning: no tests to run\n"}`,
+				`{"Action":"output","Package":"github.com/optimiware/kodema/test/e2e","Output":"PASS\n","OutputType":"frame"}`,
+				`{"Action":"output","Package":"github.com/optimiware/kodema/test/e2e","Output":"ok  \tgithub.com/optimiware/kodema/test/e2e\t0.003s [no tests to run]\n"}`,
+				`{"Action":"pass","Package":"github.com/optimiware/kodema/test/e2e","Elapsed":0.004}`,
 			},
 			expected: []string{"TestE2E_AC12Outputs"},
 			wants:    "zero tests",
@@ -358,7 +358,7 @@ func TestHarnessVerifyGoTestRejectsAnEmptySelection(t *testing.T) {
 }
 
 func jsonEvent(action, test string) string {
-	return `{"Action":"` + action + `","Package":"github.com/optimiware/kodama/test/e2e","Test":"` + test + `"}`
+	return `{"Action":"` + action + `","Package":"github.com/optimiware/kodema/test/e2e","Test":"` + test + `"}`
 }
 
 func readTextFile(t *testing.T, path string) string {

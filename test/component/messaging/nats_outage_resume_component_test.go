@@ -20,10 +20,10 @@ import (
 	"testing"
 	"time"
 
-	natsdriver "github.com/optimiware/kodama/internal/shell/app/drivers/nats"
-	broker "github.com/optimiware/kodama/internal/shell/integration/nats"
-	"github.com/optimiware/kodama/internal/shell/token"
-	support "github.com/optimiware/kodama/test/support/infrastructure/messaging"
+	natsdriver "github.com/optimiware/kodema/internal/shell/app/drivers/nats"
+	broker "github.com/optimiware/kodema/internal/shell/integration/nats"
+	"github.com/optimiware/kodema/internal/shell/token"
+	support "github.com/optimiware/kodema/test/support/infrastructure/messaging"
 )
 
 func TestOutageSubscriberResumeAfterFailedPublication(t *testing.T) {

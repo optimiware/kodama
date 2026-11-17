@@ -32,11 +32,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/id"
-	serviceadapter "github.com/optimiware/kodama/internal/userland/services"
-	servicesapp "github.com/optimiware/kodama/internal/userland/services/app"
-	"github.com/optimiware/kodama/test/support/factory"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/id"
+	serviceadapter "github.com/optimiware/kodema/internal/userland/services"
+	servicesapp "github.com/optimiware/kodema/internal/userland/services/app"
+	"github.com/optimiware/kodema/test/support/factory"
 )
 
 const responderServiceID = "responder-rescan-svc"

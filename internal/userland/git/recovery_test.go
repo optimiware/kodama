@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	git "github.com/optimiware/kodama/internal/userland/git"
+	git "github.com/optimiware/kodema/internal/userland/git"
 )
 
 // TestRecoverCrashBeforeEffect pins the crash-before-effect boundary: an intent

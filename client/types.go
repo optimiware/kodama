@@ -11,7 +11,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/optimiware/kodama/api"
+	"github.com/optimiware/kodema/api"
 )
 
 // CredentialKind names the source of one bearer credential.

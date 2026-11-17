@@ -33,8 +33,8 @@ import (
 // The helper-process contract. The child test acquires the lock and blocks
 // until the parent kills it or closes its stdin.
 const (
-	fileLockHelperEnv  = "KODAMA_FILE_LOCK_HELPER"
-	fileLockHelperPath = "KODAMA_FILE_LOCK_PATH"
+	fileLockHelperEnv  = "KODEMA_FILE_LOCK_HELPER"
+	fileLockHelperPath = "KODEMA_FILE_LOCK_PATH"
 )
 
 // TestFileLockIsNotReclaimedByAge proves that an old lock-file timestamp is not

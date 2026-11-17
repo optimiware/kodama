@@ -14,7 +14,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/api"
+	"github.com/optimiware/kodema/api"
 )
 
 // paddedObject returns a valid JSON object of exactly size bytes.

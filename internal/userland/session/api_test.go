@@ -136,7 +136,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/userland/session"
+	"github.com/optimiware/kodema/internal/userland/session"
 )
 
 var testNow = time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
@@ -185,7 +185,7 @@ func TestSessionIdentity(t *testing.T) {
 func TestRecordValidateExtensions(t *testing.T) {
 	valid := baseRecord()
 	valid.Revision = 3
-	valid.ContextRefs = []session.Ref{mustRef(t, "kodama-checkpoint/v1/ctx-0001")}
+	valid.ContextRefs = []session.Ref{mustRef(t, "kodema-checkpoint/v1/ctx-0001")}
 	valid.Retention = session.RetentionPolicy{RawContent: true}
 	valid.Usage = []session.Usage{{PrincipalID: "prn-1", Model: "model-a", Prompt: 10, Completion: 5}}
 	valid.Outcome = session.Outcome{Status: "completed", Summary: "done"}

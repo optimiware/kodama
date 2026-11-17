@@ -9,10 +9,10 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/kernel"
-	"github.com/optimiware/kodama/internal/kernel/engine"
-	runtimekube "github.com/optimiware/kodama/internal/shell/runtime/kube"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/kernel"
+	"github.com/optimiware/kodema/internal/kernel/engine"
+	runtimekube "github.com/optimiware/kodema/internal/shell/runtime/kube"
 )
 
 // TestConfigMapAndSecretRoundTrip proves the real API accepts the driver's
@@ -23,12 +23,12 @@ func TestConfigMapAndSecretRoundTrip(t *testing.T) {
 	fx, ctx := newFixture(t, id.WorkspaceID("workspace-kube-3"), fixtureOptions{})
 
 	configMap := runtimekube.ConfigMap{
-		Name:      "kodama-activation-component",
+		Name:      "kodema-activation-component",
 		Namespace: testNamespace,
 		Labels:    map[string]string{runtimekube.LabelWorkload: "workload-k3"},
 		Data: map[string][]byte{
-			"/kodama/inputs/input-a": []byte("line1\nline2\n"),
-			"/kodama/task.json":      {0xff, 0x00, 0x01},
+			"/kodema/inputs/input-a": []byte("line1\nline2\n"),
+			"/kodema/task.json":      {0xff, 0x00, 0x01},
 		},
 		Immutable: true,
 	}
@@ -39,16 +39,16 @@ func TestConfigMapAndSecretRoundTrip(t *testing.T) {
 	if created.ResourceVersion == "" {
 		t.Fatal("created ConfigMap has no resource version")
 	}
-	if !bytes.Equal(created.Data["/kodama/inputs/input-a"], configMap.Data["/kodama/inputs/input-a"]) ||
-		!bytes.Equal(created.Data["/kodama/task.json"], configMap.Data["/kodama/task.json"]) {
+	if !bytes.Equal(created.Data["/kodema/inputs/input-a"], configMap.Data["/kodema/inputs/input-a"]) ||
+		!bytes.Equal(created.Data["/kodema/task.json"], configMap.Data["/kodema/task.json"]) {
 		t.Fatalf("ConfigMap data did not round-trip: %v", created.Data)
 	}
 	read, err := fx.Client.GetConfigMap(ctx, testNamespace, configMap.Name)
 	if err != nil {
 		t.Fatalf("GetConfigMap: %v", err)
 	}
-	if !bytes.Equal(read.Data["/kodama/task.json"], []byte{0xff, 0x00, 0x01}) {
-		t.Fatalf("binary data changed through the API: %v", read.Data["/kodama/task.json"])
+	if !bytes.Equal(read.Data["/kodema/task.json"], []byte{0xff, 0x00, 0x01}) {
+		t.Fatalf("binary data changed through the API: %v", read.Data["/kodema/task.json"])
 	}
 	reused, err := fx.Client.PutConfigMap(ctx, configMap)
 	if err != nil {
@@ -58,7 +58,7 @@ func TestConfigMapAndSecretRoundTrip(t *testing.T) {
 		t.Fatalf("identical retry created a new object: %q vs %q", reused.ResourceVersion, created.ResourceVersion)
 	}
 	changed := configMap
-	changed.Data = map[string][]byte{"/kodama/task.json": []byte("different")}
+	changed.Data = map[string][]byte{"/kodema/task.json": []byte("different")}
 	if _, err := fx.Client.PutConfigMap(ctx, changed); !errors.Is(err, runtimekube.ErrConflict) {
 		t.Fatalf("changed immutable content error = %v; want ErrConflict", err)
 	}
@@ -70,12 +70,12 @@ func TestConfigMapAndSecretRoundTrip(t *testing.T) {
 	}
 
 	secret := runtimekube.Secret{
-		Name:      "kodama-credential-component",
+		Name:      "kodema-credential-component",
 		Namespace: testNamespace,
 		Labels:    map[string]string{runtimekube.LabelWorkload: "workload-k3"},
 		Data: map[string][]byte{
 			"API_KEY":      []byte("s3cr3t-value"),
-			"KODAMA_TOKEN": []byte("tok-component-1"),
+			"KODEMA_TOKEN": []byte("tok-component-1"),
 		},
 	}
 	createdSecret, err := fx.Client.PutSecret(ctx, secret)
@@ -89,7 +89,7 @@ func TestConfigMapAndSecretRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetSecret: %v", err)
 	}
-	readSecret.Data["KODAMA_TOKEN"] = []byte("tok-component-2")
+	readSecret.Data["KODEMA_TOKEN"] = []byte("tok-component-2")
 	updated, err := fx.Client.PutSecret(ctx, readSecret)
 	if err != nil {
 		t.Fatalf("PutSecret conditional update: %v", err)
@@ -152,8 +152,8 @@ func TestCredentialRefreshReplacesOnlyTheSecret(t *testing.T) {
 		t.Fatalf("credential refresh replaced the pod %q -> %q", podBefore.Name, podAfter.Name)
 	}
 	data := secretDataByWorkload(t, ctx, fx, string(identity.WorkloadID))
-	if string(data["KODAMA_TOKEN"]) != "tok-after" {
-		t.Fatalf("mounted credential = %q; want the refreshed token", data["KODAMA_TOKEN"])
+	if string(data["KODEMA_TOKEN"]) != "tok-after" {
+		t.Fatalf("mounted credential = %q; want the refreshed token", data["KODEMA_TOKEN"])
 	}
 	if string(data["API_KEY"]) != "" {
 		t.Fatalf("unexpected declared secret appeared: %v", data)

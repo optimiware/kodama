@@ -24,7 +24,7 @@ func TestHarnessKubectlRejectsExtraFlags(t *testing.T) {
 		{name: "token bare", extra: []string{"--token"}},
 		{name: "namespace short", extra: []string{"-n", "kube-system"}},
 		{name: "namespace short equals", extra: []string{"-n=kube-system"}},
-		{name: "context", extra: []string{"--context=kodama-probe"}},
+		{name: "context", extra: []string{"--context=kodema-probe"}},
 		{name: "all namespaces", extra: []string{"--all-namespaces"}},
 		{name: "all namespaces short", extra: []string{"-A"}},
 		{name: "kubeconfig", extra: []string{"--kubeconfig=/tmp/other"}},
@@ -90,8 +90,8 @@ func TestHarnessKubectlAcceptsAllowlistedExtraFlags(t *testing.T) {
 		{name: "output short", verb: "get", extra: []string{"-o", "json"}},
 		{name: "output long", verb: "get", extra: []string{"--output=json"}},
 		{name: "jsonpath", verb: "get", extra: []string{"-o", "jsonpath={.spec.replicas}"}},
-		{name: "selector short", verb: "get", extra: []string{"-l", "app=kodama"}},
-		{name: "selector long", verb: "get", extra: []string{"--selector=app=kodama"}},
+		{name: "selector short", verb: "get", extra: []string{"-l", "app=kodema"}},
+		{name: "selector long", verb: "get", extra: []string{"--selector=app=kodema"}},
 		{name: "replicas", verb: "scale", extra: []string{"--replicas=0"}},
 		{name: "grace period", verb: "delete", extra: []string{"--grace-period=30"}},
 		{name: "timeout", verb: "delete", extra: []string{"--timeout=30s"}},
@@ -159,7 +159,7 @@ printf '%s\n' "$*" >> "$Q02_FAKE_ARGV"
 echo executed >> "$Q02_FAKE_MARKER"
 exit 0
 `)
-	guard, err := NewGuard("kodama-stage-k8s", "kodama-tenant-tenant-a")
+	guard, err := NewGuard("kodema-stage-k8s", "kodema-tenant-tenant-a")
 	if err != nil {
 		t.Fatalf("build guard: %v", err)
 	}
@@ -179,7 +179,7 @@ echo 'token=super-secret-value'
 echo 'Authorization: Bearer super-secret-value' >&2
 exit 1
 `)
-	guard, err := NewGuard("kodama-stage-k8s", "kodama-tenant-tenant-a")
+	guard, err := NewGuard("kodema-stage-k8s", "kodema-tenant-tenant-a")
 	if err != nil {
 		t.Fatalf("build guard: %v", err)
 	}
@@ -211,7 +211,7 @@ func TestHarnessKubectlTimeoutCancels(t *testing.T) {
 	installFakeExecutable(t, "kubectl", `#!/bin/sh
 exec sleep 30
 `)
-	guard, err := NewGuard("kodama-stage-k8s", "kodama-tenant-tenant-a")
+	guard, err := NewGuard("kodema-stage-k8s", "kodema-tenant-tenant-a")
 	if err != nil {
 		t.Fatalf("build guard: %v", err)
 	}
@@ -240,7 +240,7 @@ echo executed >> "$Q02_FAKE_MARKER"
 exit 0
 `)
 	t.Setenv("Q02_FAKE_MARKER", marker)
-	guard, err := NewGuard("kodama-stage-k8s", "kodama-tenant-tenant-a")
+	guard, err := NewGuard("kodema-stage-k8s", "kodema-tenant-tenant-a")
 	if err != nil {
 		t.Fatalf("build guard: %v", err)
 	}

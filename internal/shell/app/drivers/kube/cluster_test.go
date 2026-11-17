@@ -6,7 +6,7 @@
 //
 // Driver API
 //
-//	package kube // import path kodama/internal/shell/app/drivers/kube
+//	package kube // import path kodema/internal/shell/app/drivers/kube
 //
 //	type ClusterConfig struct {
 //	    // Kubeconfig is the raw JSON document produced by
@@ -109,9 +109,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	driverkube "github.com/optimiware/kodama/internal/shell/app/drivers/kube"
-	runtimekube "github.com/optimiware/kodama/internal/shell/runtime/kube"
+	"github.com/optimiware/kodema/internal/fault"
+	driverkube "github.com/optimiware/kodema/internal/shell/app/drivers/kube"
+	runtimekube "github.com/optimiware/kodema/internal/shell/runtime/kube"
 )
 
 // TestDriverDefaultsArePinned pins the bounded-call and bounded-response
@@ -282,7 +282,7 @@ func TestClusterAuthenticatesWithClientCertificate(t *testing.T) {
 			http.Error(w, "client certificate required", http.StatusUnauthorized)
 			return
 		}
-		if got := r.TLS.PeerCertificates[0].Subject.CommonName; got != "kodama-test-client" {
+		if got := r.TLS.PeerCertificates[0].Subject.CommonName; got != "kodema-test-client" {
 			http.Error(w, "unexpected client "+got, http.StatusUnauthorized)
 			return
 		}
@@ -519,9 +519,9 @@ func TestClusterErrorsNeverContainCredentialValues(t *testing.T) {
 	assertNoCredential(t, err, testToken, secretValue)
 
 	_, err = cluster.PutSecret(context.Background(), runtimekube.Secret{
-		Name:      "kodama-credential-test",
+		Name:      "kodema-credential-test",
 		Namespace: testNamespace,
-		Data:      map[string][]byte{"KODAMA_TOKEN": []byte(secretValue)},
+		Data:      map[string][]byte{"KODEMA_TOKEN": []byte(secretValue)},
 	})
 	assertNoCredential(t, err, testToken, secretValue)
 }

@@ -5,13 +5,13 @@ import (
 	"strings"
 	"testing"
 
-	runtimekube "github.com/optimiware/kodama/internal/shell/runtime/kube"
+	runtimekube "github.com/optimiware/kodema/internal/shell/runtime/kube"
 )
 
 // w31Job is the minimal seam Job the driver renders for the pull-secret test.
 func w31Job() runtimekube.Job {
 	return runtimekube.Job{
-		Name:      "kodama-job-w31",
+		Name:      "kodema-job-w31",
 		Namespace: "tenant-acme",
 		Spec: runtimekube.JobSpec{
 			Image:   "registry.example.com/tools/build@sha256:" + strings.Repeat("a", 64),
@@ -41,7 +41,7 @@ func TestBuildJobManifestImagePullSecrets(t *testing.T) {
 		t.Fatalf("unconfigured Job body contains imagePullSecrets: %s", without)
 	}
 
-	job.Spec.ImagePullSecrets = []string{"kodama-registry", "backup-registry"}
+	job.Spec.ImagePullSecrets = []string{"kodema-registry", "backup-registry"}
 	manifest, err = buildJobManifest(job)
 	if err != nil {
 		t.Fatalf("buildJobManifest with pull secrets returned error: %v", err)
@@ -50,7 +50,7 @@ func TestBuildJobManifestImagePullSecrets(t *testing.T) {
 	if len(got) != 2 {
 		t.Fatalf("imagePullSecrets = %v, want two configured names", got)
 	}
-	for index, name := range []string{"kodama-registry", "backup-registry"} {
+	for index, name := range []string{"kodema-registry", "backup-registry"} {
 		if got[index].Name != name {
 			t.Fatalf("imagePullSecrets[%d].name = %q, want %q", index, got[index].Name, name)
 		}
@@ -74,7 +74,7 @@ func TestBuildJobManifestImagePullSecrets(t *testing.T) {
 		t.Fatalf("decode configured manifest: %v", err)
 	}
 	if len(decoded.Spec.Template.Spec.ImagePullSecrets) != 2 ||
-		decoded.Spec.Template.Spec.ImagePullSecrets[0].Name != "kodama-registry" {
+		decoded.Spec.Template.Spec.ImagePullSecrets[0].Name != "kodema-registry" {
 		t.Fatalf("encoded imagePullSecrets = %+v", decoded.Spec.Template.Spec.ImagePullSecrets)
 	}
 }

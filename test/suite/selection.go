@@ -66,7 +66,7 @@ var StageWave1Probes = []string{
 	"TestStageResilienceWorkloadPodLoss",
 }
 
-// StageWave2ChaosProbes delete or scale the shared kodama-system workloads
+// StageWave2ChaosProbes delete or scale the shared kodema-system workloads
 // (controller, broker, Git). They run one at a time, after wave 1 has drained
 // and passed, so no other scenario observes the outage they cause.
 var StageWave2ChaosProbes = []string{

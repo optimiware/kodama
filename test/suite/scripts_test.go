@@ -45,14 +45,14 @@ func TestSlotLauncherNestsANamedLockInsideASlot(t *testing.T) {
 		t.Fatalf("resolve the launcher: %v", err)
 	}
 	host := []string{
-		"KODAMA_SLOT_DIR=" + t.TempDir(),
-		"KODAMA_STACK_SLOTS=1",
-		"KODAMA_SLOT_WAIT=1",
-		"KODAMA_LOAD_MAX=1000000",
+		"KODEMA_SLOT_DIR=" + t.TempDir(),
+		"KODEMA_STACK_SLOTS=1",
+		"KODEMA_SLOT_WAIT=1",
+		"KODEMA_LOAD_MAX=1000000",
 		"TMPDIR=" + t.TempDir(),
 	}
 	output, code := runScript(t, "", host, launcher, "--exclusive", "stage", "stack", "--",
-		launcher, "--exclusive", "rdb", "stack", "--", "sh", "-c", `echo "inner slot=$KODAMA_SLOT"`)
+		launcher, "--exclusive", "rdb", "stack", "--", "sh", "-c", `echo "inner slot=$KODEMA_SLOT"`)
 	if code != 0 || !strings.Contains(output, "inner slot=stack-1") {
 		t.Fatalf("a named lock nested in the only slot exited %d:\n%s", code, output)
 	}
@@ -118,7 +118,7 @@ func TestSuiteWrapperOpensOneStageSession(t *testing.T) {
 		t.Fatalf("stage session = %v (exit %d, output %q); want %v", recorded, code, output, want)
 	}
 
-	recorded, _, code = run([]string{"KODAMA_STAGE_LOCK=other-stage"}, "-target", "stage", "--installation", "/stage/installation.json")
+	recorded, _, code = run([]string{"KODEMA_STAGE_LOCK=other-stage"}, "-target", "stage", "--installation", "/stage/installation.json")
 	if code != 0 || recorded[2] != "other-stage" || recorded[len(recorded)-1] != "descriptor=/stage/installation.json generated=" {
 		t.Fatalf("stage session with a descriptor = %v (exit %d); want the named lock and no generated descriptor", recorded, code)
 	}
@@ -128,7 +128,7 @@ func TestSuiteWrapperOpensOneStageSession(t *testing.T) {
 		t.Fatalf("stage session with an exported descriptor = %v (exit %d)", recorded, code)
 	}
 
-	recorded, output, code = run([]string{"KODAMA_STAGE_LOCK=../lock"}, "--target=stage")
+	recorded, output, code = run([]string{"KODEMA_STAGE_LOCK=../lock"}, "--target=stage")
 	if code == 0 || recorded != nil {
 		t.Fatalf("an unsafe lock name exited %d and ran %v; want a refusal before any command:\n%s", code, recorded, output)
 	}

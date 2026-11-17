@@ -7,8 +7,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/shell/integration/registry"
-	"github.com/optimiware/kodama/internal/shell/pipeline"
+	"github.com/optimiware/kodema/internal/shell/integration/registry"
+	"github.com/optimiware/kodema/internal/shell/pipeline"
 )
 
 // TestConcurrentResolves pins that one Resolver serves concurrent admission

@@ -16,8 +16,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	shellidentity "github.com/optimiware/kodama/internal/shell/identity"
+	"github.com/optimiware/kodema/api"
+	shellidentity "github.com/optimiware/kodema/internal/shell/identity"
 )
 
 // ServiceAccount is one fixture service credential. Token is the opaque bearer

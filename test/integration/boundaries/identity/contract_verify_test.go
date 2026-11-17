@@ -8,11 +8,11 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/fault"
-	shelloidc "github.com/optimiware/kodama/internal/shell/integration/oidc"
-	gitapp "github.com/optimiware/kodama/internal/userland/git/app"
-	idfix "github.com/optimiware/kodama/test/support/boundaries/identity"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/fault"
+	shelloidc "github.com/optimiware/kodema/internal/shell/integration/oidc"
+	gitapp "github.com/optimiware/kodema/internal/userland/git/app"
+	idfix "github.com/optimiware/kodema/test/support/boundaries/identity"
 )
 
 func TestContractVerifyHumanRoundTripAndRedaction(t *testing.T) {

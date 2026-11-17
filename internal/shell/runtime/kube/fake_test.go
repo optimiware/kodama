@@ -15,15 +15,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/kernel"
-	"github.com/optimiware/kodama/internal/kernel/definition"
-	"github.com/optimiware/kodama/internal/kernel/engine"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/kernel"
+	"github.com/optimiware/kodema/internal/kernel/definition"
+	"github.com/optimiware/kodema/internal/kernel/engine"
 )
 
 const (
 	testNamespace = "tenant-acme"
-	testKodamaURL = "https://kodama.example.com"
+	testKodemaURL = "https://kodema.example.com"
 	// testImage is a digest-pinned image reference.
 	testImage = "registry.example.com/tools/build@sha256:" +
 		"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
@@ -972,7 +972,7 @@ func testConfig(fake *fakeCluster, clock *fakeClock) Config {
 		Cluster:   fake,
 		Namespace: testNamespace,
 		TenantID:  testTenant(),
-		KodamaURL: testKodamaURL,
+		KodemaURL: testKodemaURL,
 		Policy: Policy{
 			CPURequest:    "100m",
 			CPULimit:      "1",

@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/client"
-	"github.com/optimiware/kodama/internal/userland/cli"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/client"
+	"github.com/optimiware/kodema/internal/userland/cli"
 )
 
 // wireRequest is one concrete request observed by the wire round tripper.
@@ -110,7 +110,7 @@ func codecForOperation(t *testing.T, operation string) api.OperationCodec {
 // produced input with the REST edge. A CLI field type, name or encoding that
 // disagrees with the declared DTO fails here instead of against a live edge.
 func TestCLIInvocationInputsDecodeAtTheRESTEdge(t *testing.T) {
-	directory := "/repo/.kodama"
+	directory := "/repo/.kodema"
 	cases := []struct {
 		name         string
 		operation    string

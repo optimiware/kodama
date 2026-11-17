@@ -15,7 +15,7 @@ package installation
 import (
 	"strings"
 
-	"github.com/optimiware/kodama/internal/fault"
+	"github.com/optimiware/kodema/internal/fault"
 )
 
 // AWS reference bounds and character sets. A KMS alias name is at most 256

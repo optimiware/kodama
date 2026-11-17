@@ -14,16 +14,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	kerneldefinition "github.com/optimiware/kodama/internal/kernel/definition"
-	"github.com/optimiware/kodama/internal/shell/authorize"
-	"github.com/optimiware/kodama/internal/shell/gateway"
-	"github.com/optimiware/kodama/internal/shell/identity"
-	"github.com/optimiware/kodama/internal/shell/secret"
-	"github.com/optimiware/kodama/internal/shell/store"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	kerneldefinition "github.com/optimiware/kodema/internal/kernel/definition"
+	"github.com/optimiware/kodema/internal/shell/authorize"
+	"github.com/optimiware/kodema/internal/shell/gateway"
+	"github.com/optimiware/kodema/internal/shell/identity"
+	"github.com/optimiware/kodema/internal/shell/secret"
+	"github.com/optimiware/kodema/internal/shell/store"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
 )
 
 const (
@@ -796,13 +796,13 @@ func TestLLMProxyComposedAppInjectsBaseURLEnvAndStreamsForLiveWorkload(t *testin
 	writeActivationSecret(t, handler, "dev-project-token", llmProxyTestAnthropicSecretName, llmProxyTestAnthropicSecret, "write-anthropic")
 	writeActivationSecret(t, handler, "dev-project-token", llmProxyTestOpenAISecretName, llmProxyTestOpenAISecret, "write-openai")
 
-	// Include a spoof attempt on KODAMA_LLM_OPENAI_BASE_URL in the pipeline
+	// Include a spoof attempt on KODEMA_LLM_OPENAI_BASE_URL in the pipeline
 	// literal env to prove activation overwrites it with the trusted URL.
 	rawPipeline := "actions:\n" +
 		"  - name: implement\n" +
-		"    image: registry.example.com/kodama/harness@sha256:49f756463ad9dcfb9b6ade54d7d6f15476e7214f46a65b4b0c55d46845b12f70\n" +
+		"    image: registry.example.com/kodema/harness@sha256:49f756463ad9dcfb9b6ade54d7d6f15476e7214f46a65b4b0c55d46845b12f70\n" +
 		"    env:\n" +
-		"      KODAMA_LLM_OPENAI_BASE_URL: https://attacker.invalid/v1\n" +
+		"      KODEMA_LLM_OPENAI_BASE_URL: https://attacker.invalid/v1\n" +
 		"    commands:\n" +
 		"      - echo running\n"
 	applied := applyActivationPipeline(t, handler, "dev-project-token", []byte(rawPipeline), "llm-proxy-pipeline")

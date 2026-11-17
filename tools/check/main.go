@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/optimiware/kodama/internal/archtest"
+	"github.com/optimiware/kodema/internal/archtest"
 )
 
 func main() {

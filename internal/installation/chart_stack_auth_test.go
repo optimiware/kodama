@@ -1,8 +1,8 @@
 package installation
 
-// Broker-authentication checks for the kodama-stack chart.
+// Broker-authentication checks for the kodema-stack chart.
 //
-// KODAMA.md:309 and docs/specs/08-operations-events.md:65 require broker
+// KODEMA.md:309 and docs/specs/08-operations-events.md:65 require broker
 // authentication and authorization on the same credential: a pod that can
 // reach nats.<namespace>:4222 must not be able to read every tenant's events
 // and logs. The stack chart is therefore fail-closed: it refuses to render
@@ -23,10 +23,10 @@ import (
 	"testing"
 )
 
-// stackChartPath resolves one path inside deploy/charts/kodama-stack.
+// stackChartPath resolves one path inside deploy/charts/kodema-stack.
 func stackChartPath(t *testing.T, parts ...string) string {
 	t.Helper()
-	all := append([]string{repoRoot(t), "deploy", "charts", "kodama-stack"}, parts...)
+	all := append([]string{repoRoot(t), "deploy", "charts", "kodema-stack"}, parts...)
 	return filepath.Join(all...)
 }
 
@@ -86,8 +86,8 @@ func TestStackNATSAuthDefaultsToCallout(t *testing.T) {
 	values := readText(t, stackChartPath(t, "values.yaml"))
 
 	requireStackPattern(t, values, `(?ms)^[ \t]*auth:[ \t]*\r?\n(?:[ \t]+.*\r?\n)*?[ \t]*mode:[ \t]*"?callout"?[ \t]*$`, "values.yaml nats.auth.mode default")
-	requireStackPattern(t, values, `(?ms)^[ \t]*callout:[ \t]*\r?\n(?:[ \t]+.*\r?\n)*?[ \t]*existingSecret:[ \t]*"?kodama-nats-auth"?[ \t]*$`, "values.yaml callout Secret")
-	requireStackPattern(t, values, `(?m)^[ \t]*existingSecret:[ \t]*"?kodama-broker-tls"?[ \t]*$`, "values.yaml mTLS client CA secret")
+	requireStackPattern(t, values, `(?ms)^[ \t]*callout:[ \t]*\r?\n(?:[ \t]+.*\r?\n)*?[ \t]*existingSecret:[ \t]*"?kodema-nats-auth"?[ \t]*$`, "values.yaml callout Secret")
+	requireStackPattern(t, values, `(?m)^[ \t]*existingSecret:[ \t]*"?kodema-broker-tls"?[ \t]*$`, "values.yaml mTLS client CA secret")
 	if !strings.Contains(values, "nats.auth.mtls.existingSecret") {
 		// The comment above the default documents the fail-closed contract.
 		t.Log("values.yaml does not name the mTLS secret key in a comment (not required)")
@@ -110,7 +110,7 @@ func TestStackNATSAuthGuardFailsClosed(t *testing.T) {
 		{name: configName, body: config},
 		{name: statefulName, body: statefulSet},
 	} {
-		if !strings.Contains(workload.body, `include "kodama-stack.natsAuthGuard"`) {
+		if !strings.Contains(workload.body, `include "kodema-stack.natsAuthGuard"`) {
 			t.Errorf("%s does not include the fail-closed NATS auth guard; an unauthenticated render would succeed", workload.name)
 		}
 	}
@@ -240,17 +240,17 @@ func TestStackNATSCalloutModeUsesSecretReferences(t *testing.T) {
 	}
 	// The control plane must also receive its bypass user and the callout
 	// seed so it can connect and answer.
-	deployment := readText(t, filepath.Join(repoRoot(t), "deploy", "charts", "kodama", "templates", "deployment.yaml"))
-	for _, key := range []string{"KODAMA_NATS_USER", "KODAMA_NATS_PASSWORD", "KODAMA_NATS_CALLOUT_USER", "KODAMA_NATS_CALLOUT_PASSWORD", "KODAMA_NATS_CALLOUT_ISSUER_SEED"} {
+	deployment := readText(t, filepath.Join(repoRoot(t), "deploy", "charts", "kodema", "templates", "deployment.yaml"))
+	for _, key := range []string{"KODEMA_NATS_USER", "KODEMA_NATS_PASSWORD", "KODEMA_NATS_CALLOUT_USER", "KODEMA_NATS_CALLOUT_PASSWORD", "KODEMA_NATS_CALLOUT_ISSUER_SEED"} {
 		if !strings.Contains(deployment, "name: "+key) {
-			t.Errorf("kodama deployment does not declare %s", key)
+			t.Errorf("kodema deployment does not declare %s", key)
 		}
 	}
 }
 
 // TestStackNATSCalloutAccountIsWiredFromOneValue pins the callout account:
 // the broker's auth_callout.account and the control plane's
-// KODAMA_NATS_CALLOUT_ACCOUNT come from the same YAML anchor, so the account
+// KODEMA_NATS_CALLOUT_ACCOUNT come from the same YAML anchor, so the account
 // the broker admits clients into and the account the callout signs for cannot
 // drift apart.
 func TestStackNATSCalloutAccountIsWiredFromOneValue(t *testing.T) {
@@ -260,22 +260,22 @@ func TestStackNATSCalloutAccountIsWiredFromOneValue(t *testing.T) {
 	}
 	uses := regexp.MustCompile(`(?m)^[ \t]*account:[ \t]*\*natsCalloutAccount[ \t]*$`).FindAllString(values, -1)
 	if len(uses) != 2 {
-		t.Fatalf("values.yaml references the callout account anchor %d times; want 2 (nats.auth.callout and kodama.secrets.natsAuth)", len(uses))
+		t.Fatalf("values.yaml references the callout account anchor %d times; want 2 (nats.auth.callout and kodema.secrets.natsAuth)", len(uses))
 	}
 	requireStackPattern(t, values, `(?ms)^[ \t]*callout:[ \t]*\r?\n(?:[ \t]+.*\r?\n)*?[ \t]*account:[ \t]*\*natsCalloutAccount[ \t]*$`, "values.yaml nats.auth.callout.account from the anchor")
-	requireStackPattern(t, values, `(?ms)^[ \t]*natsAuth:[ \t]*\r?\n(?:[ \t]+.*\r?\n)*?[ \t]*account:[ \t]*\*natsCalloutAccount[ \t]*$`, "values.yaml kodama.secrets.natsAuth.account from the anchor")
+	requireStackPattern(t, values, `(?ms)^[ \t]*natsAuth:[ \t]*\r?\n(?:[ \t]+.*\r?\n)*?[ \t]*account:[ \t]*\*natsCalloutAccount[ \t]*$`, "values.yaml kodema.secrets.natsAuth.account from the anchor")
 
-	deployment := readText(t, filepath.Join(repoRoot(t), "deploy", "charts", "kodama", "templates", "deployment.yaml"))
-	if !strings.Contains(deployment, "KODAMA_NATS_CALLOUT_ACCOUNT") || !strings.Contains(deployment, ".Values.secrets.natsAuth.account") {
-		t.Fatalf("kodama deployment does not render KODAMA_NATS_CALLOUT_ACCOUNT from secrets.natsAuth.account")
+	deployment := readText(t, filepath.Join(repoRoot(t), "deploy", "charts", "kodema", "templates", "deployment.yaml"))
+	if !strings.Contains(deployment, "KODEMA_NATS_CALLOUT_ACCOUNT") || !strings.Contains(deployment, ".Values.secrets.natsAuth.account") {
+		t.Fatalf("kodema deployment does not render KODEMA_NATS_CALLOUT_ACCOUNT from secrets.natsAuth.account")
 	}
-	if regexp.MustCompile(`(?m)^[ \t]*value:[ \t]*"?KODAMA"?[ \t]*$`).MatchString(deployment) {
-		t.Fatalf("kodama deployment hardcodes the callout account instead of reading secrets.natsAuth.account")
+	if regexp.MustCompile(`(?m)^[ \t]*value:[ \t]*"?KODEMA"?[ \t]*$`).MatchString(deployment) {
+		t.Fatalf("kodema deployment hardcodes the callout account instead of reading secrets.natsAuth.account")
 	}
 
 	guard := readText(t, stackChartPath(t, "templates", "_nats-auth.tpl"))
 	if !strings.Contains(guard, "must equal") || !strings.Contains(guard, "natsAuth.account") {
-		t.Fatalf("stack auth guard does not refuse a callout account that differs from kodama.secrets.natsAuth.account")
+		t.Fatalf("stack auth guard does not refuse a callout account that differs from kodema.secrets.natsAuth.account")
 	}
 }
 
@@ -295,7 +295,7 @@ func TestStackNATSNoAnonymousAccess(t *testing.T) {
 
 // TestDeployREADMEDocumentsPerCredentialBrokerAuthorization keeps the
 // security contract visible: every external broker client presents a current
-// Kodama credential to the authorization callout, and the control plane never
+// Kodema credential to the authorization callout, and the control plane never
 // hands out its bypass user.
 func TestDeployREADMEDocumentsPerCredentialBrokerAuthorization(t *testing.T) {
 	body := readText(t, filepath.Join(repoRoot(t), "deploy", "README.md"))

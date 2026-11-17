@@ -1,3 +1,3 @@
 package id
 
-import _ "kodama/internal/shell/request"
+import _ "kodema/internal/shell/request"

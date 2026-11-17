@@ -6,8 +6,8 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/optimiware/kodama/internal/fault"
-	runtimekube "github.com/optimiware/kodama/internal/shell/runtime/kube"
+	"github.com/optimiware/kodema/internal/fault"
+	runtimekube "github.com/optimiware/kodema/internal/shell/runtime/kube"
 )
 
 // ConfigMap request and response bodies. Activation bytes always travel as

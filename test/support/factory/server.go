@@ -22,27 +22,27 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/installation"
-	"github.com/optimiware/kodama/internal/shell/app"
-	driverkube "github.com/optimiware/kodama/internal/shell/app/drivers/kube"
-	pgdriver "github.com/optimiware/kodama/internal/shell/app/drivers/postgres"
-	"github.com/optimiware/kodama/internal/shell/event"
-	"github.com/optimiware/kodama/internal/shell/identity"
-	"github.com/optimiware/kodama/internal/shell/integration/keys"
-	shelllog "github.com/optimiware/kodama/internal/shell/log"
-	"github.com/optimiware/kodama/internal/shell/pipeline"
-	runtimekube "github.com/optimiware/kodama/internal/shell/runtime/kube"
-	runtimepodman "github.com/optimiware/kodama/internal/shell/runtime/podman"
-	"github.com/optimiware/kodama/internal/shell/secret"
-	"github.com/optimiware/kodama/internal/shell/store"
-	storepg "github.com/optimiware/kodama/internal/shell/store/postgres"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
-	kubesupport "github.com/optimiware/kodama/test/support/infrastructure/kubernetes"
-	"github.com/optimiware/kodama/test/support/infrastructure/messaging"
-	pgtest "github.com/optimiware/kodama/test/support/infrastructure/postgres"
-	runtimesupport "github.com/optimiware/kodama/test/support/infrastructure/runtime"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/installation"
+	"github.com/optimiware/kodema/internal/shell/app"
+	driverkube "github.com/optimiware/kodema/internal/shell/app/drivers/kube"
+	pgdriver "github.com/optimiware/kodema/internal/shell/app/drivers/postgres"
+	"github.com/optimiware/kodema/internal/shell/event"
+	"github.com/optimiware/kodema/internal/shell/identity"
+	"github.com/optimiware/kodema/internal/shell/integration/keys"
+	shelllog "github.com/optimiware/kodema/internal/shell/log"
+	"github.com/optimiware/kodema/internal/shell/pipeline"
+	runtimekube "github.com/optimiware/kodema/internal/shell/runtime/kube"
+	runtimepodman "github.com/optimiware/kodema/internal/shell/runtime/podman"
+	"github.com/optimiware/kodema/internal/shell/secret"
+	"github.com/optimiware/kodema/internal/shell/store"
+	storepg "github.com/optimiware/kodema/internal/shell/store/postgres"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
+	kubesupport "github.com/optimiware/kodema/test/support/infrastructure/kubernetes"
+	"github.com/optimiware/kodema/test/support/infrastructure/messaging"
+	pgtest "github.com/optimiware/kodema/test/support/infrastructure/postgres"
+	runtimesupport "github.com/optimiware/kodema/test/support/infrastructure/runtime"
 )
 
 // Fixture identities. Credentials are never compile-time constants: Start
@@ -55,7 +55,7 @@ const (
 	// InstallationID is the composition installation identity.
 	InstallationID = "installation-i04"
 	// KeyRef is the persistent keyfile reference the test composition uses.
-	KeyRef = "keyfile:kodama"
+	KeyRef = "keyfile:kodema"
 )
 
 // retiredFixtureTokens are the literal credentials an earlier harness revision
@@ -146,7 +146,7 @@ func workloadListenHost(t testing.TB) string {
 // defaultRouteHost returns the host's IPv4 default-route address, or an error
 // when the host has no usable route. It is the error-returning form shared by
 // the harness Start path (which fails closed) and the route-dependent security
-// test (which skips unless KODAMA_REQUIRE_INFRA=1). It never widens the bind.
+// test (which skips unless KODEMA_REQUIRE_INFRA=1). It never widens the bind.
 func defaultRouteHost() (string, error) {
 	connection, err := net.Dial("udp4", "1.1.1.1:53")
 	if err != nil {
@@ -451,7 +451,7 @@ type fixtureInfrastructure struct {
 	runtime installation.RuntimeAdapter
 	// listenAddr is the public edge address. The listener itself is created by
 	// start and re-created by a restart on the same address, because the
-	// workload's KODAMA_URL and the forwarder target both depend on it.
+	// workload's KODEMA_URL and the forwarder target both depend on it.
 	listenAddr      string
 	rawListener     net.Listener
 	listenerRetired bool
@@ -483,7 +483,7 @@ func (buffer *safeBuffer) String() string {
 // Start builds one isolated real factory composition over the Podman runtime
 // and serves it on the narrowest host address a rootless Podman workload can
 // reach. Both fixture credentials are generated per run with crypto/rand.
-// Infrastructure failures follow the shared KODAMA_REQUIRE_INFRA policy: a
+// Infrastructure failures follow the shared KODEMA_REQUIRE_INFRA policy: a
 // missing server skips unless the environment requires infrastructure, in
 // which case it fails. A composition or wiring failure is always a test
 // failure, never a skip.
@@ -1184,7 +1184,7 @@ func (h *Harness) ExecutionRuntimeEvidence(ctx context.Context, executionID stri
 
 // OutputMaterializations returns every host workload root under this harness
 // that materialized an earlier output directory for the named action. The
-// adapter prepares /kodama/outputs/<action>/ under the workload's activation
+// adapter prepares /kodema/outputs/<action>/ under the workload's activation
 // root, so a non-empty result proves a following action was prepared with that
 // output; an empty result proves no such materialization exists.
 func (h *Harness) OutputMaterializations(actionName string) ([]string, error) {
@@ -1201,7 +1201,7 @@ func (h *Harness) OutputMaterializations(actionName string) ([]string, error) {
 		if !entry.IsDir() {
 			continue
 		}
-		path := filepath.Join(h.runtimeRoot, entry.Name(), "kodama", "outputs", actionName)
+		path := filepath.Join(h.runtimeRoot, entry.Name(), "kodema", "outputs", actionName)
 		if _, err := os.Stat(path); err == nil {
 			found = append(found, path)
 		} else if !os.IsNotExist(err) {

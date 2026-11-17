@@ -5,10 +5,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/kernel/definition"
-	"github.com/optimiware/kodama/internal/shell/pipeline"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/kernel/definition"
+	"github.com/optimiware/kodema/internal/shell/pipeline"
 )
 
 func TestDecodeAcceptsSupportedPipelineForms(t *testing.T) {
@@ -493,7 +493,7 @@ actions:
     image: registry.example.com/build:latest
 `,
 		"reserved env": `env:
-  KODAMA_URL: https://example.com
+  KODEMA_URL: https://example.com
 actions:
   - name: build
     image: registry.example.com/build:latest
@@ -506,7 +506,7 @@ actions:
 		"reserved secret": `actions:
   - name: build
     image: registry.example.com/build:latest
-    secrets: [KODAMA_TOKEN]
+    secrets: [KODEMA_TOKEN]
 `,
 		"subject field traversal": `inputs: [repository]
 actions:

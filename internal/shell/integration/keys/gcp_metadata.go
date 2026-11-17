@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
+	"github.com/optimiware/kodema/internal/fault"
 )
 
 // gcpMetadataEndpoint is the metadata server origin. On GKE with Workload

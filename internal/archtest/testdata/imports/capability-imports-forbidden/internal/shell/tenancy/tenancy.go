@@ -1,3 +1,3 @@
 package tenancy
 
-import _ "kodama/internal/shell/store/memory"
+import _ "kodema/internal/shell/store/memory"

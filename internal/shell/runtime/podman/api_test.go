@@ -41,11 +41,11 @@
 //	    ContainerStatusExited  = "exited"
 //	)
 //	const (
-//	    LabelExecution      = "kodama.dev/execution"
-//	    LabelAction         = "kodama.dev/action"
-//	    LabelWorkload       = "kodama.dev/workload"
-//	    LabelWorkspace      = "kodama.dev/workspace"
-//	    LabelIdempotencyKey = "kodama.dev/idempotency-key"
+//	    LabelExecution      = "kodema.dev/execution"
+//	    LabelAction         = "kodema.dev/action"
+//	    LabelWorkload       = "kodema.dev/workload"
+//	    LabelWorkspace      = "kodema.dev/workspace"
+//	    LabelIdempotencyKey = "kodema.dev/idempotency-key"
 //	)
 //
 //	var (
@@ -57,7 +57,7 @@
 //	    Libpod    Libpod       // the only container/volume effect surface
 //	    Files     Files        // host file/directory boundary
 //	    Root      string       // daemon-visible adapter root; absolute
-//	    KodamaURL string       // reserved KODAMA_URL value
+//	    KodemaURL string       // reserved KODEMA_URL value
 //	    Cleanup   CleanupPolicy
 //	    Clock     Clock        // optional; nil means a real clock
 //	}
@@ -85,7 +85,7 @@
 //	type ContainerSpec struct {
 //	    Name          string
 //	    Image         string
-//	    Entrypoint    []string          // exactly {script.ShellPath, "/kodama/script"}
+//	    Entrypoint    []string          // exactly {script.ShellPath, "/kodema/script"}
 //	    Env           []string          // "NAME=value" in declaration order, reserved last
 //	    Labels        map[string]string // stable identity labels
 //	    Mounts        []Mount
@@ -136,23 +136,23 @@
 // Host layout for one stable identity, rooted at
 // <Config.Root>/<Identity.WorkloadID>:
 //
-//	<root>/<workload>/kodama/inputs/<key>              exact admitted input bytes
-//	<root>/<workload>/kodama/outputs/<action>/<key>    earlier succeeded outputs only
-//	<root>/<workload>/kodama/task.json                 only when the request has a task
-//	<root>/<workload>/kodama/secrets/<NAME>            declared activation-time values
-//	<root>/<workload>/kodama/secrets/KODAMA_TOKEN      the sole mutable mounted file
-//	<root>/<workload>/kodama/script                    script.Render output
+//	<root>/<workload>/kodema/inputs/<key>              exact admitted input bytes
+//	<root>/<workload>/kodema/outputs/<action>/<key>    earlier succeeded outputs only
+//	<root>/<workload>/kodema/task.json                 only when the request has a task
+//	<root>/<workload>/kodema/secrets/<NAME>            declared activation-time values
+//	<root>/<workload>/kodema/secrets/KODEMA_TOKEN      the sole mutable mounted file
+//	<root>/<workload>/kodema/script                    script.Render output
 //
-// Every materialized logical path P under /kodama is written at
+// Every materialized logical path P under /kodema is written at
 // filepath.Join(<root>/<workload>, P). Prepared files are regular read-only
-// (0o444) files. The generated script is <root>/<workload>/kodama/script. The
+// (0o444) files. The generated script is <root>/<workload>/kodema/script. The
 // execution workspace is the pre-existing named Podman volume returned by
 // WorkspaceVolumeName(WorkspaceID); Prepare and Start attach it at /workspace
 // and never create it. Only the separate engine.Workspace Release operation may
 // remove it, and only after every reference and retention guard is clear.
 //
 // The container mounts exactly two things: the directory
-// <root>/<workload>/kodama as a read-only bind at /kodama (a DIRECTORY bind so
+// <root>/<workload>/kodema as a read-only bind at /kodema (a DIRECTORY bind so
 // an atomic token-file replacement is visible without a restart) and the
 // retained workspace volume read-write at /workspace.
 //
@@ -172,9 +172,9 @@
 //     unsafe preparation never authorizes a start.
 //   - The container spec carries the pinned image, the rendered fail-fast
 //     entrypoint, the admitted literal environment in declaration order
-//     followed by the unshadowable reserved context KODAMA_URL,
-//     KODAMA_EXECUTION, KODAMA_ACTION (the action slug, never the action id)
-//     and KODAMA_TASK (omitted when task-free), the stable labels and
+//     followed by the unshadowable reserved context KODEMA_URL,
+//     KODEMA_EXECUTION, KODEMA_ACTION (the action slug, never the action id)
+//     and KODEMA_TASK (omitted when task-free), the stable labels and
 //     RestartPolicy "no". Secrets and the credential never appear in argv,
 //     environment, labels or diagnostics.
 //   - Start consumes the persisted engine.EffectIdentity and the completed
@@ -212,7 +212,7 @@
 //     success, and an uncertain removal returns an error without fabricating
 //     success. Status/Retain/Release never touch another identity's volume.
 //   - RefreshCredential atomically replaces only
-//     <root>/<workload>/kodama/secrets/KODAMA_TOKEN (write-temp-then-rename)
+//     <root>/<workload>/kodema/secrets/KODEMA_TOKEN (write-temp-then-rename)
 //     and never creates, starts, stops or removes the container. A failed or
 //     lost replacement leaves the previous token intact and a retry recovers.
 //   - Logs are ordered stdout/stderr chunks with a single continuation token
@@ -229,9 +229,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/kernel/engine"
-	"github.com/optimiware/kodama/internal/shell/runtime"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/kernel/engine"
+	"github.com/optimiware/kodema/internal/shell/runtime"
 )
 
 func TestAdapterPinsLibpodAPIVersion(t *testing.T) {
@@ -240,7 +240,7 @@ func TestAdapterPinsLibpodAPIVersion(t *testing.T) {
 		Libpod:    libpod,
 		Files:     newFakeFiles(),
 		Root:      t.TempDir(),
-		KodamaURL: testKodamaURL,
+		KodemaURL: testKodemaURL,
 		Cleanup:   CleanupPolicy{Attempts: 1},
 		Clock:     newFakeClock(),
 	})
@@ -284,7 +284,7 @@ func TestAdapterCapabilitiesAreExplicit(t *testing.T) {
 		Libpod:    libpod,
 		Files:     newFakeFiles(),
 		Root:      t.TempDir(),
-		KodamaURL: testKodamaURL,
+		KodemaURL: testKodemaURL,
 		Cleanup:   CleanupPolicy{Attempts: 1},
 		Clock:     newFakeClock(),
 	})
@@ -357,7 +357,7 @@ func TestNewRefusesIncompleteConfiguration(t *testing.T) {
 			Libpod:    newFakeLibpod(),
 			Files:     newFakeFiles(),
 			Root:      t.TempDir(),
-			KodamaURL: testKodamaURL,
+			KodemaURL: testKodemaURL,
 			Cleanup:   CleanupPolicy{Attempts: 2, Backoff: time.Second},
 			Clock:     newFakeClock(),
 		}
@@ -370,7 +370,7 @@ func TestNewRefusesIncompleteConfiguration(t *testing.T) {
 		{"missing files", func(config *Config) { config.Files = nil }},
 		{"relative root", func(config *Config) { config.Root = "relative/path" }},
 		{"empty root", func(config *Config) { config.Root = "" }},
-		{"empty kodama url", func(config *Config) { config.KodamaURL = "  " }},
+		{"empty kodema url", func(config *Config) { config.KodemaURL = "  " }},
 		{"zero attempts", func(config *Config) { config.Cleanup.Attempts = 0 }},
 		{"negative backoff", func(config *Config) { config.Cleanup.Backoff = -time.Second }},
 	}
@@ -445,11 +445,11 @@ func TestStableIdentityNames(t *testing.T) {
 
 func TestPinnedLabelVocabulary(t *testing.T) {
 	want := map[string]string{
-		"LabelExecution":      "kodama.dev/execution",
-		"LabelAction":         "kodama.dev/action",
-		"LabelWorkload":       "kodama.dev/workload",
-		"LabelWorkspace":      "kodama.dev/workspace",
-		"LabelIdempotencyKey": "kodama.dev/idempotency-key",
+		"LabelExecution":      "kodema.dev/execution",
+		"LabelAction":         "kodema.dev/action",
+		"LabelWorkload":       "kodema.dev/workload",
+		"LabelWorkspace":      "kodema.dev/workspace",
+		"LabelIdempotencyKey": "kodema.dev/idempotency-key",
 	}
 	got := map[string]string{
 		"LabelExecution":      LabelExecution,

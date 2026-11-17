@@ -13,7 +13,7 @@ actions:
         cd /workspace
         cat > package.json <<'JSON'
         {
-          "name": "kodama-vite-acceptance",
+          "name": "kodema-vite-acceptance",
           "private": true,
           "type": "module",
           "devDependencies": {
@@ -37,12 +37,12 @@ actions:
         <html lang="en">
           <head>
             <meta charset="utf-8">
-            <title>Kodama Vite acceptance</title>
+            <title>Kodema Vite acceptance</title>
           </head>
           <body>
             <div id="app"></div>
             <script type="module">
-              document.querySelector('#app').textContent = 'Kodama Vite acceptance'
+              document.querySelector('#app').textContent = 'Kodema Vite acceptance'
             </script>
           </body>
         </html>
@@ -51,7 +51,7 @@ actions:
       - cd /workspace && npx vite build
       - test -s /workspace/dist/index.html
       - |
-        printf '\n<!-- %s -->\n' KODAMA_VITE_OK >> /workspace/dist/index.html
-        grep -F KODAMA_VITE_OK /workspace/dist/index.html
+        printf '\n<!-- %s -->\n' KODEMA_VITE_OK >> /workspace/dist/index.html
+        grep -F KODEMA_VITE_OK /workspace/dist/index.html
       - ls -l /workspace/dist/index.html
       - cd /workspace && npx vite --version

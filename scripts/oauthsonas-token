@@ -58,7 +58,7 @@ fi
 base="${base%/}"
 case "$base" in
   https://?*) ;;
-  *) die "OAUTHSONAS_URL must be an https:// issuer: Kodama accepts only https issuers" ;;
+  *) die "OAUTHSONAS_URL must be an https:// issuer: Kodema accepts only https issuers" ;;
 esac
 
 client="${OAUTHSONAS_CLIENT_ID:-kodactl}"

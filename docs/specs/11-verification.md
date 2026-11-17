@@ -64,7 +64,7 @@ Every AC requires both its local cases and the later real proof.
 | 17 Handoffs | S-HANDOFF, checkpoint restoration; P06/P24/P25 | I04, I06 atomic reply/queue, stop ordering, missing refs |
 | 18 Task progress | S-PROGRESS/EDIT; P06/P12/P13 | I04 old-event immunity and operator retry history |
 | 19 Authorization/verification | Operation matrix, exact matching, secrecy; P03/P21 | I03, I05, Q02 local/remote parity and fresh revocation |
-| 20 Userland Git | Import boundary, rules, journal/retention; P23 | I03, I05, Q03 real journal replay/retention/restore (there is no Userland HTTP commit-retention discovery; Shell-managed `refs/kodama/keep/<sha>` enforces retention) |
+| 20 Userland Git | Import boundary, rules, journal/retention; P23 | I03, I05, Q03 real journal replay/retention/restore (there is no Userland HTTP commit-retention discovery; Shell-managed `refs/kodema/keep/<sha>` enforces retention) |
 
 ## 4. Evidence and gate validity
 

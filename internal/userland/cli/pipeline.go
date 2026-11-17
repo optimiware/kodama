@@ -11,7 +11,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/optimiware/kodama/api"
+	"github.com/optimiware/kodema/api"
 )
 
 // pipelineApplyInput is the pipeline.apply input for one local pipeline file.
@@ -151,7 +151,7 @@ func runRun(ctx context.Context, config Config, args []string, ports Ports, deps
 	}
 	projectID := resolveProject(projectFlag, config, deps)
 	if projectID == "" {
-		return usage(ports.Err, "run requires --project <id> or KODAMA_PROJECT")
+		return usage(ports.Err, "run requires --project <id> or KODEMA_PROJECT")
 	}
 	if ports.Files == nil {
 		return failure(ports.Err, fmt.Errorf("no filesystem is configured"))

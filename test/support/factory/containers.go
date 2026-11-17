@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/optimiware/kodama/internal/id"
-	runtimepodman "github.com/optimiware/kodama/internal/shell/runtime/podman"
-	runtimesupport "github.com/optimiware/kodama/test/support/infrastructure/runtime"
+	"github.com/optimiware/kodema/internal/id"
+	runtimepodman "github.com/optimiware/kodema/internal/shell/runtime/podman"
+	runtimesupport "github.com/optimiware/kodema/test/support/infrastructure/runtime"
 )
 
 // RunningContainers returns the subset of the run's label-selected containers

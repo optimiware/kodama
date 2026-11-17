@@ -3,8 +3,8 @@ package mcp
 import (
 	"encoding/json"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/fault"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/fault"
 )
 
 // Tool is the MCP advertisement of one operation. The public API schema

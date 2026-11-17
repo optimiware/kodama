@@ -16,10 +16,10 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/shell/app/drivers/mcphttp"
-	"github.com/optimiware/kodama/internal/shell/mcpproxy"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/shell/app/drivers/mcphttp"
+	"github.com/optimiware/kodema/internal/shell/mcpproxy"
 )
 
 // TestMCPHTTPMapsToolResults pins the exact mapping from a standard MCP

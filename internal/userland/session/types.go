@@ -19,7 +19,7 @@ import (
 // Checkpoint reference format constants.
 const (
 	// RefPrefix is the fixed checkpoint reference prefix.
-	RefPrefix = "kodama-checkpoint/"
+	RefPrefix = "kodema-checkpoint/"
 	// RefVersion is the current checkpoint format version.
 	RefVersion = "v1"
 	// MaxRefBytes bounds one checkpoint reference.

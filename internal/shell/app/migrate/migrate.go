@@ -15,26 +15,26 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/shell/store"
-	storepg "github.com/optimiware/kodama/internal/shell/store/postgres"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/shell/store"
+	storepg "github.com/optimiware/kodema/internal/shell/store/postgres"
 )
 
-const ledger = "kodama_meta.schema_migrations"
+const ledger = "kodema_meta.schema_migrations"
 
 // The bootstrap migration creates roles and therefore runs as the
 // administrator; every other migration runs as the migration owner role.
 var bootstrap = map[string]bool{"0001_roles.sql": true}
 
 // SetupLockKey is the fixed advisory-lock key that serializes concurrent
-// one-shot setup runs. Two `kodama migrate` processes started together (a
+// one-shot setup runs. Two `kodema migrate` processes started together (a
 // rollout, or a Helm hook retried) must not both create the database or the
 // ledger, or apply the same migration; the second waits and then observes a
 // complete ledger instead of failing with a duplicate/version conflict. The
 // command takes it on the maintenance connection before EnsureDatabase; Apply
 // takes the same key on its target connection for callers that bypass the
 // command.
-const SetupLockKey int64 = 0x6b6f64616d61 // "kodama"
+const SetupLockKey int64 = 0x6b6f64656d61 // "kodema"
 
 // DB opens one transaction as the database administrator.
 type DB interface {
@@ -72,7 +72,7 @@ func Apply(ctx context.Context, db DB, config Config) ([]string, error) {
 	// typo must not run the migration set and then fail at the password step.
 	for role, password := range config.Passwords {
 		if !ValidRole(role) || password == "" || strings.ContainsRune(password, 0) {
-			return nil, fault.New(fault.InvalidInput, "role password setting needs a kodama_ role name and a non-empty password")
+			return nil, fault.New(fault.InvalidInput, "role password setting needs a kodema_ role name and a non-empty password")
 		}
 	}
 	// Serialize the whole run with a session-level advisory lock taken on the
@@ -96,7 +96,7 @@ func Apply(ctx context.Context, db DB, config Config) ([]string, error) {
 		return nil, migrationFault("check migration ledger", err)
 	}
 	if !exists {
-		if err := execOne(ctx, db, `CREATE SCHEMA kodama_meta;
+		if err := execOne(ctx, db, `CREATE SCHEMA kodema_meta;
 CREATE TABLE `+ledger+` (
 	name text PRIMARY KEY,
 	checksum text NOT NULL,
@@ -162,16 +162,16 @@ func applyOne(ctx context.Context, db DB, config Config, migration storepg.Migra
 		// 0001 body cannot do.
 		//
 		// Administrator rights after the handover are ADMIN plus SET on
-		// kodama_owner, never INHERIT:
+		// kodema_owner, never INHERIT:
 		//   - PostgreSQL 16+ records the role's creator as a grantor and gives
 		//     it ADMIN on the role it created, so the administrator keeps ADMIN
 		//     without a second (and refused) explicit ADMIN grant;
 		//   - this statement adds SET and denies INHERIT, so the administrator
 		//     keeps no direct CREATE on the database or the public schema and
 		//     no direct SELECT on tenants;
-		//   - it does keep ownership of the kodama_meta schema and the
+		//   - it does keep ownership of the kodema_meta schema and the
 		//     schema_migrations ledger it created before the handover;
-		//   - it can SET ROLE kodama_owner at will (and grant that role onward),
+		//   - it can SET ROLE kodema_owner at will (and grant that role onward),
 		//     which is why the one-shot setup credential must be removed or
 		//     disabled after the installation completes.
 		// This is the documented design: the setup administrator is not a
@@ -196,7 +196,7 @@ func applyOne(ctx context.Context, db DB, config Config, migration storepg.Migra
 
 func setPassword(ctx context.Context, db DB, role, password string) error {
 	if !ValidRole(role) || password == "" || strings.ContainsRune(password, 0) {
-		return fault.New(fault.InvalidInput, "role password setting needs a kodama_ role name and a non-empty password")
+		return fault.New(fault.InvalidInput, "role password setting needs a kodema_ role name and a non-empty password")
 	}
 	// ALTER ROLE does not take bind parameters; the literal is quoted. It is
 	// emitted as an E'' escape string with BOTH backslashes and single quotes
@@ -217,10 +217,10 @@ func setPassword(ctx context.Context, db DB, role, password string) error {
 }
 
 // ValidRole reports whether the name is one of the database's login roles.
-// Only lowercase kodama_ names are accepted: a password is never set on an
+// Only lowercase kodema_ names are accepted: a password is never set on an
 // operator or superuser role by a typo.
 func ValidRole(role string) bool {
-	if !strings.HasPrefix(role, "kodama_") || len(role) == len("kodama_") {
+	if !strings.HasPrefix(role, "kodema_") || len(role) == len("kodema_") {
 		return false
 	}
 	for _, r := range role {

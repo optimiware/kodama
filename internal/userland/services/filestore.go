@@ -14,7 +14,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/optimiware/kodama/internal/id"
+	"github.com/optimiware/kodema/internal/id"
 )
 
 // File-store locking bounds. The in-process mutex serializes this process; the

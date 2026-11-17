@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/userland/agent"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/userland/agent"
 )
 
 // Regression: native checkpoint-before-ask must reach the served task
@@ -313,7 +313,7 @@ func TestNativeRestoreMissingCheckpointFailsAction(t *testing.T) {
 	outcome, err := runtime.Run(context.Background(), agent.RunInput{
 		TaskID: "tsk-1", ExecutionID: "exec-2", Model: "fixture-model",
 		Messages:   []agent.Message{{Role: "user", Content: "continue"}},
-		RestoreRef: "kodama-checkpoint/v1/ctx-missing",
+		RestoreRef: "kodema-checkpoint/v1/ctx-missing",
 	})
 	if err == nil {
 		t.Fatalf("missing checkpoint was treated as an empty success: %+v", outcome)

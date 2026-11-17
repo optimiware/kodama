@@ -12,9 +12,9 @@ import (
 	"strings"
 	"testing"
 
-	runtimepodman "github.com/optimiware/kodama/internal/shell/runtime/podman"
-	"github.com/optimiware/kodama/test/support/infrastructure/harness"
-	runtimesupport "github.com/optimiware/kodama/test/support/infrastructure/runtime"
+	runtimepodman "github.com/optimiware/kodema/internal/shell/runtime/podman"
+	"github.com/optimiware/kodema/test/support/infrastructure/harness"
+	runtimesupport "github.com/optimiware/kodema/test/support/infrastructure/runtime"
 )
 
 // captureCreateLibpod records the labels of the last container it was asked to
@@ -155,7 +155,7 @@ func TestFixtureCleanupRequiresCompleteOwnershipLabels(t *testing.T) {
 		harness.LabelOwnerPID: "2147480000",
 		FixtureLabel:          scope.ID(),
 	}
-	unlabelled := map[string]string{"kodama.dev/workspace": "workspace-1"}
+	unlabelled := map[string]string{"kodema.dev/workspace": "workspace-1"}
 	missingFixture := map[string]string{
 		harness.LabelTest:     "1",
 		harness.LabelOwnerPID: pid,
@@ -413,7 +413,7 @@ func TestRemoveFixtureResourcesRemovesOnlyOwned(t *testing.T) {
 // TestContainersEnumeratesOnlyFixtureOwnedWorkloads proves the public
 // Harness.Containers enumeration keeps the fixture selector. The fake podman
 // answers every `ps` request with a sibling container that carries the same
-// caller-supplied label pair (kodama.test=1), so reverting Containers to the
+// caller-supplied label pair (kodema.test=1), so reverting Containers to the
 // process-wide runtime support enumeration would return the sibling too. Only
 // the fixture's own container may be returned.
 func TestContainersEnumeratesOnlyFixtureOwnedWorkloads(t *testing.T) {
@@ -477,18 +477,18 @@ func TestFixtureLabelsReachContainersAndVolumes(t *testing.T) {
 	client := labelledLibpod{Libpod: libpod, provisioner: provisioner, fixture: scope}
 
 	if _, err := client.CreateContainer(context.Background(), runtimepodman.ContainerSpec{
-		Labels: map[string]string{"kodama.dev/execution": "execution-1"},
+		Labels: map[string]string{"kodema.dev/execution": "execution-1"},
 	}); err != nil {
 		t.Fatalf("create container: %v", err)
 	}
-	assertFixtureLabelSet(t, libpod.labels, scope, "kodama.dev/execution", "execution-1")
+	assertFixtureLabelSet(t, libpod.labels, scope, "kodema.dev/execution", "execution-1")
 
 	if _, err := client.CreateVolume(context.Background(), runtimepodman.Volume{
-		Labels: map[string]string{"kodama.dev/workspace": "workspace-1"},
+		Labels: map[string]string{"kodema.dev/workspace": "workspace-1"},
 	}); err != nil {
 		t.Fatalf("create volume: %v", err)
 	}
-	assertFixtureLabelSet(t, provisioner.labels, scope, "kodama.dev/workspace", "workspace-1")
+	assertFixtureLabelSet(t, provisioner.labels, scope, "kodema.dev/workspace", "workspace-1")
 }
 
 func assertFixtureLabelSet(t *testing.T, labels map[string]string, scope FixtureScope, productKey, productValue string) {

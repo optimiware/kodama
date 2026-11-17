@@ -12,11 +12,11 @@ import (
 func TestChartControlPlaneMountsGitRepositoriesForKeepRefs(t *testing.T) {
 	body := readText(t, chartPath(t, "templates/deployment.yaml"))
 	for _, required := range []string{
-		"KODAMA_GIT_STORAGE_ROOT",
-		`value: "/var/lib/kodama/git-repos"`,
-		"mountPath: /var/lib/kodama/git-repos/{{ $entry.tenant }}",
+		"KODEMA_GIT_STORAGE_ROOT",
+		`value: "/var/lib/kodema/git-repos"`,
+		"mountPath: /var/lib/kodema/git-repos/{{ $entry.tenant }}",
 		"subPath: repos/{{ $entry.tenant }}",
-		"claimName: kodama-git-{{ $entry.tenant }}-data",
+		"claimName: kodema-git-{{ $entry.tenant }}-data",
 		"name: prepare-git-repos",
 		`mkdir -p "/data/{{ $entry.tenant }}/repos/{{ $entry.tenant }}"`,
 	} {
@@ -34,7 +34,7 @@ func TestChartControlPlaneMountsGitRepositoriesForKeepRefs(t *testing.T) {
 
 func TestChartGitServiceValuesDocumentRetainedCommits(t *testing.T) {
 	values := readText(t, chartPath(t, "values.yaml"))
-	for _, required := range []string{"KODAMA_GIT_STORAGE_ROOT", "refs/kodama/keep/<sha>"} {
+	for _, required := range []string{"KODEMA_GIT_STORAGE_ROOT", "refs/kodema/keep/<sha>"} {
 		if !strings.Contains(values, required) {
 			t.Fatalf("values.yaml does not document %q", required)
 		}

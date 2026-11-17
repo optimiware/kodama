@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/fault"
+	"github.com/optimiware/kodema/internal/fault"
 )
 
 // productionKeyConfig is a complete production composition with only the key
@@ -24,9 +24,9 @@ func productionKeyConfig(adapter KeyAdapter, reference string) Config {
 		Messaging:   MessagingNATS,
 		Runtime:     RuntimeKubernetes,
 		Keys:        adapter,
-		DatabaseURL: "postgres://kodama@database:5432/kodama?sslmode=verify-full",
+		DatabaseURL: "postgres://kodema@database:5432/kodema?sslmode=verify-full",
 		NATSURL:     "tls://nat:4222",
-		PublicURL:   "https://kodama.example",
+		PublicURL:   "https://kodema.example",
 		KeyRef:      reference,
 	}
 }
@@ -35,9 +35,9 @@ func TestAWSKeyReferencePreflight(t *testing.T) {
 	accepted := []string{
 		"aws-kms:arn:aws:kms:eu-west-1:123456789012:key/1234abcd-12ab-34cd-56ef-1234567890ab",
 		"aws-kms:arn:aws:kms:us-east-1:111122223333:key/mrk-0123456789abcdef0123456789abcdef",
-		"aws-kms:arn:aws-us-gov:kms:us-gov-west-1:111122223333:alias/kodama",
-		"aws-kms:alias/kodama-kek",
-		"aws-kms:alias/Kodama/Team_Kek-1",
+		"aws-kms:arn:aws-us-gov:kms:us-gov-west-1:111122223333:alias/kodema",
+		"aws-kms:alias/kodema-kek",
+		"aws-kms:alias/Kodema/Team_Kek-1",
 	}
 	for _, reference := range accepted {
 		t.Run("accepted "+reference, func(t *testing.T) {
@@ -62,10 +62,10 @@ func TestAWSKeyReferencePreflight(t *testing.T) {
 		"aws-kms:arn:aws:kms:eu-west-1:123456789012",
 		"aws-kms:arn:aws:kms:eu-west-1:123456789012:key/1234abcd-12ab-34cd-56ef-1234567890ab?x=1",
 		"aws-kms:arn:aws:kms:eu-west-1:123456789012:key/1234abcd-12ab-34cd-56ef-1234567890ab#frag",
-		"aws-kms:alias/kodama kek",
+		"aws-kms:alias/kodema kek",
 		"aws-kms:alias/%2e%2e",
 		"aws-kms:alias/..",
-		"aws-kms:alias/alias/kodama",
+		"aws-kms:alias/alias/kodema",
 		"aws-kms:",
 	}
 	for _, reference := range refused {
@@ -87,9 +87,9 @@ func TestAWSKeyReferencePreflight(t *testing.T) {
 
 func TestGCPKeyReferencePreflight(t *testing.T) {
 	accepted := []string{
-		"gcp-kms:projects/demo-project/locations/europe-west1/keyRings/kodama/cryptoKeys/kek",
-		"gcp-kms:projects/123456789012/locations/global/keyRings/kodama-ring/cryptoKeys/kek_1",
-		"gcp-kms:projects/my-proj-1/locations/us/keyRings/ring-kodama/cryptoKeys/key-1",
+		"gcp-kms:projects/demo-project/locations/europe-west1/keyRings/kodema/cryptoKeys/kek",
+		"gcp-kms:projects/123456789012/locations/global/keyRings/kodema-ring/cryptoKeys/kek_1",
+		"gcp-kms:projects/my-proj-1/locations/us/keyRings/ring-kodema/cryptoKeys/key-1",
 	}
 	for _, reference := range accepted {
 		t.Run("accepted "+reference, func(t *testing.T) {
@@ -100,25 +100,25 @@ func TestGCPKeyReferencePreflight(t *testing.T) {
 	}
 
 	refused := []string{
-		"gcp-kms:projects/demo-project/locations/europe-west1/keyRings/kodama",
-		"gcp-kms:projects/demo-project/locations/europe-west1/keyRings/kodama/cryptoKeys/",
-		"gcp-kms:projects/demo-project/locations/europe-west1/keyRings/kodama/cryptoKeys/kek/cryptoKeyVersions/1",
-		"gcp-kms:projects/demo-project/locations/europe-west1/keyRings/kodama/cryptoKeys/kek/extra",
+		"gcp-kms:projects/demo-project/locations/europe-west1/keyRings/kodema",
+		"gcp-kms:projects/demo-project/locations/europe-west1/keyRings/kodema/cryptoKeys/",
+		"gcp-kms:projects/demo-project/locations/europe-west1/keyRings/kodema/cryptoKeys/kek/cryptoKeyVersions/1",
+		"gcp-kms:projects/demo-project/locations/europe-west1/keyRings/kodema/cryptoKeys/kek/extra",
 		"gcp-kms:projects/demo-project/locations/europe-west1/keyRings//cryptoKeys/kek",
-		"gcp-kms:/projects/demo-project/locations/europe-west1/keyRings/kodama/cryptoKeys/kek",
-		"gcp-kms:projects/demo-project/locations/europe-west1/keyRings/kodama/cryptoKeys/kek/",
-		"gcp-kms:projects/Demo-Project/locations/europe-west1/keyRings/kodama/cryptoKeys/kek",
-		"gcp-kms:projects/demo_project/locations/europe-west1/keyRings/kodama/cryptoKeys/kek",
-		"gcp-kms:projects/demo-project/locations/../keyRings/kodama/cryptoKeys/kek",
-		"gcp-kms:projects/demo-project/locations/europe-west1/keyRings/kodama/cryptoKeys/%2e%2e",
-		"gcp-kms:projects/demo-project/locations/europe-west1/keyRings/kodama/cryptoKeys/kek?x=1",
-		"gcp-kms:projects/demo-project/locations/europe-west1/keyRings/kodama/cryptoKeys/kek#frag",
-		"gcp-kms:projects/demo-project/locations/europe-west1/keyrings/kodama/cryptoKeys/kek",
-		"gcp-kms:projects/demo-project/keyRings/kodama/cryptoKeys/kek",
+		"gcp-kms:/projects/demo-project/locations/europe-west1/keyRings/kodema/cryptoKeys/kek",
+		"gcp-kms:projects/demo-project/locations/europe-west1/keyRings/kodema/cryptoKeys/kek/",
+		"gcp-kms:projects/Demo-Project/locations/europe-west1/keyRings/kodema/cryptoKeys/kek",
+		"gcp-kms:projects/demo_project/locations/europe-west1/keyRings/kodema/cryptoKeys/kek",
+		"gcp-kms:projects/demo-project/locations/../keyRings/kodema/cryptoKeys/kek",
+		"gcp-kms:projects/demo-project/locations/europe-west1/keyRings/kodema/cryptoKeys/%2e%2e",
+		"gcp-kms:projects/demo-project/locations/europe-west1/keyRings/kodema/cryptoKeys/kek?x=1",
+		"gcp-kms:projects/demo-project/locations/europe-west1/keyRings/kodema/cryptoKeys/kek#frag",
+		"gcp-kms:projects/demo-project/locations/europe-west1/keyrings/kodema/cryptoKeys/kek",
+		"gcp-kms:projects/demo-project/keyRings/kodema/cryptoKeys/kek",
 		"gcp-kms:projects/demo-project/locations/europe-west1/cryptoKeys/kek",
-		"gcp-kms:projects/demo-project/locations/europe-west1/keyRings/kodama.ring/cryptoKeys/kek",
+		"gcp-kms:projects/demo-project/locations/europe-west1/keyRings/kodema.ring/cryptoKeys/kek",
 		"gcp-kms:projects/demo-project/locations/europe-west1/keyRings/1ring/cryptoKeys/kek",
-		"gcp-kms:projects/demo-project/locations/europe-west1/keyRings/kodama/cryptoKeys/ke k",
+		"gcp-kms:projects/demo-project/locations/europe-west1/keyRings/kodema/cryptoKeys/ke k",
 		"gcp-kms:",
 	}
 	for _, reference := range refused {

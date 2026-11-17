@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/fault"
+	"github.com/optimiware/kodema/internal/fault"
 )
 
 // docFields renders one explicit installation document. Empty fields are
@@ -69,10 +69,10 @@ func testDoc() docFields {
 		messaging:   "nats",
 		runtime:     "podman",
 		keys:        "keyfile",
-		databaseURL: "postgres://kodama@database:5432/kodama",
+		databaseURL: "postgres://kodema@database:5432/kodema",
 		natsURL:     "nats://nats:4222",
-		publicURL:   "https://kodama.test",
-		keyRef:      "keyfile:kodama",
+		publicURL:   "https://kodema.test",
+		keyRef:      "keyfile:kodema",
 	}
 }
 
@@ -84,9 +84,9 @@ func productionDoc(keys, keyRef string) docFields {
 		messaging:   "nats",
 		runtime:     "kubernetes",
 		keys:        keys,
-		databaseURL: "postgres://kodama@database:5432/kodama?sslmode=verify-full",
+		databaseURL: "postgres://kodema@database:5432/kodema?sslmode=verify-full",
 		natsURL:     "tls://nats:4222",
-		publicURL:   "https://kodama.example",
+		publicURL:   "https://kodema.example",
 		keyRef:      keyRef,
 	}
 }
@@ -163,9 +163,9 @@ func TestParseConfigProductionCloudKMS(t *testing.T) {
 		keys   string
 		keyRef string
 	}{
-		{name: "aws", keys: "aws-kms", keyRef: "aws-kms:alias/kodama"},
-		{name: "gcp", keys: "gcp-kms", keyRef: "gcp-kms:projects/kodama/locations/global/keyRings/kodama/cryptoKeys/kek"},
-		{name: "scaleway", keys: "scw-kms", keyRef: "scw-kms:fr-par/kodama"},
+		{name: "aws", keys: "aws-kms", keyRef: "aws-kms:alias/kodema"},
+		{name: "gcp", keys: "gcp-kms", keyRef: "gcp-kms:projects/kodema/locations/global/keyRings/kodema/cryptoKeys/kek"},
+		{name: "scaleway", keys: "scw-kms", keyRef: "scw-kms:fr-par/kodema"},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
 			config := mustParse(t, productionDoc(testCase.keys, testCase.keyRef))
@@ -222,9 +222,9 @@ func TestParseConfigRefusesMalformedDocuments(t *testing.T) {
 		name string
 		body string
 	}{
-		{name: "unknown key", body: base + "state_file = /var/lib/kodama\n"},
+		{name: "unknown key", body: base + "state_file = /var/lib/kodema\n"},
 		{name: "duplicate key", body: base + "state = memory\n"},
-		{name: "missing separator", body: base + "public_url https://kodama.example\n"},
+		{name: "missing separator", body: base + "public_url https://kodema.example\n"},
 		{name: "empty value", body: base + "database_url =\n"},
 		{name: "empty key", body: base + " = value\n"},
 		{name: "unknown environment", body: strings.Replace(base, "environment = development", "environment = staging", 1)},
@@ -275,11 +275,11 @@ func TestParseConfigRefusesProductionTestAdapters(t *testing.T) {
 		}},
 		{name: "keyfile keys", mutate: func(fields *docFields) {
 			fields.keys = "keyfile"
-			fields.keyRef = "keyfile:kodama"
+			fields.keyRef = "keyfile:kodema"
 		}},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
-			fields := productionDoc("aws-kms", "aws-kms:alias/kodama")
+			fields := productionDoc("aws-kms", "aws-kms:alias/kodema")
 			testCase.mutate(&fields)
 			_, err := ParseConfig(strings.NewReader(fields.String()))
 			assertFaultClass(t, err, fault.InvalidInput)
@@ -313,23 +313,23 @@ func TestParseConfigRefusesIncompleteSettings(t *testing.T) {
 			return fields
 		}()},
 		{name: "production missing database", fields: func() docFields {
-			fields := productionDoc("aws-kms", "aws-kms:alias/kodama")
+			fields := productionDoc("aws-kms", "aws-kms:alias/kodema")
 			fields.databaseURL = ""
 			return fields
 		}()},
 		{name: "production missing nats", fields: func() docFields {
-			fields := productionDoc("aws-kms", "aws-kms:alias/kodama")
+			fields := productionDoc("aws-kms", "aws-kms:alias/kodema")
 			fields.natsURL = ""
 			return fields
 		}()},
 		{name: "production missing public url", fields: func() docFields {
-			fields := productionDoc("aws-kms", "aws-kms:alias/kodama")
+			fields := productionDoc("aws-kms", "aws-kms:alias/kodema")
 			fields.publicURL = ""
 			return fields
 		}()},
 		{name: "insecure public url", fields: func() docFields {
 			fields := testDoc()
-			fields.publicURL = "http://kodama.test"
+			fields.publicURL = "http://kodema.test"
 			return fields
 		}()},
 		{name: "bare postgres scheme", fields: func() docFields {
@@ -361,9 +361,9 @@ func TestParseConfigKeyReferenceFamilies(t *testing.T) {
 			return fields
 		}()},
 		{name: "test keyfile", fields: testDoc()},
-		{name: "production aws", fields: productionDoc("aws-kms", "aws-kms:alias/kodama")},
-		{name: "production gcp", fields: productionDoc("gcp-kms", "gcp-kms:projects/kodama/locations/global/keyRings/kodama/cryptoKeys/kek")},
-		{name: "production scaleway", fields: productionDoc("scw-kms", "scw-kms:fr-par/kodama")},
+		{name: "production aws", fields: productionDoc("aws-kms", "aws-kms:alias/kodema")},
+		{name: "production gcp", fields: productionDoc("gcp-kms", "gcp-kms:projects/kodema/locations/global/keyRings/kodema/cryptoKeys/kek")},
+		{name: "production scaleway", fields: productionDoc("scw-kms", "scw-kms:fr-par/kodema")},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
 			mustParse(t, testCase.fields)
@@ -376,12 +376,12 @@ func TestParseConfigKeyReferenceFamilies(t *testing.T) {
 	}{
 		{name: "development keyfile reference", fields: func() docFields {
 			fields := developmentDoc()
-			fields.keyRef = "keyfile:kodama"
+			fields.keyRef = "keyfile:kodema"
 			return fields
 		}()},
 		{name: "development cloud reference", fields: func() docFields {
 			fields := developmentDoc()
-			fields.keyRef = "aws-kms:alias/kodama"
+			fields.keyRef = "aws-kms:alias/kodema"
 			return fields
 		}()},
 		{name: "test ephemeral reference", fields: func() docFields {
@@ -391,12 +391,12 @@ func TestParseConfigKeyReferenceFamilies(t *testing.T) {
 		}()},
 		{name: "test cloud reference", fields: func() docFields {
 			fields := testDoc()
-			fields.keyRef = "gcp-kms:projects/kodama/locations/global/keyRings/kodama/cryptoKeys/kek"
+			fields.keyRef = "gcp-kms:projects/kodema/locations/global/keyRings/kodema/cryptoKeys/kek"
 			return fields
 		}()},
-		{name: "production aws names gcp", fields: productionDoc("aws-kms", "gcp-kms:projects/kodama/locations/global/keyRings/kodama/cryptoKeys/kek")},
-		{name: "production gcp names aws", fields: productionDoc("gcp-kms", "aws-kms:alias/kodama")},
-		{name: "production scaleway names gcp", fields: productionDoc("scw-kms", "gcp-kms:projects/kodama/locations/global/keyRings/kodama/cryptoKeys/kek")},
+		{name: "production aws names gcp", fields: productionDoc("aws-kms", "gcp-kms:projects/kodema/locations/global/keyRings/kodema/cryptoKeys/kek")},
+		{name: "production gcp names aws", fields: productionDoc("gcp-kms", "aws-kms:alias/kodema")},
+		{name: "production scaleway names gcp", fields: productionDoc("scw-kms", "gcp-kms:projects/kodema/locations/global/keyRings/kodema/cryptoKeys/kek")},
 		{name: "production empty reference", fields: productionDoc("aws-kms", "")},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
@@ -459,7 +459,7 @@ func TestParseConfigAcceptsCRLFAndComments(t *testing.T) {
 // line is reported by line number and declared key, never by its text.
 func TestParseConfigMissingSeparatorReportsLineWithoutValue(t *testing.T) {
 	base := developmentDoc().String()
-	body := base + "database_url postgres://kodama@database:5432/kodama\n"
+	body := base + "database_url postgres://kodema@database:5432/kodema\n"
 	_, err := ParseConfig(strings.NewReader(body))
 	assertFaultClass(t, err, fault.InvalidInput)
 	message := err.Error()
@@ -488,7 +488,7 @@ func TestParseConfigErrorsOmitValues(t *testing.T) {
 	}{
 		{
 			name: "missing separator",
-			body: developmentDoc().String() + "database_url postgres://kodama:" + credential + "@database:5432/kodama\n",
+			body: developmentDoc().String() + "database_url postgres://kodema:" + credential + "@database:5432/kodema\n",
 		},
 		{
 			name: "unknown optional capability",

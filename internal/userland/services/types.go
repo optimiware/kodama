@@ -14,8 +14,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/id"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/id"
 )
 
 // ServiceKind is one independent service adapter kind.

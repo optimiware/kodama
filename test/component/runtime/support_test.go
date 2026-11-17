@@ -16,25 +16,25 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/kernel"
-	"github.com/optimiware/kodama/internal/kernel/definition"
-	"github.com/optimiware/kodama/internal/kernel/engine"
-	podmandriver "github.com/optimiware/kodama/internal/shell/app/drivers/podman"
-	processdriver "github.com/optimiware/kodama/internal/shell/app/drivers/process"
-	"github.com/optimiware/kodama/internal/shell/runtime/podman"
-	"github.com/optimiware/kodama/internal/shell/runtime/process"
-	"github.com/optimiware/kodama/test/support/infrastructure/harness"
-	runtimesupport "github.com/optimiware/kodama/test/support/infrastructure/runtime"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/kernel"
+	"github.com/optimiware/kodema/internal/kernel/definition"
+	"github.com/optimiware/kodema/internal/kernel/engine"
+	podmandriver "github.com/optimiware/kodema/internal/shell/app/drivers/podman"
+	processdriver "github.com/optimiware/kodema/internal/shell/app/drivers/process"
+	"github.com/optimiware/kodema/internal/shell/runtime/podman"
+	"github.com/optimiware/kodema/internal/shell/runtime/process"
+	"github.com/optimiware/kodema/test/support/infrastructure/harness"
+	runtimesupport "github.com/optimiware/kodema/test/support/infrastructure/runtime"
 )
 
-const testKodamaURL = "https://kodama.example.com"
+const testKodemaURL = "https://kodema.example.com"
 
 // TestMain installs the harness signal handler and dead-owner sweep, then
 // removes only the runtime-labelled containers and volumes this run owns. The
-// sweep is scoped by kodama.test=1 and this run's owner pid; it never selects
-// by the product workspace label, so a real Kodama's retained workspaces and a
+// sweep is scoped by kodema.test=1 and this run's owner pid; it never selects
+// by the product workspace label, so a real Kodema's retained workspaces and a
 // concurrent shard's live resources survive.
 func TestMain(m *testing.M) {
 	code := harness.Main(m)
@@ -284,7 +284,7 @@ func newProcessFixture(t *testing.T, base string) *processFixture {
 	adapter, err := process.New(process.Config{
 		Root:          root,
 		WorkspaceRoot: workspaceRoot,
-		KodamaURL:     testKodamaURL,
+		KodemaURL:     testKodemaURL,
 		Executor:      driver,
 		Observer:      driver,
 		Files:         driver,
@@ -318,7 +318,7 @@ func newProcessAdapter(t *testing.T, f *processFixture, driver *processdriver.Dr
 	adapter, err := process.New(process.Config{
 		Root:          f.root,
 		WorkspaceRoot: f.workspaceRoot,
-		KodamaURL:     testKodamaURL,
+		KodemaURL:     testKodemaURL,
 		Executor:      driver,
 		Observer:      driver,
 		Files:         driver,
@@ -410,7 +410,7 @@ func newPodmanAdapter(t *testing.T, f *podmanFixture, wrapper podman.Libpod) (*p
 		Libpod:    client,
 		Files:     files,
 		Root:      f.root,
-		KodamaURL: testKodamaURL,
+		KodemaURL: testKodemaURL,
 		Cleanup:   podman.CleanupPolicy{Attempts: 3, Backoff: 100 * time.Millisecond},
 	})
 	if err != nil {

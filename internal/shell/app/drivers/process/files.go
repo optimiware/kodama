@@ -19,12 +19,12 @@ import (
 	"path/filepath"
 	"syscall"
 
-	"github.com/optimiware/kodama/internal/fault"
+	"github.com/optimiware/kodema/internal/fault"
 )
 
 // writeTempPrefix names the staged sibling of one atomic write. It is distinct
 // from the bookkeeping temporary prefix so a leftover is identifiable.
-const writeTempPrefix = ".kodama-write-"
+const writeTempPrefix = ".kodema-write-"
 
 // MkdirAll creates one confined directory tree.
 func (d *Driver) MkdirAll(ctx context.Context, path string, mode os.FileMode) error {

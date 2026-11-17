@@ -41,10 +41,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/shell/identity"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/shell/identity"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
 )
 
 func testScope() tenancy.Scope {
@@ -392,9 +392,9 @@ func otherScopeForTest() tenancy.Scope {
 // never matches.
 func TestOAuthClaimsMatchTenantAndRole(t *testing.T) {
 	claims := identity.OAuthClaims{
-		TenantClaim: "https://kodama.example.com/tenant",
+		TenantClaim: "https://kodema.example.com/tenant",
 		Tenant:      "tenant-a",
-		RoleClaim:   "https://kodama.example.com/roles",
+		RoleClaim:   "https://kodema.example.com/roles",
 		Role:        "engineer",
 	}
 	values := map[string][]string{
@@ -428,10 +428,10 @@ func TestOAuthClaimsMatchTenantAndRole(t *testing.T) {
 // TestOIDCConfigRefusesInsecureIssuer pins installation configuration refusal:
 // a plain-HTTP issuer or empty audience never reaches a verifier.
 func TestOIDCConfigRefusesInsecureIssuer(t *testing.T) {
-	requireClass(t, identity.OIDCConfig{Issuer: "http://issuer.example.com", Audience: "kodama"}.Validate(), fault.InvalidInput)
+	requireClass(t, identity.OIDCConfig{Issuer: "http://issuer.example.com", Audience: "kodema"}.Validate(), fault.InvalidInput)
 	requireClass(t, identity.OIDCConfig{Issuer: "https://issuer.example.com"}.Validate(), fault.InvalidInput)
-	requireClass(t, identity.OIDCConfig{Issuer: "https://issuer.example.com", Audience: "kodama", ClockSkew: -time.Second}.Validate(), fault.InvalidInput)
-	if err := (identity.OIDCConfig{Issuer: "https://issuer.example.com", Audience: "kodama", ClockSkew: time.Second}).Validate(); err != nil {
+	requireClass(t, identity.OIDCConfig{Issuer: "https://issuer.example.com", Audience: "kodema", ClockSkew: -time.Second}.Validate(), fault.InvalidInput)
+	if err := (identity.OIDCConfig{Issuer: "https://issuer.example.com", Audience: "kodema", ClockSkew: time.Second}).Validate(); err != nil {
 		t.Fatalf("valid OIDC config refused: %v", err)
 	}
 }

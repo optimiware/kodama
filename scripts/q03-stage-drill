@@ -11,27 +11,27 @@
 #   scripts/q03-stage-drill drop
 #
 # Required for every mode:
-#   KODAMA_Q03_STAGE_INSTANCE_ID       stage RDB instance UUID
-#   KODAMA_Q03_STAGE_SOURCE_DATABASE   source logical database (e.g. kodama)
-#   KODAMA_Q03_STAGE_MANAGED_DATABASE  managed logical database (e.g. kodama)
+#   KODEMA_Q03_STAGE_INSTANCE_ID       stage RDB instance UUID
+#   KODEMA_Q03_STAGE_SOURCE_DATABASE   source logical database (e.g. kodema)
+#   KODEMA_Q03_STAGE_MANAGED_DATABASE  managed logical database (e.g. kodema)
 #
 # Required for restore:
-#   KODAMA_Q03_STAGE_BACKUP_ID         logical backup ID to restore
-#   KODAMA_Q03_EVIDENCE_DIR            absolute private evidence directory
-#   KODAMA_Q03_STAGE_APPLY=1           explicit effect confirmation
+#   KODEMA_Q03_STAGE_BACKUP_ID         logical backup ID to restore
+#   KODEMA_Q03_EVIDENCE_DIR            absolute private evidence directory
+#   KODEMA_Q03_STAGE_APPLY=1           explicit effect confirmation
 #   SCW_ACCESS_KEY, SCW_SECRET_KEY     read by the scw CLI, never printed
 # Optional:
-#   KODAMA_Q03_SOURCE_REVISION         revision recorded in the run marker
-#   KODAMA_Q03_STAGE_RUN_ID            reuse a bounded run id (plan/restore)
-#   KODAMA_Q03_STAGE_LOCK              host-wide RDB lock name (default scw-stage-rdb)
+#   KODEMA_Q03_SOURCE_REVISION         revision recorded in the run marker
+#   KODEMA_Q03_STAGE_RUN_ID            reuse a bounded run id (plan/restore)
+#   KODEMA_Q03_STAGE_LOCK              host-wide RDB lock name (default scw-stage-rdb)
 #
 # Required for drop:
-#   KODAMA_Q03_STAGE_RUN_ID            the restore run whose marker is dropped
-#   KODAMA_Q03_EVIDENCE_DIR            directory holding q03-stage-restore-*.json
-#   KODAMA_Q03_STAGE_APPLY=1           explicit effect confirmation
+#   KODEMA_Q03_STAGE_RUN_ID            the restore run whose marker is dropped
+#   KODEMA_Q03_EVIDENCE_DIR            directory holding q03-stage-restore-*.json
+#   KODEMA_Q03_STAGE_APPLY=1           explicit effect confirmation
 #
 # Every mode runs inside scripts/infra-slot.sh --exclusive scw-stage-rdb by
-# default: the drill operates only on kodama-restore-<run-id> through the RDB
+# default: the drill operates only on kodema-restore-<run-id> through the RDB
 # control plane and never mutates the managed database or Kubernetes pods, so it
 # serializes RDB instance operations without blocking concurrent cluster tests.
 # The script writes no credential value anywhere; it records the run marker, the
@@ -57,33 +57,33 @@ esac
 command -v go >/dev/null 2>&1 || refuse "go is not on PATH"
 command -v scw >/dev/null 2>&1 || refuse "scw is not on PATH"
 
-[[ -n "${KODAMA_Q03_STAGE_INSTANCE_ID:-}" ]] || refuse "KODAMA_Q03_STAGE_INSTANCE_ID is required"
-[[ -n "${KODAMA_Q03_STAGE_SOURCE_DATABASE:-}" ]] || refuse "KODAMA_Q03_STAGE_SOURCE_DATABASE is required"
-[[ -n "${KODAMA_Q03_STAGE_MANAGED_DATABASE:-}" ]] || refuse "KODAMA_Q03_STAGE_MANAGED_DATABASE is required"
+[[ -n "${KODEMA_Q03_STAGE_INSTANCE_ID:-}" ]] || refuse "KODEMA_Q03_STAGE_INSTANCE_ID is required"
+[[ -n "${KODEMA_Q03_STAGE_SOURCE_DATABASE:-}" ]] || refuse "KODEMA_Q03_STAGE_SOURCE_DATABASE is required"
+[[ -n "${KODEMA_Q03_STAGE_MANAGED_DATABASE:-}" ]] || refuse "KODEMA_Q03_STAGE_MANAGED_DATABASE is required"
 
 case "$mode" in
   restore)
-    [[ -n "${KODAMA_Q03_STAGE_BACKUP_ID:-}" ]] || refuse "KODAMA_Q03_STAGE_BACKUP_ID is required for restore"
-    [[ -n "${KODAMA_Q03_EVIDENCE_DIR:-}" ]] || refuse "KODAMA_Q03_EVIDENCE_DIR is required for restore"
-    [[ "${KODAMA_Q03_STAGE_APPLY:-}" == "1" ]] || refuse "restore requires KODAMA_Q03_STAGE_APPLY=1"
+    [[ -n "${KODEMA_Q03_STAGE_BACKUP_ID:-}" ]] || refuse "KODEMA_Q03_STAGE_BACKUP_ID is required for restore"
+    [[ -n "${KODEMA_Q03_EVIDENCE_DIR:-}" ]] || refuse "KODEMA_Q03_EVIDENCE_DIR is required for restore"
+    [[ "${KODEMA_Q03_STAGE_APPLY:-}" == "1" ]] || refuse "restore requires KODEMA_Q03_STAGE_APPLY=1"
     ;;
   drop)
-    [[ -n "${KODAMA_Q03_STAGE_RUN_ID:-}" ]] || refuse "KODAMA_Q03_STAGE_RUN_ID is required for drop"
-    [[ -n "${KODAMA_Q03_EVIDENCE_DIR:-}" ]] || refuse "KODAMA_Q03_EVIDENCE_DIR is required for drop"
-    [[ "${KODAMA_Q03_STAGE_APPLY:-}" == "1" ]] || refuse "drop requires KODAMA_Q03_STAGE_APPLY=1"
+    [[ -n "${KODEMA_Q03_STAGE_RUN_ID:-}" ]] || refuse "KODEMA_Q03_STAGE_RUN_ID is required for drop"
+    [[ -n "${KODEMA_Q03_EVIDENCE_DIR:-}" ]] || refuse "KODEMA_Q03_EVIDENCE_DIR is required for drop"
+    [[ "${KODEMA_Q03_STAGE_APPLY:-}" == "1" ]] || refuse "drop requires KODEMA_Q03_STAGE_APPLY=1"
     ;;
 esac
 
-if [[ -n "${KODAMA_Q03_EVIDENCE_DIR:-}" ]]; then
-  [[ "$KODAMA_Q03_EVIDENCE_DIR" == /* ]] || refuse "KODAMA_Q03_EVIDENCE_DIR must be an absolute path"
+if [[ -n "${KODEMA_Q03_EVIDENCE_DIR:-}" ]]; then
+  [[ "$KODEMA_Q03_EVIDENCE_DIR" == /* ]] || refuse "KODEMA_Q03_EVIDENCE_DIR must be an absolute path"
 fi
 
-lock_name="${KODAMA_Q03_STAGE_LOCK:-scw-stage-rdb}"
+lock_name="${KODEMA_Q03_STAGE_LOCK:-scw-stage-rdb}"
 case "$lock_name" in
-  "" | *[!A-Za-z0-9._-]*) refuse "KODAMA_Q03_STAGE_LOCK must be a bounded lock name" ;;
+  "" | *[!A-Za-z0-9._-]*) refuse "KODEMA_Q03_STAGE_LOCK must be a bounded lock name" ;;
 esac
 
-export KODAMA_Q03_STAGE_MODE="$mode"
+export KODEMA_Q03_STAGE_MODE="$mode"
 cd "$ROOT"
 exec scripts/infra-slot.sh --exclusive "$lock_name" stack -- \
   go run ./test/qualification/restore/stagedrill

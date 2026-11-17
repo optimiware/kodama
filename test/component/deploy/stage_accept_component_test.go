@@ -30,7 +30,7 @@ const acceptRunID = "accept-run-1"
 const acceptLog = "vite/8.3.6 linux-x64 node-v26.13.0\n" +
 	"vite v8.3.6 building for production...\n" +
 	"dist/index.html  0.42 kB\n" +
-	"KODAMA_VITE_OK\n"
+	"KODEMA_VITE_OK\n"
 
 // acceptConfig is the part of the fake server's state a handler reads. The
 // test writes it only through configure, which waits for every in-flight
@@ -312,13 +312,13 @@ exec %q "$@"
 
 	box.env = append(os.Environ(),
 		"PATH="+box.bin+string(os.PathListSeparator)+os.Getenv("PATH"),
-		"KODAMA_STAGE_API_URL="+box.server.URL,
-		"KODAMA_STAGE_CA_FILE="+box.ca,
-		"KODAMA_STAGE_ADMIN_TOKEN_FILE="+box.token,
-		"KODAMA_STAGE_PROJECT_ID=tenant-a",
-		"KODAMA_STAGE_PIPELINE_FILE="+box.pipeline,
-		"KODAMA_STAGE_EVIDENCE_DIR="+box.evidence,
-		"KODAMA_STAGE_RUN_ID="+acceptRunID,
+		"KODEMA_STAGE_API_URL="+box.server.URL,
+		"KODEMA_STAGE_CA_FILE="+box.ca,
+		"KODEMA_STAGE_ADMIN_TOKEN_FILE="+box.token,
+		"KODEMA_STAGE_PROJECT_ID=tenant-a",
+		"KODEMA_STAGE_PIPELINE_FILE="+box.pipeline,
+		"KODEMA_STAGE_EVIDENCE_DIR="+box.evidence,
+		"KODEMA_STAGE_RUN_ID="+acceptRunID,
 		"Q01_DEPLOYED_REVISION="+acceptRevision,
 		"CURL_ARGV_LOG="+box.curlLog,
 	)
@@ -448,14 +448,14 @@ func TestStageAcceptRefusesUnsafeRuns(t *testing.T) {
 		{
 			name: "non-https URL",
 			mutate: func(t *testing.T, box *acceptSandbox, server *acceptServer) {
-				box.withEnv("KODAMA_STAGE_API_URL=http://127.0.0.1:1")
+				box.withEnv("KODEMA_STAGE_API_URL=http://127.0.0.1:1")
 			},
 			want: "https",
 		},
 		{
 			name: "missing token file",
 			mutate: func(t *testing.T, box *acceptSandbox, server *acceptServer) {
-				box.withEnv("KODAMA_STAGE_ADMIN_TOKEN_FILE=" + filepath.Join(box.root, "absent-token"))
+				box.withEnv("KODEMA_STAGE_ADMIN_TOKEN_FILE=" + filepath.Join(box.root, "absent-token"))
 			},
 			want: "token",
 		},
@@ -471,14 +471,14 @@ func TestStageAcceptRefusesUnsafeRuns(t *testing.T) {
 		{
 			name: "unreadable CA file",
 			mutate: func(t *testing.T, box *acceptSandbox, server *acceptServer) {
-				box.withEnv("KODAMA_STAGE_CA_FILE=" + filepath.Join(box.root, "absent-ca"))
+				box.withEnv("KODEMA_STAGE_CA_FILE=" + filepath.Join(box.root, "absent-ca"))
 			},
 			want: "CA file",
 		},
 		{
 			name: "relative evidence directory",
 			mutate: func(t *testing.T, box *acceptSandbox, server *acceptServer) {
-				box.withEnv("KODAMA_STAGE_EVIDENCE_DIR=evidence")
+				box.withEnv("KODEMA_STAGE_EVIDENCE_DIR=evidence")
 			},
 			want: "absolute",
 		},
@@ -532,10 +532,10 @@ func TestStageAcceptRefusesUnsafeRuns(t *testing.T) {
 			name: "missing build marker",
 			mutate: func(t *testing.T, box *acceptSandbox, server *acceptServer) {
 				server.configure(t, func(config *acceptConfig) {
-					config.logChunks = []string{strings.ReplaceAll(acceptLog, "KODAMA_VITE_OK\n", "")}
+					config.logChunks = []string{strings.ReplaceAll(acceptLog, "KODEMA_VITE_OK\n", "")}
 				})
 			},
-			want: "KODAMA_VITE_OK",
+			want: "KODEMA_VITE_OK",
 		},
 		{
 			name: "missing dist artifact line",
@@ -564,8 +564,8 @@ func TestStageAcceptRefusesUnsafeRuns(t *testing.T) {
 			defer box.server.Close()
 			test.mutate(t, box, server)
 			// A short poll bound keeps the cleanup-not-complete case hermetic.
-			box.withEnv("KODAMA_STAGE_ACCEPT_TIMEOUT=2")
-			box.withEnv("KODAMA_STAGE_ACCEPT_POLL_SECONDS=1")
+			box.withEnv("KODEMA_STAGE_ACCEPT_TIMEOUT=2")
+			box.withEnv("KODEMA_STAGE_ACCEPT_POLL_SECONDS=1")
 			code, output := box.run(t)
 			if code == 0 {
 				t.Fatalf("stage-accept accepted an unsafe run:\n%s", output)
@@ -606,7 +606,7 @@ func TestStageAcceptKeysSubmissionsPerRevision(t *testing.T) {
 		func() {
 			defer box.server.Close()
 			box.withEnv(
-				"KODAMA_STAGE_RUN_ID="+attempt.run,
+				"KODEMA_STAGE_RUN_ID="+attempt.run,
 				"Q01_DEPLOYED_REVISION="+attempt.rev,
 			)
 			if code, output := box.run(t); code != 0 {
@@ -666,14 +666,14 @@ func TestStageAcceptRefusesReplayedSubmission(t *testing.T) {
 }
 
 // TestStageAcceptAcceptsReplayOnlyOnOptIn proves the explicit escape hatch:
-// KODAMA_STAGE_ALLOW_REPLAY=1 accepts the replayed execution and records the
+// KODEMA_STAGE_ALLOW_REPLAY=1 accepts the replayed execution and records the
 // flag in the summary.
 func TestStageAcceptAcceptsReplayOnlyOnOptIn(t *testing.T) {
 	server := newAcceptTestServer(t)
 	server.configure(t, func(config *acceptConfig) { config.replayed = true })
 	box := newAcceptSandbox(t, server)
 	defer box.server.Close()
-	box.withEnv("KODAMA_STAGE_ALLOW_REPLAY=1")
+	box.withEnv("KODEMA_STAGE_ALLOW_REPLAY=1")
 
 	code, output := box.run(t)
 	if code != 0 {
@@ -700,16 +700,16 @@ func TestStageAcceptRefusesMissingRunIdentity(t *testing.T) {
 	box := newAcceptSandbox(t, server)
 	defer box.server.Close()
 	box.withEnv(
-		"KODAMA_STAGE_RUN_ID=",
+		"KODEMA_STAGE_RUN_ID=",
 		"Q01_DEPLOYED_REVISION=",
-		"KODAMA_STAGE_REVISION=",
+		"KODEMA_STAGE_REVISION=",
 	)
 
 	code, output := box.run(t)
 	if code == 0 {
 		t.Fatalf("stage-accept submitted without a run identity:\n%s", output)
 	}
-	if !strings.Contains(output, "KODAMA_STAGE_RUN_ID") {
+	if !strings.Contains(output, "KODEMA_STAGE_RUN_ID") {
 		t.Errorf("refusal does not name the required run identity:\n%s", output)
 	}
 	if submitted, _ := server.observations(); submitted {
@@ -791,7 +791,7 @@ func TestStageAcceptSucceedsAndKeepsTheTokenOffArgv(t *testing.T) {
 	if digest, _ := summary["yaml_sha256"].(string); !strings.HasPrefix(digest, "sha256:") || len(digest) != len("sha256:")+64 {
 		t.Errorf("summary yaml_sha256 = %q; want a sha256 identity", digest)
 	}
-	if excerpt, _ := summary["sanitized_excerpt"].(string); !strings.Contains(excerpt, "KODAMA_VITE_OK") {
+	if excerpt, _ := summary["sanitized_excerpt"].(string); !strings.Contains(excerpt, "KODEMA_VITE_OK") {
 		t.Errorf("summary excerpt does not carry the build marker: %q", excerpt)
 	}
 }

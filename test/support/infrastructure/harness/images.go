@@ -118,7 +118,7 @@ func (p *Podman) ensureImageRecord(ctx context.Context, tag string) (ImageRecord
 }
 
 // recordImage logs the record and appends it to the JSON evidence file when
-// KODAMA_EVIDENCE_DIR (or WithEvidenceDir) is set.
+// KODEMA_EVIDENCE_DIR (or WithEvidenceDir) is set.
 func (p *Podman) recordImage(rec ImageRecord) error {
 	p.logf("harness: image %s digest %s id %s", rec.Tag, rec.Digest, rec.ImageID)
 	if p.evidenceDir == "" {

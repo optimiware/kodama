@@ -5,26 +5,26 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/kernel/definition"
-	"github.com/optimiware/kodama/internal/kernel/engine"
-	"github.com/optimiware/kodama/internal/shell/workspace"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/kernel/definition"
+	"github.com/optimiware/kodema/internal/kernel/engine"
+	"github.com/optimiware/kodema/internal/shell/workspace"
 )
 
 func TestEnvironmentMergesLiteralEnvThenReservedContext(t *testing.T) {
 	request := testPrepareRequest()
-	got, err := workspace.Environment(request, "https://kodama.example")
+	got, err := workspace.Environment(request, "https://kodema.example")
 	if err != nil {
 		t.Fatalf("Environment: %v", err)
 	}
 	want := []string{
 		"B=2",
 		"A=1",
-		"KODAMA_URL=https://kodama.example",
-		"KODAMA_EXECUTION=exec-1",
-		"KODAMA_ACTION=build",
-		"KODAMA_TASK=task-1",
+		"KODEMA_URL=https://kodema.example",
+		"KODEMA_EXECUTION=exec-1",
+		"KODEMA_ACTION=build",
+		"KODEMA_TASK=task-1",
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("environment = %v; want %v", got, want)
@@ -35,16 +35,16 @@ func TestEnvironmentOmitsTaskWhenTaskFree(t *testing.T) {
 	request := testPrepareRequest()
 	request.TaskID = ""
 	request.Task = nil
-	got, err := workspace.Environment(request, "https://kodama.example")
+	got, err := workspace.Environment(request, "https://kodema.example")
 	if err != nil {
 		t.Fatalf("Environment: %v", err)
 	}
 	want := []string{
 		"B=2",
 		"A=1",
-		"KODAMA_URL=https://kodama.example",
-		"KODAMA_EXECUTION=exec-1",
-		"KODAMA_ACTION=build",
+		"KODEMA_URL=https://kodema.example",
+		"KODEMA_EXECUTION=exec-1",
+		"KODEMA_ACTION=build",
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("environment = %v; want %v", got, want)
@@ -67,7 +67,7 @@ func TestEnvironmentRefusesReservedShadowAndMissingContext(t *testing.T) {
 			mutate: func(request *engine.PrepareRequest) {
 				request.Container.Env = append(request.Container.Env, definition.EnvVar{Name: id.EnvName(id.EnvURL), Value: "spoofed"})
 			},
-			url: "https://kodama.example",
+			url: "https://kodema.example",
 		},
 		{
 			name: "empty URL",
@@ -80,28 +80,28 @@ func TestEnvironmentRefusesReservedShadowAndMissingContext(t *testing.T) {
 			mutate: func(request *engine.PrepareRequest) {
 				request.Identity.ExecutionID = ""
 			},
-			url: "https://kodama.example",
+			url: "https://kodema.example",
 		},
 		{
 			name: "empty action slug",
 			mutate: func(request *engine.PrepareRequest) {
 				request.ActionName = ""
 			},
-			url: "https://kodama.example",
+			url: "https://kodema.example",
 		},
 		{
 			name: "invalid action slug",
 			mutate: func(request *engine.PrepareRequest) {
 				request.ActionName = id.ActionName("Not-A-Slug")
 			},
-			url: "https://kodama.example",
+			url: "https://kodema.example",
 		},
 		{
 			name: "invalid task id",
 			mutate: func(request *engine.PrepareRequest) {
 				request.TaskID = id.TaskID("bad/name")
 			},
-			url: "https://kodama.example",
+			url: "https://kodema.example",
 		},
 	}
 	for _, testCase := range cases {
@@ -119,7 +119,7 @@ func TestEnvironmentDoesNotLeakSecretsOrCredential(t *testing.T) {
 	request.Secrets = []engine.SecretValue{{Name: "DB_PASSWORD", Value: "secret-value"}}
 	request.Credential = "kodex-credential-token"
 
-	got, err := workspace.Environment(request, "https://kodama.example")
+	got, err := workspace.Environment(request, "https://kodema.example")
 	if err != nil {
 		t.Fatalf("Environment: %v", err)
 	}
@@ -131,6 +131,6 @@ func TestEnvironmentDoesNotLeakSecretsOrCredential(t *testing.T) {
 		t.Fatal("environment contains the execution credential")
 	}
 	if strings.Contains(joined, id.SecretTokenName+"=") {
-		t.Fatal("environment contains a KODAMA_TOKEN entry; the credential is a file")
+		t.Fatal("environment contains a KODEMA_TOKEN entry; the credential is a file")
 	}
 }

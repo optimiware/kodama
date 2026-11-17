@@ -270,7 +270,7 @@ func validBoundedInt(value string, maximum int) bool {
 }
 
 // safeChildEnvironment passes the process environment to kubectl without any
-// credential-shaped variable. kubectl never needs a Kodama token.
+// credential-shaped variable. kubectl never needs a Kodema token.
 func safeChildEnvironment() []string {
 	out := make([]string, 0, len(os.Environ()))
 	for _, entry := range os.Environ() {

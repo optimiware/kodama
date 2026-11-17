@@ -4,10 +4,10 @@ import (
 	"context"
 	"time"
 
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/shell/event"
-	"github.com/optimiware/kodama/internal/shell/pipeline"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/shell/event"
+	"github.com/optimiware/kodema/internal/shell/pipeline"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
 )
 
 // SelectPort applies one complete push-selection commit unit.
@@ -30,7 +30,7 @@ type SelectPort interface {
 //
 // Pending is the one deliberately cross-scope read of the domain: the trigger
 // processor scans accepted events for every project, so implementations run it
-// under the store controller's read authority (role kodama_controller with
+// under the store controller's read authority (role kodema_controller with
 // events SELECT only) and never under a caller scope. The returned scope
 // travels with each row and every subsequent selection, start or refusal write
 // still commits under that owning scope; the scan is a read capability, never a

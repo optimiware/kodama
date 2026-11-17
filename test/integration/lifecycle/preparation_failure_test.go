@@ -16,11 +16,11 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/id"
-	runtimekube "github.com/optimiware/kodama/internal/shell/runtime/kube"
-	"github.com/optimiware/kodama/internal/shell/secret"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
-	"github.com/optimiware/kodama/test/support/factory"
+	"github.com/optimiware/kodema/internal/id"
+	runtimekube "github.com/optimiware/kodema/internal/shell/runtime/kube"
+	"github.com/optimiware/kodema/internal/shell/secret"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
+	"github.com/optimiware/kodema/test/support/factory"
 )
 
 // TestKubernetesPreparationFailureCleanup proves that boundary on a real

@@ -12,7 +12,7 @@ import (
 
 	"go.yaml.in/yaml/v3"
 
-	"github.com/optimiware/kodama/test/support/infrastructure/harness"
+	"github.com/optimiware/kodema/test/support/infrastructure/harness"
 )
 
 // fakeCluster is the only cluster these unit tests touch. It records applied
@@ -322,7 +322,7 @@ func envEntry(t *testing.T, container map[string]any, name string) map[string]an
 // unique to that fixture and whose credential exists only in the generated
 // Secret payload, never in Pod arguments.
 func TestPostgresDependencyManifestIsScopedAndPinned(t *testing.T) {
-	const namespace = "kodama-dep-manifest"
+	const namespace = "kodema-dep-manifest"
 	const name = "pg-manifest"
 
 	fixture, err := newPostgres(newFakeCluster(), PostgresOptions{Namespace: namespace, Name: name})
@@ -714,7 +714,7 @@ func TestPostgresDependencyReadyRequiresSQL(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			cluster := newFakeCluster()
 			fixture, err := StartPostgres(context.Background(), cluster, PostgresOptions{
-				Namespace:    fmt.Sprintf("kodama-dep-ready-%d", index),
+				Namespace:    fmt.Sprintf("kodema-dep-ready-%d", index),
 				Name:         "pg-ready",
 				Clock:        newFakeClock(),
 				WaitOptions:  fastWaitOptions(),
@@ -752,21 +752,21 @@ func TestPostgresDependencyReadyRequiresSQL(t *testing.T) {
 func TestPostgresDependencyCloseScopesDeletion(t *testing.T) {
 	cluster := newFakeCluster()
 	fixture, err := StartPostgres(context.Background(), cluster, PostgresOptions{
-		Namespace: "kodama-dep-close-a",
+		Namespace: "kodema-dep-close-a",
 		Name:      "pg-close",
 	})
 	if err != nil {
 		t.Fatalf("StartPostgres: %v", err)
 	}
 	cluster.mu.Lock()
-	cluster.namespaces["kodama-dep-close-b"] = true
+	cluster.namespaces["kodema-dep-close-b"] = true
 	cluster.mu.Unlock()
 
 	if err := fixture.Close(context.Background()); err != nil {
 		t.Fatalf("Close: %v", err)
 	}
 	cluster.mu.Lock()
-	own, sibling := cluster.namespaces["kodama-dep-close-a"], cluster.namespaces["kodama-dep-close-b"]
+	own, sibling := cluster.namespaces["kodema-dep-close-a"], cluster.namespaces["kodema-dep-close-b"]
 	cluster.mu.Unlock()
 	if own {
 		t.Fatal("Close left its own namespace behind")
@@ -786,15 +786,15 @@ func TestPostgresDependencyCloseScopesDeletion(t *testing.T) {
 	if len(deletion) < 3 {
 		t.Fatalf("Close deletion args = %v; want a namespace argument", deletion)
 	}
-	if deletion[2] != "kodama-dep-close-a" {
-		t.Fatalf("Close deleted namespace %q; want its own %q", deletion[2], "kodama-dep-close-a")
+	if deletion[2] != "kodema-dep-close-a" {
+		t.Fatalf("Close deleted namespace %q; want its own %q", deletion[2], "kodema-dep-close-a")
 	}
 	waits := false
 	for _, argument := range deletion {
 		if argument == "--wait=true" {
 			waits = true
 		}
-		if argument == "--all" || argument == "kodama-dep-close-b" {
+		if argument == "--all" || argument == "kodema-dep-close-b" {
 			t.Fatalf("Close deletion args = %v; want only its own namespace", deletion)
 		}
 	}
@@ -808,7 +808,7 @@ func TestPostgresDependencyCloseScopesDeletion(t *testing.T) {
 	failing := newFakeCluster()
 	failing.deleteErr = errors.New("delete refused")
 	failingFixture, err := StartPostgres(context.Background(), failing, PostgresOptions{
-		Namespace: "kodama-dep-close-fail",
+		Namespace: "kodema-dep-close-fail",
 		Name:      "pg-close-fail",
 	})
 	if err != nil {
@@ -821,7 +821,7 @@ func TestPostgresDependencyCloseScopesDeletion(t *testing.T) {
 	stuck := newFakeCluster()
 	stuck.keepNamespace = true
 	stuckFixture, err := StartPostgres(context.Background(), stuck, PostgresOptions{
-		Namespace: "kodama-dep-close-stuck",
+		Namespace: "kodema-dep-close-stuck",
 		Name:      "pg-close-stuck",
 	})
 	if err != nil {
@@ -867,7 +867,7 @@ func TestPostgresDependencyStartCleansUpPartialFixture(t *testing.T) {
 			cluster := newFakeCluster()
 			cluster.applyFailKind = kind
 			cluster.applyFailErr = errors.New("apply refused by fake")
-			namespace := "kodama-dep-partial-" + strings.ToLower(kind)
+			namespace := "kodema-dep-partial-" + strings.ToLower(kind)
 			fixture, err := StartPostgres(context.Background(), cluster, PostgresOptions{
 				Namespace: namespace,
 				Name:      "pg-partial",
@@ -916,7 +916,7 @@ func TestPostgresDependencyStartCleansUpPartialFixture(t *testing.T) {
 		cluster.applyFailKind = "Pod"
 		cluster.applyFailErr = errors.New("pod apply refused")
 		cluster.deleteErr = errors.New("delete refused by fake")
-		namespace := "kodama-dep-partial-both"
+		namespace := "kodema-dep-partial-both"
 		_, err := StartPostgres(context.Background(), cluster, PostgresOptions{
 			Namespace: namespace,
 			Name:      "pg-partial-both",
@@ -949,7 +949,7 @@ func TestPostgresDependencyStartCleansUpPartialFixture(t *testing.T) {
 func TestPostgresDependencyCloseFailureIsRetryable(t *testing.T) {
 	t.Run("unverifiable deletion", func(t *testing.T) {
 		cluster := newFakeCluster()
-		fixture := startTestFixture(t, cluster, PostgresOptions{Namespace: "kodama-dep-verify-fail", Name: "pg-verify"})
+		fixture := startTestFixture(t, cluster, PostgresOptions{Namespace: "kodema-dep-verify-fail", Name: "pg-verify"})
 		cluster.getNamespaceErr = errors.New("verification get refused by fake")
 		if err := fixture.Close(context.Background()); err == nil {
 			t.Fatal("Close returned nil while the deletion could not be verified")
@@ -981,7 +981,7 @@ func TestPostgresDependencyCloseFailureIsRetryable(t *testing.T) {
 
 	t.Run("failed deletion", func(t *testing.T) {
 		cluster := newFakeCluster()
-		fixture := startTestFixture(t, cluster, PostgresOptions{Namespace: "kodama-dep-delete-fail", Name: "pg-delete"})
+		fixture := startTestFixture(t, cluster, PostgresOptions{Namespace: "kodema-dep-delete-fail", Name: "pg-delete"})
 		cluster.deleteErr = errors.New("delete refused by fake")
 		if err := fixture.Close(context.Background()); err == nil {
 			t.Fatal("Close returned nil after the namespace delete failed")
@@ -1016,13 +1016,13 @@ func TestPostgresDependencyRefusesForeignNamespaces(t *testing.T) {
 		{"kube-system", "kube-system"},
 		{"kube-public", "kube-public"},
 		{"kube-node-lease", "kube-node-lease"},
-		{"uppercase", "Kodama-Dep-Upper"},
+		{"uppercase", "Kodema-Dep-Upper"},
 		{"over length", strings.Repeat("a", 64)},
-		{"underscore", "kodama_dep"},
-		{"dot", "kodama.dep"},
-		{"leading hyphen", "-kodama-dep"},
-		{"trailing hyphen", "kodama-dep-"},
-		{"space", "kodama dep"},
+		{"underscore", "kodema_dep"},
+		{"dot", "kodema.dep"},
+		{"leading hyphen", "-kodema-dep"},
+		{"trailing hyphen", "kodema-dep-"},
+		{"space", "kodema dep"},
 	}
 	for _, tc := range namespaces {
 		t.Run("namespace "+tc.name, func(t *testing.T) {
@@ -1064,7 +1064,7 @@ func TestPostgresDependencyRefusesForeignNamespaces(t *testing.T) {
 		t.Run("object name "+tc.name, func(t *testing.T) {
 			cluster := newFakeCluster()
 			_, err := StartPostgres(context.Background(), cluster, PostgresOptions{
-				Namespace: "kodama-dep-name-check",
+				Namespace: "kodema-dep-name-check",
 				Name:      tc.value,
 			})
 			if err == nil {
@@ -1082,7 +1082,7 @@ func TestPostgresDependencyRefusesForeignNamespaces(t *testing.T) {
 // exists is refused before the apply and survives untouched.
 func TestPostgresDependencyRefusesPreExistingNamespace(t *testing.T) {
 	cluster := newFakeCluster()
-	const namespace = "kodama-dep-existing"
+	const namespace = "kodema-dep-existing"
 	cluster.namespaces[namespace] = true
 	fixture, err := StartPostgres(context.Background(), cluster, PostgresOptions{
 		Namespace: namespace,
@@ -1114,7 +1114,7 @@ func TestPostgresDependencyRefusesPreExistingNamespace(t *testing.T) {
 // later Close would delete a namespace this fixture never created.
 func TestPostgresDependencyRefusesUnobservableNamespace(t *testing.T) {
 	cluster := newFakeCluster()
-	const namespace = "kodama-dep-unobservable"
+	const namespace = "kodema-dep-unobservable"
 	cluster.getNamespaceErr = errors.New("namespace get refused by fake")
 	fixture, err := StartPostgres(context.Background(), cluster, PostgresOptions{
 		Namespace: namespace,
@@ -1147,7 +1147,7 @@ func TestPostgresDependencyRefusesUnobservableNamespace(t *testing.T) {
 }
 
 // TestPostgresDependencyGeneratesUniqueCredentials proves each fixture gets a
-// fresh 48-hex password and a fresh kodama-dep-<8 hex> namespace, and that the
+// fresh 48-hex password and a fresh kodema-dep-<8 hex> namespace, and that the
 // generated credential never appears in an error or a kubectl argument.
 func TestPostgresDependencyGeneratesUniqueCredentials(t *testing.T) {
 	cluster := newFakeCluster()
@@ -1155,7 +1155,7 @@ func TestPostgresDependencyGeneratesUniqueCredentials(t *testing.T) {
 	second := startTestFixture(t, cluster, PostgresOptions{Name: "pg-cred-b"})
 
 	passwordPattern := regexp.MustCompile(`^[0-9a-f]{48}$`)
-	namespacePattern := regexp.MustCompile(`^kodama-dep-[0-9a-f]{8}$`)
+	namespacePattern := regexp.MustCompile(`^kodema-dep-[0-9a-f]{8}$`)
 	for _, fixture := range []*Postgres{first, second} {
 		password := fixture.Connection().Password
 		if !passwordPattern.MatchString(password) {
@@ -1210,7 +1210,7 @@ func TestPostgresDependencyRefusesMutableImageReferences(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			cluster := newFakeCluster()
 			_, err := StartPostgres(context.Background(), cluster, PostgresOptions{
-				Namespace: "kodama-dep-image-check",
+				Namespace: "kodema-dep-image-check",
 				Name:      "pg-image",
 				Image:     tc.image,
 			})
@@ -1225,9 +1225,9 @@ func TestPostgresDependencyRefusesMutableImageReferences(t *testing.T) {
 
 	t.Run("valid digest accepted", func(t *testing.T) {
 		cluster := newFakeCluster()
-		image := "registry.example/kodama/postgres@sha256:" + strings.Repeat("ab", 32)
+		image := "registry.example/kodema/postgres@sha256:" + strings.Repeat("ab", 32)
 		fixture := startTestFixture(t, cluster, PostgresOptions{
-			Namespace: "kodama-dep-image-ok",
+			Namespace: "kodema-dep-image-ok",
 			Name:      "pg-image-ok",
 			Image:     image,
 		})
@@ -1257,7 +1257,7 @@ func TestPostgresDependencyCredentialNeverReachesCommandArguments(t *testing.T) 
 	serving.setJob(map[string]any{"status": map[string]any{"succeeded": 1}})
 	serving.setLogs("1\n")
 	fixture := startTestFixture(t, serving, PostgresOptions{
-		Namespace:    "kodama-dep-cred-scan",
+		Namespace:    "kodema-dep-cred-scan",
 		Name:         "pg-cred-scan",
 		Password:     password,
 		Clock:        newFakeClock(),
@@ -1276,7 +1276,7 @@ func TestPostgresDependencyCredentialNeverReachesCommandArguments(t *testing.T) 
 	partial.applyFailKind = "Pod"
 	partial.applyFailErr = errors.New("pod apply refused")
 	_, err := StartPostgres(context.Background(), partial, PostgresOptions{
-		Namespace: "kodama-dep-cred-scan-partial",
+		Namespace: "kodema-dep-cred-scan-partial",
 		Name:      "pg-cred-scan-partial",
 		Password:  password,
 	})
@@ -1327,7 +1327,7 @@ func TestPostgresDependencyCloseWrapsDeleteCause(t *testing.T) {
 	cluster := newFakeCluster()
 	cluster.deleteErr = cause
 	fixture := startTestFixture(t, cluster, PostgresOptions{
-		Namespace: "kodama-dep-wrap-cause",
+		Namespace: "kodema-dep-wrap-cause",
 		Name:      "pg-wrap-cause",
 	})
 	err := fixture.Close(context.Background())
@@ -1394,7 +1394,7 @@ func TestPostgresDependencyCloseDeleteIsBounded(t *testing.T) {
 	const deleteTimeout = 3 * time.Second
 	cluster := newFakeCluster()
 	fixture := startTestFixture(t, cluster, PostgresOptions{
-		Namespace:     "kodama-dep-close-bounded",
+		Namespace:     "kodema-dep-close-bounded",
 		Name:          "pg-close-bounded",
 		DeleteTimeout: deleteTimeout,
 	})
@@ -1449,7 +1449,7 @@ func TestPostgresDependencyStartCleanupSurvivesCancelledCaller(t *testing.T) {
 	cancel()
 
 	_, err := StartPostgres(ctx, cluster, PostgresOptions{
-		Namespace:     "kodama-dep-cleanup-cancelled",
+		Namespace:     "kodema-dep-cleanup-cancelled",
 		Name:          "pg-cleanup-cancelled",
 		DeleteTimeout: deleteTimeout,
 	})
@@ -1481,7 +1481,7 @@ func TestPostgresDependencyStartCleanupSurvivesCancelledCaller(t *testing.T) {
 // fixture's own namespace.
 func TestPostgresDependencyStartAppliesOwnedObjectsInOrder(t *testing.T) {
 	cluster := newFakeCluster()
-	const namespace = "kodama-dep-order"
+	const namespace = "kodema-dep-order"
 	startTestFixture(t, cluster, PostgresOptions{Namespace: namespace, Name: "pg-order"})
 
 	var kinds []string

@@ -115,9 +115,9 @@ func TestRunArgsBuildsExplicitPodmanCommand(t *testing.T) {
 		{"--detach"},
 		{"--name", "container-one"},
 		{"--network", "network-one"},
-		{"--label", "kodama.test=1"},
-		{"--label", "kodama.shard=shard-1"},
-		{"--label", "kodama.owner-pid=4242"},
+		{"--label", "kodema.test=1"},
+		{"--label", "kodema.shard=shard-1"},
+		{"--label", "kodema.owner-pid=4242"},
 		{"--label", "extra=1"},
 		{"--cpus", "1"},
 		{"--memory", "1g"},
@@ -132,7 +132,7 @@ func TestRunArgsBuildsExplicitPodmanCommand(t *testing.T) {
 		}
 	}
 	// Reserved labels win over caller labels.
-	if hasArgSequence(args, "--label", "kodama.shard=caller-cannot-win") {
+	if hasArgSequence(args, "--label", "kodema.shard=caller-cannot-win") {
 		t.Error("caller label overrode reserved shard label")
 	}
 }
@@ -974,9 +974,9 @@ func TestShardCleanupOrderAndLabels(t *testing.T) {
 			networkCreate, containerRun, containerStop, containerRemove, volumeRemove, networkRemove)
 	}
 	createArgs := calls[networkCreate].Args
-	if !hasArgSequence(createArgs, "--label", "kodama.test=1") ||
-		!hasArgSequence(createArgs, "--label", "kodama.shard="+shard.ID) ||
-		!hasArgSequence(createArgs, "--label", "kodama.owner-pid="+strconv.Itoa(os.Getpid())) {
+	if !hasArgSequence(createArgs, "--label", "kodema.test=1") ||
+		!hasArgSequence(createArgs, "--label", "kodema.shard="+shard.ID) ||
+		!hasArgSequence(createArgs, "--label", "kodema.owner-pid="+strconv.Itoa(os.Getpid())) {
 		t.Fatalf("network create missing labels: %v", createArgs)
 	}
 	if !strings.Contains(network, shard.ID) || !strings.Contains(volume, shard.ID) || !strings.Contains(container.Name, shard.ID) {
@@ -1090,7 +1090,7 @@ func TestInfraUnavailablePolicy(t *testing.T) {
 	if code == 0 {
 		t.Fatalf("require helper passed unexpectedly:\n%s", output)
 	}
-	if !strings.Contains(output, "KODAMA_REQUIRE_INFRA=1") {
+	if !strings.Contains(output, "KODEMA_REQUIRE_INFRA=1") {
 		t.Fatalf("failure reason missing:\n%s", output)
 	}
 }

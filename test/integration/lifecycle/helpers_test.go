@@ -18,10 +18,10 @@ import (
 
 	"go.yaml.in/yaml/v3"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/client"
-	runtimepodman "github.com/optimiware/kodama/internal/shell/runtime/podman"
-	"github.com/optimiware/kodama/test/support/factory"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/client"
+	runtimepodman "github.com/optimiware/kodema/internal/shell/runtime/podman"
+	"github.com/optimiware/kodema/test/support/factory"
 )
 
 // pipelineDoc is the API-posted pipeline document this suite authors.
@@ -510,12 +510,12 @@ func assertSameBody(t *testing.T, left, right api.Result) {
 
 // submitTemplate is the workload-side output submission. It reads the mounted
 // execution credential, inspects its own execution to learn the current
-// execution version and its action id (KODAMA_ACTION is deliberately the action
+// execution version and its action id (KODEMA_ACTION is deliberately the action
 // slug, not the id), then stages the declared output with the public envelope.
 // It fails the workload on any refusal so a broken submission cannot look like
 // a successful action.
-const submitTemplate = `TOKEN=$(cat /kodama/secrets/KODAMA_TOKEN)
-ENDPOINT=${KODAMA_URL#http://}
+const submitTemplate = `TOKEN=$(cat /kodema/secrets/KODEMA_TOKEN)
+ENDPOINT=${KODEMA_URL#http://}
 API_HOST=${ENDPOINT%:*}
 API_PORT=${ENDPOINT##*:}
 # api sends one public envelope over BusyBox nc. The request is written
@@ -543,16 +543,16 @@ attempt=0
 submitted=0
 while [ "$attempt" -lt 20 ]; do
   attempt=$((attempt+1))
-  inspect=$(api GET "/api/v1/executions/$KODAMA_EXECUTION" '{}')
+  inspect=$(api GET "/api/v1/executions/$KODEMA_EXECUTION" '{}')
   case "$inspect" in
     *'"operation":"execution.inspect"'*) ;;
     *) echo "execution inspect failed: $inspect" >&2; exit 1 ;;
   esac
   version=$(printf '%s' "$inspect" | grep -o '"version":[0-9]*' | head -n 1 | cut -d: -f2)
-  action=$(printf '%s' "$inspect" | sed 's/},{/}\n{/g' | grep -F "\"name\":\"$KODAMA_ACTION\"" | grep -o '"action_id":"[^"]*"' | head -n 1 | cut -d'"' -f4)
+  action=$(printf '%s' "$inspect" | sed 's/},{/}\n{/g' | grep -F "\"name\":\"$KODEMA_ACTION\"" | grep -o '"action_id":"[^"]*"' | head -n 1 | cut -d'"' -f4)
   test -n "$version"
   test -n "$action"
-  response=$(api PUT "/api/v1/executions/$KODAMA_EXECUTION/actions/$action/outputs" "{\"input\":{\"outputs\":{\"__OUTPUT_KEY__\":\"$__OUTPUT_VAR__\"}},\"expected_version\":$version,\"idempotency_key\":\"outputs:$KODAMA_EXECUTION:$action:$attempt\"}")
+  response=$(api PUT "/api/v1/executions/$KODEMA_EXECUTION/actions/$action/outputs" "{\"input\":{\"outputs\":{\"__OUTPUT_KEY__\":\"$__OUTPUT_VAR__\"}},\"expected_version\":$version,\"idempotency_key\":\"outputs:$KODEMA_EXECUTION:$action:$attempt\"}")
   case "$response" in
     *'"operation":"execution.action.outputs"'*) submitted=1; break ;;
     *version_conflict*) echo "execution outputs hit a version conflict; retrying with a fresh key" >&2 ;;
@@ -575,22 +575,22 @@ func submitScript(outputKey, outputVariable string) string {
 // prepareChecks verifies the task-free context, the admitted input, the
 // materialized secret and the shared workspace, then sets the first artifact.
 func prepareChecks(seed string, secretLength int, secretPrefix string) string {
-	return fmt.Sprintf(`test ! -e /kodama/task.json
-test -z "${KODAMA_TASK:-}"
-test "$(cat /kodama/inputs/seed)" = %q
-test "$(wc -c < /kodama/secrets/PIPELINE_SECRET | tr -d ' ')" = %q
-test "$(head -c 8 /kodama/secrets/PIPELINE_SECRET)" = %q
+	return fmt.Sprintf(`test ! -e /kodema/task.json
+test -z "${KODEMA_TASK:-}"
+test "$(cat /kodema/inputs/seed)" = %q
+test "$(wc -c < /kodema/secrets/PIPELINE_SECRET | tr -d ' ')" = %q
+test "$(head -c 8 /kodema/secrets/PIPELINE_SECRET)" = %q
 printf 'shared workspace\n' > /workspace/marker
-ARTIFACT="built:$(cat /kodama/inputs/seed)"`, seed, strconv.Itoa(secretLength), secretPrefix)
+ARTIFACT="built:$(cat /kodema/inputs/seed)"`, seed, strconv.Itoa(secretLength), secretPrefix)
 }
 
 // consumeChecks verifies the ordered materialization of the earlier succeeded
 // output and the shared workspace, then sets the final output.
 func consumeChecks(artifact string) string {
-	return fmt.Sprintf(`test ! -e /kodama/task.json
+	return fmt.Sprintf(`test ! -e /kodema/task.json
 test "$(cat /workspace/marker)" = "shared workspace"
-test "$(cat /kodama/outputs/prepare/artifact)" = %q
-FINAL="consumed:$(cat /kodama/outputs/prepare/artifact)"`, artifact)
+test "$(cat /kodema/outputs/prepare/artifact)" = %q
+FINAL="consumed:$(cat /kodema/outputs/prepare/artifact)"`, artifact)
 }
 
 // startViaClient starts one stored pipeline through the public Go client at its

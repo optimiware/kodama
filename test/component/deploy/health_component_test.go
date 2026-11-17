@@ -70,22 +70,22 @@ func assertHTTPSProbes(t *testing.T, deployment map[string]any) {
 	}
 }
 
-func TestKodamaChartDefaultProbesAreHTTPSHttpGet(t *testing.T) {
+func TestKodemaChartDefaultProbesAreHTTPSHttpGet(t *testing.T) {
 	helm, charts := stagedCharts(t)
-	chart := filepath.Join(charts, "kodama")
-	helmLint(t, helm, chart, kodamaProductionArgs()...)
+	chart := filepath.Join(charts, "kodema")
+	helmLint(t, helm, chart, kodemaProductionArgs()...)
 
-	rendered, err := renderChartArgs(t, helm, "kodama", chart, kodamaProductionArgs()...)
+	rendered, err := renderChartArgs(t, helm, "kodema", chart, kodemaProductionArgs()...)
 	if err != nil {
-		t.Fatalf("helm template kodama: %v\n%s", err, rendered)
+		t.Fatalf("helm template kodema: %v\n%s", err, rendered)
 	}
-	deployment := renderedObjectNamed(t, rendered, "Deployment", "kodama")
+	deployment := renderedObjectNamed(t, rendered, "Deployment", "kodema")
 	assertHTTPSProbes(t, deployment)
 }
 
-func TestKodamaChartRefusesInvalidProbeInputs(t *testing.T) {
+func TestKodemaChartRefusesInvalidProbeInputs(t *testing.T) {
 	helm, charts := stagedCharts(t)
-	chart := filepath.Join(charts, "kodama")
+	chart := filepath.Join(charts, "kodema")
 	cases := []struct {
 		name string
 		args []string
@@ -97,8 +97,8 @@ func TestKodamaChartRefusesInvalidProbeInputs(t *testing.T) {
 	}
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			args := append(kodamaProductionArgs(), testCase.args...)
-			rendered, err := renderChartArgs(t, helm, "kodama", chart, args...)
+			args := append(kodemaProductionArgs(), testCase.args...)
+			rendered, err := renderChartArgs(t, helm, "kodema", chart, args...)
 			if err == nil {
 				t.Fatalf("helm accepted %s:\n%s", testCase.name, rendered)
 			}
@@ -112,11 +112,11 @@ func TestKodamaChartRefusesInvalidProbeInputs(t *testing.T) {
 
 func TestStackChartDefaultProbesAreHTTPSHttpGet(t *testing.T) {
 	helm, stack := stageStackChart(t)
-	rendered, err := renderChartArgs(t, helm, "kodama-stack", stack, stackProductionArgs()...)
+	rendered, err := renderChartArgs(t, helm, "kodema-stack", stack, stackProductionArgs()...)
 	if err != nil {
-		t.Fatalf("helm template kodama-stack: %v\n%s", err, rendered)
+		t.Fatalf("helm template kodema-stack: %v\n%s", err, rendered)
 	}
-	deployment := renderedObjectNamed(t, rendered, "Deployment", "kodama")
+	deployment := renderedObjectNamed(t, rendered, "Deployment", "kodema")
 	assertHTTPSProbes(t, deployment)
 }
 
@@ -140,13 +140,13 @@ func TestDescriptorValuesRenderHTTPSHttpGetProbes(t *testing.T) {
 	if err := yaml.Unmarshal(body, &document); err != nil {
 		t.Fatalf("decode rendered values: %v\n%s", err, body)
 	}
-	kodama, ok := document["kodama"].(map[string]any)
+	kodema, ok := document["kodema"].(map[string]any)
 	if !ok {
-		t.Fatalf("rendered values have no kodama block:\n%s", body)
+		t.Fatalf("rendered values have no kodema block:\n%s", body)
 	}
-	probes, ok := kodama["probes"].(map[string]any)
+	probes, ok := kodema["probes"].(map[string]any)
 	if !ok {
-		t.Fatalf("rendered values have no kodama.probes block:\n%s", body)
+		t.Fatalf("rendered values have no kodema.probes block:\n%s", body)
 	}
 	if probes["mode"] != "httpGet" {
 		t.Fatalf("descriptor generator emitted probes.mode = %v; want httpGet", probes["mode"])
@@ -159,10 +159,10 @@ func TestDescriptorValuesRenderHTTPSHttpGetProbes(t *testing.T) {
 	}
 
 	args := append(stackProductionArgs(), "--values", valuesPath)
-	rendered, err := renderChartArgs(t, helm, "kodama-stack", stack, args...)
+	rendered, err := renderChartArgs(t, helm, "kodema-stack", stack, args...)
 	if err != nil {
-		t.Fatalf("helm template kodama-stack with descriptor values: %v\n%s", err, rendered)
+		t.Fatalf("helm template kodema-stack with descriptor values: %v\n%s", err, rendered)
 	}
-	deployment := renderedObjectNamed(t, rendered, "Deployment", "kodama")
+	deployment := renderedObjectNamed(t, rendered, "Deployment", "kodema")
 	assertHTTPSProbes(t, deployment)
 }

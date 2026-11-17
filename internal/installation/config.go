@@ -13,7 +13,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/optimiware/kodama/internal/fault"
+	"github.com/optimiware/kodema/internal/fault"
 )
 
 // OptionalCapability names one optional companion. Every optional capability is

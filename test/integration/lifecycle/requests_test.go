@@ -40,10 +40,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/kernel/definition"
-	runtimepodman "github.com/optimiware/kodama/internal/shell/runtime/podman"
-	"github.com/optimiware/kodama/test/support/factory"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/kernel/definition"
+	runtimepodman "github.com/optimiware/kodema/internal/shell/runtime/podman"
+	"github.com/optimiware/kodema/test/support/factory"
 )
 
 const (
@@ -530,8 +530,8 @@ func testRequestCancelled(t *testing.T, harness *factory.Harness) {
 func testRequestCredential(t *testing.T, harness *factory.Harness) {
 	ctx := t.Context()
 	prepareExtra := []string{
-		`cat /kodama/secrets/KODAMA_TOKEN > /workspace/previous-token`,
-		`sha256sum /kodama/secrets/KODAMA_TOKEN | cut -d' ' -f1 > /workspace/previous-token.sha256`,
+		`cat /kodema/secrets/KODEMA_TOKEN > /workspace/previous-token`,
+		`sha256sum /kodema/secrets/KODEMA_TOKEN | cut -d' ' -f1 > /workspace/previous-token.sha256`,
 	}
 	integrateExtra := []string{credentialProbe()}
 	applied := applyRequestPipeline(t, harness, "request-credential", requestWaitTimeout, prepareExtra, integrateExtra)
@@ -714,7 +714,7 @@ func applyRequestPipeline(t *testing.T, harness *factory.Harness, name, requestT
 	integrate := []string{integrateRequestChecks()}
 	integrate = append(integrate, integrateExtra...)
 	integrate = append(integrate,
-		`INTEGRATED="integrated:$(cat /kodama/outputs/approve/approved)"`,
+		`INTEGRATED="integrated:$(cat /kodema/outputs/approve/approved)"`,
 		submitScript("integrated", "INTEGRATED"),
 	)
 	document := marshalPipeline(t, pipelineDoc{
@@ -752,35 +752,35 @@ func applyRequestPipeline(t *testing.T, harness *factory.Harness, name, requestT
 // prepareRequestChecks verifies the task-free context and input, writes the
 // shared workspace marker and sets the first output.
 func prepareRequestChecks() string {
-	return fmt.Sprintf(`test ! -e /kodama/task.json
-test -z "${KODAMA_TASK:-}"
-test "$(cat /kodama/inputs/seed)" = %q
+	return fmt.Sprintf(`test ! -e /kodema/task.json
+test -z "${KODEMA_TASK:-}"
+test "$(cat /kodema/inputs/seed)" = %q
 printf 'shared workspace\n' > /workspace/marker
-ARTIFACT="built:$(cat /kodama/inputs/seed)"`, requestSeed)
+ARTIFACT="built:$(cat /kodema/inputs/seed)"`, requestSeed)
 }
 
 // integrateRequestChecks verifies the same workspace and the promoted request
 // output before the final output is set.
 func integrateRequestChecks() string {
-	return fmt.Sprintf(`test ! -e /kodama/task.json
-test -z "${KODAMA_TASK:-}"
+	return fmt.Sprintf(`test ! -e /kodema/task.json
+test -z "${KODEMA_TASK:-}"
 test "$(cat /workspace/marker)" = "shared workspace"
-test "$(cat /kodama/outputs/prepare/artifact)" = %q
-test "$(cat /kodama/outputs/approve/approved)" = %q`, requestArtifact, requestApproval)
+test "$(cat /kodema/outputs/prepare/artifact)" = %q
+test "$(cat /kodema/outputs/approve/approved)" = %q`, requestArtifact, requestApproval)
 }
 
 // credentialProbe is the in-container proof that the earlier execution
 // credential was revoked and the current one authenticates. It never prints a
 // token: it compares only sha256 digests and public error codes.
 func credentialProbe() string {
-	return `ENDPOINT=${KODAMA_URL#http://}
+	return `ENDPOINT=${KODEMA_URL#http://}
 API_HOST=${ENDPOINT%:*}
 API_PORT=${ENDPOINT##*:}
-CURRENT=$(cat /kodama/secrets/KODAMA_TOKEN)
+CURRENT=$(cat /kodema/secrets/KODEMA_TOKEN)
 OLD=$(cat /workspace/previous-token)
 test -n "$CURRENT"
 test -n "$OLD"
-CURRENT_SHA=$(sha256sum /kodama/secrets/KODAMA_TOKEN | cut -d' ' -f1)
+CURRENT_SHA=$(sha256sum /kodema/secrets/KODEMA_TOKEN | cut -d' ' -f1)
 OLD_SHA=$(sha256sum /workspace/previous-token | cut -d' ' -f1)
 test "$CURRENT_SHA" != "$OLD_SHA"
 probe() {
@@ -788,7 +788,7 @@ probe() {
   body='{}'
   length=$(printf '%s' "$body" | wc -c)
   { printf 'GET %s HTTP/1.0\r\nHost: %s\r\nAuthorization: Bearer %s\r\nContent-Type: application/json\r\nContent-Length: %s\r\nConnection: close\r\n\r\n%s' \
-      "/api/v1/executions/$KODAMA_EXECUTION" "$ENDPOINT" "$token" "$length" "$body"; sleep 2; } \
+      "/api/v1/executions/$KODEMA_EXECUTION" "$ENDPOINT" "$token" "$length" "$body"; sleep 2; } \
     | nc -w 10 "$API_HOST" "$API_PORT" | tr -d '\r' | sed '1,/^$/d'
 }
 OLD_RESPONSE=$(probe "$OLD")

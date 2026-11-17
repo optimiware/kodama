@@ -36,7 +36,7 @@ import (
 
 	"go.yaml.in/yaml/v3"
 
-	"github.com/optimiware/kodama/test/support/infrastructure/harness"
+	"github.com/optimiware/kodema/test/support/infrastructure/harness"
 )
 
 const (
@@ -52,22 +52,22 @@ const (
 	PostgresPort = 5432
 
 	// LabelDependency names the dependency kind on the fixture objects.
-	LabelDependency = "kodama.test/dependency"
+	LabelDependency = "kodema.test/dependency"
 	// LabelInstance scopes the Service selector and Pod labels to one fixture.
-	LabelInstance = "kodama.test/dependency-instance"
+	LabelInstance = "kodema.test/dependency-instance"
 	// DependencyPostgres is the LabelDependency value.
 	DependencyPostgres = "postgres"
 
 	// DefaultName is the fixture object name when none is given.
 	DefaultName = "postgres"
 	// DefaultUser is the bootstrap superuser when none is given.
-	DefaultUser = "kodama"
+	DefaultUser = "kodema"
 	// DefaultDatabase is the bootstrap database when none is given.
-	DefaultDatabase = "kodama"
+	DefaultDatabase = "kodema"
 )
 
 const (
-	namespacePrefix = "kodama-dep-"
+	namespacePrefix = "kodema-dep-"
 
 	// DefaultReadyTimeout bounds "the Pod exists and its TCP readiness probe
 	// passes".

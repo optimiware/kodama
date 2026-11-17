@@ -6,16 +6,16 @@ import (
 	"context"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/shell/store"
-	storepg "github.com/optimiware/kodama/internal/shell/store/postgres"
-	"github.com/optimiware/kodama/test/support/infrastructure/postgres"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/shell/store"
+	storepg "github.com/optimiware/kodema/internal/shell/store/postgres"
+	"github.com/optimiware/kodema/test/support/infrastructure/postgres"
 )
 
 // TestCredentialLookupProductionShapeOnPostgreSQL drives the product
 // CredentialLookup adapter in its real unauthenticated bootstrap shape: the
 // transaction is unscoped and the exact-row auth policy is admitted only after
-// set_config('kodama.credential_id'). It proves the execution and service
+// set_config('kodema.credential_id'). It proves the execution and service
 // lookups return the candidate scope and that a wrong kind and an unknown id
 // are the same uniform refusal.
 func TestCredentialLookupProductionShapeOnPostgreSQL(t *testing.T) {

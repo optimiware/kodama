@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/optimiware/kodama/internal/shell/store"
+	"github.com/optimiware/kodema/internal/shell/store"
 )
 
 // Migration is one sequentially numbered schema change. SQL is applied exactly

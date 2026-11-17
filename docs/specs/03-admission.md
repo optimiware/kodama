@@ -1,6 +1,6 @@
 # S03 — Pipeline definitions and immutable admission
 
-Source: [core model](../../KODAMA.md#core-model), [ordered flow](../../KODAMA.md#ordered-flow), [push triggers](../../KODAMA.md#pipeline-push-triggers-and-userland-services). Owners: K01, P04, P08, P20. AC: 2, 11, 13, 14.
+Source: [core model](../../KODEMA.md#core-model), [ordered flow](../../KODEMA.md#ordered-flow), [push triggers](../../KODEMA.md#pipeline-push-triggers-and-userland-services). Owners: K01, P04, P08, P20. AC: 2, 11, 13, 14.
 
 ## 1. Authoring boundary
 
@@ -16,7 +16,7 @@ The Shell decodes YAML into the Kernel's typed definition. Kernel validates stru
 
 Exactly one action kind is present. Actions are nonempty and uniquely named; no condition, parallel action, dependency declaration, loop, join, skipped state, or dynamic request insertion is supported. Runtime requirements from the admitted model must be supported by the selected adapter; C01 records their exact supported encoding rather than inventing ad hoc YAML extensions.
 
-Environment values are literals. Action values override pipeline defaults; neither can shadow `KODAMA_URL`, `KODAMA_EXECUTION`, `KODAMA_ACTION`, or `KODAMA_TASK`. Secret name `KODAMA_TOKEN` is reserved. Paths/slugs/keys cannot escape their materialization roots.
+Environment values are literals. Action values override pipeline defaults; neither can shadow `KODEMA_URL`, `KODEMA_EXECUTION`, `KODEMA_ACTION`, or `KODEMA_TASK`. Secret name `KODEMA_TOKEN` is reserved. Paths/slugs/keys cannot escape their materialization roots.
 
 ## 2. Subject references
 

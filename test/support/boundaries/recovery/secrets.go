@@ -8,7 +8,7 @@ import (
 
 // negativeControl is a value that must never appear anywhere the scan looks.
 // Its absence proves the scan is not matching everything.
-const negativeControl = "kodama-i03d-negative-control-value"
+const negativeControl = "kodema-i03d-negative-control-value"
 
 // RequireNoSecrets proves that the durable journal, the app server log, the
 // contract/OIDC fixture logs, the captured git stdout/stderr and any extra
@@ -22,7 +22,7 @@ func (harness *Harness) RequireNoSecrets(tb TB, extraTexts ...string) {
 	tokens := []string{ServiceToken, ExecutionToken, harness.HumanToken}
 
 	// Positive control: the scanner must find a planted canary.
-	canary := "kodama-i03d-scan-canary-value"
+	canary := "kodema-i03d-scan-canary-value"
 	canaryPath := filepath.Join(harness.Root, "scan-canary.txt")
 	if err := os.WriteFile(canaryPath, []byte(canary), 0o600); err != nil {
 		tb.Fatalf("write scan canary: %v", err)

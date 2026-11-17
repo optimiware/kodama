@@ -7,7 +7,7 @@ import (
 	"io"
 	"sort"
 
-	"github.com/optimiware/kodama/api"
+	"github.com/optimiware/kodema/api"
 )
 
 // renderResult writes one operation result in the configured format. JSON writes

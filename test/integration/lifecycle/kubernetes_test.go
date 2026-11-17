@@ -11,7 +11,7 @@ package lifecycle
 //
 //   - pipeline.apply and pipeline.start are API-posted (no inline YAML);
 //   - the first container action authenticates its mounted execution credential
-//     against KODAMA_URL from inside the pod, writes the shared PVC workspace
+//     against KODEMA_URL from inside the pod, writes the shared PVC workspace
 //     and submits a declared output;
 //   - the second container action reads the same PVC workspace and the earlier
 //     action's materialized output, then submits the final output;
@@ -47,11 +47,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/id"
-	runtimekube "github.com/optimiware/kodama/internal/shell/runtime/kube"
-	runtimepodman "github.com/optimiware/kodama/internal/shell/runtime/podman"
-	"github.com/optimiware/kodama/test/support/factory"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/id"
+	runtimekube "github.com/optimiware/kodema/internal/shell/runtime/kube"
+	runtimepodman "github.com/optimiware/kodema/internal/shell/runtime/podman"
+	"github.com/optimiware/kodema/test/support/factory"
 )
 
 const (
@@ -118,15 +118,15 @@ func TestKubernetesPipeline(t *testing.T) {
 				Timeout: kubeActionTimeout,
 				Commands: []string{
 					// The mounted execution credential is non-empty and the
-					// submission below authenticates it against KODAMA_URL
+					// submission below authenticates it against KODEMA_URL
 					// through BusyBox nc from inside the pod.
-					`test -s /kodama/secrets/KODAMA_TOKEN`,
+					`test -s /kodema/secrets/KODEMA_TOKEN`,
 					// The workload prints its mounted credential so the retained
 					// log proves the Logs path redacts it. The test asserts the
 					// marker and the absence of the captured value.
-					`printf 'credential:%s\n' "$(cat /kodama/secrets/KODAMA_TOKEN)"`,
+					`printf 'credential:%s\n' "$(cat /kodema/secrets/KODEMA_TOKEN)"`,
 					`printf 'shared workspace\n' > /workspace/marker`,
-					`ARTIFACT="built:$(cat /kodama/inputs/seed)"`,
+					`ARTIFACT="built:$(cat /kodema/inputs/seed)"`,
 					`echo "prepare: credential accepted and marker written"`,
 					submitScript("artifact", "ARTIFACT"),
 				},
@@ -140,8 +140,8 @@ func TestKubernetesPipeline(t *testing.T) {
 					// Same PVC workspace and the ordered materialization of the
 					// earlier succeeded output.
 					`test "$(cat /workspace/marker)" = "shared workspace"`,
-					fmt.Sprintf(`test "$(cat /kodama/outputs/prepare/artifact)" = %q`, kubeArtifact),
-					`FINAL="consumed:$(cat /kodama/outputs/prepare/artifact)"`,
+					fmt.Sprintf(`test "$(cat /kodema/outputs/prepare/artifact)" = %q`, kubeArtifact),
+					`FINAL="consumed:$(cat /kodema/outputs/prepare/artifact)"`,
 					`echo "consume: workspace and earlier output verified"`,
 					// The action holds for a few seconds while it is observably
 					// running, so the kubectl facts (image, claim mount,

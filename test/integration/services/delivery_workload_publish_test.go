@@ -37,9 +37,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/test/support/factory"
-	support "github.com/optimiware/kodama/test/support/infrastructure/messaging"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/test/support/factory"
+	support "github.com/optimiware/kodema/test/support/infrastructure/messaging"
 )
 
 // deliveryWorkloadEvidence is the publication record the workload writes after
@@ -88,9 +88,9 @@ func TestDeliveryWorkloadDigestConverges(t *testing.T) {
 	})
 
 	prefix := deliveryUniqueName(t)
-	repository := "kodama/delivery-workload-" + prefix
+	repository := "kodema/delivery-workload-" + prefix
 	tag := "build-1"
-	marker := "kodama-" + prefix
+	marker := "kodema-" + prefix
 	const (
 		evidencePath = "/workspace/delivery-evidence.json"
 		releasePath  = "/workspace/release"
@@ -111,10 +111,10 @@ func TestDeliveryWorkloadDigestConverges(t *testing.T) {
 			Timeout: deliveryActionTimeout,
 			Outputs: []string{"image"},
 			Commands: []string{
-				`test ! -e /kodama/task.json`,
-				`test -z "${KODAMA_TASK:-}"`,
-				"cat > /workspace/delivery-publish.py <<'KODAMA_DELIVERY_PUBLISH'\n" +
-					deliveryWorkloadPublishScript + "\nKODAMA_DELIVERY_PUBLISH",
+				`test ! -e /kodema/task.json`,
+				`test -z "${KODEMA_TASK:-}"`,
+				"cat > /workspace/delivery-publish.py <<'KODEMA_DELIVERY_PUBLISH'\n" +
+					deliveryWorkloadPublishScript + "\nKODEMA_DELIVERY_PUBLISH",
 				`python3 /workspace/delivery-publish.py`,
 				// Hold the action open until the test has driven the submission
 				// sequence. The workload has already built and published once.
@@ -347,8 +347,8 @@ func deliveryRequireRegistryConfigLabel(t *testing.T, baseURL, repository, diges
 	if err := json.Unmarshal(configBytes, &config); err != nil {
 		t.Fatalf("decode the registry config blob %s: %v", manifest.Config.Digest, err)
 	}
-	if got := config.Config.Labels["kodama.test/delivery"]; got != marker {
-		t.Fatalf("registry config label kodama.test/delivery = %q; want the workload marker %q", got, marker)
+	if got := config.Config.Labels["kodema.test/delivery"]; got != marker {
+		t.Fatalf("registry config label kodema.test/delivery = %q; want the workload marker %q", got, marker)
 	}
 }
 
@@ -403,7 +403,7 @@ def digest(data):
 
 
 layer_tar = io.BytesIO()
-info = tarfile.TarInfo("kodama-delivery-marker")
+info = tarfile.TarInfo("kodema-delivery-marker")
 body = (MARKER + "\n").encode()
 info.size = len(body)
 info.mode = 0o644
@@ -415,7 +415,7 @@ layer = gzip.compress(layer_plain, mtime=0)
 config = json.dumps({
     "architecture": "amd64",
     "os": "linux",
-    "config": {"Labels": {"kodama.test/delivery": MARKER}},
+    "config": {"Labels": {"kodema.test/delivery": MARKER}},
     "rootfs": {"type": "layers", "diff_ids": [digest(layer_plain)]},
 }, separators=(",", ":"), sort_keys=True).encode()
 manifest = json.dumps({

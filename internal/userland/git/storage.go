@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/optimiware/kodama/internal/id"
+	"github.com/optimiware/kodema/internal/id"
 )
 
 // Storage resolves and provisions tenant-scoped repository directories. The

@@ -5,7 +5,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/id"
+	"github.com/optimiware/kodema/internal/id"
 )
 
 func TestResolveSubjectResolvesLiteralsInputsAndSucceededOutputs(t *testing.T) {

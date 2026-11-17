@@ -5,7 +5,7 @@ package harness
 import (
 	"fmt"
 
-	"github.com/optimiware/kodama/api"
+	"github.com/optimiware/kodema/api"
 )
 
 // Status is the interpreted observation of one execution.inspect result.

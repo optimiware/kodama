@@ -17,8 +17,8 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/optimiware/kodama/internal/fault"
-	runtimepodman "github.com/optimiware/kodama/internal/shell/runtime/podman"
+	"github.com/optimiware/kodema/internal/fault"
+	runtimepodman "github.com/optimiware/kodema/internal/shell/runtime/podman"
 )
 
 // Files is the confined host file boundary. It implements podman.Files.
@@ -113,7 +113,7 @@ func (f *Files) WriteFile(ctx context.Context, path string, data []byte, mode os
 		return fault.New(fault.InvalidInput, "podman write target is a directory")
 	}
 	directory := filepath.Dir(confined)
-	temp, err := os.CreateTemp(directory, ".kodama-write-*")
+	temp, err := os.CreateTemp(directory, ".kodema-write-*")
 	if err != nil {
 		return fault.Wrap(fault.DependencyUnavailable, "podman write could not be staged", err)
 	}

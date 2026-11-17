@@ -6,9 +6,9 @@ import time
 import urllib.error
 import urllib.request
 
-CA_FILE = __KODAMA_CA_FILE__
-OUTPUTS = __KODAMA_OUTPUTS__
-TOKEN_FILE = "/kodama/secrets/KODAMA_TOKEN"
+CA_FILE = __KODEMA_CA_FILE__
+OUTPUTS = __KODEMA_OUTPUTS__
+TOKEN_FILE = "/kodema/secrets/KODEMA_TOKEN"
 MAX_BODY = 262144
 
 
@@ -68,11 +68,11 @@ def call(connection, method, path, envelope):
         return error.code, error.read(MAX_BODY + 1)
 
 
-BASE_URL = os.environ["KODAMA_URL"].rstrip("/")
+BASE_URL = os.environ["KODEMA_URL"].rstrip("/")
 if not BASE_URL.startswith("https://"):
-    raise SystemExit("KODAMA_URL must use https; refusing to send the bearer token in plaintext")
-EXECUTION = os.environ["KODAMA_EXECUTION"]
-ACTION_NAME = os.environ["KODAMA_ACTION"]
+    raise SystemExit("KODEMA_URL must use https; refusing to send the bearer token in plaintext")
+EXECUTION = os.environ["KODEMA_EXECUTION"]
+ACTION_NAME = os.environ["KODEMA_ACTION"]
 
 
 def main():

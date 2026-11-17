@@ -27,28 +27,28 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/shell/integration/registry"
-	"github.com/optimiware/kodama/internal/shell/pipeline"
+	"github.com/optimiware/kodema/internal/shell/integration/registry"
+	"github.com/optimiware/kodema/internal/shell/pipeline"
 )
 
 const (
-	registryUser     = "kodama"
+	registryUser     = "kodema"
 	registryPassword = "registry-password-do-not-leak"
 )
 
-// registryBuildKodama builds the real command binary once per test.
-func registryBuildKodama(t *testing.T) string {
+// registryBuildKodema builds the real command binary once per test.
+func registryBuildKodema(t *testing.T) string {
 	t.Helper()
 	root, err := filepath.Abs(filepath.Join("..", "..", ".."))
 	if err != nil {
 		t.Fatalf("resolve module root: %v", err)
 	}
-	binary := filepath.Join(t.TempDir(), "kodama")
-	build := exec.Command("go", "build", "-o", binary, "./cmd/kodama")
+	binary := filepath.Join(t.TempDir(), "kodema")
+	build := exec.Command("go", "build", "-o", binary, "./cmd/kodema")
 	build.Dir = root
 	build.Env = append(os.Environ(), "CGO_ENABLED=0")
 	if output, err := build.CombinedOutput(); err != nil {
-		t.Fatalf("build kodama: %v\n%s", err, output)
+		t.Fatalf("build kodema: %v\n%s", err, output)
 	}
 	return binary
 }
@@ -67,7 +67,7 @@ func registryRun(t *testing.T, binary string, env map[string]string, args ...str
 	if err != nil {
 		var exit *exec.ExitError
 		if !errors.As(err, &exit) {
-			t.Fatalf("run kodama: %v\nstderr: %s", err, errOut.String())
+			t.Fatalf("run kodema: %v\nstderr: %s", err, errOut.String())
 		}
 		code = exit.ExitCode()
 	}
@@ -87,31 +87,31 @@ func registryWriteConfig(t *testing.T, body string) string {
 // TestProductionEntryRegistryCredentialFile proves the production entry's
 // private-registry contract end to end.
 func TestProductionEntryRegistryCredentialFile(t *testing.T) {
-	binary := registryBuildKodama(t)
+	binary := registryBuildKodema(t)
 	serverArgs := []string{"server", "--profile", "production"}
 
 	t.Run("missing file is refused by name", func(t *testing.T) {
 		_, stderr, code := registryRun(t, binary, map[string]string{
-			"KODAMA_REGISTRY_CONFIG_FILE": filepath.Join(t.TempDir(), "absent.json"),
+			"KODEMA_REGISTRY_CONFIG_FILE": filepath.Join(t.TempDir(), "absent.json"),
 		}, serverArgs...)
 		if code != 2 {
 			t.Fatalf("missing credential file exit = %d, want configuration refusal 2; stderr=%s", code, stderr)
 		}
-		if !strings.Contains(stderr, "KODAMA_REGISTRY_CONFIG_FILE") {
-			t.Fatalf("refusal does not name KODAMA_REGISTRY_CONFIG_FILE: %s", stderr)
+		if !strings.Contains(stderr, "KODEMA_REGISTRY_CONFIG_FILE") {
+			t.Fatalf("refusal does not name KODEMA_REGISTRY_CONFIG_FILE: %s", stderr)
 		}
 	})
 
 	t.Run("malformed file is refused", func(t *testing.T) {
 		path := registryWriteConfig(t, `{"auths":{"registry.example.com":{"auth":"`+registryPassword+`"}}}`)
 		_, stderr, code := registryRun(t, binary, map[string]string{
-			"KODAMA_REGISTRY_CONFIG_FILE": path,
+			"KODEMA_REGISTRY_CONFIG_FILE": path,
 		}, serverArgs...)
 		if code != 2 {
 			t.Fatalf("malformed credential file exit = %d, want configuration refusal 2; stderr=%s", code, stderr)
 		}
-		if !strings.Contains(stderr, "KODAMA_REGISTRY_CONFIG_FILE") {
-			t.Fatalf("refusal does not name KODAMA_REGISTRY_CONFIG_FILE: %s", stderr)
+		if !strings.Contains(stderr, "KODEMA_REGISTRY_CONFIG_FILE") {
+			t.Fatalf("refusal does not name KODEMA_REGISTRY_CONFIG_FILE: %s", stderr)
 		}
 		if strings.Contains(stderr, registryPassword) {
 			t.Fatalf("refusal rendered the configured credential: %s", stderr)
@@ -123,15 +123,15 @@ func TestProductionEntryRegistryCredentialFile(t *testing.T) {
 			`{"auths":{"https://registry.example.com":{"auth":%q}}}`,
 			base64.StdEncoding.EncodeToString([]byte(registryUser+":"+registryPassword))))
 		_, stderr, code := registryRun(t, binary, map[string]string{
-			"KODAMA_REGISTRY_CONFIG_FILE": path,
+			"KODEMA_REGISTRY_CONFIG_FILE": path,
 		}, serverArgs...)
 		if code != 2 {
 			t.Fatalf("valid credential file run exit = %d, want the next configuration refusal 2; stderr=%s", code, stderr)
 		}
-		if strings.Contains(stderr, "KODAMA_REGISTRY_CONFIG_FILE") {
+		if strings.Contains(stderr, "KODEMA_REGISTRY_CONFIG_FILE") {
 			t.Fatalf("the entry refused a valid credential file: %s", stderr)
 		}
-		if !strings.Contains(stderr, "KODAMA_DATABASE_URL") {
+		if !strings.Contains(stderr, "KODEMA_DATABASE_URL") {
 			t.Fatalf("the entry did not reach the expected next requirement: %s", stderr)
 		}
 	})

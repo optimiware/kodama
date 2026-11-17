@@ -72,7 +72,7 @@ func WithShardTimeout(d time.Duration) ShardOption {
 
 // NewShard builds an isolated shard for t. If Podman is missing the test is
 // skipped with "unqualified: infrastructure unavailable" unless
-// KODAMA_REQUIRE_INFRA=1, in which case it fails. A skip is never a pass claim.
+// KODEMA_REQUIRE_INFRA=1, in which case it fails. A skip is never a pass claim.
 func NewShard(t testing.TB, opts ...ShardOption) *Shard {
 	t.Helper()
 	cfg := shardConfig{timeout: DefaultShardTimeout}
@@ -84,7 +84,7 @@ func NewShard(t testing.TB, opts ...ShardOption) *Shard {
 	require := requireInfra()
 	podman := cfg.podman
 	if podman == nil {
-		podman = NewPodman(WithLogger(t.Logf), WithEvidenceDir(os.Getenv("KODAMA_EVIDENCE_DIR")))
+		podman = NewPodman(WithLogger(t.Logf), WithEvidenceDir(os.Getenv("KODEMA_EVIDENCE_DIR")))
 	}
 	ctx, cancel := context.WithTimeout(t.Context(), cfg.timeout)
 	shard := &Shard{
@@ -112,7 +112,7 @@ func NewShard(t testing.TB, opts ...ShardOption) *Shard {
 func (s *Shard) Context() context.Context { return s.ctx }
 
 // requireInfra reports whether missing infrastructure must fail the test.
-func requireInfra() bool { return os.Getenv("KODAMA_REQUIRE_INFRA") == "1" }
+func requireInfra() bool { return os.Getenv("KODEMA_REQUIRE_INFRA") == "1" }
 
 // SkipOrFail applies the infrastructure policy: fail when require is true,
 // otherwise skip with the exact unqualified reason. It never returns.
@@ -120,7 +120,7 @@ func SkipOrFail(t testing.TB, require bool, err error) {
 	t.Helper()
 	reason := "unqualified: infrastructure unavailable: " + err.Error()
 	if require {
-		t.Fatalf("%s (KODAMA_REQUIRE_INFRA=1)", reason)
+		t.Fatalf("%s (KODEMA_REQUIRE_INFRA=1)", reason)
 	}
 	t.Skip(reason)
 }
@@ -167,7 +167,7 @@ func (s *Shard) Name(prefix string) string {
 // Network returns the shard's private network, creating it on first use.
 func (s *Shard) Network(ctx context.Context) (string, error) {
 	s.netOnce.Do(func() {
-		name := "kodama-" + s.ID
+		name := "kodema-" + s.ID
 		_, err := s.Podman.run(ctx, s.Podman.operationLimit, "network", "create",
 			"--label", LabelTest+"=1",
 			"--label", LabelShard+"="+s.ID,

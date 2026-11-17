@@ -11,7 +11,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/optimiware/kodama/internal/shell/identity"
+	"github.com/optimiware/kodema/internal/shell/identity"
 )
 
 type fakeVerifier struct {

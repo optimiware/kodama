@@ -20,10 +20,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/shell/pipeline"
-	runtimekube "github.com/optimiware/kodama/internal/shell/runtime/kube"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/shell/pipeline"
+	runtimekube "github.com/optimiware/kodema/internal/shell/runtime/kube"
 )
 
 // requestWaitFakeRequest is one recorded envelope at the fake edge.
@@ -754,7 +754,7 @@ func requestWaitTestEdge(t *testing.T, configure func(*requestWaitFakeEdge)) (*r
 		configure(edge)
 	}
 	server, caPath := startAuthorityTLSServer(t, requestWaitFakeHandler(t, edge))
-	client, err := NewAPI(Config{APIURL: server.URL, CAPEM: caPath, TLSServerName: "kodama.test"})
+	client, err := NewAPI(Config{APIURL: server.URL, CAPEM: caPath, TLSServerName: "kodema.test"})
 	if err != nil {
 		t.Fatalf("build the fake-edge API helper: %v", err)
 	}
@@ -854,7 +854,7 @@ func requestWaitFakeLabels(action string) map[string]string {
 // requestWaitFakeWorkloadVisible reports whether the fake cluster serves the
 // pre-wait workload for a phase. The product keeps that Job and its completed
 // Pod until the terminal cleanup (internal/kernel/engine/cleanup.go removeOwned)
-// or the Job TTL (cmd/kodama/production.go pins 600 s), so it is still present
+// or the Job TTL (cmd/kodema/production.go pins 600 s), so it is still present
 // during the request wait and gone once cleanup has completed.
 func requestWaitFakeWorkloadVisible(phase string) bool {
 	return phase == "before" || phase == "wait"
@@ -903,7 +903,7 @@ func (cluster *requestWaitFakeCluster) ObjectList(_ context.Context, namespace, 
 		podPhase = cluster.podPhase()
 	}
 	pod := requestWaitFakePod{}
-	pod.Metadata.Name = "kodama-job-rw-1"
+	pod.Metadata.Name = "kodema-job-rw-1"
 	pod.Metadata.Labels = requestWaitFakeLabels("action-before")
 	pod.Status.Phase = podPhase
 	pod.Spec.Volumes = append(pod.Spec.Volumes, struct {
@@ -941,7 +941,7 @@ func (cluster *requestWaitFakeCluster) ObjectList(_ context.Context, namespace, 
 		}
 		for index := 0; index < cluster.foreignActionSecrets; index++ {
 			foreign := secret
-			foreign.Metadata.Name = fmt.Sprintf("kodama-credential-foreign-%d", index)
+			foreign.Metadata.Name = fmt.Sprintf("kodema-credential-foreign-%d", index)
 			foreign.Metadata.Labels = requestWaitFakeLabels("action-other")
 			items = append(items, foreign)
 		}
@@ -986,7 +986,7 @@ func (cluster *requestWaitFakeCluster) ObjectList(_ context.Context, namespace, 
 		retained := cluster.pvcRetained
 		claim := map[string]any{
 			"metadata": map[string]any{
-				"name":        "kodama-workspace-rw-1",
+				"name":        "kodema-workspace-rw-1",
 				"labels":      map[string]string{requestWaitLabelWorkspace: "workspace-rw-1", requestWaitRetainedLabel: fmt.Sprintf("%t", retained)},
 				"annotations": map[string]string{requestWaitRetainedAnnotation: fmt.Sprintf("%t", retained)},
 			},
@@ -1100,7 +1100,7 @@ func TestHarnessRequestWaitProbe(t *testing.T) {
 	cluster := &requestWaitFakeCluster{
 		phase:       func() string { edge.mu.Lock(); defer edge.mu.Unlock(); return edge.phase },
 		fingerprint: requestWaitFakeFingerprint(),
-		secretName:  "kodama-credential-rw-1",
+		secretName:  "kodema-credential-rw-1",
 		token:       requestWaitFakeExecutionToken,
 		pvcRetained: true,
 	}
@@ -1247,7 +1247,7 @@ func TestHarnessRequestWaitProbeRejectsNon401StaleToken(t *testing.T) {
 	cluster := &requestWaitFakeCluster{
 		phase:       func() string { edge.mu.Lock(); defer edge.mu.Unlock(); return edge.phase },
 		fingerprint: requestWaitFakeFingerprint(),
-		secretName:  "kodama-credential-rw-1",
+		secretName:  "kodema-credential-rw-1",
 		token:       requestWaitFakeExecutionToken,
 		pvcRetained: true,
 	}
@@ -1376,7 +1376,7 @@ func TestHarnessRequestWaitCredentialCapture(t *testing.T) {
 		return &requestWaitFakeCluster{
 			phase:       func() string { return "before" },
 			fingerprint: requestWaitFakeFingerprint(),
-			secretName:  "kodama-credential-rw-1",
+			secretName:  "kodema-credential-rw-1",
 			token:       requestWaitFakeExecutionToken,
 			pvcRetained: true,
 		}
@@ -1411,7 +1411,7 @@ func TestHarnessRequestWaitCredentialCapture(t *testing.T) {
 		if err != nil {
 			t.Fatalf("a same-execution Secret for another action made the capture ambiguous: %v", err)
 		}
-		if captured.SecretName != "kodama-credential-rw-1" {
+		if captured.SecretName != "kodema-credential-rw-1" {
 			t.Fatalf("the capture selected %q; want the observed action's Secret", captured.SecretName)
 		}
 		var sawSelector bool
@@ -1532,7 +1532,7 @@ func TestHarnessRequestWaitCommands(t *testing.T) {
 	}
 	dir := t.TempDir()
 	paths := requestWaitPaths{
-		TokenFile:    filepath.Join(dir, "KODAMA_TOKEN"),
+		TokenFile:    filepath.Join(dir, "KODEMA_TOKEN"),
 		CAFile:       filepath.Join(dir, "ca.crt"),
 		BeforeOutput: filepath.Join(dir, "fingerprint"),
 		AnswerOutput: filepath.Join(dir, "answer"),
@@ -1633,7 +1633,7 @@ func TestHarnessRequestWaitCleanupOnFailure(t *testing.T) {
 		return &requestWaitFakeCluster{
 			phase:       func() string { return "before" },
 			fingerprint: requestWaitFakeFingerprint(),
-			secretName:  "kodama-credential-rw-1",
+			secretName:  "kodema-credential-rw-1",
 			token:       requestWaitFakeExecutionToken,
 			pvcRetained: true,
 		}
@@ -1689,7 +1689,7 @@ func TestHarnessRequestWaitCleanupOnFailure(t *testing.T) {
 				writePublicTestError(writer, http.StatusNotFound, api.CodeNotFound)
 			}
 		}))
-		refused, err := NewAPI(Config{APIURL: server.URL, CAPEM: caPath, TLSServerName: "kodama.test"})
+		refused, err := NewAPI(Config{APIURL: server.URL, CAPEM: caPath, TLSServerName: "kodema.test"})
 		if err != nil {
 			t.Fatalf("build the refusing API helper: %v", err)
 		}
@@ -2251,7 +2251,7 @@ func TestHarnessRequestWaitGateAndEvidence(t *testing.T) {
 	base := Config{
 		APIURL:          "https://127.0.0.1:18443",
 		CAPEM:           "ca.pem",
-		TLSServerName:   "kodama.test",
+		TLSServerName:   "kodema.test",
 		AdminToken:      Secret("admin-token-value"),
 		ProjectID:       requestWaitFakeProject,
 		TenantNamespace: requestWaitFakeTenantNS,
@@ -2346,7 +2346,7 @@ func newRequestWaitFixture(t *testing.T, configure func(*requestWaitFakeEdge)) *
 	cluster := &requestWaitFakeCluster{
 		phase:       func() string { edge.mu.Lock(); defer edge.mu.Unlock(); return edge.phase },
 		fingerprint: requestWaitFakeFingerprint(),
-		secretName:  "kodama-credential-rw-1",
+		secretName:  "kodema-credential-rw-1",
 		token:       requestWaitFakeExecutionToken,
 		pvcRetained: true,
 	}
@@ -2799,7 +2799,7 @@ func requestWaitShortenWait(target *time.Duration, value time.Duration) func() {
 // TestHarnessRequestWaitSuccessorIdle pins the corrected request-wait workload
 // predicate against the REAL product shape: the completed pre-wait Job and Pod
 // are retained until terminal cleanup or the Job TTL
-// (internal/kernel/engine/cleanup.go:29-31, cmd/kodama/production.go:343), while
+// (internal/kernel/engine/cleanup.go:29-31, cmd/kodema/production.go:343), while
 // a live workload or any workload for another action is evidence that the
 // refused resolution advanced the wait. The old zero-workload predicate is red
 // on the retained predecessor, exactly like the live run.

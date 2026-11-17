@@ -14,8 +14,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	git "github.com/optimiware/kodama/internal/userland/git"
+	"github.com/optimiware/kodema/internal/fault"
+	git "github.com/optimiware/kodema/internal/userland/git"
 )
 
 // fakeBackend is the deterministic smart-HTTP backend boundary. It records the
@@ -246,7 +246,7 @@ func (f *smartFixture) request(t *testing.T, method, target, credential string, 
 	}
 	request := httptest.NewRequest(method, target, reader)
 	if credential != "" {
-		request.SetBasicAuth("kodama", credential)
+		request.SetBasicAuth("kodema", credential)
 	}
 	for key, value := range headers {
 		request.Header.Set(key, value)
@@ -309,10 +309,10 @@ func TestSmartHTTPInfoRefsUploadPack(t *testing.T) {
 		t.Fatalf("backend path = %q; want %q", call.Path, f.repositoryPath("shop/web"))
 	}
 	environment := envMap(call.Environment)
-	if environment["KODAMA_REPOSITORY"] != "shop/web" || environment["KODAMA_RESOURCE_ID"] != "res-web" {
+	if environment["KODEMA_REPOSITORY"] != "shop/web" || environment["KODEMA_RESOURCE_ID"] != "res-web" {
 		t.Fatalf("backend environment = %+v", environment)
 	}
-	handle := environment["KODAMA_ACTOR_REF"]
+	handle := environment["KODEMA_ACTOR_REF"]
 	if handle == "" || handle == "viewer-token" {
 		t.Fatalf("backend actor handle = %q; want an opaque handle", handle)
 	}
@@ -517,7 +517,7 @@ func TestSmartHTTPBearerCredential(t *testing.T) {
 func TestSmartHTTPWrongBasicUsername(t *testing.T) {
 	f := newSmartFixture(t)
 	request := httptest.NewRequest(http.MethodGet, "/shop/web/info/refs?service=git-upload-pack", nil)
-	request.SetBasicAuth("not-kodama", "viewer-token")
+	request.SetBasicAuth("not-kodema", "viewer-token")
 	recorder := httptest.NewRecorder()
 	f.handler.ServeHTTP(recorder, request)
 	if recorder.Code != http.StatusUnauthorized {
@@ -538,7 +538,7 @@ func TestSmartHTTPRejectsEmptyCredentials(t *testing.T) {
 		{name: "bearer without value", header: "Bearer"},
 		{name: "empty basic", header: "Basic "},
 		{name: "basic without value", header: "Basic"},
-		{name: "empty basic password", header: "Basic " + base64.StdEncoding.EncodeToString([]byte("kodama:"))},
+		{name: "empty basic password", header: "Basic " + base64.StdEncoding.EncodeToString([]byte("kodema:"))},
 		{name: "empty basic username and password", header: "Basic " + base64.StdEncoding.EncodeToString([]byte(":"))},
 	}
 	for _, testCase := range cases {
@@ -692,7 +692,7 @@ func TestSmartHTTPBodySizeBound(t *testing.T) {
 
 	request := httptest.NewRequest(http.MethodPost, "/shop/web/git-upload-pack", bytes.NewReader(over))
 	request.ContentLength = -1
-	request.SetBasicAuth("kodama", "viewer-token")
+	request.SetBasicAuth("kodema", "viewer-token")
 	request.Header.Set("Content-Type", "application/x-git-upload-pack-request")
 	recorder = httptest.NewRecorder()
 	f.handler.ServeHTTP(recorder, request)
@@ -759,7 +759,7 @@ func TestSmartHTTPCancellation(t *testing.T) {
 	cancel()
 	request := httptest.NewRequest(http.MethodGet, "/shop/web/info/refs?service=git-upload-pack", nil)
 	request = request.WithContext(ctx)
-	request.SetBasicAuth("kodama", "viewer-token")
+	request.SetBasicAuth("kodema", "viewer-token")
 	recorder := httptest.NewRecorder()
 	f.handler.ServeHTTP(recorder, request)
 	if recorder.Code != http.StatusRequestTimeout {
@@ -835,7 +835,7 @@ func TestSmartHTTPRejectsCredentialAsHandle(t *testing.T) {
 		t.Fatalf("NewSmartHTTP: %v", err)
 	}
 	request := httptest.NewRequest(http.MethodGet, "/shop/web/info/refs?service=git-upload-pack", nil)
-	request.SetBasicAuth("kodama", "viewer-token")
+	request.SetBasicAuth("kodema", "viewer-token")
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, request)
 	if recorder.Code != http.StatusInternalServerError {

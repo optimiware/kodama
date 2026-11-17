@@ -8,7 +8,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/userland/skill"
+	"github.com/optimiware/kodema/internal/userland/skill"
 )
 
 func writeSkillFile(t *testing.T, path string, body []byte) {

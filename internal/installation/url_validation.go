@@ -50,7 +50,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/optimiware/kodama/internal/fault"
+	"github.com/optimiware/kodema/internal/fault"
 )
 
 // postgresURLPrefix is the only accepted PostgreSQL URL scheme spelling.

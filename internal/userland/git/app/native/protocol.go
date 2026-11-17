@@ -1,6 +1,6 @@
 // Package native wires the independent Git service to the native operating
 // system: the private Unix-domain-socket hook callback channel, the
-// `kodama git hook` client, bare-repository hook installation and a
+// `kodema git hook` client, bare-repository hook installation and a
 // symlink-safe tenant storage view.
 //
 // It is composition glue only. It starts no process of its own, holds no
@@ -23,7 +23,7 @@ const (
 	// EnvHookSocket names the private socket path the backend environment
 	// carries. It is not a secret and is the only extra variable the hook
 	// process needs.
-	EnvHookSocket = "KODAMA_HOOK_SOCKET"
+	EnvHookSocket = "KODEMA_HOOK_SOCKET"
 )
 
 // Phase is one native Git hook phase. The installer only installs the two

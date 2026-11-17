@@ -15,8 +15,8 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/shell/authorize"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
+	"github.com/optimiware/kodema/internal/shell/authorize"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
 )
 
 func TestConditionalGrantChecksOperatorRetry(t *testing.T) {

@@ -1,3 +1,3 @@
 package secret
 
-import _ "kodama/internal/shell/store/postgres"
+import _ "kodema/internal/shell/store/postgres"

@@ -16,7 +16,7 @@
 // Nothing here reads or writes a backend or state file, and `plan`, `apply`,
 // `destroy`, `import` and `refresh` never run. If the sandbox has no registry
 // access, init fails and says so; a provider mirror can be pre-seeded through
-// TF_CLI_CONFIG_FILE (inherited) or KODAMA_TOFU_PLUGIN_CACHE_DIR can be set to
+// TF_CLI_CONFIG_FILE (inherited) or KODEMA_TOFU_PLUGIN_CACHE_DIR can be set to
 // a shared cache.
 package deploy
 
@@ -143,7 +143,7 @@ func TestTofuRootsInitAndValidate(t *testing.T) {
 			if initCode != 0 {
 				// A registry failure is not a validation finding. Say how to
 				// pre-seed a mirror so the two can be told apart.
-				t.Fatalf("tofu init -backend=false failed for deploy/%s; if the sandbox has no registry access, set TF_CLI_CONFIG_FILE to a provider mirror or KODAMA_TOFU_PLUGIN_CACHE_DIR to a pre-populated cache:\n%s", relative, initOutput)
+				t.Fatalf("tofu init -backend=false failed for deploy/%s; if the sandbox has no registry access, set TF_CLI_CONFIG_FILE to a provider mirror or KODEMA_TOFU_PLUGIN_CACHE_DIR to a pre-populated cache:\n%s", relative, initOutput)
 			}
 			validateOutput, validateCode := runTofu(t, dir, env, 5*time.Minute, "validate")
 			if validateCode == 0 {

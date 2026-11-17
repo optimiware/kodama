@@ -21,25 +21,25 @@ import (
 
 // tofuEnvOverride points the suite at a specific OpenTofu binary without
 // changing PATH.
-const tofuEnvOverride = "KODAMA_TOFU_BINARY"
+const tofuEnvOverride = "KODEMA_TOFU_BINARY"
 
 // tofuPluginCacheOverride shares one pre-populated provider cache across runs
 // (and across mutation copies). Otherwise the cache lives in the run's short
 // TMPDIR so it is removed with the run directory.
-const tofuPluginCacheOverride = "KODAMA_TOFU_PLUGIN_CACHE_DIR"
+const tofuPluginCacheOverride = "KODEMA_TOFU_PLUGIN_CACHE_DIR"
 
 // tofuBinary locates OpenTofu. A missing binary is a loud skip only when
-// KODAMA_REQUIRE_INFRA is unset; with it set the check fails because the
+// KODEMA_REQUIRE_INFRA is unset; with it set the check fails because the
 // qualification claim would otherwise be vacuous.
 func tofuBinary(t *testing.T) string {
 	t.Helper()
 	if override := os.Getenv(tofuEnvOverride); override != "" {
 		info, err := os.Stat(override)
 		if err != nil || info.IsDir() || info.Mode()&0o111 == 0 {
-			if os.Getenv("KODAMA_REQUIRE_INFRA") == "1" {
+			if os.Getenv("KODEMA_REQUIRE_INFRA") == "1" {
 				t.Fatalf("%s=%s is not an executable file", tofuEnvOverride, override)
 			}
-			t.Skipf("%s=%s is not an executable file; skipping OpenTofu checks (set KODAMA_REQUIRE_INFRA=1 to fail instead)", tofuEnvOverride, override)
+			t.Skipf("%s=%s is not an executable file; skipping OpenTofu checks (set KODEMA_REQUIRE_INFRA=1 to fail instead)", tofuEnvOverride, override)
 		}
 		return override
 	}
@@ -56,10 +56,10 @@ func tofuBinary(t *testing.T) string {
 			}
 		}
 	}
-	if os.Getenv("KODAMA_REQUIRE_INFRA") == "1" {
-		t.Fatalf("tofu is required to validate the deployment roots but was not found on PATH or in ~/.local/bin (KODAMA_REQUIRE_INFRA=1)")
+	if os.Getenv("KODEMA_REQUIRE_INFRA") == "1" {
+		t.Fatalf("tofu is required to validate the deployment roots but was not found on PATH or in ~/.local/bin (KODEMA_REQUIRE_INFRA=1)")
 	}
-	t.Skip("tofu not installed; skipping OpenTofu deployment-root checks (set KODAMA_REQUIRE_INFRA=1 to fail instead)")
+	t.Skip("tofu not installed; skipping OpenTofu deployment-root checks (set KODEMA_REQUIRE_INFRA=1 to fail instead)")
 	return ""
 }
 
@@ -72,7 +72,7 @@ func tofuPluginCacheDir(t *testing.T) string {
 	t.Helper()
 	dir := os.Getenv(tofuPluginCacheOverride)
 	if dir == "" {
-		dir = filepath.Join(os.TempDir(), "kodama-tofu-plugin-cache")
+		dir = filepath.Join(os.TempDir(), "kodema-tofu-plugin-cache")
 	}
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatalf("create OpenTofu plugin cache %s: %v", dir, err)
@@ -123,7 +123,7 @@ func tofuProcessEnv(cacheDir string) []string {
 }
 
 // runTofu runs one OpenTofu command in dir and returns stdout+stderr. It runs
-// exactly the binary tofuBinary located (KODAMA_TOFU_BINARY, then PATH, then
+// exactly the binary tofuBinary located (KODEMA_TOFU_BINARY, then PATH, then
 // ~/.local/bin) instead of letting exec resolve "tofu" again: a versioned
 // install that is not on PATH must still be the one validated. The timeout
 // keeps a hung provider download from consuming the package timeout.
@@ -153,7 +153,7 @@ func runTofu(t *testing.T, dir string, env []string, timeout time.Duration, args
 // TestRunTofuUsesDiscoveredBinary proves runTofu executes the binary
 // tofuBinary found rather than whatever "tofu" PATH resolves to. The child
 // environment below has no tofu on PATH at all, so only the explicit
-// KODAMA_TOFU_BINARY can succeed; a regression that hard-codes "tofu" fails
+// KODEMA_TOFU_BINARY can succeed; a regression that hard-codes "tofu" fails
 // here even on a host where the two happen to be the same file.
 func TestRunTofuUsesDiscoveredBinary(t *testing.T) {
 	dir := t.TempDir()

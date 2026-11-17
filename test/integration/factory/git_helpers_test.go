@@ -20,11 +20,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	shelloidc "github.com/optimiware/kodama/internal/shell/integration/oidc"
-	"github.com/optimiware/kodama/internal/userland/git"
-	identityfixture "github.com/optimiware/kodama/test/support/boundaries/identity"
-	"github.com/optimiware/kodama/test/support/factory"
+	"github.com/optimiware/kodema/api"
+	shelloidc "github.com/optimiware/kodema/internal/shell/integration/oidc"
+	"github.com/optimiware/kodema/internal/userland/git"
+	identityfixture "github.com/optimiware/kodema/test/support/boundaries/identity"
+	"github.com/optimiware/kodema/test/support/factory"
 )
 
 const (
@@ -289,7 +289,7 @@ func (fixture *gitHarness) startExecution(t *testing.T, name string) (string, st
 			Timeout: "1h",
 			Commands: []string{
 				// Prove the workload receives no task handoff material for Git.
-				`test ! -e /kodama/task.json`,
+				`test ! -e /kodema/task.json`,
 				// Hold the execution running while the host pushes with its
 				// live credential.
 				`while [ ! -e /workspace/release ]; do sleep 1; done`,
@@ -392,5 +392,5 @@ func requireRefusal(t *testing.T, scenario, stderr string, code int) string {
 // basicValue renders the Basic credential value for one Git token the same way
 // the host Git helper does, without putting the token in a URL or a file.
 func basicValue(token string) string {
-	return base64.StdEncoding.EncodeToString([]byte("kodama:" + token))
+	return base64.StdEncoding.EncodeToString([]byte("kodema:" + token))
 }

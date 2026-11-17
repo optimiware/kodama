@@ -12,8 +12,8 @@ package log
 import (
 	"context"
 
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
 )
 
 // ExecutionOwnership is the task/execution association of one execution. A

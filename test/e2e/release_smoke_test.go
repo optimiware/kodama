@@ -6,8 +6,8 @@ import (
 	_ "embed"
 	"testing"
 
-	"github.com/optimiware/kodama/test/e2e/internal/harness"
-	"github.com/optimiware/kodama/test/e2e/internal/smoke"
+	"github.com/optimiware/kodema/test/e2e/internal/harness"
+	"github.com/optimiware/kodema/test/e2e/internal/smoke"
 )
 
 // The release-smoke scripts are ordinary shell programs run by the pinned
@@ -60,7 +60,7 @@ var (
 //   - ConversationHandoff (S3): a live task action, an engineer task.ask with
 //     an ordinary durable reference the product accepts without Git, the
 //     reviewer's inbox reply, and a distinct fresh execution that reads the
-//     answer from /kodama/task.json and not the cancelled attempt's scratch.
+//     answer from /kodema/task.json and not the cancelled attempt's scratch.
 //   - ProtectedTask (S2): one task, one execution and one workspace run the
 //     external-harness fixture, commit and test a candidate on a granted work
 //     ref, submit declared outputs, wait for the reviewer's inbox decision and

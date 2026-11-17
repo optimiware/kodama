@@ -1,4 +1,4 @@
-// Package principal derives deterministic Kodama human principal identities
+// Package principal derives deterministic Kodema human principal identities
 // and canonical OIDC subjects across local, social and federated sign-in
 // methods.
 package principal
@@ -8,8 +8,8 @@ import (
 	"encoding/hex"
 	"strings"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
 )
 
 const (

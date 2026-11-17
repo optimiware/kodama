@@ -40,7 +40,7 @@ func TestHarnessRunStageCleansUpFakeStage(t *testing.T) {
 	assertRunStageCleansUp(t, run)
 }
 
-// TestHarnessRunStageAcceptsEnvelopeRefusalForReadiness proves the kodama
+// TestHarnessRunStageAcceptsEnvelopeRefusalForReadiness proves the kodema
 // readiness probe treats the edge's body-shape 400 as reachability: the real
 // edge decodes the request envelope before authentication, so an unauthenticated
 // bodyless GET is invalid_input rather than 401.
@@ -69,7 +69,7 @@ func TestHarnessRunStageFailsWhenEndpointUnreachable(t *testing.T) {
 	recorded := readMarker(t, run.marker)
 	assertNoInheritedTokens(t, recorded, false)
 	assertWorkDirRemoved(t, run.tempDir)
-	for _, wanted := range []string{"started kodama", "started oauthsonas", "terminated kodama", "terminated oauthsonas"} {
+	for _, wanted := range []string{"started kodema", "started oauthsonas", "terminated kodema", "terminated oauthsonas"} {
 		if !strings.Contains(recorded, wanted) {
 			t.Fatalf("failure-path marker does not contain %q:\n%s", wanted, recorded)
 		}
@@ -172,9 +172,9 @@ func assertRunStageCleansUp(t *testing.T, run fakeStageRun) {
 	assertNoInheritedTokens(t, recorded, true)
 	assertWorkDirRemoved(t, run.tempDir)
 	for _, wanted := range []string{
-		"started kodama",
+		"started kodema",
 		"started oauthsonas",
-		"terminated kodama",
+		"terminated kodema",
 		"terminated oauthsonas",
 		"access 600 ",
 	} {
@@ -196,15 +196,15 @@ func assertRunStageCleansUp(t *testing.T, run fakeStageRun) {
 	}
 }
 
-// runFakeStage builds one isolated fake stage. kodamaCode is the readiness code
-// the fake curl prints for the kodama URL; OAuthSonas always answers 303.
-func runFakeStage(t *testing.T, kodamaCode string) fakeStageRun {
+// runFakeStage builds one isolated fake stage. kodemaCode is the readiness code
+// the fake curl prints for the kodema URL; OAuthSonas always answers 303.
+func runFakeStage(t *testing.T, kodemaCode string) fakeStageRun {
 	t.Helper()
-	return runFakeStageWithOverrides(t, kodamaCode, nil)
+	return runFakeStageWithOverrides(t, kodemaCode, nil)
 }
 
 // runFakeStageWithOverrides applies test-only environment overrides.
-func runFakeStageWithOverrides(t *testing.T, kodamaCode string, overrides map[string]string) fakeStageRun {
+func runFakeStageWithOverrides(t *testing.T, kodemaCode string, overrides map[string]string) fakeStageRun {
 	t.Helper()
 	realSleep, err := exec.LookPath("sleep")
 	if err != nil {
@@ -274,11 +274,11 @@ exec "$Q02_REAL_CHMOD" "$@"
 	writeExecutable(t, filepath.Join(bin, "curl"), `#!/bin/sh
 marker="$Q02_FAKE_MARKER"
 printf 'curl-token %s %s %s\n' "${Q02_ADMIN_TOKEN:-empty}" "${Q02_DEVELOPER_TOKEN:-empty}" "${Q02_SECOND_ADMIN_TOKEN:-empty}" >> "$marker"
-kodama_code="${Q02_FAKE_KODAMA_CODE:-401}"
+kodema_code="${Q02_FAKE_KODEMA_CODE:-401}"
 for argument in "$@"; do
   case "$argument" in
-    *kodama.kodama-system.svc.cluster.local*) printf '%s' "$kodama_code"; exit 0 ;;
-    *oauthsonas.kodama-system.svc.cluster.local*) printf 303; exit 0 ;;
+    *kodema.kodema-system.svc.cluster.local*) printf '%s' "$kodema_code"; exit 0 ;;
+    *oauthsonas.kodema-system.svc.cluster.local*) printf 303; exit 0 ;;
   esac
 done
 printf 000
@@ -312,7 +312,7 @@ printf '%s-token' "$persona"
 		"PATH":                     bin + ":/usr/local/bin:/usr/bin:/bin",
 		"HOME":                     t.TempDir(),
 		"TMPDIR":                   tempDir,
-		"Q02_KUBE_CONTEXT":         "kodama-stage-k8s",
+		"Q02_KUBE_CONTEXT":         "kodema-stage-k8s",
 		"Q02_CA_PEM":               caPath,
 		"Q02_PROJECT_ID":           "tenant-a",
 		"Q02_TOKEN_SCRIPT":         tokenScript,
@@ -331,7 +331,7 @@ printf '%s-token' "$persona"
 		"Q02_REAL_SLEEP":           realSleep,
 		"Q02_REAL_MKDIR":           realMkdir,
 		"Q02_REAL_CHMOD":           realChmod,
-		"Q02_FAKE_KODAMA_CODE":     kodamaCode,
+		"Q02_FAKE_KODEMA_CODE":     kodemaCode,
 		"Q02_FAKE_MARKER":          marker,
 		"Q02_FAKE_RESULT":          result,
 		"Q02_FAKE_ACCESS_CODE_B64": "cGlja2VyLXNlY3JldC1jb2Rl",

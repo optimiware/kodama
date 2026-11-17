@@ -1,6 +1,6 @@
 package recovery
 
-import "github.com/optimiware/kodama/internal/installation"
+import "github.com/optimiware/kodema/internal/installation"
 
 // manifestFormat is the only on-disk backup manifest format this driver reads
 // or writes.

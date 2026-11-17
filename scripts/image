@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/image: build the Kodama image and push it, printing the pushed digest.
+# scripts/image: build the Kodema image and push it, printing the pushed digest.
 #
 #   scripts/image build-push --repository <registry/path/name> [--tag <tag>]
 #                            [--version <version>] [--platforms <os/arch,...>]
@@ -11,7 +11,7 @@
 # `build` only builds and prints the local reference <repository>:<tag>.
 #
 # The binary is stamped with the version (default: the VERSION file) and the
-# full git revision of this checkout; `kodama version` prints both.
+# full git revision of this checkout; `kodema version` prints both.
 #
 # When multiple comma-separated --platforms are given (for example
 # linux/amd64,linux/arm64), scripts/image builds an OCI manifest index with
@@ -97,7 +97,7 @@ trap 'rm -f "$digestfile"' EXIT
 
 common_build_args=(
   --format oci -q
-  -f "${repo_root}/deploy/images/kodama/Containerfile"
+  -f "${repo_root}/deploy/images/kodema/Containerfile"
   --build-arg "VERSION=${version}"
   --build-arg "REVISION=${revision}"
   --label "org.opencontainers.image.version=${version}"

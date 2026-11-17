@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/internal/userland/cli"
+	"github.com/optimiware/kodema/internal/userland/cli"
 )
 
 func TestKodactlDispatchesOnlyTheCLI(t *testing.T) {

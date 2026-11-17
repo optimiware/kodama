@@ -16,7 +16,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/optimiware/kodama/test/suite"
+	"github.com/optimiware/kodema/test/suite"
 )
 
 func main() {

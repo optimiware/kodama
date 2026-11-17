@@ -39,9 +39,9 @@ if [[ "$args" == *" -f - "* ]]; then
 fi
 
 case "$args" in
-  *" get secret kodama-database-admin "*)
+  *" get secret kodema-database-admin "*)
     if [[ "${KUBECTL_ADMIN_MISSING:-0}" == "1" ]]; then
-      echo 'Error from server (NotFound): secrets "kodama-database-admin" not found' >&2
+      echo 'Error from server (NotFound): secrets "kodema-database-admin" not found' >&2
       exit 1
     fi
     exit 0
@@ -67,7 +67,7 @@ case "$args" in
     fi
     count=$((count + 1))
     printf '%s\n' "$count" >"$KUBECTL_POD_COUNTER"
-    printf 'pod/kodama-migrate-%s\n' "$count"
+    printf 'pod/kodema-migrate-%s\n' "$count"
     exit 0
     ;;
 esac
@@ -159,12 +159,12 @@ type deploySandbox struct {
 const deployDescriptor = `{
   "cloud": "scw",
   "cluster_name": "stage",
-  "installation_id": "kodama-stage",
+  "installation_id": "kodema-stage",
   "environment": "production",
   "account_or_project_id": "project-1",
   "region": "fr-par",
-  "release_namespace": "kodama-system",
-  "postgres": {"host": "db.example", "port": 5432, "database_name": "kodama", "admin_user": "kodama_admin", "ssl_mode": "verify-full"},
+  "release_namespace": "kodema-system",
+  "postgres": {"host": "db.example", "port": 5432, "database_name": "kodema", "admin_user": "kodema_admin", "ssl_mode": "verify-full"},
   "kms": {"key_id": "fr-par/00000000-0000-0000-0000-000000000000", "key_ref": "scw-kms:fr-par/00000000-0000-0000-0000-000000000000", "key_adapter": "scw-kms"},
   "kubernetes": {"cluster_name": "stage", "storage_class": "sbs-default"},
   "tenants": ["tenant-a"]
@@ -224,10 +224,10 @@ func newDeploySandboxRoot(t *testing.T) *deploySandbox {
 		"PATH="+filepath.Join(root, "bin")+string(os.PathListSeparator)+os.Getenv("PATH"),
 		"HOME="+filepath.Join(root, "home"),
 		"TMPDIR="+box.tempDir,
-		"KODAMA_DEPLOY_STATE_DIR="+box.stateDir,
-		"KODAMA_CLUSTER=stage",
-		"KODAMA_IMAGE_REPOSITORY=registry.example.com/kodama",
-		"KODAMA_IMAGE_DIGEST=sha256:2222222222222222222222222222222222222222222222222222222222222222",
+		"KODEMA_DEPLOY_STATE_DIR="+box.stateDir,
+		"KODEMA_CLUSTER=stage",
+		"KODEMA_IMAGE_REPOSITORY=registry.example.com/kodema",
+		"KODEMA_IMAGE_DIGEST=sha256:2222222222222222222222222222222222222222222222222222222222222222",
 		"KUBECTL_ARGV_LOG="+box.kubectlLog,
 		"KUBECTL_STDIN_LOG="+box.kubectlIn,
 		"KUBECTL_POD_COUNTER="+box.podCounter,
@@ -323,7 +323,7 @@ func TestDeployMigrateCreatesOneShotPodFromSecrets(t *testing.T) {
 	manifest := box.readLog(t, box.kubectlIn)
 	for _, want := range []string{
 		"kind: Pod",
-		"generateName: kodama-migrate-",
+		"generateName: kodema-migrate-",
 		"restartPolicy: Never",
 		"automountServiceAccountToken: false",
 		"runAsNonRoot: true",
@@ -336,12 +336,12 @@ func TestDeployMigrateCreatesOneShotPodFromSecrets(t *testing.T) {
 		"allowPrivilegeEscalation: false",
 		"readOnlyRootFilesystem: true",
 		`capabilities: {drop: ["ALL"]}`,
-		"name: kodama-database-admin",
+		"name: kodema-database-admin",
 		"key: admin_url",
-		"name: kodama-database",
+		"name: kodema-database",
 		"key: database_url",
-		"KODAMA_DATABASE_URL",
-		"image: \"registry.example.com/kodama@sha256:2222222222222222222222222222222222222222222222222222222222222222\"",
+		"KODEMA_DATABASE_URL",
+		"image: \"registry.example.com/kodema@sha256:2222222222222222222222222222222222222222222222222222222222222222\"",
 		`args: ["migrate"]`,
 	} {
 		if !strings.Contains(manifest, want) {
@@ -356,11 +356,11 @@ func TestDeployMigrateCreatesOneShotPodFromSecrets(t *testing.T) {
 	}
 
 	lines := box.kubectlLines(t)
-	adminCheck := indexOfLine(lines, "get\tsecret\tkodama-database-admin")
+	adminCheck := indexOfLine(lines, "get\tsecret\tkodema-database-admin")
 	create := indexOfLine(lines, "create\t-o\tname\t-f\t-")
-	wait := indexOfLine(lines, "get\tpod/kodama-migrate-1")
-	logs := indexOfLine(lines, "logs\tpod/kodama-migrate-1")
-	remove := indexOfLine(lines, "delete\tpod/kodama-migrate-1")
+	wait := indexOfLine(lines, "get\tpod/kodema-migrate-1")
+	logs := indexOfLine(lines, "logs\tpod/kodema-migrate-1")
+	remove := indexOfLine(lines, "delete\tpod/kodema-migrate-1")
 	for name, index := range map[string]int{
 		"admin preflight": adminCheck,
 		"create":          create,
@@ -381,7 +381,7 @@ func TestDeployMigrateCreatesOneShotPodFromSecrets(t *testing.T) {
 	}
 	// Positive control: the script output was captured, so the URL absence
 	// check cannot pass against an empty string.
-	if !strings.Contains(output, "running pod/kodama-migrate-1") {
+	if !strings.Contains(output, "running pod/kodema-migrate-1") {
 		t.Errorf("the migrate output was not captured; the URL absence check would be vacuous: %s", output)
 	}
 }
@@ -394,7 +394,7 @@ func TestDeployMigrateDeletesPodOnFailure(t *testing.T) {
 	if code == 0 {
 		t.Fatalf("scripts/deploy migrate succeeded although the pod failed:\n%s", output)
 	}
-	if indexOfLine(box.kubectlLines(t), "delete\tpod/kodama-migrate-1") < 0 {
+	if indexOfLine(box.kubectlLines(t), "delete\tpod/kodema-migrate-1") < 0 {
 		t.Errorf("the failed migration pod was not deleted:\n%s", strings.Join(box.kubectlLines(t), "\n"))
 	}
 }
@@ -411,7 +411,7 @@ func TestDeployMigrateDeleteIsReal(t *testing.T) {
 	}
 	var deleteLine string
 	for _, line := range box.kubectlLines(t) {
-		if strings.Contains(line, "delete\tpod/kodama-migrate-1") {
+		if strings.Contains(line, "delete\tpod/kodema-migrate-1") {
 			deleteLine = line
 			break
 		}
@@ -436,15 +436,15 @@ func TestDeployMigrateDeleteIsReal(t *testing.T) {
 
 // TestDeployMigrateRefusesWithoutAdminSecret proves the action fails before
 // creating a pod when bootstrap-secrets has not applied
-// kodama-database-admin: the container would otherwise crash on a missing
+// kodema-database-admin: the container would otherwise crash on a missing
 // Secret reference.
 func TestDeployMigrateRefusesWithoutAdminSecret(t *testing.T) {
 	box := newDeploySandbox(t).withEnv("KUBECTL_ADMIN_MISSING=1")
 	code, output := box.run(t, "migrate", "--cluster", "stage")
 	if code == 0 {
-		t.Fatalf("scripts/deploy migrate succeeded without kodama-database-admin:\n%s", output)
+		t.Fatalf("scripts/deploy migrate succeeded without kodema-database-admin:\n%s", output)
 	}
-	if !strings.Contains(output, "kodama-database-admin") {
+	if !strings.Contains(output, "kodema-database-admin") {
 		t.Errorf("the refusal does not name the missing Secret: %s", output)
 	}
 	if indexOfLine(box.kubectlLines(t), "create\t-o\tname\t-f\t-") >= 0 {
@@ -472,8 +472,8 @@ func TestDeployMigrateDryRunRendersWithoutCluster(t *testing.T) {
 // inject a YAML document into the heredoc manifest.
 func TestDeployMigrateRefusesImageInjection(t *testing.T) {
 	cases := []struct{ name, env string }{
-		{name: "repository", env: "KODAMA_IMAGE_REPOSITORY=registry.example.com/kodama\"\n  evil: true"},
-		{name: "digest", env: "KODAMA_IMAGE_DIGEST=sha256:../../etc/passwd"},
+		{name: "repository", env: "KODEMA_IMAGE_REPOSITORY=registry.example.com/kodema\"\n  evil: true"},
+		{name: "digest", env: "KODEMA_IMAGE_DIGEST=sha256:../../etc/passwd"},
 	}
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
@@ -549,7 +549,7 @@ func TestDeployMigrateDeletesPodOnSignal(t *testing.T) {
 				t.Fatalf("interrupted migration did not exit:\n%s", captured.String())
 			}
 
-			if indexOfLine(box.kubectlLines(t), "delete\tpod/kodama-migrate-1") < 0 {
+			if indexOfLine(box.kubectlLines(t), "delete\tpod/kodema-migrate-1") < 0 {
 				t.Errorf("the trap did not delete the migration pod on SIG%s:\n%s\nscript output:\n%s", strings.ToUpper(testCase.name), strings.Join(box.kubectlLines(t), "\n"), captured.String())
 			}
 		})
@@ -582,7 +582,7 @@ func TestDeployMigrateIsIdempotentAcrossRuns(t *testing.T) {
 	if got := strings.Count(strings.Join(lines, "\n"), "create\t-o\tname\t-f\t-"); got != 2 {
 		t.Errorf("two runs created %d pods, want 2", got)
 	}
-	for _, pod := range []string{"delete\tpod/kodama-migrate-1", "delete\tpod/kodama-migrate-2"} {
+	for _, pod := range []string{"delete\tpod/kodema-migrate-1", "delete\tpod/kodema-migrate-2"} {
 		if indexOfLine(lines, pod) < 0 {
 			t.Errorf("two runs did not delete %s:\n%s", pod, strings.Join(lines, "\n"))
 		}
@@ -635,8 +635,8 @@ func TestDeployRenderedValuesOmitsVerifyClient(t *testing.T) {
 	if got := strings.Count(values, "sslmode=verify-full"); got != 1 {
 		t.Errorf("rendered values contain sslmode=verify-full %d times, want exactly 1", got)
 	}
-	if !strings.Contains(values, `"kmsCredentials":`) || !strings.Contains(values, "kodama-kms-credentials") {
-		t.Errorf("rendered values do not reference the kodama-kms-credentials Secret:\n%s", values)
+	if !strings.Contains(values, `"kmsCredentials":`) || !strings.Contains(values, "kodema-kms-credentials") {
+		t.Errorf("rendered values do not reference the kodema-kms-credentials Secret:\n%s", values)
 	}
 }
 
@@ -664,24 +664,24 @@ func TestDeployRenderedValuesWireNATSAuth(t *testing.T) {
 	}
 	auth, _ := nats["auth"].(map[string]any)
 	callout, _ := auth["callout"].(map[string]any)
-	if got := callout["existingSecret"]; got != "kodama-nats-auth" {
-		t.Errorf("nats.auth.callout.existingSecret = %v, want kodama-nats-auth", got)
+	if got := callout["existingSecret"]; got != "kodema-nats-auth" {
+		t.Errorf("nats.auth.callout.existingSecret = %v, want kodema-nats-auth", got)
 	}
 	account, _ := callout["account"].(string)
 	if account == "" {
 		t.Fatalf("nats.auth.callout.account is empty:\n%s", body)
 	}
-	kodama, ok := values["kodama"].(map[string]any)
+	kodema, ok := values["kodema"].(map[string]any)
 	if !ok {
-		t.Fatalf("rendered values have no kodama section:\n%s", body)
+		t.Fatalf("rendered values have no kodema section:\n%s", body)
 	}
-	secrets, _ := kodama["secrets"].(map[string]any)
+	secrets, _ := kodema["secrets"].(map[string]any)
 	natsAuth, _ := secrets["natsAuth"].(map[string]any)
-	if got := natsAuth["existingSecret"]; got != "kodama-nats-auth" {
-		t.Errorf("kodama.secrets.natsAuth.existingSecret = %v, want kodama-nats-auth", got)
+	if got := natsAuth["existingSecret"]; got != "kodema-nats-auth" {
+		t.Errorf("kodema.secrets.natsAuth.existingSecret = %v, want kodema-nats-auth", got)
 	}
 	if got := natsAuth["account"]; got != account {
-		t.Errorf("kodama.secrets.natsAuth.account = %v; nats.auth.callout.account = %v", got, account)
+		t.Errorf("kodema.secrets.natsAuth.account = %v; nats.auth.callout.account = %v", got, account)
 	}
 }
 
@@ -752,7 +752,7 @@ func TestDeployCreatesPrivateWorkDirAndDescriptor(t *testing.T) {
 		t.Fatalf("the sandbox pre-created %s; the script's own mkdir would not be exercised", box.workDir)
 	}
 
-	command := exec.Command("bash", "-c", `umask "$1"; shift; exec "$@"`, "kodama-umask", "022",
+	command := exec.Command("bash", "-c", `umask "$1"; shift; exec "$@"`, "kodema-umask", "022",
 		"bash", box.script, "scw", "output", "--cluster", "stage")
 	command.Env = append(append([]string(nil), box.env...), box.extraEnv...)
 	if output, err := command.CombinedOutput(); err != nil {
@@ -873,12 +873,12 @@ func TestDeployMigratePodSpecIsExact(t *testing.T) {
 	}
 	metadata := mapAt(t, document, "metadata")
 	exactKeys(t, "metadata", metadata, "generateName", "labels")
-	if got := metadata["generateName"]; got != "kodama-migrate-" {
-		t.Errorf("generateName = %v, want kodama-migrate-", got)
+	if got := metadata["generateName"]; got != "kodema-migrate-" {
+		t.Errorf("generateName = %v, want kodema-migrate-", got)
 	}
 	labels := mapAt(t, metadata, "labels")
 	exactKeys(t, "metadata.labels", labels, "app.kubernetes.io/name", "app.kubernetes.io/component")
-	if labels["app.kubernetes.io/name"] != "kodama" || labels["app.kubernetes.io/component"] != "migrate" {
+	if labels["app.kubernetes.io/name"] != "kodema" || labels["app.kubernetes.io/component"] != "migrate" {
 		t.Errorf("metadata.labels = %v", labels)
 	}
 
@@ -923,7 +923,7 @@ func TestDeployMigratePodSpecIsExact(t *testing.T) {
 		t.Errorf("container.name = %v, want migrate", container["name"])
 	}
 	image, _ := container["image"].(string)
-	if !regexp.MustCompile(`^registry\.example\.com/kodama@sha256:[0-9a-f]{64}$`).MatchString(image) {
+	if !regexp.MustCompile(`^registry\.example\.com/kodema@sha256:[0-9a-f]{64}$`).MatchString(image) {
 		t.Errorf("container.image = %q, want a digest-pinned registry reference", image)
 	}
 	if _, ok := container["command"]; ok {
@@ -935,11 +935,11 @@ func TestDeployMigratePodSpecIsExact(t *testing.T) {
 	}
 
 	wantEnv := []struct{ name, secret, key string }{
-		{"KODAMA_ADMIN_DATABASE_URL", "kodama-database-admin", "admin_url"},
-		{"KODAMA_DATABASE_URL", "kodama-database", "database_url"},
-		{"KODAMA_CONTROLLER_DATABASE_URL", "kodama-database", "controller_url"},
-		{"KODAMA_PUBLISHER_DATABASE_URL", "kodama-database", "publisher_url"},
-		{"KODAMA_AUTH_DATABASE_URL", "kodama-database", "auth_url"},
+		{"KODEMA_ADMIN_DATABASE_URL", "kodema-database-admin", "admin_url"},
+		{"KODEMA_DATABASE_URL", "kodema-database", "database_url"},
+		{"KODEMA_CONTROLLER_DATABASE_URL", "kodema-database", "controller_url"},
+		{"KODEMA_PUBLISHER_DATABASE_URL", "kodema-database", "publisher_url"},
+		{"KODEMA_AUTH_DATABASE_URL", "kodema-database", "auth_url"},
 	}
 	env := listAt(t, container, "env")
 	if len(env) != len(wantEnv) {
@@ -993,8 +993,8 @@ func TestDeployMigratePodSpecIsExact(t *testing.T) {
 		t.Fatalf("volumeMount is %T, want a map", mounts[0])
 	}
 	exactKeys(t, "container.volumeMounts[0]", mount, "name", "mountPath", "readOnly")
-	if mount["name"] != "database-ca" || mount["mountPath"] != "/etc/kodama/pg-ca" || mount["readOnly"] != true {
-		t.Errorf("volumeMount = %v, want database-ca at /etc/kodama/pg-ca read-only", mount)
+	if mount["name"] != "database-ca" || mount["mountPath"] != "/etc/kodema/pg-ca" || mount["readOnly"] != true {
+		t.Errorf("volumeMount = %v, want database-ca at /etc/kodema/pg-ca read-only", mount)
 	}
 
 	resources := mapAt(t, container, "resources")
@@ -1027,8 +1027,8 @@ func TestDeployMigratePodSpecIsExact(t *testing.T) {
 	}
 	secret := mapAt(t, volume, "secret")
 	exactKeys(t, "spec.volumes[0].secret", secret, "secretName", "items")
-	if secret["secretName"] != "kodama-database" {
-		t.Errorf("volume.secret.secretName = %v, want kodama-database", secret["secretName"])
+	if secret["secretName"] != "kodema-database" {
+		t.Errorf("volume.secret.secretName = %v, want kodema-database", secret["secretName"])
 	}
 	items := listAt(t, secret, "items")
 	if len(items) != 1 {
@@ -1069,7 +1069,7 @@ func TestBootstrapStateValidatesInputsAndWrites0600Env(t *testing.T) {
 			"bash", bootstrapScript, "scw",
 			"--project", "project-1",
 			"--region", "fr-par",
-			"--bucket", "kodama-state-scw-test",
+			"--bucket", "kodema-state-scw-test",
 			"--dry-run",
 		)
 		cmd.Env = box.env
@@ -1120,25 +1120,25 @@ func TestBootstrapStateValidatesInputsAndWrites0600Env(t *testing.T) {
 
 // TestLoadStateBackendEnvSafeParser proves scripts/lib/deploy.sh parses
 // state-backend.env without sourcing shell code and allowlists only safe
-// KODAMA_STATE_* keys.
+// KODEMA_STATE_* keys.
 func TestLoadStateBackendEnvSafeParser(t *testing.T) {
 	t.Run("loads_valid_state_env", func(t *testing.T) {
 		box := newDeploySandbox(t)
 		envPath := filepath.Join(box.stateDir, "scw", "state-backend.env")
 		writeFile(t, envPath, strings.Join([]string{
 			"# comment",
-			`KODAMA_STATE_CLOUD="scw"`,
-			`KODAMA_STATE_BUCKET="kodama-custom-state-bucket"`,
-			`KODAMA_STATE_REGION="nl-ams"`,
-			`KODAMA_STATE_PROJECT_OR_ACCOUNT="proj-from-env"`,
+			`KODEMA_STATE_CLOUD="scw"`,
+			`KODEMA_STATE_BUCKET="kodema-custom-state-bucket"`,
+			`KODEMA_STATE_REGION="nl-ams"`,
+			`KODEMA_STATE_PROJECT_OR_ACCOUNT="proj-from-env"`,
 		}, "\n")+"\n")
 
 		code, output := box.run(t, "backend-config", "--cluster", "stage")
 		if code != 0 {
 			t.Fatalf("backend-config with valid state-backend.env failed: exit %d\n%s", code, output)
 		}
-		if !strings.Contains(output, `bucket                      = "kodama-custom-state-bucket"`) {
-			t.Errorf("backend-config did not honor KODAMA_STATE_BUCKET:\n%s", output)
+		if !strings.Contains(output, `bucket                      = "kodema-custom-state-bucket"`) {
+			t.Errorf("backend-config did not honor KODEMA_STATE_BUCKET:\n%s", output)
 		}
 	})
 
@@ -1148,11 +1148,11 @@ func TestLoadStateBackendEnvSafeParser(t *testing.T) {
 	}{
 		{
 			name: "command_substitution_in_value",
-			body: "KODAMA_STATE_BUCKET=\"$(touch CANARY_PATH)\"\n",
+			body: "KODEMA_STATE_BUCKET=\"$(touch CANARY_PATH)\"\n",
 		},
 		{
 			name: "disallowed_key",
-			body: "KODAMA_STATE_CLOUD=\"scw\"\nPATH=\"/tmp/evil\"\n",
+			body: "KODEMA_STATE_CLOUD=\"scw\"\nPATH=\"/tmp/evil\"\n",
 		},
 		{
 			name: "bare_shell_command",
@@ -1160,7 +1160,7 @@ func TestLoadStateBackendEnvSafeParser(t *testing.T) {
 		},
 		{
 			name: "cloud_mismatch",
-			body: "KODAMA_STATE_CLOUD=\"aws\"\n",
+			body: "KODEMA_STATE_CLOUD=\"aws\"\n",
 		},
 	}
 	for _, tc := range canaryCases {
@@ -1183,20 +1183,20 @@ func TestLoadStateBackendEnvSafeParser(t *testing.T) {
 
 // TestDeployLiveHelmRequiresValidDigestAndOIDC proves live Helm installs
 // require a valid sha256 image digest and production OIDC configuration (via
-// env vars or KODAMA_HELM_EXTRA_VALUES), and render-values validates
-// KODAMA_IMAGE_DIGEST and renders config.extraEnv when OIDC env vars are set.
+// env vars or KODEMA_HELM_EXTRA_VALUES), and render-values validates
+// KODEMA_IMAGE_DIGEST and renders config.extraEnv when OIDC env vars are set.
 func TestDeployLiveHelmRequiresValidDigestAndOIDC(t *testing.T) {
 	t.Run("render_values_rejects_bad_digest_and_renders_oidc_extra_env", func(t *testing.T) {
-		badBox := newDeploySandbox(t).withEnv("KODAMA_IMAGE_DIGEST=sha256:not-hex")
+		badBox := newDeploySandbox(t).withEnv("KODEMA_IMAGE_DIGEST=sha256:not-hex")
 		if code, output := badBox.run(t, "render-values", "--cluster", "stage"); code == 0 {
-			t.Fatalf("render-values accepted invalid KODAMA_IMAGE_DIGEST:\n%s", output)
+			t.Fatalf("render-values accepted invalid KODEMA_IMAGE_DIGEST:\n%s", output)
 		}
 
 		oidcBox := newDeploySandbox(t).withEnv(
-			"KODAMA_OIDC_ISSUER=https://idp.example",
-			"KODAMA_OIDC_AUDIENCE=kodama-api",
-			"KODAMA_OIDC_TENANT_CLAIM=org_id",
-			"KODAMA_OIDC_SUBJECT_CLAIM=sub",
+			"KODEMA_OIDC_ISSUER=https://idp.example",
+			"KODEMA_OIDC_AUDIENCE=kodema-api",
+			"KODEMA_OIDC_TENANT_CLAIM=org_id",
+			"KODEMA_OIDC_SUBJECT_CLAIM=sub",
 		)
 		if code, output := oidcBox.run(t, "render-values", "--cluster", "stage"); code != 0 {
 			t.Fatalf("render-values with OIDC env failed: exit %d\n%s", code, output)
@@ -1206,15 +1206,15 @@ func TestDeployLiveHelmRequiresValidDigestAndOIDC(t *testing.T) {
 			t.Fatalf("read rendered values: %v", err)
 		}
 		doc := yamlMap(t, string(raw))
-		cfg := mapAt(t, mapAt(t, doc, "kodama"), "config")
+		cfg := mapAt(t, mapAt(t, doc, "kodema"), "config")
 		if _, present := cfg["optionalCapabilities"]; present {
 			t.Errorf("rendered values still carry optionalCapabilities")
 		}
 		extraEnv := mapAt(t, cfg, "extraEnv")
-		if extraEnv["KODAMA_OIDC_ISSUER"] != "https://idp.example" ||
-			extraEnv["KODAMA_OIDC_AUDIENCE"] != "kodama-api" ||
-			extraEnv["KODAMA_OIDC_TENANT_CLAIM"] != "org_id" ||
-			extraEnv["KODAMA_OIDC_SUBJECT_CLAIM"] != "sub" {
+		if extraEnv["KODEMA_OIDC_ISSUER"] != "https://idp.example" ||
+			extraEnv["KODEMA_OIDC_AUDIENCE"] != "kodema-api" ||
+			extraEnv["KODEMA_OIDC_TENANT_CLAIM"] != "org_id" ||
+			extraEnv["KODEMA_OIDC_SUBJECT_CLAIM"] != "sub" {
 			t.Errorf("unexpected rendered config.extraEnv: %v", extraEnv)
 		}
 	})
@@ -1222,25 +1222,25 @@ func TestDeployLiveHelmRequiresValidDigestAndOIDC(t *testing.T) {
 	t.Run("live_helm_refuses_missing_digest", func(t *testing.T) {
 		box := newDeploySandbox(t).withEnv(
 			"HELM_ALLOW_UPGRADE=1",
-			"KODAMA_IMAGE_REPOSITORY=ghcr.io/example/kodama",
-			"KODAMA_IMAGE_DIGEST=",
-			"KODAMA_OIDC_ISSUER=https://idp.example",
-			"KODAMA_OIDC_AUDIENCE=kodama-api",
-			"KODAMA_OIDC_TENANT_CLAIM=org_id",
+			"KODEMA_IMAGE_REPOSITORY=ghcr.io/example/kodema",
+			"KODEMA_IMAGE_DIGEST=",
+			"KODEMA_OIDC_ISSUER=https://idp.example",
+			"KODEMA_OIDC_AUDIENCE=kodema-api",
+			"KODEMA_OIDC_TENANT_CLAIM=org_id",
 		)
 		code, output := box.run(t, "helm", "--cluster", "stage")
 		if code == 0 {
-			t.Fatalf("live helm succeeded without KODAMA_IMAGE_DIGEST:\n%s", output)
+			t.Fatalf("live helm succeeded without KODEMA_IMAGE_DIGEST:\n%s", output)
 		}
 		if strings.Contains(box.readLog(t, box.helmLog), "\tupgrade\t") {
-			t.Errorf("helm upgrade ran despite missing KODAMA_IMAGE_DIGEST")
+			t.Errorf("helm upgrade ran despite missing KODEMA_IMAGE_DIGEST")
 		}
 	})
 
 	t.Run("live_helm_refuses_missing_oidc", func(t *testing.T) {
 		box := newDeploySandbox(t).withEnv(
 			"HELM_ALLOW_UPGRADE=1",
-			"KODAMA_IMAGE_REPOSITORY=ghcr.io/example/kodama",
+			"KODEMA_IMAGE_REPOSITORY=ghcr.io/example/kodema",
 		)
 		code, output := box.run(t, "helm", "--cluster", "stage")
 		if code == 0 {
@@ -1254,11 +1254,11 @@ func TestDeployLiveHelmRequiresValidDigestAndOIDC(t *testing.T) {
 	t.Run("live_helm_accepts_env_oidc", func(t *testing.T) {
 		box := newDeploySandbox(t).withEnv(
 			"HELM_ALLOW_UPGRADE=1",
-			"KODAMA_IMAGE_REPOSITORY=ghcr.io/example/kodama",
-			"KODAMA_OIDC_ISSUER=https://idp.example",
-			"KODAMA_OIDC_AUDIENCE=kodama-api",
-			"KODAMA_OIDC_JWKS_URL=https://idp.example/jwks",
-			"KODAMA_OIDC_TENANT_CLAIM=org_id",
+			"KODEMA_IMAGE_REPOSITORY=ghcr.io/example/kodema",
+			"KODEMA_OIDC_ISSUER=https://idp.example",
+			"KODEMA_OIDC_AUDIENCE=kodema-api",
+			"KODEMA_OIDC_JWKS_URL=https://idp.example/jwks",
+			"KODEMA_OIDC_TENANT_CLAIM=org_id",
 		)
 		code, output := box.run(t, "helm", "--cluster", "stage")
 		if code != 0 {
@@ -1273,22 +1273,22 @@ func TestDeployLiveHelmRequiresValidDigestAndOIDC(t *testing.T) {
 		box := newDeploySandbox(t)
 		extraValues := filepath.Join(box.tempDir, "oidc-values.yaml")
 		writeFile(t, extraValues, strings.Join([]string{
-			"kodama:",
+			"kodema:",
 			"  config:",
 			"    extraEnv:",
-			"      KODAMA_OIDC_ISSUER: https://idp.example",
-			"      KODAMA_OIDC_AUDIENCE: kodama-api",
-			"      KODAMA_OIDC_JWKS_URL: https://idp.example/jwks",
-			"      KODAMA_OIDC_TENANT_CLAIM: org_id",
+			"      KODEMA_OIDC_ISSUER: https://idp.example",
+			"      KODEMA_OIDC_AUDIENCE: kodema-api",
+			"      KODEMA_OIDC_JWKS_URL: https://idp.example/jwks",
+			"      KODEMA_OIDC_TENANT_CLAIM: org_id",
 		}, "\n")+"\n")
 		box.withEnv(
 			"HELM_ALLOW_UPGRADE=1",
-			"KODAMA_IMAGE_REPOSITORY=ghcr.io/example/kodama",
-			"KODAMA_HELM_EXTRA_VALUES="+extraValues,
+			"KODEMA_IMAGE_REPOSITORY=ghcr.io/example/kodema",
+			"KODEMA_HELM_EXTRA_VALUES="+extraValues,
 		)
 		code, output := box.run(t, "helm", "--cluster", "stage")
 		if code != 0 {
-			t.Fatalf("live helm with KODAMA_HELM_EXTRA_VALUES failed: exit %d\n%s", code, output)
+			t.Fatalf("live helm with KODEMA_HELM_EXTRA_VALUES failed: exit %d\n%s", code, output)
 		}
 		if !strings.Contains(box.readLog(t, box.helmLog), "\tupgrade\t") {
 			t.Errorf("live helm did not invoke helm upgrade:\n%s", box.readLog(t, box.helmLog))

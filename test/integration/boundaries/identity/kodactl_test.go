@@ -15,8 +15,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/userland/cli"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/userland/cli"
 )
 
 // buildKodactl builds the real CLI entrypoint. Tests drive the binary so the
@@ -25,8 +25,8 @@ import (
 func buildKodactl(t *testing.T) string {
 	t.Helper()
 	if _, err := exec.LookPath("go"); err != nil {
-		if os.Getenv("KODAMA_REQUIRE_INFRA") == "1" {
-			t.Fatalf("go toolchain is not available (KODAMA_REQUIRE_INFRA=1): %v", err)
+		if os.Getenv("KODEMA_REQUIRE_INFRA") == "1" {
+			t.Fatalf("go toolchain is not available (KODEMA_REQUIRE_INFRA=1): %v", err)
 		}
 		t.Skip("go toolchain is not available")
 	}
@@ -57,7 +57,7 @@ func repositoryRoot(t *testing.T) string {
 	}
 }
 
-// isolateKodactlConfig keeps the developer's real ~/.config/kodama out of the
+// isolateKodactlConfig keeps the developer's real ~/.config/kodema out of the
 // test and gives the default config/session paths an empty root.
 func isolateKodactlConfig(t *testing.T) {
 	t.Helper()
@@ -77,7 +77,7 @@ func writeRecord(t *testing.T, path, apiURL, token string, expires time.Time) {
 		RefreshToken:       token + "-refresh",
 		Issuer:             "https://issuer.example",
 		ClientID:           "kodactl",
-		Audience:           "kodama-api",
+		Audience:           "kodema-api",
 		APIURL:             apiURL,
 		TokenEndpoint:      "https://issuer.example/oauth/token",
 		RevocationEndpoint: "https://issuer.example/oauth/revoke",
@@ -108,7 +108,7 @@ func startDiscoveryServer(t *testing.T) string {
 		document, err := json.Marshal(api.DiscoveryDocument{
 			Issuer:                      "https://issuer.example",
 			ClientID:                    "kodactl",
-			Audience:                    "kodama-api",
+			Audience:                    "kodema-api",
 			AuthorizationEndpoint:       "https://issuer.example/oauth/authorize",
 			TokenEndpoint:               "https://issuer.example/oauth/token",
 			DeviceAuthorizationEndpoint: "https://issuer.example/oauth/device",
@@ -298,7 +298,7 @@ func TestKodactlHelperUsesConfiguredTrustedOrigins(t *testing.T) {
 				if stdout != "" {
 					t.Fatalf("stdout = %q; want an empty refusal", stdout)
 				}
-			} else if want := "username=kodama\npassword=" + testCase.want + "\n"; stdout != want {
+			} else if want := "username=kodema\npassword=" + testCase.want + "\n"; stdout != want {
 				t.Fatalf("stdout = %q; want %q", stdout, want)
 			}
 			if stderr != "" {
@@ -362,7 +362,7 @@ func TestKodactlHelperUsesTrustedOriginFlag(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("helper exit code = %d; stderr=%q", code, stderr)
 	}
-	if want := "username=kodama\npassword=" + token + "\n"; stdout != want {
+	if want := "username=kodema\npassword=" + token + "\n"; stdout != want {
 		t.Fatalf("stdout = %q; want %q", stdout, want)
 	}
 

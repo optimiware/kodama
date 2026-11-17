@@ -1,3 +1,3 @@
 package id
 
-import _ "kodama/api"
+import _ "kodema/api"

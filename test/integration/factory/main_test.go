@@ -13,10 +13,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/test/support/factory"
-	"github.com/optimiware/kodama/test/support/infrastructure/harness"
-	kubesupport "github.com/optimiware/kodama/test/support/infrastructure/kubernetes"
-	runtimesupport "github.com/optimiware/kodama/test/support/infrastructure/runtime"
+	"github.com/optimiware/kodema/test/support/factory"
+	"github.com/optimiware/kodema/test/support/infrastructure/harness"
+	kubesupport "github.com/optimiware/kodema/test/support/infrastructure/kubernetes"
+	runtimesupport "github.com/optimiware/kodema/test/support/infrastructure/runtime"
 )
 
 // TestMain installs the shared signal/orphan cleanup this integration binary

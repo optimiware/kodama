@@ -53,8 +53,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/internal/shell/authorize"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/shell/authorize"
 )
 
 // enumProbe is one request field value that must be refused.
@@ -1415,7 +1415,7 @@ func TestEventOperationDTOs(t *testing.T) {
 
 		at := time.Unix(1700003600, 0).UTC()
 		result := api.EventSubscribeResult{
-			Subjects:  []string{"kodama.v1.ten-1.prj-1.events"},
+			Subjects:  []string{"kodema.v1.ten-1.prj-1.events"},
 			Cursor:    cursor,
 			ExpiresAt: at,
 		}
@@ -1431,7 +1431,7 @@ func TestEventOperationDTOs(t *testing.T) {
 			t.Errorf("event.subscribe result round trip = %+v; want %+v", got, result)
 		}
 		tenantWide := result
-		tenantWide.Subjects = []string{"kodama.v1.ten-1._.events"}
+		tenantWide.Subjects = []string{"kodema.v1.ten-1._.events"}
 		if err := tenantWide.Validate(); err != nil {
 			t.Errorf("event.subscribe refused the tenant-wide subject: %v", err)
 		}
@@ -1439,18 +1439,18 @@ func TestEventOperationDTOs(t *testing.T) {
 		tooMany := result
 		tooMany.Subjects = make([]string, api.MaxSubscribeSubjects+1)
 		for index := range tooMany.Subjects {
-			tooMany.Subjects[index] = "kodama.v1.ten-1.prj-1.events"
+			tooMany.Subjects[index] = "kodema.v1.ten-1.prj-1.events"
 		}
 		if err := tooMany.Validate(); err == nil {
 			t.Error("event.subscribe accepted more than MaxSubscribeSubjects subjects")
 		}
 		for _, subjects := range [][]string{
 			{},
-			{"kodama.v1.ten-1.prj-1.events", "kodama.v1.ten-2.prj-1.events"},
-			{"kodama.v1.ten-1.*.events"},
-			{"kodama.v1.ten-1.prj-1"},
-			{"kodama.v1.ten-1.prj-1.events.extra"},
-			{"kodama.v2.ten-1.prj-1.events"},
+			{"kodema.v1.ten-1.prj-1.events", "kodema.v1.ten-2.prj-1.events"},
+			{"kodema.v1.ten-1.*.events"},
+			{"kodema.v1.ten-1.prj-1"},
+			{"kodema.v1.ten-1.prj-1.events.extra"},
+			{"kodema.v2.ten-1.prj-1.events"},
 		} {
 			mutated := result
 			mutated.Subjects = subjects
@@ -2050,7 +2050,7 @@ func TestPipelineApplyUsesName(t *testing.T) {
 }
 
 // TestOpaqueEventSubjectAndToolName pins that event subject ids and configured
-// tool names are opaque bounded strings, not Kodama ids.
+// tool names are opaque bounded strings, not Kodema ids.
 func TestOpaqueEventSubjectAndToolName(t *testing.T) {
 	for _, subject := range []string{"sha256:" + strings.Repeat("a", 64), "https://svc.example/restore/ctx-1", "repo@refs/heads/main"} {
 		event := api.Event{

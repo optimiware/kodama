@@ -39,9 +39,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
 )
 
 // ScopedConnection begins one transaction whose ownership scope is established
@@ -610,18 +610,18 @@ func SystemPolicies() []Policy {
 // Default schema roles and migration naming.
 const (
 	// DefaultRuntimeRole is the non-owner runtime role. It has no RLS bypass.
-	DefaultRuntimeRole = "kodama_runtime"
+	DefaultRuntimeRole = "kodema_runtime"
 	// DefaultOwnerRole owns migrations and is never a runtime credential.
-	DefaultOwnerRole = "kodama_owner"
+	DefaultOwnerRole = "kodema_owner"
 	// ControllerRole is the non-owner, NOBYPASSRLS role used only by the
 	// cross-scope kernel-state controller seam.
-	ControllerRole = "kodama_controller"
+	ControllerRole = "kodema_controller"
 	// PublisherRole is the non-owner, NOBYPASSRLS role used only by the event
 	// outbox publisher.
-	PublisherRole = "kodama_publisher"
+	PublisherRole = "kodema_publisher"
 	// AuthRole is the non-owner, NOBYPASSRLS role used only by the
 	// pre-authentication credential lookup.
-	AuthRole = "kodama_auth"
+	AuthRole = "kodema_auth"
 	// MigrationNamePattern is the reviewed sequential migration name shape.
 	MigrationNamePattern = `^\d{4}_[a-z0-9_]+\.sql$`
 	// MigrationSequenceStart is the first migration number.
@@ -633,7 +633,7 @@ const (
 // migrations.
 func SchemaDesign() Schema {
 	return Schema{
-		Name:                   "kodama",
+		Name:                   "kodema",
 		RuntimeRole:            DefaultRuntimeRole,
 		OwnerRole:              DefaultOwnerRole,
 		ControllerRole:         ControllerRole,

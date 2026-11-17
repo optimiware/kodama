@@ -16,9 +16,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/api"
-	"github.com/optimiware/kodama/test/support/factory"
-	"github.com/optimiware/kodama/test/support/infrastructure/postgres"
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/test/support/factory"
+	"github.com/optimiware/kodema/test/support/infrastructure/postgres"
 )
 
 func TestFactoryDeletesPipelineWithHistory(t *testing.T) {

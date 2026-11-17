@@ -11,7 +11,7 @@ import (
 
 // TestStageResilienceControllerPodDeletion is Q02 resilience probe (a). It
 // starts a longer task-free inline execution through the public API, deletes
-// the kodama controller pod from kodama-system while the execution runs, and
+// the kodema controller pod from kodema-system while the execution runs, and
 // measures the replacement's Ready time and public API availability. The
 // execution must converge without replay: the workload's side-effect marker
 // appears exactly once, the action deadline is unchanged and the retained
@@ -22,8 +22,8 @@ import (
 // proves workspace continuity separately through a file the workload writes
 // before the restart and still observes afterwards.
 //
-// Inputs: Q02_TENANT_NAMESPACE is the derived namespace kodama-tenant-<tenant>
-// (stage: kodama-tenant-tenant-a), never the bare tenant id. The workload image
+// Inputs: Q02_TENANT_NAMESPACE is the derived namespace kodema-tenant-<tenant>
+// (stage: kodema-tenant-tenant-a), never the bare tenant id. The workload image
 // needs a POSIX sh, printf, grep and sleep and must run as root or have a
 // writable /workspace; a wrong image fails with the fixed diagnostic
 // "q02: /workspace is not writable by the workload user".
@@ -69,7 +69,7 @@ func TestStageResilienceControllerPodDeletion(t *testing.T) {
 	// The workload ID is not exposed while running, but every job pod carries
 	// the execution label (internal/shell/runtime/kube LabelExecution). Capture
 	// fixed pod facts before deletion so a pod loss can be told from a kill.
-	workloadSelector := "kodama.dev/execution=" + executionID
+	workloadSelector := "kodema.dev/execution=" + executionID
 	beforeFacts, beforeFactsErr := stage.Cluster.PodFacts(ctx, config.TenantNamespace, workloadSelector)
 	beforeFactsObserved := time.Now().UTC()
 	if beforeFactsErr != nil {
@@ -80,7 +80,7 @@ func TestStageResilienceControllerPodDeletion(t *testing.T) {
 	deadlineSeconds := action.TimeoutSeconds
 	runningVersion := running.Version
 
-	beforePods, err := stage.Cluster.PodNames(ctx, ReleaseNamespace, resilienceKodamaSelector)
+	beforePods, err := stage.Cluster.PodNames(ctx, ReleaseNamespace, resilienceKodemaSelector)
 	if err != nil {
 		t.Fatalf("read the controller pods before deletion for execution %q: %v", executionID, err)
 	}
@@ -93,12 +93,12 @@ func TestStageResilienceControllerPodDeletion(t *testing.T) {
 	}
 
 	deleteStarted := time.Now().UTC()
-	if err := stage.Cluster.DeletePods(ctx, ReleaseNamespace, resilienceKodamaSelector); err != nil {
+	if err := stage.Cluster.DeletePods(ctx, ReleaseNamespace, resilienceKodemaSelector); err != nil {
 		t.Fatalf("delete the controller pod for execution %q: %v", executionID, err)
 	}
 	replacement := ""
 	_, err = (resilienceWaiter{Timeout: 4 * time.Minute}).Wait(ctx, func(ctx context.Context) (bool, error) {
-		names, err := stage.Cluster.PodNames(ctx, ReleaseNamespace, resilienceKodamaSelector)
+		names, err := stage.Cluster.PodNames(ctx, ReleaseNamespace, resilienceKodemaSelector)
 		if err != nil {
 			return false, nil
 		}

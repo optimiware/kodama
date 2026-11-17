@@ -77,7 +77,7 @@ func TestToolGeneratedSeedDecodesWithCodec(t *testing.T) {
 	if err != nil {
 		t.Fatalf("decode tool-generated public key with the callout codec: %v", err)
 	}
-	message := []byte("kodama callout grant")
+	message := []byte("kodema callout grant")
 	signature := ed25519.Sign(private, message)
 	if !ed25519.Verify(signingKey, message, signature) {
 		t.Fatal("the tool-generated seed does not sign for the public key it wrote")

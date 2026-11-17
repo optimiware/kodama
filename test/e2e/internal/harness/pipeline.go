@@ -13,7 +13,7 @@ import (
 
 	"go.yaml.in/yaml/v3"
 
-	"github.com/optimiware/kodama/internal/shell/pipeline"
+	"github.com/optimiware/kodema/internal/shell/pipeline"
 )
 
 // Document is the e2e-authored inline pipeline document. It mirrors the
@@ -104,11 +104,11 @@ func OutputSubmissionScript(outputs map[string]string, caFile string) (string, e
 	if err != nil {
 		return "", fmt.Errorf("encode the CA path")
 	}
-	script := strings.ReplaceAll(outputSubmissionTemplate, "__KODAMA_CA_FILE__", string(caLiteral))
-	script = strings.ReplaceAll(script, "__KODAMA_OUTPUTS__", string(encoded))
+	script := strings.ReplaceAll(outputSubmissionTemplate, "__KODEMA_CA_FILE__", string(caLiteral))
+	script = strings.ReplaceAll(script, "__KODEMA_OUTPUTS__", string(encoded))
 	const (
-		delimiter  = "KODAMA_E2E_SUBMIT"
-		submitPath = `"${TMPDIR:-/tmp}/kodama-e2e-submit.$$.py"`
+		delimiter  = "KODEMA_E2E_SUBMIT"
+		submitPath = `"${TMPDIR:-/tmp}/kodema-e2e-submit.$$.py"`
 	)
 	return "trap 'rm -f " + submitPath + "' EXIT\ncat > " + submitPath + " <<'" + delimiter + "'\n" + script + delimiter + "\npython3 " + submitPath, nil
 }

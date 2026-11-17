@@ -3,7 +3,7 @@
   "environment": "production",
   "cost_profile": "cost-conscious",
   "region": "eu-west-1",
-  "release_namespace": "kodama-system",
+  "release_namespace": "kodema-system",
   "tenants": [
     "tenant-a"
   ],

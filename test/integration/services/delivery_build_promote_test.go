@@ -28,8 +28,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optimiware/kodama/test/support/factory"
-	support "github.com/optimiware/kodama/test/support/infrastructure/messaging"
+	"github.com/optimiware/kodema/test/support/factory"
+	support "github.com/optimiware/kodema/test/support/infrastructure/messaging"
 )
 
 // TestDeliveryRecordsPublishedDigestAndRunsExactBytes proves the build/publish/
@@ -42,7 +42,7 @@ func TestDeliveryRecordsPublishedDigestAndRunsExactBytes(t *testing.T) {
 	registry := support.StartRegistry(t, false)
 
 	published := deliveryPublishImage(t, registry, harness.Image,
-		"kodama/delivery-build", "build-1")
+		"kodema/delivery-build", "build-1")
 	if !strings.HasPrefix(published.Pinned, published.Host+"/"+published.Repository+"@sha256:") {
 		t.Fatalf("published reference %q is not a digest-pinned registry reference", published.Pinned)
 	}
@@ -55,8 +55,8 @@ func TestDeliveryRecordsPublishedDigestAndRunsExactBytes(t *testing.T) {
 				Timeout: deliveryActionTimeout,
 				Outputs: []string{"image"},
 				Commands: []string{
-					`test ! -e /kodama/task.json`,
-					`test -z "${KODAMA_TASK:-}"`,
+					`test ! -e /kodema/task.json`,
+					`test -z "${KODEMA_TASK:-}"`,
 					"IMAGE='" + published.Pinned + "'",
 					deliverySubmitScript("image", "IMAGE"),
 				},
@@ -72,8 +72,8 @@ func TestDeliveryRecordsPublishedDigestAndRunsExactBytes(t *testing.T) {
 				Outputs: []string{"tested"},
 				Commands: []string{
 					`test -f /etc/alpine-release`,
-					`test "$(cat /kodama-delivery-marker)" = '` + published.Marker + `'`,
-					`test "$(cat /kodama/outputs/build/image)" = '` + published.Pinned + `'`,
+					`test "$(cat /kodema-delivery-marker)" = '` + published.Marker + `'`,
+					`test "$(cat /kodema/outputs/build/image)" = '` + published.Pinned + `'`,
 					`TESTED='tested:` + published.Digest + `'`,
 					deliverySubmitScript("tested", "TESTED"),
 				},
@@ -125,7 +125,7 @@ func TestDeliveryPromotionReusesDigestWithoutRebuild(t *testing.T) {
 	registry := support.StartRegistry(t, false)
 
 	published := deliveryPublishImage(t, registry, harness.Image,
-		"kodama/delivery-promote", "build-1")
+		"kodema/delivery-promote", "build-1")
 
 	buildApplied := deliveryApply(t, harness, "delivery-promote-build", deliveryPipelineDoc{
 		Actions: []deliveryActionDoc{{
@@ -161,7 +161,7 @@ func TestDeliveryPromotionReusesDigestWithoutRebuild(t *testing.T) {
 				Commands: []string{
 					// The promoted value is exactly the earlier execution's
 					// recorded output, supplied as an admitted input.
-					`test "$(cat /kodama/inputs/image)" = '` + built + `'`,
+					`test "$(cat /kodema/inputs/image)" = '` + built + `'`,
 					"CANDIDATE='" + candidate + "'",
 					"BASE='" + expectedBase + "'",
 					deliverySubmitScripts(
@@ -190,10 +190,10 @@ func TestDeliveryPromotionReusesDigestWithoutRebuild(t *testing.T) {
 				Timeout: deliveryActionTimeout,
 				Outputs: []string{"deployed"},
 				Commands: []string{
-					`test "$(cat /kodama/outputs/release/candidate)" = '` + candidate + `'`,
-					`test "$(cat /kodama/outputs/release/expected_base)" = '` + expectedBase + `'`,
-					`test "$(cat /kodama/outputs/approve/approved)" = '` + approved + `'`,
-					`test "$(cat /kodama/inputs/image)" = '` + built + `'`,
+					`test "$(cat /kodema/outputs/release/candidate)" = '` + candidate + `'`,
+					`test "$(cat /kodema/outputs/release/expected_base)" = '` + expectedBase + `'`,
+					`test "$(cat /kodema/outputs/approve/approved)" = '` + approved + `'`,
+					`test "$(cat /kodema/inputs/image)" = '` + built + `'`,
 					`DEPLOYED='deployed:` + published.Digest + `'`,
 					deliverySubmitScript("deployed", "DEPLOYED"),
 				},

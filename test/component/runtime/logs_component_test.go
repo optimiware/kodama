@@ -10,15 +10,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optimiware/kodama/internal/fault"
-	"github.com/optimiware/kodama/internal/id"
-	"github.com/optimiware/kodama/internal/kernel"
-	"github.com/optimiware/kodama/internal/kernel/engine"
-	"github.com/optimiware/kodama/internal/shell/authorize"
-	"github.com/optimiware/kodama/internal/shell/identity"
-	"github.com/optimiware/kodama/internal/shell/log"
-	"github.com/optimiware/kodama/internal/shell/tenancy"
-	runtimesupport "github.com/optimiware/kodama/test/support/infrastructure/runtime"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/kernel"
+	"github.com/optimiware/kodema/internal/kernel/engine"
+	"github.com/optimiware/kodema/internal/shell/authorize"
+	"github.com/optimiware/kodema/internal/shell/identity"
+	"github.com/optimiware/kodema/internal/shell/log"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
+	runtimesupport "github.com/optimiware/kodema/test/support/infrastructure/runtime"
 )
 
 // TestPodmanRuntimeRetainedLogsAndReadPath proves real runtime log capture is
@@ -34,8 +34,8 @@ func TestPodmanRuntimeRetainedLogsAndReadPath(t *testing.T) {
 		`printf 'beta\n'`,
 		`printf 'err-one\n' >&2`,
 		`printf 'err-two\n' >&2`,
-		`cat /kodama/secrets/API_KEY`,
-		`cat /kodama/secrets/KODAMA_TOKEN`,
+		`cat /kodema/secrets/API_KEY`,
+		`cat /kodema/secrets/KODEMA_TOKEN`,
 	}, nil, []engine.SecretValue{{Name: "API_KEY", Value: "s3cr3t-value"}}, "tok-abc")
 	if _, err := fixture.adapter.Prepare(ctx, request); err != nil {
 		t.Fatalf("Prepare: %v", err)
