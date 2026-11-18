@@ -441,6 +441,12 @@ func (handler *llmProxyHandler) ServeHTTP(writer http.ResponseWriter, request *h
 			}
 		}
 		if readErr == io.EOF {
+			// The provider sees the deadline or the cancellation too, and
+			// may end its response cleanly because of it, so an end that
+			// follows them is not proof the response is complete.
+			if callCtx.Err() != nil {
+				panic(http.ErrAbortHandler)
+			}
 			return
 		}
 		if readErr != nil {
