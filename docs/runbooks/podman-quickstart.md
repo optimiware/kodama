@@ -93,8 +93,8 @@ To install the released image instead of building the checkout, pull it and
 name it. Keep the variable set on every later run of this installation:
 
 ```sh
-podman pull ghcr.io/optimiware/kodema/kodema:0.2.2
-export KODEMA_LOCAL_KODEMA_IMAGE=ghcr.io/optimiware/kodema/kodema:0.2.2
+podman pull ghcr.io/optimiware/kodema/kodema:0.2.3
+export KODEMA_LOCAL_KODEMA_IMAGE=ghcr.io/optimiware/kodema/kodema:0.2.3
 ./deploy/podman/install.sh
 ```
 
