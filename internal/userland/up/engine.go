@@ -10,6 +10,8 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -17,6 +19,7 @@ import (
 
 const (
 	dockerAPIVersion         = "v1.41"
+	libpodAPIVersion         = "v4.0.0"
 	defaultEngineHTTPTimeout = 10 * time.Minute
 	maxEngineResponseBytes   = 8 << 20
 )
@@ -57,6 +60,9 @@ type ContainerSpec struct {
 	Mounts     []MountBind
 	Ports      []PortPublish
 	User       string
+	// SecurityOpt entries are passed to the engine as they are, for example
+	// "label=disable".
+	SecurityOpt []string
 }
 
 // ContainerInfo summarizes a container's inspected runtime state.
@@ -504,6 +510,9 @@ func (c *EngineClient) createContainer(ctx context.Context, spec ContainerSpec) 
 	if spec.Network != "" {
 		hostCfg["NetworkMode"] = spec.Network
 	}
+	if len(spec.SecurityOpt) > 0 {
+		hostCfg["SecurityOpt"] = spec.SecurityOpt
+	}
 
 	payload := map[string]any{
 		"Image":        spec.Image,
@@ -542,9 +551,58 @@ func (c *EngineClient) createContainer(ctx context.Context, spec ContainerSpec) 
 	return created.ID, nil
 }
 
+// RemoteSocketPath returns the path of the Podman API socket on the machine
+// the engine runs on, as Podman reports it. With a Podman machine that is a
+// path inside the VM, which differs between a rootless and a rootful machine.
+// It returns "" when the engine does not say.
+func (c *EngineClient) RemoteSocketPath(ctx context.Context) string {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://d/"+libpodAPIVersion+"/libpod/info", nil)
+	if err != nil {
+		return ""
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return ""
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxEngineResponseBytes))
+	if err != nil || resp.StatusCode != http.StatusOK {
+		return ""
+	}
+	var info struct {
+		Host struct {
+			RemoteSocket struct {
+				Path string `json:"path"`
+			} `json:"remoteSocket"`
+		} `json:"host"`
+	}
+	if err := json.Unmarshal(body, &info); err != nil {
+		return ""
+	}
+	socketPath := strings.TrimPrefix(strings.TrimSpace(info.Host.RemoteSocket.Path), "unix://")
+	if !strings.HasPrefix(socketPath, "/") {
+		return ""
+	}
+	return socketPath
+}
+
+// LogTail returns the last distinct lines of a container's output, at most
+// count of them. Lines that differ only in their timestamp count once.
+func (c *EngineClient) LogTail(ctx context.Context, name string, count int) string {
+	logs, err := c.containerLogsQuery(ctx, name, "&tail=200")
+	if err != nil {
+		return ""
+	}
+	return lastDistinctLines(logs, count)
+}
+
 func (c *EngineClient) containerLogs(ctx context.Context, id string) (string, error) {
+	return c.containerLogsQuery(ctx, id, "")
+}
+
+func (c *EngineClient) containerLogsQuery(ctx context.Context, id, extraQuery string) (string, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
-		"http://d/"+dockerAPIVersion+"/containers/"+url.PathEscape(id)+"/logs?stdout=true&stderr=true", nil)
+		"http://d/"+dockerAPIVersion+"/containers/"+url.PathEscape(id)+"/logs?stdout=true&stderr=true"+extraQuery, nil)
 	if err != nil {
 		return "", err
 	}
@@ -633,4 +691,27 @@ func lastLines(text string, count int) string {
 		lines = lines[len(lines)-count:]
 	}
 	return strings.TrimSpace(strings.Join(lines, "\n"))
+}
+
+// logTimestamp matches the date and time the Go log package puts before a line.
+var logTimestamp = regexp.MustCompile(`^\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2} `)
+
+// lastDistinctLines returns at most count trailing lines of text, keeping the
+// last of the lines that are equal once their timestamp is removed. A server
+// that retries prints the same line for as long as it fails.
+func lastDistinctLines(text string, count int) string {
+	lines := strings.Split(strings.TrimSpace(text), "\n")
+	seen := make(map[string]bool, len(lines))
+	var kept []string
+	for i := len(lines) - 1; i >= 0 && len(kept) < count; i-- {
+		line := strings.TrimSpace(lines[i])
+		key := logTimestamp.ReplaceAllString(line, "")
+		if line == "" || seen[key] {
+			continue
+		}
+		seen[key] = true
+		kept = append(kept, line)
+	}
+	slices.Reverse(kept)
+	return strings.Join(kept, "\n")
 }

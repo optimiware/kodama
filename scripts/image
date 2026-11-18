@@ -56,6 +56,8 @@ repository=""
 tag=""
 version=""
 platforms=""
+# bash 3.2, the bash of macOS, takes the expansion of an empty array for an
+# unset variable under `set -u`; ${array[@]+"${array[@]}"} expands to nothing.
 also_tags=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -73,7 +75,7 @@ command -v podman >/dev/null 2>&1 || die "podman is required"
 revision="$(git -C "$repo_root" rev-parse HEAD)"
 [[ -n "$tag" ]] || tag="${revision:0:12}"
 [[ "$tag" =~ ^[0-9A-Za-z_][0-9A-Za-z._-]*$ ]] || die "tag '${tag}' is not a valid image tag"
-for extra_tag in "${also_tags[@]}"; do
+for extra_tag in ${also_tags[@]+"${also_tags[@]}"}; do
   [[ "$extra_tag" =~ ^[0-9A-Za-z_][0-9A-Za-z._-]*$ ]] || die "also-tag '${extra_tag}' is not a valid image tag"
 done
 [[ -n "$version" ]] || version="$(<"${repo_root}/VERSION")"
@@ -114,7 +116,7 @@ if [[ "$multiarch" -eq 1 ]]; then
   fi
   podman manifest create "$ref" >/dev/null
   podman build "${common_build_args[@]}" --platform "$platforms" --manifest "$ref" "$repo_root" >/dev/null
-  for extra_tag in "${also_tags[@]}"; do
+  for extra_tag in ${also_tags[@]+"${also_tags[@]}"}; do
     if [[ "$extra_tag" != "$tag" ]]; then
       podman tag "$ref" "${repository}:${extra_tag}" >/dev/null
     fi
@@ -126,7 +128,7 @@ if [[ "$multiarch" -eq 1 ]]; then
   podman manifest push --all --digestfile "$digestfile" "$ref" "docker://${ref}" >/dev/null
   digest="$(cat "$digestfile")"
   [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]] || die "push did not report a digest"
-  for extra_tag in "${also_tags[@]}"; do
+  for extra_tag in ${also_tags[@]+"${also_tags[@]}"}; do
     if [[ "$extra_tag" != "$tag" ]]; then
       podman manifest push --all "$ref" "docker://${repository}:${extra_tag}" >/dev/null
     fi
@@ -140,8 +142,8 @@ if [[ -n "$platforms" ]]; then
   platform_flags+=(--platform "$platforms")
 fi
 
-podman build "${common_build_args[@]}" "${platform_flags[@]}" -t "$ref" "$repo_root" >/dev/null
-for extra_tag in "${also_tags[@]}"; do
+podman build "${common_build_args[@]}" ${platform_flags[@]+"${platform_flags[@]}"} -t "$ref" "$repo_root" >/dev/null
+for extra_tag in ${also_tags[@]+"${also_tags[@]}"}; do
   if [[ "$extra_tag" != "$tag" ]]; then
     podman tag "$ref" "${repository}:${extra_tag}" >/dev/null
   fi
@@ -153,7 +155,7 @@ fi
 podman push --digestfile "$digestfile" "$ref" >/dev/null
 digest="$(cat "$digestfile")"
 [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]] || die "push did not report a digest"
-for extra_tag in "${also_tags[@]}"; do
+for extra_tag in ${also_tags[@]+"${also_tags[@]}"}; do
   if [[ "$extra_tag" != "$tag" ]]; then
     podman push "${repository}:${extra_tag}" >/dev/null
   fi

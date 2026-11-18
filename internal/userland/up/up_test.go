@@ -100,9 +100,11 @@ func TestDetectRuntimeDeterministicOrderAndOverrides(t *testing.T) {
 		}
 
 		paths := CandidateSocketPaths(DetectOptions{
-			GOOS:    "darwin",
-			HomeDir: home,
-			Getenv:  func(string) string { return "" },
+			GOOS:        "darwin",
+			HomeDir:     home,
+			Getenv:      func(string) string { return "" },
+			UserTempDir: func() string { return "" },
+			ReadDir:     onlyUnder(home),
 		})
 		wantOrder := []string{
 			filepath.Join(machineDir, "podman.sock"),
@@ -127,10 +129,12 @@ func TestDetectRuntimeDeterministicOrderAndOverrides(t *testing.T) {
 		// When only OrbStack is running, OrbStack is selected.
 		orbSock := filepath.Join(home, ".orbstack", "run", "docker.sock")
 		got, err := DetectRuntime(context.Background(), DetectOptions{
-			GOOS:       "darwin",
-			HomeDir:    home,
-			Getenv:     func(string) string { return "" },
-			StatSocket: func(p string) bool { return p == orbSock || p == "/var/run/docker.sock" },
+			GOOS:        "darwin",
+			HomeDir:     home,
+			Getenv:      func(string) string { return "" },
+			UserTempDir: func() string { return "" },
+			ReadDir:     onlyUnder(home),
+			StatSocket:  func(p string) bool { return p == orbSock || p == "/var/run/docker.sock" },
 			PingSocket: func(_ context.Context, p string) (RuntimeKind, error) {
 				if p == orbSock {
 					return KindDocker, nil
@@ -143,6 +147,112 @@ func TestDetectRuntimeDeterministicOrderAndOverrides(t *testing.T) {
 		}
 		if got.Provider != "orbstack" || got.SocketPath != orbSock || got.Kind != KindDocker {
 			t.Fatalf("got %+v, want orbstack", got)
+		}
+	})
+
+	t.Run("Podman Machine API sockets under the temporary directories follow the machine directory", func(t *testing.T) {
+		home := t.TempDir()
+		// The user's TMPDIR, and a stand-in for /tmp/podman, where Podman puts
+		// the socket when it runs without TMPDIR.
+		tmp := t.TempDir()
+		podmanDir := filepath.Join(tmp, "podman")
+		slashTmpPodman := t.TempDir()
+		for dir, names := range map[string][]string{
+			podmanDir:      {"podman-machine-default-api.sock", "podman-machine-default-gvproxy.sock", "other-api.sock", "gvproxy.log"},
+			slashTmpPodman: {"podman-machine-default-api.sock"},
+		} {
+			if err := os.MkdirAll(dir, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			for _, name := range names {
+				if err := os.WriteFile(filepath.Join(dir, name), nil, 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+		}
+		readDir := func(dir string) ([]os.DirEntry, error) {
+			if dir == "/tmp/podman" {
+				return os.ReadDir(slashTmpPodman)
+			}
+			return os.ReadDir(dir)
+		}
+		candidates := func(goos, tmpDir string) []string {
+			return CandidateSocketPaths(DetectOptions{
+				GOOS:        goos,
+				HomeDir:     home,
+				ReadDir:     readDir,
+				UserTempDir: func() string { return tmp + "/" },
+				Getenv: func(k string) string {
+					if k == "TMPDIR" {
+						return tmpDir
+					}
+					return ""
+				},
+			})
+		}
+		machineSocket := filepath.Join(home, ".local", "share", "containers", "podman", "machine", "podman.sock")
+		orbStack := filepath.Join(home, ".orbstack", "run", "docker.sock")
+		for _, tc := range []struct {
+			name, goos, tmpDir string
+			want               []string
+		}{
+			{"with TMPDIR", "darwin", tmp + "/", []string{
+				machineSocket,
+				filepath.Join(podmanDir, "other-api.sock"),
+				filepath.Join(podmanDir, "podman-machine-default-api.sock"),
+				"/tmp/podman/podman-machine-default-api.sock",
+				orbStack,
+			}},
+			{"without TMPDIR, from the per-user temporary directory", "darwin", "", []string{
+				machineSocket,
+				filepath.Join(podmanDir, "other-api.sock"),
+				filepath.Join(podmanDir, "podman-machine-default-api.sock"),
+				"/tmp/podman/podman-machine-default-api.sock",
+				orbStack,
+			}},
+			{"on Linux, where a machine socket is not there", "linux", tmp, []string{
+				machineSocket,
+				orbStack,
+			}},
+		} {
+			if got := candidates(tc.goos, tc.tmpDir); len(got) < len(tc.want) || !slices.Equal(got[:len(tc.want)], tc.want) {
+				t.Errorf("%s: candidates = %v, want them to start with %v", tc.name, got, tc.want)
+			}
+		}
+	})
+
+	t.Run("the recorded socket follows the explicit overrides and precedes the candidates", func(t *testing.T) {
+		recorded := DetectedRuntime{Kind: KindPodman, Provider: "--socket", SocketPath: "/recorded/podman.sock"}
+		detect := func(explicit string, reachable ...string) (DetectedRuntime, error) {
+			return DetectRuntime(context.Background(), DetectOptions{
+				ExplicitSocket: explicit,
+				Recorded:       recorded,
+				GOOS:           "linux",
+				HomeDir:        "/home/dev",
+				Getenv: func(k string) string {
+					if k == "XDG_RUNTIME_DIR" {
+						return "/run/user/1000"
+					}
+					return ""
+				},
+				ReadDir:    func(string) ([]os.DirEntry, error) { return nil, os.ErrNotExist },
+				StatSocket: func(p string) bool { return slices.Contains(reachable, p) },
+				PingSocket: func(context.Context, string) (RuntimeKind, error) { return KindPodman, nil },
+			})
+		}
+		candidate := "/run/user/1000/podman/podman.sock"
+
+		got, err := detect("", recorded.SocketPath, candidate)
+		if err != nil || got != (DetectedRuntime{Kind: KindPodman, Provider: "--socket", SocketPath: recorded.SocketPath, HostAlias: "host.containers.internal"}) {
+			t.Fatalf("with a reachable recorded socket: %+v, %v", got, err)
+		}
+		got, err = detect("/explicit/podman.sock", "/explicit/podman.sock", recorded.SocketPath)
+		if err != nil || got.SocketPath != "/explicit/podman.sock" {
+			t.Fatalf("with --socket: %+v, %v", got, err)
+		}
+		got, err = detect("", candidate)
+		if err != nil || got.SocketPath != candidate || got.Provider != "podman-rootless" {
+			t.Fatalf("with a recorded socket that is gone: %+v, %v", got, err)
 		}
 	})
 
@@ -796,84 +906,8 @@ func TestDevIssuerPKCEAndDeviceFlow(t *testing.T) {
 
 func TestStackUpStatusAndDownWithMockEngine(t *testing.T) {
 	home := t.TempDir()
-	var (
-		mu         sync.Mutex
-		containers = map[string]bool{}
-	)
-
-	engineSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		mu.Lock()
-		defer mu.Unlock()
-		path := r.URL.Path
-		switch {
-		case path == "/_ping":
-			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte("OK"))
-		case strings.HasPrefix(path, "/v1.41/networks/"):
-			if path == "/v1.41/networks/create" {
-				w.WriteHeader(http.StatusCreated)
-				_, _ = w.Write([]byte(`{"Id":"net-1"}`))
-				return
-			}
-			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte(`{"Name":"net"}`))
-		case strings.HasPrefix(path, "/v1.41/volumes/"):
-			if path == "/v1.41/volumes/create" {
-				w.WriteHeader(http.StatusCreated)
-				_, _ = w.Write([]byte(`{"Name":"vol"}`))
-				return
-			}
-			w.WriteHeader(http.StatusNotFound)
-		case strings.HasPrefix(path, "/v1.41/images/"):
-			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte(`{"Id":"sha256:abc"}`))
-		case path == "/v1.41/containers/create":
-			name := r.URL.Query().Get("name")
-			containers[name] = true
-			w.WriteHeader(http.StatusCreated)
-			_, _ = fmt.Fprintf(w, `{"Id":%q}`, name)
-		case strings.HasSuffix(path, "/start"):
-			w.WriteHeader(http.StatusNoContent)
-		case strings.HasSuffix(path, "/wait"):
-			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte(`{"StatusCode":0}`))
-		case strings.HasSuffix(path, "/logs"):
-			w.WriteHeader(http.StatusOK)
-		case strings.HasSuffix(path, "/exec"):
-			w.WriteHeader(http.StatusCreated)
-			_, _ = w.Write([]byte(`{"Id":"exec-1"}`))
-		case path == "/v1.41/exec/exec-1/start":
-			w.WriteHeader(http.StatusOK)
-		case path == "/v1.41/exec/exec-1/json":
-			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte(`{"ExitCode":0}`))
-		case path == "/v1.41/containers/json":
-			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte(`[]`))
-		case r.Method == http.MethodDelete && strings.HasPrefix(path, "/v1.41/containers/"):
-			name := strings.TrimPrefix(path, "/v1.41/containers/")
-			delete(containers, name)
-			w.WriteHeader(http.StatusNoContent)
-		case r.Method == http.MethodGet && strings.HasPrefix(path, "/v1.41/containers/") && strings.HasSuffix(path, "/json"):
-			name := strings.TrimSuffix(strings.TrimPrefix(path, "/v1.41/containers/"), "/json")
-			if !containers[name] {
-				w.WriteHeader(http.StatusNotFound)
-				return
-			}
-			w.WriteHeader(http.StatusOK)
-			_, _ = fmt.Fprintf(w, `{
-				"Id": %q,
-				"Name": "/%s",
-				"State": {"Status": "running", "Running": true, "ExitCode": 0},
-				"Config": {"Labels": {"kodema.up.instance": "test"}},
-				"NetworkSettings": {"Ports": {"8443/tcp": [{"HostIp":"127.0.0.1","HostPort":"28443"}], "8081/tcp": [{"HostIp":"127.0.0.1","HostPort":"28081"}]}}
-			}`, name, name)
-		default:
-			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte(`{}`))
-		}
-	}))
-	defer engineSrv.Close()
+	engine := newMockEngine(t)
+	rewritingClient := engine.client
 
 	detectOpts := &DetectOptions{
 		ExplicitSocket: "/mock/podman.sock",
@@ -881,18 +915,6 @@ func TestStackUpStatusAndDownWithMockEngine(t *testing.T) {
 		HomeDir:        home,
 		StatSocket:     func(string) bool { return true },
 		PingSocket:     func(context.Context, string) (RuntimeKind, error) { return KindPodman, nil },
-	}
-	engineClient := engineSrv.Client()
-	// Rewrite http://d/... requests to the httptest engine server.
-	baseTransport := engineClient.Transport
-	rewritingClient := &http.Client{
-		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
-			u, _ := url.Parse(engineSrv.URL)
-			cloned := req.Clone(req.Context())
-			cloned.URL.Scheme = u.Scheme
-			cloned.URL.Host = u.Host
-			return baseTransport.RoundTrip(cloned)
-		}),
 	}
 
 	testPort, err := allocateLoopbackPort()
@@ -932,6 +954,42 @@ func TestStackUpStatusAndDownWithMockEngine(t *testing.T) {
 		if !strings.Contains(string(envSh), want) {
 			t.Fatalf("env.sh missing %q:\n%s", want, envSh)
 		}
+	}
+
+	// The server mounts the socket Podman reports for itself, which on a
+	// rootless Podman machine is not /run/podman/podman.sock.
+	serverBinds := fmt.Sprint(engine.hostConfig(t, "kodema-test-server")["Binds"])
+	if !strings.Contains(serverBinds, "/run/user/501/podman/podman.sock:/var/run/kodema-container.sock") {
+		t.Fatalf("server binds = %s, want the engine's own socket", serverBinds)
+	}
+	// Every container that mounts a host path runs unconfined by SELinux; the
+	// broker mounts a named volume only and stays confined.
+	for _, name := range []string{"kodema-test-postgres", "kodema-test-bootstrap", "kodema-test-server", "kodema-test-git-init", "kodema-test-git"} {
+		if got := fmt.Sprint(engine.hostConfig(t, name)["SecurityOpt"]); got != "[label=disable]" {
+			t.Errorf("container %s SecurityOpt = %s, want [label=disable]", name, got)
+		}
+	}
+	if got, set := engine.hostConfig(t, "kodema-test-nats")["SecurityOpt"]; set {
+		t.Errorf("container kodema-test-nats SecurityOpt = %v, want none", got)
+	}
+
+	// Without --socket, the other commands find the engine the stack recorded.
+	recordedOpts := &DetectOptions{
+		GOOS:       "darwin",
+		HomeDir:    home,
+		Getenv:     func(string) string { return "" },
+		ReadDir:    func(string) ([]os.DirEntry, error) { return nil, os.ErrNotExist },
+		StatSocket: func(path string) bool { return path == "/mock/podman.sock" },
+		PingSocket: func(context.Context, string) (RuntimeKind, error) { return KindPodman, nil },
+	}
+	if recorded, err := Status(context.Background(), StatusConfig{
+		Instance:   "test",
+		GOOS:       "darwin",
+		HomeDir:    home,
+		DetectOpts: recordedOpts,
+		EngineHTTP: rewritingClient,
+	}); err != nil || recorded.Runtime.SocketPath != "/mock/podman.sock" {
+		t.Fatalf("Status without --socket = %+v, %v; want the recorded socket", recorded.Runtime, err)
 	}
 
 	report, err := Status(context.Background(), StatusConfig{
@@ -1123,5 +1181,233 @@ func TestProvisionCreatesWhatIsMissingAndRenewsTheGitCredential(t *testing.T) {
 	}
 	if !slices.Equal(calls, want) {
 		t.Fatalf("operations = %q, want %q", calls, want)
+	}
+}
+
+// mockEngine is an engine API that accepts every request `kodema up` makes
+// and keeps what each container was created with.
+type mockEngine struct {
+	mu      sync.Mutex
+	created map[string]map[string]any
+	// logs is the output every container reports.
+	logs   string
+	client *http.Client
+}
+
+// hostConfig returns the HostConfig the named container was created with.
+func (engine *mockEngine) hostConfig(t *testing.T, name string) map[string]any {
+	t.Helper()
+	engine.mu.Lock()
+	defer engine.mu.Unlock()
+	hostConfig, ok := engine.created[name]["HostConfig"].(map[string]any)
+	if !ok {
+		t.Fatalf("container %q was not created with a HostConfig: %v", name, engine.created[name])
+	}
+	return hostConfig
+}
+
+func newMockEngine(t *testing.T) *mockEngine {
+	t.Helper()
+	engine := &mockEngine{created: map[string]map[string]any{}}
+	containers := map[string]bool{}
+	engineSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		engine.mu.Lock()
+		defer engine.mu.Unlock()
+		path := r.URL.Path
+		switch {
+		case path == "/_ping":
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("OK"))
+		case path == "/v4.0.0/libpod/info":
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"host":{"remoteSocket":{"path":"unix:///run/user/501/podman/podman.sock","exists":true}}}`))
+		case strings.HasPrefix(path, "/v1.41/networks/"):
+			if path == "/v1.41/networks/create" {
+				w.WriteHeader(http.StatusCreated)
+				_, _ = w.Write([]byte(`{"Id":"net-1"}`))
+				return
+			}
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"Name":"net"}`))
+		case strings.HasPrefix(path, "/v1.41/volumes/"):
+			if path == "/v1.41/volumes/create" {
+				w.WriteHeader(http.StatusCreated)
+				_, _ = w.Write([]byte(`{"Name":"vol"}`))
+				return
+			}
+			w.WriteHeader(http.StatusNotFound)
+		case strings.HasPrefix(path, "/v1.41/images/"):
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"Id":"sha256:abc"}`))
+		case path == "/v1.41/containers/create":
+			name := r.URL.Query().Get("name")
+			containers[name] = true
+			var created map[string]any
+			_ = json.NewDecoder(r.Body).Decode(&created)
+			engine.created[name] = created
+			w.WriteHeader(http.StatusCreated)
+			_, _ = fmt.Fprintf(w, `{"Id":%q}`, name)
+		case strings.HasSuffix(path, "/start"):
+			w.WriteHeader(http.StatusNoContent)
+		case strings.HasSuffix(path, "/wait"):
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"StatusCode":0}`))
+		case strings.HasSuffix(path, "/logs"):
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(engine.logs))
+		case strings.HasSuffix(path, "/exec"):
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{"Id":"exec-1"}`))
+		case path == "/v1.41/exec/exec-1/start":
+			w.WriteHeader(http.StatusOK)
+		case path == "/v1.41/exec/exec-1/json":
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"ExitCode":0}`))
+		case path == "/v1.41/containers/json":
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`[]`))
+		case r.Method == http.MethodDelete && strings.HasPrefix(path, "/v1.41/containers/"):
+			name := strings.TrimPrefix(path, "/v1.41/containers/")
+			delete(containers, name)
+			w.WriteHeader(http.StatusNoContent)
+		case r.Method == http.MethodGet && strings.HasPrefix(path, "/v1.41/containers/") && strings.HasSuffix(path, "/json"):
+			name := strings.TrimSuffix(strings.TrimPrefix(path, "/v1.41/containers/"), "/json")
+			if !containers[name] {
+				w.WriteHeader(http.StatusNotFound)
+				return
+			}
+			w.WriteHeader(http.StatusOK)
+			_, _ = fmt.Fprintf(w, `{
+				"Id": %q,
+				"Name": "/%s",
+				"State": {"Status": "running", "Running": true, "ExitCode": 0},
+				"Config": {"Labels": {"kodema.up.instance": "test"}},
+				"NetworkSettings": {"Ports": {"8443/tcp": [{"HostIp":"127.0.0.1","HostPort":"28443"}], "8081/tcp": [{"HostIp":"127.0.0.1","HostPort":"28081"}]}}
+			}`, name, name)
+		default:
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{}`))
+		}
+	}))
+	t.Cleanup(engineSrv.Close)
+	// Rewrite http://d/... requests to the httptest engine server.
+	baseTransport := engineSrv.Client().Transport
+	engine.client = &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			u, _ := url.Parse(engineSrv.URL)
+			cloned := req.Clone(req.Context())
+			cloned.URL.Scheme = u.Scheme
+			cloned.URL.Host = u.Host
+			return baseTransport.RoundTrip(cloned)
+		}),
+	}
+	return engine
+}
+
+// TestUpThatFailsStopsItsGatewayAndShowsTheServerLog pins what a failed
+// `kodema up` leaves: no gateway on the listen port, and an error that carries
+// the end of the server's log.
+func TestUpThatFailsStopsItsGatewayAndShowsTheServerLog(t *testing.T) {
+	home := t.TempDir()
+	engine := newMockEngine(t)
+	engine.logs = "2026/01/02 03:04:05 WARN readiness check failed check=runtime\n" +
+		"2026/01/02 03:04:06 WARN readiness check failed check=runtime\n"
+
+	// A process `ps` shows with --gateway-only, as the real gateway is.
+	gateway := exec.Command("sh", "-c", "while :; do sleep 1; done", "--gateway-only")
+	testPort, err := allocateLoopbackPort()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = Up(context.Background(), UpConfig{
+		Instance:   "test",
+		ListenAddr: fmt.Sprintf("127.0.0.1:%d", testPort),
+		GOOS:       "darwin",
+		HomeDir:    home,
+		DetectOpts: &DetectOptions{
+			ExplicitSocket: "/mock/podman.sock",
+			StatSocket:     func(string) bool { return true },
+			PingSocket:     func(context.Context, string) (RuntimeKind, error) { return KindPodman, nil },
+		},
+		EngineHTTP: engine.client,
+		SpawnGateway: func(string) (int, error) {
+			if err := gateway.Start(); err != nil {
+				return 0, err
+			}
+			return gateway.Process.Pid, nil
+		},
+		Provision: func(context.Context, provisionConfig) (string, error) {
+			return "", fmt.Errorf("the server was not ready within 90s")
+		},
+	}, nil)
+	if gateway.Process == nil {
+		t.Fatalf("Up did not start the gateway: %v", err)
+	}
+	defer func() { _ = gateway.Process.Kill() }()
+	if err == nil {
+		t.Fatal("Up succeeded although provisioning failed")
+	}
+	want := "the server was not ready within 90s; the log of container kodema-test-server ends with:\n" +
+		"2026/01/02 03:04:06 WARN readiness check failed check=runtime"
+	if err.Error() != want {
+		t.Fatalf("Up error = %q, want %q", err, want)
+	}
+
+	exited := make(chan error, 1)
+	go func() { exited <- gateway.Wait() }()
+	select {
+	case <-exited:
+		if gateway.ProcessState.Sys().(syscall.WaitStatus).Signal() != syscall.SIGTERM {
+			t.Fatalf("gateway ended with %v, want SIGTERM from Up", gateway.ProcessState)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("the gateway of a failed Up is still running")
+	}
+	if _, err := os.Stat(filepath.Join(home, ".kodema", "instances", "test", "gateway.pid")); !os.IsNotExist(err) {
+		t.Fatalf("gateway.pid after a failed Up: %v", err)
+	}
+}
+
+func TestContainerSocketMountSource(t *testing.T) {
+	podman := DetectedRuntime{Kind: KindPodman, SocketPath: "/host/podman.sock"}
+	for _, tc := range []struct {
+		name, goos, remote, want string
+		detected                 DetectedRuntime
+	}{
+		{"rootless Podman machine", "darwin", "/run/user/501/podman/podman.sock", "/run/user/501/podman/podman.sock", podman},
+		{"rootful Podman machine", "darwin", "/run/podman/podman.sock", "/run/podman/podman.sock", podman},
+		{"Podman machine that does not say", "darwin", "", "/run/podman/podman.sock", podman},
+		{"Linux mounts the socket it detected", "linux", "/run/podman/podman.sock", "/host/podman.sock", podman},
+	} {
+		if got := containerSocketMountSource(tc.goos, tc.detected, tc.remote); got != tc.want {
+			t.Errorf("%s: mount source = %q, want %q", tc.name, got, tc.want)
+		}
+	}
+}
+
+func TestLastDistinctLines(t *testing.T) {
+	text := "2026/01/02 03:04:01 WARN test profile\n" +
+		"2026/01/02 03:04:02 WARN readiness check failed check=runtime\n" +
+		"\n" +
+		"2026/01/02 03:04:03 WARN readiness check failed check=broker\n" +
+		"2026/01/02 03:04:04 WARN readiness check failed check=runtime\n"
+	want := "2026/01/02 03:04:03 WARN readiness check failed check=broker\n" +
+		"2026/01/02 03:04:04 WARN readiness check failed check=runtime"
+	if got := lastDistinctLines(text, 2); got != want {
+		t.Fatalf("lastDistinctLines = %q, want %q", got, want)
+	}
+	if got := lastDistinctLines("", 5); got != "" {
+		t.Fatalf("lastDistinctLines of no output = %q", got)
+	}
+}
+
+// onlyUnder reads directories under root and reports every other one absent,
+// so socket discovery does not see the machine the test runs on.
+func onlyUnder(root string) func(string) ([]os.DirEntry, error) {
+	return func(dir string) ([]os.DirEntry, error) {
+		if dir != root && !strings.HasPrefix(dir, root+string(filepath.Separator)) {
+			return nil, os.ErrNotExist
+		}
+		return os.ReadDir(dir)
 	}
 }

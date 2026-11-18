@@ -12,7 +12,9 @@ built-in sign-in that asks for no password. For production, see the
 - Linux with rootless Podman 5 or newer and its user API socket:
   `systemctl --user enable --now podman.socket`, and `podman info` succeeds.
   Docker is not supported, because Kodema starts workloads through the Podman
-  API. macOS with a Podman machine is expected to work and has not been run.
+  API.
+- Or macOS with a running Podman machine of Podman 5 or newer:
+  `podman machine start`.
 - `curl` and `tar`, for the installer.
 - Port 8443 free.
 
@@ -67,16 +69,15 @@ with the roles `admin,engineer,reviewer,operator`.
 
 ## Run a first pipeline
 
-The runtime never pulls an image. Pull the one the pipeline names, and name it
-by digest:
+The runtime never pulls an image. Pull the one the pipeline names first:
 
 ```sh
-podman pull docker.io/library/alpine:3.24@sha256:0f49f331d9212aff11b932863be4eb01cdf962969aa86dab7d1ee21ac6f5f52b
+podman pull docker.io/library/alpine:3.24
 
 cat > hello.yaml <<'EOF'
 actions:
   - name: hello
-    image: docker.io/library/alpine@sha256:0f49f331d9212aff11b932863be4eb01cdf962969aa86dab7d1ee21ac6f5f52b
+    image: docker.io/library/alpine:3.24
     timeout: 2m
     commands:
       - echo "hello from a Kodema workload"
@@ -104,7 +105,7 @@ An action can ask a role for a decision instead of running a container:
 cat > review.yaml <<'EOF'
 actions:
   - name: prepare
-    image: docker.io/library/alpine@sha256:0f49f331d9212aff11b932863be4eb01cdf962969aa86dab7d1ee21ac6f5f52b
+    image: docker.io/library/alpine:3.24
     timeout: 2m
     commands:
       - echo prepared
@@ -119,8 +120,8 @@ EOF
 kodactl run review.yaml
 ```
 
-`run` stops when the execution waits for a person and names the execution.
-Answer it from the inbox:
+`run` stops when the execution waits for a person and names the execution. It
+exits 1 then, as the execution has not succeeded. Answer it from the inbox:
 
 ```sh
 kodactl inbox
@@ -197,9 +198,16 @@ kodema down --purge    # removes the containers, volumes and state
   credential 8 hours. Run `kodema up` again to renew both.
 - `kodema up --name <name>` runs a second installation; give it another
   `--listen` port.
+- `kodema up` finds the Podman socket itself: your user's on Linux, the
+  running Podman machine's on macOS. `--socket <path>` or `KODEMA_SOCKET`
+  names another; `status` and `down` then use it without either.
 
 ## Limits
 
+- The containers of the installation that mount its state directory or the
+  Podman socket (PostgreSQL, the server, Git) run with SELinux labeling
+  disabled (`label=disable`): a confined container may read neither. Workloads
+  keep their label.
 - One host, one tenant, a local keyfile. Anyone who can use this machine can
   sign in as any persona.
 - On Linux the gateway listens on every address, because containers reach the
