@@ -132,6 +132,14 @@ func (r StatusReport) Healthy() bool {
 // can read it. The image's own user (65532) cannot.
 const kodemaContainerUser = "0:0"
 
+// hostMountSecurityOpt is set on every container that mounts a path of the
+// host: files of the state directory, or the engine's socket. On a host with
+// SELinux (Fedora, RHEL, a Podman machine) a confined container may read
+// neither, and the stack does not start. The alternative, relabeling the state
+// directory, is refused by file systems that keep no labels, such as the one a
+// Podman machine shares with macOS. Without SELinux the option changes nothing.
+var hostMountSecurityOpt = []string{"label=disable"}
+
 // EnvFileSpec describes the operator shell environment written to <state-dir>/env.sh.
 type EnvFileSpec struct {
 	EnvFilePath    string
@@ -222,7 +230,11 @@ func PublicOriginFromListen(listenAddr string) (string, string, error) {
 
 // Up provisions or reconciles the container-backed Kodema stack and starts the
 // single-origin HTTPS reverse-proxy gateway on cfg.ListenAddr without socat.
-func Up(ctx context.Context, cfg UpConfig, stdout io.Writer) (StackDescriptor, error) {
+//
+// When it fails after it started the gateway, it stops that gateway: the
+// listen port is free again and `kodema status` does not report a gateway in
+// front of a stack that did not come up. The containers stay for their logs.
+func Up(ctx context.Context, cfg UpConfig, stdout io.Writer) (_ StackDescriptor, err error) {
 	if stdout == nil {
 		stdout = io.Discard
 	}
@@ -249,7 +261,7 @@ func Up(ctx context.Context, cfg UpConfig, stdout io.Writer) (StackDescriptor, e
 		return StackDescriptor{}, err
 	}
 
-	detectOpts := buildDetectOpts(cfg.DetectOpts, cfg.Socket, cfg.GOOS, cfg.HomeDir)
+	detectOpts := buildDetectOpts(cfg.DetectOpts, cfg.Socket, cfg.GOOS, cfg.HomeDir, stateDir)
 	detected, err := DetectRuntime(ctx, detectOpts)
 	if err != nil {
 		return StackDescriptor{}, err
@@ -385,6 +397,7 @@ func Up(ctx context.Context, cfg UpConfig, stdout io.Writer) (StackDescriptor, e
 			{Source: pgVolume, Target: "/var/lib/postgresql"},
 			{Source: initSQLPath, Target: "/tmp/kodema-init.sql", ReadOnly: true},
 		},
+		SecurityOpt: hostMountSecurityOpt,
 	}); err != nil {
 		return StackDescriptor{}, err
 	}
@@ -437,7 +450,7 @@ func Up(ctx context.Context, cfg UpConfig, stdout io.Writer) (StackDescriptor, e
 	_, publicPort, _ := net.SplitHostPort(listenAddr)
 	workloadOrigin := "https://" + net.JoinHostPort(detected.HostAlias, publicPort)
 	disc := devIssuer.DiscoveryDocument()
-	containerSocket := containerSocketMountSource(cfg.GOOS, detected)
+	containerSocket := containerSocketMountSource(cfg.GOOS, detected, engine.RemoteSocketPath(ctx))
 	keyfilePath := filepath.Join(secretsDir, "keys", "kek-v1.key")
 	if err := os.MkdirAll(filepath.Dir(keyfilePath), 0o700); err != nil {
 		return StackDescriptor{}, err
@@ -529,6 +542,11 @@ func Up(ctx context.Context, cfg UpConfig, stdout io.Writer) (StackDescriptor, e
 		if spawnErr != nil {
 			return StackDescriptor{}, fmt.Errorf("start single-origin TLS gateway: %w", spawnErr)
 		}
+		defer func() {
+			if err != nil {
+				stopExistingGateway(stateDir)
+			}
+		}()
 		desc.GatewayPID = pid
 		if err := saveStackDescriptor(stateDir, desc); err != nil {
 			return StackDescriptor{}, err
@@ -553,13 +571,14 @@ func Up(ctx context.Context, cfg UpConfig, stdout io.Writer) (StackDescriptor, e
 			bootstrapCmd = append(bootstrapCmd, "--init-keyfile")
 		}
 		if _, err := engine.RunOneShot(ctx, ContainerSpec{
-			Name:    prefix + "-bootstrap",
-			Image:   kodemaImage,
-			User:    kodemaContainerUser,
-			Cmd:     bootstrapCmd,
-			Network: networkName,
-			Labels:  map[string]string{LabelInstance: instance, LabelComponent: "bootstrap"},
-			Mounts:  []MountBind{{Source: stateDir, Target: stateDir}},
+			Name:        prefix + "-bootstrap",
+			Image:       kodemaImage,
+			User:        kodemaContainerUser,
+			Cmd:         bootstrapCmd,
+			Network:     networkName,
+			Labels:      map[string]string{LabelInstance: instance, LabelComponent: "bootstrap"},
+			Mounts:      []MountBind{{Source: stateDir, Target: stateDir}},
+			SecurityOpt: hostMountSecurityOpt,
 			Env: []string{
 				"KODEMA_PROFILE=test",
 				"KODEMA_INSTALLATION_ID=installation-" + instance,
@@ -629,7 +648,8 @@ func Up(ctx context.Context, cfg UpConfig, stdout io.Writer) (StackDescriptor, e
 			{Source: stateDir, Target: stateDir},
 			{Source: containerSocket, Target: "/var/run/kodema-container.sock"},
 		},
-		Ports: []PortPublish{{ContainerPort: 8443, HostIP: "127.0.0.1", HostPort: serverPort}},
+		SecurityOpt: hostMountSecurityOpt,
+		Ports:       []PortPublish{{ContainerPort: 8443, HostIP: "127.0.0.1", HostPort: serverPort}},
 	}); err != nil {
 		return StackDescriptor{}, err
 	}
@@ -653,6 +673,9 @@ func Up(ctx context.Context, cfg UpConfig, stdout io.Writer) (StackDescriptor, e
 		GitOrigins:   []string{publicURL, workloadOrigin},
 	})
 	if err != nil {
+		if tail := engine.LogTail(ctx, serverContainer, 5); tail != "" {
+			return StackDescriptor{}, fmt.Errorf("%w; the log of container %s ends with:\n%s", err, serverContainer, tail)
+		}
 		return StackDescriptor{}, fmt.Errorf("%w (see the logs of container %s)", err, serverContainer)
 	}
 	gitTokenPath := filepath.Join(secretsDir, "git-service-token")
@@ -661,12 +684,13 @@ func Up(ctx context.Context, cfg UpConfig, stdout io.Writer) (StackDescriptor, e
 	}
 
 	if _, err := engine.RunOneShot(ctx, ContainerSpec{
-		Name:    prefix + "-git-init",
-		Image:   kodemaImage,
-		User:    kodemaContainerUser,
-		Network: networkName,
-		Labels:  map[string]string{LabelInstance: instance, LabelComponent: "git-init"},
-		Mounts:  []MountBind{{Source: gitDir, Target: gitDir}},
+		Name:        prefix + "-git-init",
+		Image:       kodemaImage,
+		User:        kodemaContainerUser,
+		Network:     networkName,
+		Labels:      map[string]string{LabelInstance: instance, LabelComponent: "git-init"},
+		Mounts:      []MountBind{{Source: gitDir, Target: gitDir}},
+		SecurityOpt: hostMountSecurityOpt,
 		Cmd: []string{
 			"git", "provision-tenant",
 			"--tenant", tenantID,
@@ -704,7 +728,8 @@ func Up(ctx context.Context, cfg UpConfig, stdout io.Writer) (StackDescriptor, e
 			{Source: gitTokenPath, Target: gitTokenPath, ReadOnly: true},
 			{Source: tlsBundle.CACertPath, Target: tlsBundle.CACertPath, ReadOnly: true},
 		},
-		Ports: []PortPublish{{ContainerPort: 8081, HostIP: "127.0.0.1", HostPort: gitPort}},
+		SecurityOpt: hostMountSecurityOpt,
+		Ports:       []PortPublish{{ContainerPort: 8081, HostIP: "127.0.0.1", HostPort: gitPort}},
 	}); err != nil {
 		return StackDescriptor{}, err
 	}
@@ -798,7 +823,7 @@ func Down(ctx context.Context, cfg DownConfig, stdout io.Writer) error {
 
 	stopExistingGateway(stateDir)
 
-	detectOpts := buildDetectOpts(cfg.DetectOpts, cfg.Socket, cfg.GOOS, cfg.HomeDir)
+	detectOpts := buildDetectOpts(cfg.DetectOpts, cfg.Socket, cfg.GOOS, cfg.HomeDir, stateDir)
 	if detected, detectErr := DetectRuntime(ctx, detectOpts); detectErr == nil {
 		if engine, engineErr := NewEngineClient(detected.SocketPath, cfg.EngineHTTP); engineErr == nil {
 			prefix := "kodema-" + instance
@@ -846,7 +871,7 @@ func Status(ctx context.Context, cfg StatusConfig) (StatusReport, error) {
 		return StatusReport{}, err
 	}
 
-	detectOpts := buildDetectOpts(cfg.DetectOpts, cfg.Socket, cfg.GOOS, cfg.HomeDir)
+	detectOpts := buildDetectOpts(cfg.DetectOpts, cfg.Socket, cfg.GOOS, cfg.HomeDir, stateDir)
 	detected, err := DetectRuntime(ctx, detectOpts)
 	if err != nil {
 		return StatusReport{}, err
@@ -925,16 +950,23 @@ func probeReadyz(ctx context.Context, readyURL, caPath string) bool {
 	return resp.StatusCode == http.StatusOK
 }
 
-func containerSocketMountSource(goos string, detected DetectedRuntime) string {
+// containerSocketMountSource is the engine socket the server container mounts.
+// remoteSocket is the path Podman reports for its own socket, or "".
+func containerSocketMountSource(goos string, detected DetectedRuntime, remoteSocket string) string {
 	effectiveOS := strings.TrimSpace(goos)
 	if effectiveOS == "" {
 		effectiveOS = runtime.GOOS
 	}
 	// On macOS Linux VMs (OrbStack, Docker Desktop, Colima, Podman Machine), the
 	// host socket is a host-side tunnel outside the VM filesystem; inside the VM
-	// /var/run/docker.sock (or /run/podman/podman.sock) is the local Unix socket.
+	// /var/run/docker.sock (or the Podman socket) is the local Unix socket. A
+	// rootless Podman machine, the default, serves /run/user/<uid>/podman/podman.sock
+	// and a rootful one /run/podman/podman.sock, so Podman is asked.
 	if effectiveOS == "darwin" {
 		if detected.Kind == KindPodman {
+			if remoteSocket != "" {
+				return remoteSocket
+			}
 			return "/run/podman/podman.sock"
 		}
 		return "/var/run/docker.sock"
@@ -942,9 +974,16 @@ func containerSocketMountSource(goos string, detected DetectedRuntime) string {
 	return detected.SocketPath
 }
 
-func buildDetectOpts(override *DetectOptions, explicitSocket, goos, homeDir string) DetectOptions {
+// buildDetectOpts assembles the socket discovery options of one command. The
+// runtime recorded in stateDir's stack.json, if any, is offered to discovery.
+func buildDetectOpts(override *DetectOptions, explicitSocket, goos, homeDir, stateDir string) DetectOptions {
+	var recorded DetectedRuntime
+	if desc, err := loadStackDescriptor(stateDir); err == nil {
+		recorded = desc.Runtime
+	}
 	if override != nil {
 		copied := *override
+		copied.Recorded = recorded
 		if explicitSocket != "" {
 			copied.ExplicitSocket = explicitSocket
 		}
@@ -958,6 +997,7 @@ func buildDetectOpts(override *DetectOptions, explicitSocket, goos, homeDir stri
 	}
 	return DetectOptions{
 		ExplicitSocket: explicitSocket,
+		Recorded:       recorded,
 		GOOS:           goos,
 		HomeDir:        homeDir,
 		UID:            os.Getuid(),

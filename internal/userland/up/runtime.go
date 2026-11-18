@@ -41,6 +41,11 @@ type DetectedRuntime struct {
 type DetectOptions struct {
 	// ExplicitSocket is the --socket flag value when supplied by the caller.
 	ExplicitSocket string
+	// Recorded is the runtime a previous `kodema up` of the instance wrote to
+	// stack.json. Its socket is tried after the explicit overrides and before
+	// the standard candidates, so `status`, `down` and a repeated `up` find
+	// the engine that holds the instance without --socket.
+	Recorded DetectedRuntime
 	// GOOS overrides runtime.GOOS ("darwin", "linux", ...).
 	GOOS string
 	// HomeDir overrides os.UserHomeDir().
@@ -65,8 +70,9 @@ type socketCandidate struct {
 }
 
 // DetectRuntime probes explicit socket overrides (--socket, CONTAINER_HOST,
-// DOCKER_HOST) and then standard Linux and macOS container sockets in
-// deterministic order, returning the first reachable Unix socket.
+// DOCKER_HOST), then the socket the instance recorded, and then standard Linux
+// and macOS container sockets in deterministic order, returning the first
+// reachable Unix socket.
 func DetectRuntime(ctx context.Context, opts DetectOptions) (DetectedRuntime, error) {
 	if ctx == nil {
 		ctx = context.Background()
@@ -137,7 +143,22 @@ func DetectRuntime(ctx context.Context, opts DetectOptions) (DetectedRuntime, er
 		return buildDetectedRuntime(kind, override.source, socketPath), nil
 	}
 
-	// 2. Standard Linux and macOS candidates in deterministic order.
+	// 2. The socket the instance was started on. One that is gone or silent is
+	// skipped: the engine may have moved, and the candidates below find it.
+	if recorded := strings.TrimSpace(opts.Recorded.SocketPath); recorded != "" && filepath.IsAbs(recorded) && statSocket(recorded) {
+		if kind, err := pingSocket(ctx, recorded); err == nil {
+			if kind == "" {
+				kind = opts.Recorded.Kind
+			}
+			provider := opts.Recorded.Provider
+			if provider == "" {
+				provider = "stack.json"
+			}
+			return buildDetectedRuntime(kind, provider, recorded), nil
+		}
+	}
+
+	// 3. Standard Linux and macOS candidates in deterministic order.
 	candidates := candidateSockets(goos, homeDir, getenv, opts.UID, readDir)
 	seen := make(map[string]bool, len(candidates))
 	var probed []string
@@ -236,7 +257,20 @@ func candidateSockets(
 				defaultKind: KindPodman,
 			})
 		}
+	}
 
+	// Podman Machine since Podman 5: $TMPDIR/podman/<machine>-api.sock.
+	if tmpDir := strings.TrimSpace(getenv("TMPDIR")); tmpDir != "" && filepath.IsAbs(tmpDir) {
+		for _, apiSocket := range discoverPodmanMachineAPISockets(filepath.Join(tmpDir, "podman"), readDir) {
+			candidates = append(candidates, socketCandidate{
+				provider:    "podman-machine",
+				path:        apiSocket,
+				defaultKind: KindPodman,
+			})
+		}
+	}
+
+	if homeDir != "" && filepath.IsAbs(homeDir) {
 		// 3. macOS OrbStack (~/.orbstack/run/docker.sock).
 		candidates = append(candidates, socketCandidate{
 			provider:    "orbstack",
@@ -310,6 +344,23 @@ func discoverPodmanMachineSubdirSockets(machineDir string, readDir func(string) 
 			found = append(found, filepath.Join(subDir, childName, "podman.sock"))
 		}
 	}
+	return found
+}
+
+// discoverPodmanMachineAPISockets lists the <machine>-api.sock entries of
+// podmanDir in name order. The gvproxy socket beside them is not an API socket.
+func discoverPodmanMachineAPISockets(podmanDir string, readDir func(string) ([]os.DirEntry, error)) []string {
+	entries, err := readDir(podmanDir)
+	if err != nil {
+		return nil
+	}
+	var found []string
+	for _, entry := range entries {
+		if !entry.IsDir() && strings.HasSuffix(entry.Name(), "-api.sock") {
+			found = append(found, filepath.Join(podmanDir, entry.Name()))
+		}
+	}
+	sort.Strings(found)
 	return found
 }
 
