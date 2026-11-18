@@ -1,5 +1,52 @@
 # Changelog
 
+## 0.2.3
+
+Fixed:
+
+- `kodema up` starts on macOS with a Podman machine. It finds the machine's
+  socket (`<machine>-api.sock` in `$TMPDIR/podman`, the per-user temporary
+  directory or `/tmp/podman`), and the server mounts the socket Podman reports
+  for itself: a rootless machine, the default, has none at
+  `/run/podman/podman.sock`.
+- `kodema up` starts on a host with SELinux, such as Fedora, RHEL or a Podman
+  machine. The containers that mount the state directory or the Podman socket
+  (PostgreSQL, the server, Git) run with `label=disable`; PostgreSQL could not
+  read its initialization script and the server could not reach Podman.
+- `kodema status`, `down` and a repeated `up` use the socket the installation
+  was started on, without `--socket`.
+- A `kodema up` that fails stops the gateway it started, and an error about a
+  server that is not ready ends with the last lines of the server's log.
+- The `linux/arm64` image ran an amd64 Alpine: its `git` and shell worked only
+  where the host emulates x86-64. Its base is now pinned by the digest of
+  Alpine's multi-architecture index.
+- The LLM proxy ended a streamed model response cleanly when the provider
+  ended it after the action deadline or a cancellation, so a workload could
+  take a cut-short response for a complete one. It now aborts the stream.
+- `scripts/image`, and so `make image`, runs under bash 3.2, the bash of macOS.
+
+Changed:
+
+- `KODEMA_SOCKET` names the Podman socket of `kodema up`, `down` and `status`.
+  `KODEMA_UP_SOCKET`, read by 0.2.2 and never documented, is no longer read.
+- The image's build stage is `golang:1.27`, a tag. Only the static binary it
+  builds reaches the image; the runtime stage stays pinned by digest.
+
+Documentation:
+
+- The quick start covers macOS with a Podman machine, pulls and runs
+  `alpine:3.24`, and says that `kodactl run` exits 1 when it stops for an
+  approval.
+
+Known limitations:
+
+- On macOS, `kodema up` has run on a rootless Podman machine of Podman 6.2 on
+  Apple silicon. A rootful machine has not been run.
+- On Linux with SELinux, no complete run has been made. Workloads keep their
+  SELinux label, so files of the state directory mounted into them may be
+  refused.
+- `kodactl run` waits without end when the server cannot reach Podman.
+
 ## 0.2.2
 
 Changed:
