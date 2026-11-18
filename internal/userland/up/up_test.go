@@ -100,9 +100,11 @@ func TestDetectRuntimeDeterministicOrderAndOverrides(t *testing.T) {
 		}
 
 		paths := CandidateSocketPaths(DetectOptions{
-			GOOS:    "darwin",
-			HomeDir: home,
-			Getenv:  func(string) string { return "" },
+			GOOS:        "darwin",
+			HomeDir:     home,
+			Getenv:      func(string) string { return "" },
+			UserTempDir: func() string { return "" },
+			ReadDir:     onlyUnder(home),
 		})
 		wantOrder := []string{
 			filepath.Join(machineDir, "podman.sock"),
@@ -127,10 +129,12 @@ func TestDetectRuntimeDeterministicOrderAndOverrides(t *testing.T) {
 		// When only OrbStack is running, OrbStack is selected.
 		orbSock := filepath.Join(home, ".orbstack", "run", "docker.sock")
 		got, err := DetectRuntime(context.Background(), DetectOptions{
-			GOOS:       "darwin",
-			HomeDir:    home,
-			Getenv:     func(string) string { return "" },
-			StatSocket: func(p string) bool { return p == orbSock || p == "/var/run/docker.sock" },
+			GOOS:        "darwin",
+			HomeDir:     home,
+			Getenv:      func(string) string { return "" },
+			UserTempDir: func() string { return "" },
+			ReadDir:     onlyUnder(home),
+			StatSocket:  func(p string) bool { return p == orbSock || p == "/var/run/docker.sock" },
 			PingSocket: func(_ context.Context, p string) (RuntimeKind, error) {
 				if p == orbSock {
 					return KindDocker, nil
@@ -146,36 +150,74 @@ func TestDetectRuntimeDeterministicOrderAndOverrides(t *testing.T) {
 		}
 	})
 
-	t.Run("Podman Machine API sockets under TMPDIR follow the machine directory", func(t *testing.T) {
+	t.Run("Podman Machine API sockets under the temporary directories follow the machine directory", func(t *testing.T) {
 		home := t.TempDir()
+		// The user's TMPDIR, and a stand-in for /tmp/podman, where Podman puts
+		// the socket when it runs without TMPDIR.
 		tmp := t.TempDir()
 		podmanDir := filepath.Join(tmp, "podman")
-		if err := os.MkdirAll(podmanDir, 0o755); err != nil {
-			t.Fatal(err)
-		}
-		for _, name := range []string{"podman-machine-default-api.sock", "podman-machine-default-gvproxy.sock", "other-api.sock", "gvproxy.log"} {
-			if err := os.WriteFile(filepath.Join(podmanDir, name), nil, 0o600); err != nil {
+		slashTmpPodman := t.TempDir()
+		for dir, names := range map[string][]string{
+			podmanDir:      {"podman-machine-default-api.sock", "podman-machine-default-gvproxy.sock", "other-api.sock", "gvproxy.log"},
+			slashTmpPodman: {"podman-machine-default-api.sock"},
+		} {
+			if err := os.MkdirAll(dir, 0o755); err != nil {
 				t.Fatal(err)
 			}
-		}
-		paths := CandidateSocketPaths(DetectOptions{
-			GOOS:    "darwin",
-			HomeDir: home,
-			Getenv: func(k string) string {
-				if k == "TMPDIR" {
-					return tmp + "/"
+			for _, name := range names {
+				if err := os.WriteFile(filepath.Join(dir, name), nil, 0o600); err != nil {
+					t.Fatal(err)
 				}
-				return ""
-			},
-		})
-		want := []string{
-			filepath.Join(home, ".local", "share", "containers", "podman", "machine", "podman.sock"),
-			filepath.Join(podmanDir, "other-api.sock"),
-			filepath.Join(podmanDir, "podman-machine-default-api.sock"),
-			filepath.Join(home, ".orbstack", "run", "docker.sock"),
+			}
 		}
-		if len(paths) < len(want) || !slices.Equal(paths[:len(want)], want) {
-			t.Fatalf("candidates = %v, want them to start with %v", paths, want)
+		readDir := func(dir string) ([]os.DirEntry, error) {
+			if dir == "/tmp/podman" {
+				return os.ReadDir(slashTmpPodman)
+			}
+			return os.ReadDir(dir)
+		}
+		candidates := func(goos, tmpDir string) []string {
+			return CandidateSocketPaths(DetectOptions{
+				GOOS:        goos,
+				HomeDir:     home,
+				ReadDir:     readDir,
+				UserTempDir: func() string { return tmp + "/" },
+				Getenv: func(k string) string {
+					if k == "TMPDIR" {
+						return tmpDir
+					}
+					return ""
+				},
+			})
+		}
+		machineSocket := filepath.Join(home, ".local", "share", "containers", "podman", "machine", "podman.sock")
+		orbStack := filepath.Join(home, ".orbstack", "run", "docker.sock")
+		for _, tc := range []struct {
+			name, goos, tmpDir string
+			want               []string
+		}{
+			{"with TMPDIR", "darwin", tmp + "/", []string{
+				machineSocket,
+				filepath.Join(podmanDir, "other-api.sock"),
+				filepath.Join(podmanDir, "podman-machine-default-api.sock"),
+				"/tmp/podman/podman-machine-default-api.sock",
+				orbStack,
+			}},
+			{"without TMPDIR, from the per-user temporary directory", "darwin", "", []string{
+				machineSocket,
+				filepath.Join(podmanDir, "other-api.sock"),
+				filepath.Join(podmanDir, "podman-machine-default-api.sock"),
+				"/tmp/podman/podman-machine-default-api.sock",
+				orbStack,
+			}},
+			{"on Linux, where a machine socket is not there", "linux", tmp, []string{
+				machineSocket,
+				orbStack,
+			}},
+		} {
+			if got := candidates(tc.goos, tc.tmpDir); len(got) < len(tc.want) || !slices.Equal(got[:len(tc.want)], tc.want) {
+				t.Errorf("%s: candidates = %v, want them to start with %v", tc.name, got, tc.want)
+			}
 		}
 	})
 
@@ -1356,5 +1398,16 @@ func TestLastDistinctLines(t *testing.T) {
 	}
 	if got := lastDistinctLines("", 5); got != "" {
 		t.Fatalf("lastDistinctLines of no output = %q", got)
+	}
+}
+
+// onlyUnder reads directories under root and reports every other one absent,
+// so socket discovery does not see the machine the test runs on.
+func onlyUnder(root string) func(string) ([]os.DirEntry, error) {
+	return func(dir string) ([]os.DirEntry, error) {
+		if dir != root && !strings.HasPrefix(dir, root+string(filepath.Separator)) {
+			return nil, os.ErrNotExist
+		}
+		return os.ReadDir(dir)
 	}
 }

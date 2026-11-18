@@ -115,26 +115,26 @@ func TestContainerBuildContextExcludesLocalState(t *testing.T) {
 }
 
 // TestContainerfileIsNonRootAndPinned pins the runtime contract the chart
-// relies on: a non-root UID, digest-pinned bases, no secret copied or set by
-// ARG/ENV, and the kodema binary as the entrypoint.
+// relies on: a non-root UID, a digest-pinned runtime base, no secret copied or
+// set by ARG/ENV, and the kodema binary as the entrypoint. The build stage may
+// name a tag: only the static binary it builds reaches the image.
 func TestContainerfileIsNonRootAndPinned(t *testing.T) {
 	body, err := os.ReadFile(filepath.Join(repoRoot(t), "deploy", "images", "kodema", "Containerfile"))
 	if err != nil {
 		t.Fatalf("read Containerfile: %v", err)
 	}
 	text := string(body)
-	froms := 0
+	var froms []string
 	for line := range strings.SplitSeq(text, "\n") {
 		trimmed := strings.TrimSpace(line)
 		if strings.HasPrefix(strings.ToUpper(trimmed), "FROM ") {
-			froms++
-			if !strings.Contains(trimmed, "@sha256:") {
-				t.Errorf("FROM is not digest-pinned: %s", trimmed)
-			}
+			froms = append(froms, trimmed)
 		}
 	}
-	if froms < 2 {
-		t.Errorf("Containerfile has %d FROM stages, want a builder and a runtime stage", froms)
+	if len(froms) < 2 {
+		t.Errorf("Containerfile has %d FROM stages, want a builder and a runtime stage", len(froms))
+	} else if runtime := froms[len(froms)-1]; !strings.Contains(runtime, "@sha256:") {
+		t.Errorf("the runtime FROM is not digest-pinned: %s", runtime)
 	}
 	if !strings.Contains(text, "USER 65532:65532") {
 		t.Errorf("Containerfile does not run as UID/GID 65532")

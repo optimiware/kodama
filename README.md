@@ -129,8 +129,7 @@ young, and the design is ahead of the evidence in these places:
 
 ## Quick start
 
-On Linux with rootless Podman 5 or newer, or on macOS with a Podman machine
-(macOS needs a release newer than 0.2.2):
+On Linux with rootless Podman 5 or newer, or on macOS with a Podman machine:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/optimiware/kodema/master/install.sh | sh
@@ -144,11 +143,11 @@ system and checks them against the release's `SHA256SUMS`. `kodema up` then
 starts a complete local Kodema. Run a pipeline file on it:
 
 ```sh
-podman pull docker.io/library/alpine:3.24@sha256:f59abe656b692d901e184be3445e084786602108599d2a51d229c0f5a48c71bf
+podman pull docker.io/library/alpine:3.24
 cat > hello.yaml <<'EOF'
 actions:
   - name: hello
-    image: docker.io/library/alpine@sha256:f59abe656b692d901e184be3445e084786602108599d2a51d229c0f5a48c71bf
+    image: docker.io/library/alpine:3.24
     timeout: 2m
     commands:
       - echo "hello from a Kodema workload"

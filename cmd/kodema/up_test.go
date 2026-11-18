@@ -52,6 +52,15 @@ func TestUpDownStatusCLICommands(t *testing.T) {
 		t.Fatalf("capturedUp = %+v", capturedUp)
 	}
 
+	// KODEMA_SOCKET names the Podman socket of every command, and --socket wins.
+	t.Setenv("KODEMA_SOCKET", "/env/podman.sock")
+	if code := runUpEntry(context.Background(), []string{"--name", "demo"}, &out, &errBuf); code != 0 || capturedUp.Socket != "/env/podman.sock" {
+		t.Fatalf("runUpEntry with KODEMA_SOCKET: exit %d, socket %q", code, capturedUp.Socket)
+	}
+	if code := runUpEntry(context.Background(), []string{"--name", "demo", "--socket", "/flag/podman.sock"}, &out, &errBuf); code != 0 || capturedUp.Socket != "/flag/podman.sock" {
+		t.Fatalf("runUpEntry with --socket: exit %d, socket %q", code, capturedUp.Socket)
+	}
+
 	out.Reset()
 	if code := runStatusEntry(context.Background(), []string{"--name", "demo", "--json"}, &out, &errBuf); code != 0 {
 		t.Fatalf("runStatusEntry exit = %d: %s", code, errBuf.String())
@@ -64,7 +73,7 @@ func TestUpDownStatusCLICommands(t *testing.T) {
 	if code := runDownEntry(context.Background(), []string{"--name", "demo", "--purge"}, &out, &errBuf); code != 0 {
 		t.Fatalf("runDownEntry exit = %d: %s", code, errBuf.String())
 	}
-	if !capturedDown.Purge || capturedDown.Instance != "demo" {
+	if !capturedDown.Purge || capturedDown.Instance != "demo" || capturedDown.Socket != "/env/podman.sock" {
 		t.Fatalf("capturedDown = %+v", capturedDown)
 	}
 }

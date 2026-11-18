@@ -8,8 +8,10 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -57,6 +59,9 @@ type DetectOptions struct {
 	Getenv func(string) string
 	// ReadDir overrides os.ReadDir for Podman Machine subdirectory discovery.
 	ReadDir func(string) ([]os.DirEntry, error)
+	// UserTempDir overrides the macOS per-user temporary directory, which
+	// TMPDIR names in a login shell (getconf DARWIN_USER_TEMP_DIR).
+	UserTempDir func() string
 	// StatSocket reports whether path exists and resolves to a Unix domain socket.
 	StatSocket func(string) bool
 	// PingSocket probes http://unix/_ping on path and classifies the engine.
@@ -159,7 +164,7 @@ func DetectRuntime(ctx context.Context, opts DetectOptions) (DetectedRuntime, er
 	}
 
 	// 3. Standard Linux and macOS candidates in deterministic order.
-	candidates := candidateSockets(goos, homeDir, getenv, opts.UID, readDir)
+	candidates := candidateSockets(goos, homeDir, getenv, opts.UID, readDir, opts.UserTempDir)
 	seen := make(map[string]bool, len(candidates))
 	var probed []string
 	for _, candidate := range candidates {
@@ -206,7 +211,7 @@ func CandidateSocketPaths(opts DetectOptions) []string {
 	if readDir == nil {
 		readDir = os.ReadDir
 	}
-	raw := candidateSockets(goos, homeDir, getenv, opts.UID, readDir)
+	raw := candidateSockets(goos, homeDir, getenv, opts.UID, readDir, opts.UserTempDir)
 	seen := make(map[string]bool, len(raw))
 	out := make([]string, 0, len(raw))
 	for _, c := range raw {
@@ -224,6 +229,7 @@ func candidateSockets(
 	getenv func(string) string,
 	uid int,
 	readDir func(string) ([]os.DirEntry, error),
+	userTempDir func() string,
 ) []socketCandidate {
 	var candidates []socketCandidate
 
@@ -259,14 +265,32 @@ func candidateSockets(
 		}
 	}
 
-	// Podman Machine since Podman 5: $TMPDIR/podman/<machine>-api.sock.
-	if tmpDir := strings.TrimSpace(getenv("TMPDIR")); tmpDir != "" && filepath.IsAbs(tmpDir) {
-		for _, apiSocket := range discoverPodmanMachineAPISockets(filepath.Join(tmpDir, "podman"), readDir) {
-			candidates = append(candidates, socketCandidate{
-				provider:    "podman-machine",
-				path:        apiSocket,
-				defaultKind: KindPodman,
-			})
+	// Podman Machine since Podman 5 on macOS: <machine>-api.sock in
+	// $TMPDIR/podman of the shell that started the machine, or in /tmp/podman
+	// when it had no TMPDIR. This shell's TMPDIR may differ from that one, or
+	// be unset, so the per-user temporary directory is tried as well.
+	if goos == "darwin" {
+		if userTempDir == nil {
+			userTempDir = darwinUserTempDir
+		}
+		var podmanDirs []string
+		for _, tmpDir := range []string{getenv("TMPDIR"), userTempDir(), "/tmp"} {
+			tmpDir = strings.TrimSpace(tmpDir)
+			if tmpDir == "" || !filepath.IsAbs(tmpDir) {
+				continue
+			}
+			if podmanDir := filepath.Join(tmpDir, "podman"); !slices.Contains(podmanDirs, podmanDir) {
+				podmanDirs = append(podmanDirs, podmanDir)
+			}
+		}
+		for _, podmanDir := range podmanDirs {
+			for _, apiSocket := range discoverPodmanMachineAPISockets(podmanDir, readDir) {
+				candidates = append(candidates, socketCandidate{
+					provider:    "podman-machine",
+					path:        apiSocket,
+					defaultKind: KindPodman,
+				})
+			}
 		}
 	}
 
@@ -345,6 +369,16 @@ func discoverPodmanMachineSubdirSockets(machineDir string, readDir func(string) 
 		}
 	}
 	return found
+}
+
+// darwinUserTempDir returns the macOS per-user temporary directory, or "" when
+// getconf cannot tell.
+func darwinUserTempDir() string {
+	out, err := exec.Command("getconf", "DARWIN_USER_TEMP_DIR").Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
 }
 
 // discoverPodmanMachineAPISockets lists the <machine>-api.sock entries of

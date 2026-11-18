@@ -13,10 +13,8 @@ built-in sign-in that asks for no password. For production, see the
   `systemctl --user enable --now podman.socket`, and `podman info` succeeds.
   Docker is not supported, because Kodema starts workloads through the Podman
   API.
-- Or macOS with a Podman machine of Podman 5 or newer: `podman machine start`.
-  It has run on a rootless machine, the default, of Podman 6.2 on Apple
-  silicon. Kodema 0.2.2 does not start on a Podman machine; use a newer
-  release or a checkout.
+- Or macOS with a running Podman machine of Podman 5 or newer:
+  `podman machine start`.
 - `curl` and `tar`, for the installer.
 - Port 8443 free.
 
@@ -71,17 +69,15 @@ with the roles `admin,engineer,reviewer,operator`.
 
 ## Run a first pipeline
 
-The runtime never pulls an image. Pull the one the pipeline names, and name it
-by digest. This digest is the one of Alpine's image index, so Podman pulls the
-image of your machine's architecture:
+The runtime never pulls an image. Pull the one the pipeline names first:
 
 ```sh
-podman pull docker.io/library/alpine:3.24@sha256:f59abe656b692d901e184be3445e084786602108599d2a51d229c0f5a48c71bf
+podman pull docker.io/library/alpine:3.24
 
 cat > hello.yaml <<'EOF'
 actions:
   - name: hello
-    image: docker.io/library/alpine@sha256:f59abe656b692d901e184be3445e084786602108599d2a51d229c0f5a48c71bf
+    image: docker.io/library/alpine:3.24
     timeout: 2m
     commands:
       - echo "hello from a Kodema workload"
@@ -109,7 +105,7 @@ An action can ask a role for a decision instead of running a container:
 cat > review.yaml <<'EOF'
 actions:
   - name: prepare
-    image: docker.io/library/alpine@sha256:f59abe656b692d901e184be3445e084786602108599d2a51d229c0f5a48c71bf
+    image: docker.io/library/alpine:3.24
     timeout: 2m
     commands:
       - echo prepared
@@ -202,9 +198,9 @@ kodema down --purge    # removes the containers, volumes and state
   credential 8 hours. Run `kodema up` again to renew both.
 - `kodema up --name <name>` runs a second installation; give it another
   `--listen` port.
-- `kodema up` finds the Podman socket of your user or of a running Podman
-  machine. `--socket <path>`, or `KODEMA_UP_SOCKET`, names another. `status`,
-  `down` and a later `up` use the socket the installation was started on.
+- `kodema up` finds the Podman socket itself: your user's on Linux, the
+  running Podman machine's on macOS. `--socket <path>` or `KODEMA_SOCKET`
+  names another; `status` and `down` then use it without either.
 
 ## Limits
 

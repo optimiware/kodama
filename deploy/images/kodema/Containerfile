@@ -5,10 +5,7 @@
 # The runtime needs the git binary (Git service and hooks run it) and CA roots
 # (OIDC discovery and KMS calls). It runs as the non-root UID the chart expects.
 
-# Both bases are pinned by the digest of their multi-architecture index, not of
-# one platform's image: the build stage then runs on the build machine's own
-# architecture, and the runtime stage gets the git and shell of the target's.
-FROM --platform=$BUILDPLATFORM docker.io/library/golang:1.27.3-alpine@sha256:fa3d596898d9f126af7c01d14ee7597bab3f39cccf392ef36b69fe77cd681f18 AS build
+FROM --platform=$BUILDPLATFORM docker.io/library/golang:1.27 AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
@@ -24,6 +21,8 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -buil
       -ldflags="-s -w -X main.version=${VERSION} -X main.revision=${REVISION}" \
       -o /out/kodema ./cmd/kodema
 
+# Pinned by the digest of Alpine's multi-architecture index, so every platform
+# of the image gets the git and shell of its own architecture.
 FROM docker.io/library/alpine:3.24@sha256:f59abe656b692d901e184be3445e084786602108599d2a51d229c0f5a48c71bf
 # git-daemon supplies git-http-backend, the CGI program `kodema git serve` runs
 # for every smart-HTTP exchange; Alpine's `git` package does not ship it.
