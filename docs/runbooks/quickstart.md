@@ -12,7 +12,11 @@ built-in sign-in that asks for no password. For production, see the
 - Linux with rootless Podman 5 or newer and its user API socket:
   `systemctl --user enable --now podman.socket`, and `podman info` succeeds.
   Docker is not supported, because Kodema starts workloads through the Podman
-  API. macOS with a Podman machine is expected to work and has not been run.
+  API.
+- Or macOS with a Podman machine of Podman 5 or newer: `podman machine start`.
+  It has run on a rootless machine, the default, of Podman 6.2 on Apple
+  silicon. Kodema 0.2.2 does not start on a Podman machine; use a newer
+  release or a checkout.
 - `curl` and `tar`, for the installer.
 - Port 8443 free.
 
@@ -68,15 +72,16 @@ with the roles `admin,engineer,reviewer,operator`.
 ## Run a first pipeline
 
 The runtime never pulls an image. Pull the one the pipeline names, and name it
-by digest:
+by digest. This digest is the one of Alpine's image index, so Podman pulls the
+image of your machine's architecture:
 
 ```sh
-podman pull docker.io/library/alpine:3.24@sha256:0f49f331d9212aff11b932863be4eb01cdf962969aa86dab7d1ee21ac6f5f52b
+podman pull docker.io/library/alpine:3.24@sha256:f59abe656b692d901e184be3445e084786602108599d2a51d229c0f5a48c71bf
 
 cat > hello.yaml <<'EOF'
 actions:
   - name: hello
-    image: docker.io/library/alpine@sha256:0f49f331d9212aff11b932863be4eb01cdf962969aa86dab7d1ee21ac6f5f52b
+    image: docker.io/library/alpine@sha256:f59abe656b692d901e184be3445e084786602108599d2a51d229c0f5a48c71bf
     timeout: 2m
     commands:
       - echo "hello from a Kodema workload"
@@ -104,7 +109,7 @@ An action can ask a role for a decision instead of running a container:
 cat > review.yaml <<'EOF'
 actions:
   - name: prepare
-    image: docker.io/library/alpine@sha256:0f49f331d9212aff11b932863be4eb01cdf962969aa86dab7d1ee21ac6f5f52b
+    image: docker.io/library/alpine@sha256:f59abe656b692d901e184be3445e084786602108599d2a51d229c0f5a48c71bf
     timeout: 2m
     commands:
       - echo prepared
@@ -119,8 +124,8 @@ EOF
 kodactl run review.yaml
 ```
 
-`run` stops when the execution waits for a person and names the execution.
-Answer it from the inbox:
+`run` stops when the execution waits for a person and names the execution. It
+exits 1 then, as the execution has not succeeded. Answer it from the inbox:
 
 ```sh
 kodactl inbox
@@ -197,9 +202,16 @@ kodema down --purge    # removes the containers, volumes and state
   credential 8 hours. Run `kodema up` again to renew both.
 - `kodema up --name <name>` runs a second installation; give it another
   `--listen` port.
+- `kodema up` finds the Podman socket of your user or of a running Podman
+  machine. `--socket <path>`, or `KODEMA_UP_SOCKET`, names another. `status`,
+  `down` and a later `up` use the socket the installation was started on.
 
 ## Limits
 
+- The containers of the installation that mount its state directory or the
+  Podman socket (PostgreSQL, the server, Git) run with SELinux labeling
+  disabled (`label=disable`): a confined container may read neither. Workloads
+  keep their label.
 - One host, one tenant, a local keyfile. Anyone who can use this machine can
   sign in as any persona.
 - On Linux the gateway listens on every address, because containers reach the
