@@ -2,9 +2,9 @@ apiVersion: v2
 name: kodema-stack
 description: Kodema stage/production stack chart bundling the Kodema control plane and TLS NATS JetStream, with an optional OAuthSonas development identity provider for stage and preview only
 type: application
-version: 0.3.0-dev
-appVersion: "0.3.0-dev"
+version: 0.4.0
+appVersion: "0.4.0"
 dependencies:
   - name: kodema
-    version: "0.3.0-dev"
+    version: "0.4.0"
     repository: "file://../kodema"
