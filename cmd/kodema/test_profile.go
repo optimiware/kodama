@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -168,12 +169,18 @@ func buildTestProfile(options serverOptions, getenv productionEnv) (productionBu
 	if err != nil {
 		return productionBuild{}, fmt.Errorf("podman runtime root under the data directory: %w", err)
 	}
+	toolboxFile, err := resolveTestToolboxFile(options.ToolboxFile, runtime.GOOS, os.Executable)
+	if err != nil {
+		return productionBuild{}, err
+	}
 	adapter, err := runtimepodman.New(runtimepodman.Config{
 		Libpod:         libpod,
 		Files:          files,
 		Root:           runtimeRoot,
 		KodemaURL:      workloadURL,
 		WorkloadCAFile: workloadCAFile,
+		ToolboxFile:    toolboxFile,
+		GitURL:         options.WorkloadGitURL,
 		Cleanup:        runtimepodman.CleanupPolicy{Attempts: 3, Backoff: time.Second},
 	})
 	if err != nil {
@@ -335,6 +342,28 @@ func testBrokerTLS(getenv productionEnv) (*natsdriver.TLSConfig, error) {
 		}
 	}
 	return &natsdriver.TLSConfig{CAFile: caFile, CertFile: certFile, KeyFile: keyFile}, nil
+}
+
+// resolveTestToolboxFile selects the kodema binary workloads mount at
+// /kodema/bin. An explicit file wins. Otherwise it is the running executable,
+// which is the right binary only on Linux, the platform of the containers: on
+// another system the setting is required rather than mounting a binary no
+// container can run.
+func resolveTestToolboxFile(explicit, goos string, executable func() (string, error)) (string, error) {
+	if file := strings.TrimSpace(explicit); file != "" {
+		if !filepath.IsAbs(file) {
+			return "", fmt.Errorf("test profile toolbox (--toolbox-file or KODEMA_TOOLBOX_FILE) must be an absolute path")
+		}
+		return file, nil
+	}
+	if goos != "linux" {
+		return "", fmt.Errorf("test profile toolbox (--toolbox-file or KODEMA_TOOLBOX_FILE) is required on %s: workloads mount the Linux kodema binary", goos)
+	}
+	file, err := executable()
+	if err != nil {
+		return "", fmt.Errorf("test profile toolbox: the running executable cannot be located; set --toolbox-file or KODEMA_TOOLBOX_FILE")
+	}
+	return file, nil
 }
 
 // resolveTestWorkloadCAFile selects the optional CA bundle materialized into

@@ -24,6 +24,8 @@ jobs:
       - run: go vet -tags=e2e ./test/e2e/...
       - run: go vet -tags=qualification ./test/qualification/...
       - run: make test-e2e-hermetic
+      # Exercise the installed CLI command names against local identity fixtures.
+      - run: go test -tags=integration ./test/integration/boundaries/identity/
 
   # Builds everything a release publishes and pushes nothing, so a broken
   # release build is found on the commit that breaks it.
@@ -35,31 +37,27 @@ jobs:
         with:
           go-version-file: .go-version
       - run: make build
-      - name: Binaries report the version and revision
+      - name: The binary reports the version and revision
         run: |
-          want="$(cat VERSION) (revision ${GITHUB_SHA},"
-          for binary in kodema kodactl; do
-            line="$(bin/$binary version)"
-            echo "$line"
-            [[ "$line" == "$binary $want"* ]] || { echo "::error::$binary version does not start with '$binary $want'"; exit 1; }
-          done
+          want="kodema $(cat VERSION) (revision ${GITHUB_SHA},"
+          line="$(bin/kodema version)"
+          echo "$line"
+          [[ "$line" == "$want"* ]] || { echo "::error::kodema version does not start with '$want'"; exit 1; }
       - run: make dist
       - run: sha256sum --check SHA256SUMS
         working-directory: dist
       # The archives are laid out as a release serves them, so a name
       # install.sh and scripts/dist disagree on fails here, not after a release.
-      - name: install.sh installs the archives of this platform
+      - name: install.sh installs the archive of this platform
         run: |
           version="$(cat VERSION)"
           mkdir -p "${RUNNER_TEMP}/releases/download"
           ln -s "${PWD}/dist" "${RUNNER_TEMP}/releases/download/v${version}"
           KODEMA_RELEASES_URL="file://${RUNNER_TEMP}/releases" KODEMA_VERSION="$version" \
             KODEMA_INSTALL_DIR="${RUNNER_TEMP}/bin" sh install.sh
-          for binary in kodema kodactl; do
-            line="$("${RUNNER_TEMP}/bin/${binary}" version)"
-            echo "$line"
-            [[ "$line" == "$binary $version (revision ${GITHUB_SHA},"* ]] || { echo "::error::the installed $binary reports another version or revision"; exit 1; }
-          done
+          line="$("${RUNNER_TEMP}/bin/kodema" version)"
+          echo "$line"
+          [[ "$line" == "kodema $version (revision ${GITHUB_SHA},"* ]] || { echo "::error::the installed kodema reports another version or revision"; exit 1; }
       - name: Image builds and reports the version and revision
         run: |
           ref="$(scripts/image build --repository localhost/kodema --tag ci)"

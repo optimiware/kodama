@@ -1,7 +1,7 @@
 // Package sessionlock implements the Userland-declared cli.SessionLock
 // cross-process lock over an exclusive operating-system file lock.
 //
-// kodactl serializes reload -> refresh -> ReplaceFile and logout through this
+// kodema serializes reload -> refresh -> ReplaceFile and logout through this
 // lock so two processes cannot both rotate one rotating refresh token. The
 // lock is a real flock: it is shared by every process that names the same
 // session file, and the operating system releases it when the holding process

@@ -59,7 +59,7 @@ func defaultServerDeps() serverDeps {
 	}
 }
 
-// runServerEntry is the production entrypoint for `kodema server`.
+// runServerEntry is the production entrypoint for `kodema serve`.
 func runServerEntry(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	return runServer(ctx, args, stdout, stderr, defaultServerDeps())
 }
@@ -77,7 +77,16 @@ type serverOptions struct {
 	// WorkloadCAFile optionally names the PEM CA bundle mounted read-only into
 	// Podman workloads at /kodema/ca.crt (with KODEMA_CA_FILE=/kodema/ca.crt).
 	WorkloadCAFile string
-	MCPPath        string
+	// WorkloadGitURL optionally names the base URL of the installation's Git
+	// service as workloads reach it. It is exposed as KODEMA_GIT_URL and
+	// configures Git, for that origin alone, to authenticate as the execution.
+	// In production {tenant} is replaced by the owning tenant's DNS label.
+	WorkloadGitURL string
+	// ToolboxFile is the test profile's kodema binary, built for the
+	// containers' platform, that workloads mount at /kodema/bin. Empty selects
+	// the running executable on Linux.
+	ToolboxFile string
+	MCPPath     string
 	// LoopInterval is the durable profiles' background scan cadence. Zero
 	// selects the profile default (one second); the value is bounded by
 	// resolvedLoopInterval before any adapter is built.
@@ -175,6 +184,8 @@ func applyServerEnv(options serverOptions) (serverOptions, error) {
 	options.PublicURL = envOr("KODEMA_PUBLIC_URL", options.PublicURL)
 	options.WorkloadURL = envOr("KODEMA_WORKLOAD_URL", options.WorkloadURL)
 	options.WorkloadCAFile = envOr("KODEMA_WORKLOAD_CA_FILE", options.WorkloadCAFile)
+	options.WorkloadGitURL = envOr("KODEMA_WORKLOAD_GIT_URL", options.WorkloadGitURL)
+	options.ToolboxFile = envOr("KODEMA_TOOLBOX_FILE", options.ToolboxFile)
 	options.MCPPath = envOr("KODEMA_MCP_PATH", options.MCPPath)
 	options.GitStorageRoot = envOr("KODEMA_GIT_STORAGE_ROOT", options.GitStorageRoot)
 	interval, err := envDurationStrict("KODEMA_LOOP_INTERVAL", options.LoopInterval)
@@ -267,6 +278,8 @@ type serverFile struct {
 	PublicURL      string               `json:"public_url"`
 	WorkloadURL    string               `json:"workload_url"`
 	WorkloadCAFile string               `json:"workload_ca_file"`
+	WorkloadGitURL string               `json:"workload_git_url"`
+	ToolboxFile    string               `json:"toolbox_file"`
 	MCPPath        string               `json:"mcp_path"`
 	LoopInterval   string               `json:"loop_interval"`
 	GitStorageRoot string               `json:"git_storage_root"`
@@ -329,7 +342,7 @@ func parseServerOptions(args []string, stderr io.Writer) (serverOptions, int) {
 		return serverOptions{}, 2
 	}
 
-	flags := flag.NewFlagSet("server", flag.ContinueOnError)
+	flags := flag.NewFlagSet("serve", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	tokens := stringList(options.DevTokens)
 	flags.StringVar(&configPath, "config", configPath, "JSON configuration file")
@@ -340,6 +353,8 @@ func parseServerOptions(args []string, stderr io.Writer) (serverOptions, int) {
 	flags.StringVar(&options.PublicURL, "public-url", options.PublicURL, "public URL")
 	flags.StringVar(&options.WorkloadURL, "workload-url", options.WorkloadURL, "test profile: base URL workloads reach the server through")
 	flags.StringVar(&options.WorkloadCAFile, "workload-ca-file", options.WorkloadCAFile, "test profile: PEM CA bundle mounted read-only into workloads at /kodema/ca.crt")
+	flags.StringVar(&options.WorkloadGitURL, "workload-git-url", options.WorkloadGitURL, "HTTPS base URL of the Git service as workloads reach it; production replaces {tenant}")
+	flags.StringVar(&options.ToolboxFile, "toolbox-file", options.ToolboxFile, "test profile: kodema binary for the containers' platform, mounted into workloads at /kodema/bin (default on Linux: this executable)")
 	flags.StringVar(&options.MCPPath, "mcp-path", options.MCPPath, "MCP JSON-RPC path")
 	flags.DurationVar(&options.LoopInterval, "loop-interval", options.LoopInterval, "durable profiles' background scan interval (default 1s, 100ms to 1m)")
 	flags.StringVar(&options.GitStorageRoot, "git-storage-root", options.GitStorageRoot, "mounted tenant Git storage root for retained-commit keep refs")
@@ -426,6 +441,12 @@ func mergeServerFile(file serverFile, options serverOptions) (serverOptions, err
 	}
 	if file.WorkloadCAFile != "" {
 		options.WorkloadCAFile = file.WorkloadCAFile
+	}
+	if file.WorkloadGitURL != "" {
+		options.WorkloadGitURL = file.WorkloadGitURL
+	}
+	if file.ToolboxFile != "" {
+		options.ToolboxFile = file.ToolboxFile
 	}
 	if file.MCPPath != "" {
 		options.MCPPath = file.MCPPath

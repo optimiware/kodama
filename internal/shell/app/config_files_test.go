@@ -2,7 +2,7 @@ package app
 
 // Trusted-file configuration tests for the optional Shell gateways.
 //
-// Both `kodema server` profiles read the model gateway and the external MCP
+// Both `kodema serve` profiles read the model gateway and the external MCP
 // tool proxy from the files named by KODEMA_MODELS_FILE and
 // KODEMA_TOOL_PROXY_FILE. These tests pin the file contract: every configured
 // member reaches its own value, an unreadable, malformed, unknown-member,

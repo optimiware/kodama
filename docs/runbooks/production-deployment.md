@@ -718,6 +718,13 @@ migrate` refuses to run without both variables and a `sha256:` digest. The
 `helm` action refuses the placeholder `registry.example.com/kodema` unless you
 pass `--allow-placeholder-image`.
 
+The chart also passes this reference to `kodema serve` as `KODEMA_TOOLBOX_IMAGE`.
+Without a digest the production server refuses to start. The tenant nodes pull
+the same image to install `/kodema/bin/kodema` in each Job. For a private
+registry, configure pull access in the **tenant namespaces** as well as the
+release namespace; for mixed architectures, pin the multi-architecture index.
+Keep the previous digest available while any prepared Jobs still reference it.
+
 A released version is also published as `ghcr.io/optimiware/kodema/kodema:<version>`
 with its digest in the release notes; see [release.md](release.md).
 

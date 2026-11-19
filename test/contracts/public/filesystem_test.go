@@ -11,19 +11,20 @@ import (
 	"github.com/optimiware/kodema/internal/userland/cli"
 )
 
-// TestFileSystemSeamShape pins the consumer-owned kodactl filesystem seam:
-// ReadFile, WriteFile, ReadDir, ReplaceFile and Remove. ReplaceFile exists
+// TestFileSystemSeamShape pins the consumer-owned kodema filesystem seam:
+// ReadFile, ReadRegularFile, WriteFile, ReadDir, ReplaceFile and Remove. ReplaceFile exists
 // because WriteFile cannot create a missing parent directory or replace a
 // pre-existing looser session file. Remove exists because logout must delete
 // the session file through the same injected boundary.
 func TestFileSystemSeamShape(t *testing.T) {
 	typ := reflect.TypeOf((*cli.FileSystem)(nil)).Elem()
 	want := map[string]reflect.Type{
-		"ReadFile":    reflect.TypeOf(func(string) ([]byte, error) { return nil, nil }),
-		"WriteFile":   reflect.TypeOf(func(string, []byte, fs.FileMode) error { return nil }),
-		"ReplaceFile": reflect.TypeOf(func(string, []byte, fs.FileMode) error { return nil }),
-		"Remove":      reflect.TypeOf(func(string) error { return nil }),
-		"ReadDir":     reflect.TypeOf(func(string) ([]cli.DirEntry, error) { return nil, nil }),
+		"ReadFile":        reflect.TypeOf(func(string) ([]byte, error) { return nil, nil }),
+		"ReadRegularFile": reflect.TypeOf(func(string, int64) ([]byte, error) { return nil, nil }),
+		"WriteFile":       reflect.TypeOf(func(string, []byte, fs.FileMode) error { return nil }),
+		"ReplaceFile":     reflect.TypeOf(func(string, []byte, fs.FileMode) error { return nil }),
+		"Remove":          reflect.TypeOf(func(string) error { return nil }),
+		"ReadDir":         reflect.TypeOf(func(string) ([]cli.DirEntry, error) { return nil, nil }),
 	}
 	if typ.NumMethod() != len(want) {
 		t.Fatalf("cli.FileSystem has %d methods; want exactly %d", typ.NumMethod(), len(want))
@@ -152,6 +153,11 @@ func (files *referenceFileSystem) ReadFile(name string) ([]byte, error) {
 		return nil, fs.ErrNotExist
 	}
 	return append([]byte(nil), file.data...), nil
+}
+
+func (files *referenceFileSystem) ReadRegularFile(name string, limit int64) ([]byte, error) {
+	data, err := files.ReadFile(name)
+	return data[:min(int64(len(data)), limit)], err
 }
 
 func (files *referenceFileSystem) WriteFile(name string, data []byte, perm fs.FileMode) error {

@@ -1119,7 +1119,7 @@ func TestMCPStdioAndInstall(t *testing.T) {
 		if code := cli.RunWithDeps(context.Background(), cfg, []string{"mcp", "install", "codex", "--name", "kodema-prod", "--print"}, ports, cli.CommandDeps{}); code != cli.ExitSuccess {
 			t.Fatalf("codex --print exit = %d; stderr=%q", code, errOut.String())
 		}
-		wantTOML := "[mcp_servers.kodema-prod]\ncommand = \"kodactl\"\nargs = [\"--url\", \"https://kodema.example.com\", \"--ca-file\", \"/etc/kodema/ca.pem\", \"mcp\", \"stdio\"]\n"
+		wantTOML := "[mcp_servers.kodema-prod]\ncommand = \"kodema\"\nargs = [\"--url\", \"https://kodema.example.com\", \"--ca-file\", \"/etc/kodema/ca.pem\", \"mcp\", \"stdio\"]\n"
 		if out.String() != wantTOML {
 			t.Fatalf("codex --print =\n%s\nwant:\n%s", out.String(), wantTOML)
 		}
@@ -1180,7 +1180,7 @@ func TestMCPStdioAndInstall(t *testing.T) {
 			t.Fatalf("mcpServers = %v; want both existing and kodema", servers)
 		}
 		kodemaEntry := servers["kodema"].(map[string]any)
-		if kodemaEntry["command"] != "kodactl" {
+		if kodemaEntry["command"] != "kodema" {
 			t.Fatalf("command = %v", kodemaEntry["command"])
 		}
 

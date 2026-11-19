@@ -335,7 +335,7 @@ func TestRunPipelineApplyDirectoryFailures(t *testing.T) {
 	})
 }
 
-// TestRunFile pins `kodactl run <file>`: the inline pipeline.start input, the
+// TestRunFile pins `kodema run <file>`: the inline pipeline.start input, the
 // container stdout in action order and the exit code and stderr per outcome.
 func TestRunFile(t *testing.T) {
 	const path = "/repo/hello.yaml"
@@ -413,7 +413,7 @@ func TestRunFile(t *testing.T) {
 			},
 			logs:     map[string][]string{"act-1": {"built\n"}},
 			wantCode: cli.ExitFailure,
-			wantErr:  []string{"execution exec-1 is waiting for role/reviewer", `"approve"`, "kodactl inbox", "kodactl approve exec-1"},
+			wantErr:  []string{"execution exec-1 is waiting for role/reviewer", `"approve"`, "kodema inbox", "kodema approve exec-1"},
 		},
 	}
 	for _, testCase := range cases {

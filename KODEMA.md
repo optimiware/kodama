@@ -47,7 +47,7 @@ A tenant owns an isolated organization. A project groups its software, work, con
 
 A resource binding records a stable resource ID, ownership scope, enforcing service, registered endpoint origins, verifiable operations, and reportable events. Repository bindings add remote metadata such as path and default branch; the Git service owns objects, refs, and [access rules](#git-access-rules). Admins manage bindings through the API; each change increments the binding version, is audited, and publishes an event. Services and workloads cannot claim another resource. Registration stores metadata, not bytes, access rules, or provisioning jobs.
 
-A pipeline has a stable ID, project-unique name, and YAML, created or updated only through the API. Files kept in Git can be posted with `kodactl pipeline apply .kodema/`; the Shell never discovers or synchronizes them on push. Git push imports code, not pipeline definitions, and is not the standard work-submission mechanism.
+A pipeline has a stable ID, project-unique name, and YAML, created or updated only through the API. Files kept in Git can be posted with `kodema pipeline apply .kodema/`; the Shell never discovers or synchronizes them on push. Git push imports code, not pipeline definitions, and is not the standard work-submission mechanism.
 
 Admission stores the exact YAML bytes and their SHA-256 hash, resolves images to immutable digests, and snapshots inputs, declared secret names, runtime requirements, and any task conversation and metadata. Pipeline edits cannot change this snapshot. Commits, refs, and artifact digests are ordinary input and output values; Git is one optional snapshot system, not a Kodema concept. Executions need neither a task nor a source repository; task-free runs may use inline YAML. There is no YAML canonicalization, separate definition-blob store, mutable digest ref, or pipeline version table. Secret values resolve at container activation.
 
@@ -73,9 +73,9 @@ A container action declares its image, commands, environment, secret references,
 
 **Status is standard; outputs and custom events are optional.** Runtime exit zero succeeds, nonzero fails; cancellation and timeout follow the lifecycle below. No custom outcome or output is required.
 
-Following Drone's model, the adapter replaces the entrypoint with a fail-fast script using the image's shell and tools, without automatic command tracing or an injected Kodema runner. The runtime supplies exit status and stdout/stderr logs; the controller owns scheduling, cancellation, deadlines, and recovery.
+Following Drone's model, the adapter replaces the entrypoint with a fail-fast script using the image's shell and tools, without automatic command tracing or a Kodema process that supervises the commands. The commands start in `/workspace`. The runtime supplies exit status and stdout/stderr logs; the controller owns scheduling, cancellation, deadlines, and recovery.
 
-Commands use HTTP, Git, or MCP directly. The optional `kodactl` client may be included in the image or downloaded as a pinned, checksum-verified release.
+Container runtimes mount the `kodema` binary of the control plane's own version read-only at `/kodema/bin` and add that directory to the end of `PATH`. It is a toolbox: commands may call it, it is never a process between the commands and the runtime, and the Kernel does not depend on it. Commands use it, or HTTP, Git, and MCP directly; an image needs no Kodema software of its own.
 
 Container actions share one disposable `/workspace`, used sequentially and retained across request waits and controller restarts. A request runs no container; its successor receives the same files. Workspace loss fails the execution visibly rather than recreating scratch state or replaying commands.
 
@@ -99,6 +99,8 @@ Container outputs and request responses share nullable `actions.outputs`: one JS
 
 `PUT /api/v1/executions/{execution}/actions/{action}/outputs` accepts container outputs using the execution credential only while that container action is current and running. Submission and settlement serialize on the action row. Identical retries converge; different replacements are refused. Values remain staged until runtime-confirmed success; failure or cancellation clears them.
 
+A container action that declares outputs has a writable directory at `/kodema/outputs/<its own name>`, where a command writes each value to the file named for its key: `git rev-parse HEAD > /kodema/outputs/build/candidate`. After the last command has succeeded, the shell runs `kodema output push` as the action's final command. It reads the files of that directory, removes one trailing newline from each value, and submits them in one request to the operation above; an empty directory submits nothing, and a refused submission fails the action. The values reach the Shell over HTTP with the execution credential, so identity, validation, and serialization with settlement are those of every other submission, which a command may still make itself.
+
 Only succeeded actions supply downstream output files: runtime-confirmed container outputs or authorized passed-request responses. Rejected responses remain inspectable in the action's decision record without becoming downstream outputs.
 
 ### Environment and materialized files
@@ -112,7 +114,16 @@ The Shell supplies four standard environment variables through the runtime adapt
 | `KODEMA_ACTION` | Current action slug |
 | `KODEMA_TASK` | Associated task ID; unset for a task-free execution |
 
-Pipeline/action `env` contains literals only; action values override defaults. The four standard variables are unshadowable context, not identity proof.
+Two more are set when the installation configures them:
+
+| Variable | Value |
+|---|---|
+| `KODEMA_CA_FILE` | Path of the installation's CA bundle, mounted read-only, for an installation whose TLS certificates a public root does not sign |
+| `KODEMA_GIT_URL` | Base URL of the installation's Git service as the workload reaches it; a repository is `$KODEMA_GIT_URL/<repository>` |
+
+With `KODEMA_GIT_URL`, the adapter also configures Git through `GIT_CONFIG_COUNT`, `GIT_CONFIG_KEY_<n>`, and `GIT_CONFIG_VALUE_<n>`: for that origin alone, the only credential helper is `kodema git credential` and, with a CA bundle, `http.<origin>.sslCAInfo` is that bundle. `git clone "$KODEMA_GIT_URL/<repository>"` then authenticates as the execution with no command of the pipeline's, the credential is offered to no other host, and every other host keeps the image's trust roots.
+
+Pipeline/action `env` contains literals only; action values override defaults. The standard variables and the Git configuration variables above are unshadowable context, not identity proof.
 
 At container action activation, one `Prepare(action)` call materializes database state as read-only files, readable by the workload user:
 
@@ -122,10 +133,11 @@ At container action activation, one `Prepare(action)` call materializes database
 | `/kodema/outputs/<action>/<key>` | Settled outputs of earlier succeeded actions |
 | `/kodema/task.json` | Task conversation at admission: a JSON array of messages, each with author, time, body, and optional references; task metadata is recorded in the execution snapshot, not in this file; absent for a task-free execution |
 | `/kodema/secrets/<NAME>` | Declared secrets resolved after the resolver's policy check |
+| `/kodema/bin/kodema` | The toolbox: the control plane's own `kodema` binary |
 
-`Prepare(action)` also supplies writable `/workspace`; read-only files stay outside it and remain fixed for that workload. Subject lookups and files share one source: `<action>.outputs.<key>` maps to `/kodema/outputs/<action>/<key>`. Preparation failure prevents workload start. Reads use activation-time files; output writes use HTTP for identity and serialization with settlement. The runtime never inspects container filesystems.
+`Prepare(action)` also supplies writable `/workspace` and, for an action that declares outputs, the writable and initially empty `/kodema/outputs/<its own name>`; read-only files stay outside both and remain fixed for that workload. Subject lookups and files share one source: `<action>.outputs.<key>` maps to `/kodema/outputs/<action>/<key>`, the path the action wrote and later actions read. Preparation failure prevents workload start. Reads use activation-time files; output values reach the Shell over HTTP for identity and serialization with settlement. The runtime never inspects container filesystems.
 
-The credential mounts read-only at `/kodema/secrets/KODEMA_TOKEN`, a name stored secrets cannot shadow. Among materialized read-only files, only this file changes during a workload, on controller-managed renewal. Clients read its current value when authenticating; `kodactl` does so by default. Tools needing secret environment variables use explicit commands such as `export DB_PASSWORD="$(cat /kodema/secrets/TEST_DB_PASSWORD)"`.
+The credential mounts read-only at `/kodema/secrets/KODEMA_TOKEN`, a name stored secrets cannot shadow. Among materialized read-only files, only this file changes during a workload, on controller-managed renewal. Clients read its current value when authenticating; `kodema` does so by default. Tools needing secret environment variables use explicit commands such as `export DB_PASSWORD="$(cat /kodema/secrets/TEST_DB_PASSWORD)"`.
 
 ### Time
 
@@ -145,20 +157,7 @@ actions:
     outputs: [candidate]
     commands:
       - implement-and-push
-      - |
-        candidate="$(git rev-parse HEAD)"
-        api="$KODEMA_URL/api/v1/executions/$KODEMA_EXECUTION"
-        auth="Authorization: Bearer $(cat /kodema/secrets/KODEMA_TOKEN)"
-        view="$(curl --fail --silent --show-error --header "$auth" "$api")"
-        action="$(printf '%s' "$view" | jq --raw-output --arg name "$KODEMA_ACTION" \
-          '.body.actions[] | select(.name == $name) | .action_id')"
-        version="$(printf '%s' "$view" | jq '.body.version')"
-        jq --null-input --arg candidate "$candidate" --argjson version "$version" \
-          '{input: {outputs: {candidate: $candidate}}, expected_version: $version,
-            idempotency_key: ("candidate:" + $candidate)}' |
-          curl --fail --silent --show-error \
-            --header "$auth" --header "Content-Type: application/json" \
-            --request PUT --data @- "$api/actions/$action/outputs"
+      - git rev-parse HEAD > /kodema/outputs/implement/candidate
 
   - name: test
     image: registry.example.com/test-tools:1
@@ -189,7 +188,7 @@ actions:
           "$(cat /kodema/inputs/expected_base)"
 ```
 
-The image supplies Git, curl, and jq; `implement-and-push` publishes the candidate before submitting its output. The submission reads the execution for its own action ID and the execution version, then sends both with an idempotency key; after a `version_conflict` it reads again and retries with the same key. The test reads that settled candidate and exports the materialized placeholder secret. After confirmed test stop, review waits without a container. Passing advances to integration in the same execution and workspace, under the [Git access rules](#git-access-rules); rejection or timeout fails the execution, and cancellation cancels it. The happy path needs one pipeline and one execution.
+The image supplies Git; `implement-and-push` publishes the candidate, and the next command writes it as the action's output. Once both have succeeded, `kodema output push` submits the value: it reads the execution for its own action ID and the execution version, sends both with an idempotency key, and after a `version_conflict` reads again and retries with the same key. The test reads that settled candidate and exports the materialized placeholder secret. After confirmed test stop, review waits without a container. Passing advances to integration in the same execution and workspace, under the [Git access rules](#git-access-rules); rejection or timeout fails the execution, and cancellation cancels it. The happy path needs one pipeline and one execution.
 
 ### Lifecycle and recovery
 
@@ -279,7 +278,7 @@ Humans authenticate through external OAuth/OIDC with RBAC. Tenant and project me
 
 The Admin role grants no review authority, and access to service-owned resources follows each owning service's rules.
 
-Humans present OAuth access tokens issued for Kodema's audience, to Kodema APIs and to enforcing services that forward them to verification. The Shell validates issuer, signature, audience, and expiry, then resolves current memberships: role changes apply on the next call, and identity-provider disablement within the short access-token lifetime. `kodactl login` holds the session and acts as the Git credential helper, supplying a fresh access token as the password for username `kodema`. Automation uses service accounts, never human sessions.
+Humans present OAuth access tokens issued for Kodema's audience, to Kodema APIs and to enforcing services that forward them to verification. The Shell validates issuer, signature, audience, and expiry, then resolves current memberships: role changes apply on the next call, and identity-provider disablement within the short access-token lifetime. `kodema login` holds the session, and `kodema git credential` is the Git credential helper that supplies a fresh access token as the password for username `kodema`. Automation uses service accounts, never human sessions.
 
 Tenant isolation applies to database records, execution, networking, credentials, logs, and events. Registered enforcing services, including Git, enforce the same scope on their own storage and protocols. PostgreSQL uses forced row-level security under a non-owner runtime role, with composite ownership constraints and project-level authorization.
 
@@ -318,7 +317,7 @@ service_token = "kodsvc." + service_id + "." + base64url(service_mac)
 - **Execution lifetime:** first issue occurs at container activation; issuance and renewal use TTL at most eight hours, bounded by the active action's deadline. Consecutive containers reuse an unexpired token while checks use the new action's deadline. Renew before expiry during long actions by atomically replacing nonce/expiry in PostgreSQL, then updating the mounted file through the adapter. Replace expired tokens before another container activation.
 - **Revocation:** request entry clears credential fields; the next container after a pass gets a new nonce/expiry in the same execution. Cancellation, including the one an ask commits, and every terminal execution transition clear both fields atomically with the state change. Fresh attempts get new credentials. Refresh never replays work or revives terminal executions; started effects still require stopping/reconciliation.
 - **Execution permissions:** assigned-task content and metadata, project task creation, questions on its task, declared outputs, custom events, and configured models/tools. Excluded: membership/pipeline/resource-binding administration, plaintext secret-management reads, request resolution, and assigned conversation replies. Service-owned resources, such as Git repositories, apply their own rules to `@execution`; questions and references cannot widen authority.
-- **Transport:** HTTPS Bearer for REST, MCP, and `kodactl`. The supplied Git service accepts Bearer or credential-helper password with username `kodema`, forwarding only to verification. The `kodactl` credential helper reads the mounted token inside containers and the human session elsewhere, and supplies either only to registered trusted Git-service origins/paths. Tokens never enter URLs, repository-local configuration, logs, events, or metadata, follow redirects to unregistered origins, or reach upstream Git providers; those use provider credentials behind a trusted integration.
+- **Transport:** HTTPS Bearer for REST, MCP, and the `kodema` client commands. The supplied Git service accepts Bearer or credential-helper password with username `kodema`, forwarding only to verification. The `kodema git credential` helper reads the mounted token inside containers and the human session elsewhere, and supplies either only to registered trusted Git-service origins/paths. Tokens never enter URLs, repository-local configuration, logs, events, or metadata, follow redirects to unregistered origins, or reach upstream Git providers; those use provider credentials behind a trusted integration.
 
 ### Secret custody
 
@@ -382,7 +381,7 @@ A **userland service** is independently operated outside the Shell: Git, agents,
 
 ### Public operations
 
-One router dispatches every application operation to a shared handler behind two HTTP edges, REST and MCP JSON-RPC, so both expose the same operations and authorization. `kodactl` is a REST client:
+One router dispatches every application operation to a shared handler behind two HTTP edges, REST and MCP JSON-RPC, so both expose the same operations and authorization. The client commands of `kodema` are a REST client:
 
 - Manage projects, resource bindings and their metadata, API-posted pipelines, secrets, and service accounts.
 - Create, inspect, and update tasks and their conversations; create and start work; query the role inbox.
@@ -407,7 +406,7 @@ The service owns Git protocol handling, access rules, and resource mutation. Kod
 
 Smart HTTP verifies the actor and applies read rules; the `pre-receive` hook verifies every proposed ref update of a push and applies write rules before any of them is accepted, both through [verification](#authorization-and-verification). Integrations must prevent bypass writes; after-the-fact webhooks are insufficient.
 
-Provision repositories through the Git service and register their metadata with Kodema. Humans reach Git with their access tokens through the `kodactl` credential helper. The supplied service isolates tenants with separate Git workers and durable volumes that execution containers never mount; other hosts must provide equivalent isolation.
+Provision repositories through the Git service and register their metadata with Kodema. Humans reach Git with their access tokens, and container actions with their execution credential, through the `kodema git credential` helper. The supplied service isolates tenants with separate Git workers and durable volumes that execution containers never mount; other hosts must provide equivalent isolation.
 
 Container Git commands clone/fetch/push and verify commits named by inputs or outputs from registered repositories in `/workspace`; the Shell does not perform checkout. Naming conventions are:
 
@@ -493,7 +492,7 @@ Recipes own readiness checks and reconciliation: successful command exit alone d
 
 Use one Go module organized around Kernel, Shell, and Userland, with one explicit Shell composition, one operation router, one pipeline authoring model, and one execution engine. Prefer standard-library facilities, ordinary SQL, and small consumer-owned interfaces; native Git stays in its companion. Colocate explicit business transitions and domain invariants with their owning capability/service. Add abstractions only for concrete boundaries or demonstrated reuse. Request answers enter through authorized Shell operations, not a second workflow engine.
 
-Entrypoints are `kodema` (`server` for Shell plus Kernel; `git serve`, `git hook`, `git provision-tenant`, and `git provision-repository` for the independent Git companion; `agent`; `services`; `migrate`; and `bootstrap-admin`) and `kodactl`. Optional workload tools remain ordinary image dependencies.
+The single entrypoint is `kodema`, one static binary in three places. It is the control plane and its companions: `serve` for Shell plus Kernel; `git serve`, `git hook`, `git provision-tenant`, and `git provision-repository` for the independent Git companion; `agent`; `services`; `migrate`; and `bootstrap-admin`. It is the client on a workstation: `login`, `run`, `inbox`, `approve`, `logs`, `task`, `pipeline`, `call`, and the other commands over the public API. It is the toolbox mounted into every container action. A command starts only what it names: a client command opens no store and starts no server. Client code keeps its import boundary, the public API and `client`, whatever binary links it. Other workload tools remain ordinary image dependencies.
 
 ### Execution environments
 
@@ -536,7 +535,7 @@ Recommended recovery objectives: RPO ≤15 minutes, RTO ≤4 hours, and 30-day P
 
 These numbered checks exercise the complete contracts linked below; they are a verification index, not replacement definitions.
 
-1. **Kernel independence:** reconstruct both action kinds through injected adapters/settlement, without Shell, agent, or broker; ordinary images expose logs/status without an injected runner. [Execution](#container-actions)
+1. **Kernel independence:** reconstruct both action kinds through injected adapters/settlement, without Shell, agent, or broker; ordinary images expose logs/status without a supervising Kodema process, and the Kernel needs no toolbox. [Execution](#container-actions)
 2. **Immutable admission:** API-only definitions, exact YAML/hash snapshots, inline task-free runs, and immunity to pipeline edits or Git imports. [Model](#core-model)
 3. **Idempotency:** retry interfaces and replay events without duplicate work or regressed progress, including pipeline/binding edits. [Operations](#public-operations), [triggers](#pipeline-push-triggers-and-userland-services)
 4. **Request settlement:** restart and race authorized answers against timeout/cancellation; validate assignment/version and retain rejected answers without downstream outputs. [Requests](#request-actions)
@@ -546,8 +545,8 @@ These numbered checks exercise the complete contracts linked below; they are a v
 8. **Delivery evidence:** publish a digest-pinned image as an output, test that exact digest, and promote it through an approved deploy-repository update without rebuilding; confirm attribution through the execution record and converge output retries. [Artifacts](#delivery-recipes-and-artifacts)
 9. **Cleanup:** failures remain attributable, visible, and recoverable. [Recovery](#lifecycle-and-recovery), [operations](#platform-and-operations)
 10. **Optional capabilities:** external/native agents share semantics; non-Git pipelines run without Git, plain pipelines without gateways/agents, and independent agentic services use service authority. [Agents](#two-agent-execution-modes)
-11. **Materialization:** verify reserved variables/token name, literal environment precedence, file snapshots, shared workspace, live token renewal, and secret-change isolation. [Files](#environment-and-materialized-files), [secrets](#secret-custody)
-12. **Outputs:** race HTTP submission/retries with settlement; expose only successful results, discard failed/cancelled staging, and never inspect container filesystems. [Results](#results)
+11. **Materialization:** verify reserved variables/token name, literal environment precedence, file snapshots, the mounted toolbox and its Git configuration, shared workspace, live token renewal, and secret-change isolation. [Files](#environment-and-materialized-files), [secrets](#secret-custody)
+12. **Outputs:** race HTTP submission/retries with settlement; submit the files a succeeded action wrote to its output directory, with one trailing newline removed; expose only successful results, discard failed/cancelled staging, and never inspect container filesystems. [Results](#results)
 13. **Ordered flow:** reject unsupported declarations/references, enforce single-action progression and persisted action deadlines, and prevent activation after failure/cancellation or preparation errors. [Flow](#ordered-flow), [time](#time)
 14. **Integrations:** verify scoped NATS delivery, authenticated Git reporting and delayed causation, push exclusions/deduplication, direct adapter APIs, and durable queued starts. [Events](#events-and-operations), [triggers](#pipeline-push-triggers-and-userland-services)
 15. **Broker independence:** recover publication backlog without blocking persisted execution/request/push-start/dispatch/deadline work; preserve event IDs and refuse forged runtime/decision status. [Events](#events-and-operations)

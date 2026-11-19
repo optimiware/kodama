@@ -1,4 +1,4 @@
-// API note — kodactl declarations.
+// API note — kodema declarations.
 //
 // The tests assume package cli declares the following (types.go,
 // contract_config.go, run.go, session.go); this note records the API the

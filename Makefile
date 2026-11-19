@@ -37,12 +37,11 @@ docs-check:
 # ---------------------------------------------------------------------------
 # Build and release artifacts (docs/runbooks/release.md).
 #
-#   make build   # bin/kodema and bin/kodactl for this host
-#   make dist    # dist/: kodema and kodactl archives per platform, both Helm charts, SHA256SUMS
+#   make build   # bin/kodema for this host
+#   make dist    # dist/: the kodema archive per platform, both Helm charts, SHA256SUMS
 #
-# Both stamp the binaries with the VERSION file and the git revision, which
-# `kodema version` and `kodactl version` print. A plain `go build` reports
-# version "dev".
+# Both stamp the binary with the VERSION file and the git revision, which
+# `kodema version` prints. A plain `go build` reports version "dev".
 VERSION := $(shell cat VERSION)
 REVISION ?= $(shell git rev-parse HEAD 2>/dev/null)
 BUILD = CGO_ENABLED=0 $(GO) build -trimpath -buildvcs=false \
@@ -50,7 +49,6 @@ BUILD = CGO_ENABLED=0 $(GO) build -trimpath -buildvcs=false \
 
 build:
 	$(BUILD) -o bin/kodema ./cmd/kodema
-	$(BUILD) -o bin/kodactl ./cmd/kodactl
 
 dist:
 	rm -rf dist

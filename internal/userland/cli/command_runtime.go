@@ -18,7 +18,7 @@ import (
 
 // CommandDeps carries the optional command-runtime collaborators that are not
 // part of the Ports declaration. A zero CommandDeps keeps Run's legacy
-// entrypoint behavior; kodactl passes the real values through RunWithDeps.
+// entrypoint behavior; kodema passes the real values through RunWithDeps.
 type CommandDeps struct {
 	Login       LoginRuntime
 	HTTP        http.RoundTripper
@@ -27,7 +27,7 @@ type CommandDeps struct {
 }
 
 // LoginRuntime is the injected production collaborator set for the
-// login/logout/refresh/status commands. kodactl supplies the real
+// login/logout/refresh/session commands. kodema supplies the real
 // cross-process SessionLock; this command logic only consumes the port.
 type LoginRuntime struct {
 	OIDC        OIDCClient
@@ -281,10 +281,10 @@ type sessionStatus struct {
 	Refreshable bool   `json:"refreshable"`
 }
 
-// runStatus renders the session issuer and expiry without a token.
-func runStatus(ctx context.Context, config Config, args []string, ports Ports, runtime LoginRuntime) int {
+// runSession renders the session issuer and expiry without a token.
+func runSession(ctx context.Context, config Config, args []string, ports Ports, runtime LoginRuntime) int {
 	if len(args) != 0 {
-		return usage(ports.Err, "status takes no arguments")
+		return usage(ports.Err, "session takes no arguments")
 	}
 	if err := config.Validate(); err != nil {
 		return usage(ports.Err, err.Error())

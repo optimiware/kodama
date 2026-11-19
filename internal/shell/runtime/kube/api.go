@@ -69,8 +69,8 @@ const (
 
 // WorkloadCAConfig configures the installation-provided CA bundle projected
 // read-only into every workload. An empty SecretName disables the mount, and the
-// adapter never reads or re-materializes the Secret: workloads opt in with an
-// explicit --cacert.
+// adapter never reads or re-materializes the Secret. KODEMA_CA_FILE names
+// the mount without changing the image's system trust.
 type WorkloadCAConfig struct {
 	// SecretName is the tenant-local, CA-only Secret in the adapter namespace.
 	SecretName string
@@ -111,6 +111,11 @@ type Config struct {
 	Cleanup CleanupPolicy
 	// WorkloadCA configures the installation CA bundle mounted into workloads.
 	WorkloadCA WorkloadCAConfig
+	// ToolboxImage is the installation's digest-pinned Kodema image. Empty
+	// retains the plain shell launch for adapters that do not supply tools.
+	ToolboxImage string
+	// GitURL is the optional HTTPS Git endpoint for this adapter's tenant.
+	GitURL string
 	// ImagePullSecrets names the tenant-local pull Secrets the Job references.
 	// An empty list renders no imagePullSecrets field.
 	ImagePullSecrets []string
@@ -171,10 +176,15 @@ type Volume struct {
 	SecretName    string
 	ReadOnly      bool
 	Items         []VolumeItem
+	// EmptyDir requests pod-local storage. MemoryBytes > 0 selects a bounded tmpfs.
+	EmptyDir    bool
+	MemoryBytes int64
 }
 
 // JobSpec is the generated Job pod template.
 type JobSpec struct {
+	ToolboxImage  string
+	WorkingDir    string
 	Image         string
 	Command       []string
 	Env           []EnvVar
@@ -359,6 +369,10 @@ type preparedWorkload struct {
 	job             string
 	activationPaths []string
 	secretNames     []id.SecretName
+	toolboxImage    string
+	caSecret        string
+	gitEnv          []string
+	outputDir       string
 }
 
 // containerDeclaration is the subset of the admitted container declaration the
@@ -377,6 +391,8 @@ type Adapter struct {
 	namespace        string
 	tenant           id.TenantID
 	kodemaURL        string
+	toolboxImage     string
+	gitURL           string
 	policy           Policy
 	cleanup          CleanupPolicy
 	workloadCA       WorkloadCAConfig
@@ -441,6 +457,9 @@ func New(config Config) (*Adapter, error) {
 	if err := validateImagePullSecretNames(config.ImagePullSecrets); err != nil {
 		return nil, err
 	}
+	if err := validateToolbox(config.ToolboxImage, config.GitURL); err != nil {
+		return nil, err
+	}
 	clock := config.Clock
 	if clock == nil {
 		clock = realClock{}
@@ -450,6 +469,8 @@ func New(config Config) (*Adapter, error) {
 		namespace:        config.Namespace,
 		tenant:           config.TenantID,
 		kodemaURL:        config.KodemaURL,
+		toolboxImage:     config.ToolboxImage,
+		gitURL:           config.GitURL,
 		policy:           config.Policy,
 		cleanup:          config.Cleanup,
 		workloadCA:       config.WorkloadCA,

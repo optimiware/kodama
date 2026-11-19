@@ -1,7 +1,7 @@
 # Podman quickstart: the single-host `test` environment
 
 This runbook installs KODEMA.md's `test` environment on one machine with
-rootless Podman: PostgreSQL, NATS JetStream, OAuthSonas, `kodema server
+rootless Podman: PostgreSQL, NATS JetStream, OAuthSonas, `kodema serve
 --profile test` and `kodema git serve`. It is the functional release on a
 single host and the base for the release smoke test.
 
@@ -128,7 +128,7 @@ expired one. It performs, in order:
    `kodema bootstrap-admin --profile test --init-keyfile` on the first run and
    creates the tenant plus its first administrator. The keyfile is 32 random
    bytes in a 0600 file and is never regenerated.
-7. Starts or reuses `kodema server --profile test` over HTTPS and waits for
+7. Starts or reuses `kodema serve --profile test` over HTTPS and waits for
    `/readyz` to answer 200.
 8. Creates or reuses the project, explicitly grants the first administrator the
    engineer, reviewer and operator project roles, and grants the `engineer`,
@@ -423,8 +423,8 @@ ids to your `KODEMA_LOCAL_TENANT` and `KODEMA_LOCAL_PROJECT`.
 
 The install writes an engineer service credential to
 `$STATE/secrets/engineer-token`. Service credentials act in project scope.
-Point `kodactl` at the installation with it (`make build` builds
-`bin/kodactl`):
+Point `kodema` at the installation with it (`make build` builds
+`bin/kodema`):
 
 ```sh
 export KODEMA_URL="$KODEMA_PUBLIC_URL"
@@ -448,15 +448,15 @@ actions:
       - echo "hello from a Kodema workload"
       - 'echo "action: \$KODEMA_ACTION"'
 EOF
-bin/kodactl run "$WORK/first-pipeline.yaml"
+bin/kodema run "$WORK/first-pipeline.yaml"
 ```
 
 Quote a command that contains `: `, as above, or YAML reads it as a mapping.
 
-`kodactl run` starts the file inline (the `pipeline.start` operation), waits
+`kodema run` starts the file inline (the `pipeline.start` operation), waits
 for the execution to end and prints the output of its actions; it exits 1 when
-the execution failed. `kodactl inspect <execution-id>` and
-`kodactl logs <execution-id>` read the same execution afterwards. Over the
+the execution failed. `kodema inspect <execution-id>` and
+`kodema logs <execution-id>` read the same execution afterwards. Over the
 plain API, reads are `GET` requests with a JSON body (`curl --request GET
 --data-binary ...`), and log chunks are base64-encoded.
 
@@ -659,7 +659,7 @@ installation's listen port, and removes the containers carrying
 `kodema.local.prefix=<prefix>` plus this installation's exact container names.
 It keeps the state directory and the PostgreSQL/NATS volumes so a later install
 resumes the same installation. The workload containers and workspace volumes
-that `kodema server` created for executions belong to the server's own cleanup
+that `kodema serve` created for executions belong to the server's own cleanup
 path; `down` does not remove them (a host-wide sweep could hit another run).
 
 ```sh
@@ -761,7 +761,7 @@ installation bugs:
   `KODEMA_GIT_STORAGE_ROOT`: the model gateway, the MCP tool proxy and the
   retained-commit keep refs stay off. The binary supports them
   (`kodema services --kind merge_coordinator`, `kodema agent`, and the three
-  settings on `kodema server`).
+  settings on `kodema serve`).
 - The server runs the retention sweeper and serves operations metrics at
   `/metrics`; neither has been exercised on an installed bundle.
 - A new repository needs a `git serve` restart with its `--resource` mapping.

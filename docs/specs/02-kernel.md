@@ -55,7 +55,7 @@ No execution-wide deadline, command resume, backward transition, dynamic action 
 
 One nullable JSON object contains at most eight declared UTF-8 string values, each at most 4,096 bytes. Byte length, invalid UTF-8, undeclared keys, and non-string values are rejected. Output submission is optional for containers; declared fields do not create a required custom success outcome. A missing downstream value fails subject resolution/preparation as applicable.
 
-Container submission is accepted only for the current running container action and becomes immutable staging. An identical map retry converges; a different map is refused. A runtime-confirmed successful settlement promotes it. Failure/cancel/timeout discards it. The runtime never reads container output files.
+Container submission is accepted only for the current running container action and becomes immutable staging. An identical map retry converges; a different map is refused. A runtime-confirmed successful settlement promotes it. Failure/cancel/timeout discards it. The runtime never reads container output files: the files an action writes to its output directory are submitted from inside the workload by `kodema output push` (S07 §2), through this same operation.
 
 Request response values undergo declared-schema validation within settlement. Failed-request answers remain inspectable in the decision record and never appear in downstream materialization. Only earlier succeeded actions are visible to subject lookup or `/kodema/outputs`.
 

@@ -15,8 +15,8 @@
 // The trust bundle is an ordinary Secret volume: exactly one item (the literal
 // key ca.crt) projected read-only at the fixed path, outside /workspace, the
 // activation snapshot (/kodema) and the credential mount (/kodema/secrets). The
-// adapter neither reads nor re-materializes the Secret, and adds no environment
-// variable: smoke workloads pass --cacert explicitly. The serving private key
+// adapter neither reads nor re-materializes the Secret; KODEMA_CA_FILE points
+// to the bundle without overriding system trust. The serving private key
 // stays in the control-plane Secret and is never projected into a workload.
 package kube
 
@@ -65,7 +65,7 @@ func newWorkloadCAAdapter(t *testing.T, fake *fakeCluster, clock *fakeClock, sec
 
 // TestWorkloadCAMountUsesTrustedConfiguration pins the exact read-only
 // projection: one Secret volume carrying only the literal ca.crt key at the
-// fixed trust path, with no extra environment variable and no projection when
+// fixed trust path, with its Kodema environment variable and no projection when
 // the configuration is absent.
 func TestWorkloadCAMountUsesTrustedConfiguration(t *testing.T) {
 	if WorkloadCAKey != "ca.crt" {
@@ -84,6 +84,9 @@ func TestWorkloadCAMountUsesTrustedConfiguration(t *testing.T) {
 	startTestWorkload(t, adapter, request.Identity, request.WorkspaceID)
 
 	job := fake.jobsSnapshot()[0]
+	if value, ok := testEnvValue(job.Spec.Env, workspace.EnvCAFile); !ok || value != WorkloadCAPath {
+		t.Fatalf("KODEMA_CA_FILE = %q; want %q", value, WorkloadCAPath)
+	}
 	volume := testVolumeAt(t, job.Spec, WorkloadCAMountPath)
 	if volume.SecretName != testWorkloadCASecret {
 		t.Errorf("CA volume secret = %q; want the configured Secret %q", volume.SecretName, testWorkloadCASecret)

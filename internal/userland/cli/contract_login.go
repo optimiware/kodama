@@ -10,7 +10,7 @@ import (
 	"github.com/optimiware/kodema/api"
 )
 
-// OAuth login declarations: every port, value and fixed constant the kodactl
+// OAuth login declarations: every port, value and fixed constant the kodema
 // login library exchanges is declared here. The behavior lives in the
 // login/refresh/logout/pkce/device/idtoken/loopback/session_record files.
 
@@ -159,7 +159,7 @@ type Random interface {
 }
 
 // SessionLock serializes reload -> refresh -> replace across processes. The
-// port is consumer-owned: kodactl supplies the cross-process flock
+// port is consumer-owned: kodema supplies the cross-process flock
 // implementation.
 type SessionLock interface {
 	Acquire(ctx context.Context) (release func() error, err error)

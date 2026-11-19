@@ -100,7 +100,7 @@ func sameFile(left, right string) bool {
 	return os.SameFile(leftInfo, rightInfo)
 }
 
-// leakyFiles is a deliberately leaky stand-in for the kodactl filesystem port:
+// leakyFiles is a deliberately leaky stand-in for the kodema filesystem port:
 // it persists an extra sidecar copy of every session write. It exists only to
 // prove the persistence scanner can fail.
 type leakyFiles struct {

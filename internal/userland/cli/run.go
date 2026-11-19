@@ -18,7 +18,7 @@ import (
 // watchInterval is the deterministic delay between execution.inspect polls.
 const watchInterval = time.Second
 
-// Run executes one kodactl command and returns its exit code. It never calls
+// Run executes one kodema command and returns its exit code. It never calls
 // os.Exit; every collaborator is injected through ports. Run is the legacy
 // entrypoint: the real OAuth login/logout/refresh commands need the runtime
 // collaborators that RunWithDeps accepts.
@@ -26,7 +26,7 @@ func Run(ctx context.Context, config Config, args []string, ports Ports) int {
 	return RunWithDeps(ctx, config, args, ports, CommandDeps{})
 }
 
-// RunWithDeps executes one kodactl command with the optional command-runtime
+// RunWithDeps executes one kodema command with the optional command-runtime
 // collaborators injected. It never calls os.Exit.
 func RunWithDeps(ctx context.Context, config Config, args []string, ports Ports, deps CommandDeps) int {
 	if ctx == nil {
@@ -104,21 +104,20 @@ func RunWithDeps(ctx context.Context, config Config, args []string, ports Ports,
 			return runHelp(ports.Out, ports.Err, []string{"refresh"})
 		}
 		return runRefresh(ctx, config, args[1:], ports, deps.Login)
-	case "status":
+	case "session":
 		if hasHelpFlag(args[1:]) {
-			return runHelp(ports.Out, ports.Err, []string{"status"})
+			return runHelp(ports.Out, ports.Err, []string{"session"})
 		}
-		return runStatus(ctx, config, args[1:], ports, deps.Login)
+		return runSession(ctx, config, args[1:], ports, deps.Login)
 	case "pipeline":
 		if hasHelpFlag(args[1:]) {
 			return runHelp(ports.Out, ports.Err, []string{"pipeline"})
 		}
 		return runPipeline(ctx, config, args[1:], ports)
-	case "helper":
-		if hasHelpFlag(args[1:]) {
-			return runHelp(ports.Out, ports.Err, []string{"helper"})
-		}
-		return runHelper(ctx, config, args[1:], ports)
+	case "git":
+		return runGit(ctx, config, args[1:], ports)
+	case "output":
+		return runOutput(ctx, config, args[1:], ports, deps)
 	case "version":
 		if hasHelpFlag(args[1:]) {
 			return runHelp(ports.Out, ports.Err, []string{"version"})
@@ -302,40 +301,6 @@ func runLegacyLogin(ctx context.Context, config Config, ports Ports) int {
 		return failure(ports.Err, err)
 	}
 	fmt.Fprintln(ports.Out, "logged in")
-	return ExitSuccess
-}
-
-// runHelper answers one Git credential-helper request. Only a `get` request
-// reads the credential source; every refusal is an empty success.
-func runHelper(ctx context.Context, config Config, args []string, ports Ports) int {
-	if len(args) != 2 {
-		return usage(ports.Err, "helper requires a protocol and a URL")
-	}
-	request := HelperRequest{Protocol: args[0], URL: args[1]}
-	if err := request.Validate(); err != nil {
-		return usage(ports.Err, err.Error())
-	}
-	if err := validateTrustedOrigins(config); err != nil {
-		return usage(ports.Err, err.Error())
-	}
-	if request.Protocol != "get" {
-		return ExitSuccess
-	}
-	if ports.Credential == nil {
-		return failure(ports.Err, fmt.Errorf("no credential source is configured"))
-	}
-	credential, err := ports.Credential.Credential(ctx)
-	if err != nil {
-		return ExitSuccess
-	}
-	response, err := HelperDecision(config, request, credential, ports.Now())
-	if err != nil {
-		return ExitSuccess
-	}
-	if response.Username == "" || response.Password == "" {
-		return ExitSuccess
-	}
-	fmt.Fprintf(ports.Out, "username=%s\npassword=%s\n", response.Username, response.Password)
 	return ExitSuccess
 }
 

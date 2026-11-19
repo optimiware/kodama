@@ -282,6 +282,7 @@ server_common=(
 	"KODEMA_DISCOVERY_API_URL=${PUBLIC_URL}"
 	"KODEMA_PUBLIC_URL=${PUBLIC_URL}"
 	"KODEMA_WORKLOAD_URL=${WORKLOAD_URL}"
+	"KODEMA_WORKLOAD_GIT_URL=${GIT_WORKLOAD_URL}"
 	"KODEMA_ADDRESS=0.0.0.0:${HTTPS_PORT}"
 )
 # OAuthSonas carries one string claim (org_id). The final server maps it to the
@@ -563,7 +564,7 @@ start_server() {
 	local env_file=$1 hash
 	hash="$(config_hash "$KODEMA_IMAGE" "$kodema_image_id" "$(cat "$env_file")")"
 	container_current "$container_server" "$hash" && return 0
-	log "starting kodema server --profile test"
+	log "starting kodema serve --profile test"
 	remove_container "$container_server"
 	podman run -d --name "$container_server" \
 		--label "kodema.local.prefix=${PREFIX}" \
@@ -574,7 +575,7 @@ start_server() {
 		-v "${STATE_DIR}:${STATE_DIR}" \
 		-v "$(dirname "$PODMAN_SOCKET"):$(dirname "$PODMAN_SOCKET")" \
 		--env-file "$env_file" \
-		"$KODEMA_IMAGE" server --profile test >/dev/null
+		"$KODEMA_IMAGE" serve --profile test >/dev/null
 	wait_server_ready
 }
 

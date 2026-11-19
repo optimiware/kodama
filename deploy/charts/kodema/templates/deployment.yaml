@@ -85,7 +85,7 @@ spec:
           image: {{ if .Values.image.digest }}"{{ .Values.image.repository }}@{{ .Values.image.digest }}"{{ else }}"{{ .Values.image.repository }}:{{ .Values.image.tag }}"{{ end }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           args:
-            - server
+            - serve
             - --profile={{ .Values.environment }}
             - --address=0.0.0.0:{{ if .Values.service }}{{ .Values.service.targetPort | default 8443 }}{{ else }}8443{{ end }}
             - --data-dir={{ if and .Values.persistence .Values.persistence.logs }}{{ .Values.persistence.logs.mountPath | default "/var/lib/kodema" }}{{ else }}/var/lib/kodema{{ end }}
@@ -97,6 +97,13 @@ spec:
               value: {{ .Values.config.installationID | default "kodema-stage" | quote }}
             - name: KODEMA_PUBLIC_URL
               value: {{ .Values.config.publicURL | quote }}
+            - name: KODEMA_TOOLBOX_IMAGE
+              value: {{ if .Values.image.digest }}{{ printf "%s@%s" .Values.image.repository .Values.image.digest | quote }}{{ else }}""{{ end }}
+            {{- $git := .Values.gitService | default dict }}
+            {{- if or .Values.config.workloadGitURL $git.enabled }}
+            - name: KODEMA_WORKLOAD_GIT_URL
+              value: {{ .Values.config.workloadGitURL | default (printf "https://kodema-git-{tenant}.%s.svc.cluster.local:%d" .Release.Namespace (int ($git.port | default 8443))) | quote }}
+            {{- end }}
             - name: KODEMA_MCP_PATH
               value: {{ .Values.config.mcpPath | default "/mcp" | quote }}
             - name: KODEMA_DATA_DIR

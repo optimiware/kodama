@@ -188,7 +188,7 @@ func TestTestCompositionServesDiscovery(t *testing.T) {
 }
 
 // TestCompositionWithoutDiscoveryKeepsRouteNotFound documents the clean 404:
-// kodactl login then reports that the login configuration is unavailable instead
+// kodema login then reports that the login configuration is unavailable instead
 // of inventing OAuth endpoints.
 func TestCompositionWithoutDiscoveryKeepsRouteNotFound(t *testing.T) {
 	environment := newTestEnvironment(t)

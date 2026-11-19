@@ -51,21 +51,26 @@ func TestSmokeGitChecks(t *testing.T) {
 			"    RW+ refs/heads/work/ = @engineer @execution\n" +
 			"    RW refs/heads/main = @execution\n" +
 			"    option approve.refs/heads/main = reviewer\n"
-		if err := smoke.CheckRepositoryPolicy([]byte(policy), "smoke/abc"); err != nil {
+		if err := smoke.CheckRepositoryPolicy([]byte(policy), "smoke/abc", "res-abc"); err != nil {
 			t.Fatalf("the exact default policy was refused: %v", err)
 		}
+		mapped := strings.Replace(policy, "repo smoke/abc\n", "repo smoke/abc\n    option resource = res-abc\n", 1)
+		if err := smoke.CheckRepositoryPolicy([]byte(mapped), "smoke/abc", "res-abc"); err != nil {
+			t.Fatalf("the provisioned resource mapping was refused: %v", err)
+		}
 		for name, changed := range map[string]string{
+			"wrong resource":          strings.Replace(mapped, "res-abc", "other-resource", 1),
 			"engineer may write main": strings.Replace(policy, "RW refs/heads/main = @execution", "RW refs/heads/main = @engineer @execution", 1),
 			"approval removed":        strings.Replace(policy, "    option approve.refs/heads/main = reviewer\n", "", 1),
 			"approval widened":        strings.Replace(policy, "= reviewer", "= operator", 1),
 			"read removed":            strings.Replace(policy, "    R = @all\n", "", 1),
 			"work write narrowed":     strings.Replace(policy, "@engineer @execution", "@engineer", 1),
 		} {
-			if err := smoke.CheckRepositoryPolicy([]byte(changed), "smoke/abc"); err == nil {
+			if err := smoke.CheckRepositoryPolicy([]byte(changed), "smoke/abc", "res-abc"); err == nil {
 				t.Fatalf("a weakened policy (%s) was accepted", name)
 			}
 		}
-		if err := smoke.CheckRepositoryPolicy([]byte(policy), "smoke/missing"); err == nil {
+		if err := smoke.CheckRepositoryPolicy([]byte(policy), "smoke/missing", "res-abc"); err == nil {
 			t.Fatal("a missing repository block was accepted")
 		}
 	})

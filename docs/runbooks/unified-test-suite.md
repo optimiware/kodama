@@ -74,7 +74,7 @@ reads a credential, so time spent queued is never measured.
 ### Portable e2e proofs
 
 `test/e2e` reads only an installation descriptor, so the same proofs run on
-`kodema server --profile test` under Podman and on a Kubernetes installation.
+`kodema serve --profile test` under Podman and on a Kubernetes installation.
 The suite selects `^TestE2E_(AC|Parity$|InstallationAccess$)`: the 24 tests of
 `suite.PortableE2ETests`. `TestReleaseSmoke` is left out because the AC04, AC05,
 AC14, AC17 and AC18 tests run its five scenarios.

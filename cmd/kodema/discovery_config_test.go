@@ -1,4 +1,4 @@
-// Tests for the Shell public-discovery settings on the `kodema server`
+// Tests for the Shell public-discovery settings on the `kodema serve`
 // entrypoint: the production configuration shape maps the public document to
 // app.DiscoveryConfig, and every invalid document is refused before a
 // composition is constructed.

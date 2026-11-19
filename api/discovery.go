@@ -32,7 +32,7 @@ type OAuthProtectedResourceMetadata struct {
 const MaxDiscoveryBytes = 16 << 10
 
 // DiscoveryDocument is the public, unauthenticated OAuth client configuration a
-// kodactl login reads from the API origin. It carries no secret and no JWKS
+// kodema login reads from the API origin. It carries no secret and no JWKS
 // material: the issuer JWKS is fetched separately from the issuer origin.
 type DiscoveryDocument struct {
 	Issuer                      string   `json:"issuer"`

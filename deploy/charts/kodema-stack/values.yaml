@@ -84,7 +84,7 @@ kodema:
   replicaCount: 1
   image:
     repository: registry.example.com/kodema
-    tag: "0.2.3"
+    tag: "0.3.0-dev"
     digest: ""
     pullPolicy: IfNotPresent
   config:

@@ -6,7 +6,11 @@ Source: [Userland](../../KODEMA.md#4-userland-agents-and-software-delivery). Own
 
 `client` depends on public DTOs, not internal domain packages. It supports caller-supplied idempotency keys, expected versions, context cancellation, bounded responses, consistent errors, and current credential sourcing. Never automatically retry an ambiguous mutation with a new key.
 
-`kodactl` exposes served operations, pipeline apply, inspect/watch, task/request commands, login, and the Git credential helper. CLI logic accepts injected client/session/filesystem/output ports for unit tests. Human sessions and mounted execution tokens are separate sources; service automation uses its own service credential. Helper requests are restricted to registered trusted Git origins/paths; credentials are absent from diagnostics.
+The client commands of `kodema` expose served operations, pipeline apply, inspect/watch, task/request commands, login, the Git credential helper, and `output push` (S07 §2). They are linked into the one `kodema` binary and keep the Userland import boundary of S01 §3: `internal/userland/cli` reaches the product only through `client` and the public schema. CLI logic accepts injected client/session/filesystem/output ports for unit tests. Human sessions and mounted execution tokens are separate sources; service automation uses its own service credential.
+
+`kodema git credential <get|store|erase>` speaks Git's credential-helper protocol: Git passes the operation as the argument and the request attributes (`protocol`, `host`, `path`) on standard input; a URL argument replaces that request. Helper requests are restricted to registered trusted Git origins/paths; `store` and `erase` do nothing; a refusal is an empty answer, so Git falls through to its next helper; credentials are absent from diagnostics.
+
+Dispatch is by command name. A name the control plane owns (`serve`, `up`, `down`, `status`, `git serve`, `git hook`, `git provision-tenant`, `git provision-repository`, `auth`, `agent`, `services`, `migrate`, `bootstrap-admin`) never reads the client configuration or a human session; every other name is a client command and never opens a store or a listener. `server` remains accepted for `serve`.
 
 ## 2. Independent Git service
 

@@ -44,7 +44,7 @@ var parityOperations = []string{
 // The REST edge is the harness's public-envelope HTTP client. The MCP edge is
 // the JSON-RPC tools/call subset with the identical api.Request argument
 // envelope. The CLI edge is the real cli.Run entrypoint (the same dispatch
-// cmd/kodactl reaches through cli.RunWithDeps) driving the real
+// cmd/kodema reaches through cli.RunWithDeps) driving the real
 // client.HTTPTransport over the installation's verified TLS. The CLI's
 // login/session acquisition is deliberately outside this probe: the
 // installation's access token is presented through an injected credential

@@ -230,11 +230,11 @@ func extractInputValue(t *testing.T, htmlBody, name string) string {
 	return m[1]
 }
 
-// TestKodactlBrowserPKCELoginRefreshLogoutWithOIDCVerifier drives REAL
+// TestKodemaBrowserPKCELoginRefreshLogoutWithOIDCVerifier drives REAL
 // cli.Login (LoginBrowser + HTTPOIDCClient + NewLoopbackListener), cli.Refresh
 // and cli.Logout against auth.Server and verifies every issued access_token
 // through Kodema's REAL S05 oidc.Verifier.
-func TestKodactlBrowserPKCELoginRefreshLogoutWithOIDCVerifier(t *testing.T) {
+func TestKodemaBrowserPKCELoginRefreshLogoutWithOIDCVerifier(t *testing.T) {
 	fx := newAuthE2EFixture(t, nil)
 	store := &memorySessionStore{}
 	now := time.Now().UTC().Truncate(time.Second)
@@ -292,7 +292,7 @@ func TestKodactlBrowserPKCELoginRefreshLogoutWithOIDCVerifier(t *testing.T) {
 			t.Fatalf("POST /authorize status = %d; want 303", postResp.StatusCode)
 		}
 
-		// Deliver the redirect to kodactl's real bound loopback listener!
+		// Deliver the redirect to kodema's real bound loopback listener!
 		cbURL := postResp.Header.Get("Location")
 		cbReq, err := http.NewRequestWithContext(ctx, http.MethodGet, cbURL, nil)
 		if err != nil {
@@ -405,10 +405,10 @@ func TestKodactlBrowserPKCELoginRefreshLogoutWithOIDCVerifier(t *testing.T) {
 	}
 }
 
-// TestKodactlDeviceLoginEndToEndWithOIDCVerifier drives REAL cli.Login
-// (LoginDevice / `kodactl login --device`) against auth.Server and verifies the
+// TestKodemaDeviceLoginEndToEndWithOIDCVerifier drives REAL cli.Login
+// (LoginDevice / `kodema login --device`) against auth.Server and verifies the
 // issued access_token with REAL S05 oidc.Verifier.
-func TestKodactlDeviceLoginEndToEndWithOIDCVerifier(t *testing.T) {
+func TestKodemaDeviceLoginEndToEndWithOIDCVerifier(t *testing.T) {
 	fx := newAuthE2EFixture(t, nil)
 	store := &memorySessionStore{}
 

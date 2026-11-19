@@ -13,7 +13,8 @@ environment: "production"
 
 image:
   repository: registry.example.com/kodema
-  tag: "0.2.3"
+  tag: "0.3.0-dev"
+  # Production requires the published manifest digest, also used by the workload toolbox.
   digest: ""
   pullPolicy: IfNotPresent
 
@@ -22,6 +23,8 @@ replicaCount: 1
 config:
   installationID: "kodema-stage"
   publicURL: "https://kodema.kodema-system.svc.cluster.local:8443"
+  # Empty uses the per-tenant Service when gitService is enabled.
+  workloadGitURL: ""
   # Retained for the descriptor baseline only: no chart template reads
   # databaseURL or natsURL. The server reads every database URL from the
   # kodema-database Secret keys (database_url, controller_url, publisher_url,

@@ -1,4 +1,4 @@
-package main
+package clientcmd
 
 import (
 	"bytes"
@@ -16,7 +16,7 @@ import (
 	"github.com/optimiware/kodema/api"
 )
 
-// isolateUserConfig points the default kodactl config directory at an empty
+// isolateUserConfig points the default kodema config directory at an empty
 // temporary directory so a developer's real config never affects a test.
 func isolateUserConfig(t *testing.T) {
 	t.Helper()
@@ -157,11 +157,11 @@ func newTestResultServer(t *testing.T, operation string, recorder *resultRecorde
 	return server
 }
 
-// TestKodactlUsesSeededHumanSessionCredential pins that the real kodactl entry
+// TestKodemaUsesSeededHumanSessionCredential pins that the real kodema entry
 // reads a current version 2 human session file on every command, verifies its
 // server binding, authenticates with a `session` credential and never renders
 // the token in arguments or diagnostics.
-func TestKodactlUsesSeededHumanSessionCredential(t *testing.T) {
+func TestKodemaUsesSeededHumanSessionCredential(t *testing.T) {
 	isolateUserConfig(t)
 	directory := t.TempDir()
 	if err := os.Chmod(directory, 0o700); err != nil {
@@ -196,10 +196,10 @@ func TestKodactlUsesSeededHumanSessionCredential(t *testing.T) {
 	}
 }
 
-// TestKodactlRefusesSessionBoundToAnotherServer pins that a non-expiring (+1h)
+// TestKodemaRefusesSessionBoundToAnotherServer pins that a non-expiring (+1h)
 // session minted for server A is refused before any operation request is sent
 // to --server B, without leaking the session token.
-func TestKodactlRefusesSessionBoundToAnotherServer(t *testing.T) {
+func TestKodemaRefusesSessionBoundToAnotherServer(t *testing.T) {
 	isolateUserConfig(t)
 	directory := t.TempDir()
 	if err := os.Chmod(directory, 0o700); err != nil {
@@ -240,11 +240,11 @@ func TestKodactlRefusesSessionBoundToAnotherServer(t *testing.T) {
 	}
 }
 
-// TestKodactlRefusesExpiredHumanSession pins that an expired version 2 session
+// TestKodemaRefusesExpiredHumanSession pins that an expired version 2 session
 // never authenticates a request and never renders its token. The renewing
 // source tries the configured discovery first; the result server's discovery
 // route is a 404, so the refusal happens before any public operation.
-func TestKodactlRefusesExpiredHumanSession(t *testing.T) {
+func TestKodemaRefusesExpiredHumanSession(t *testing.T) {
 	isolateUserConfig(t)
 	directory := t.TempDir()
 	if err := os.Chmod(directory, 0o700); err != nil {
@@ -279,9 +279,9 @@ func TestKodactlRefusesExpiredHumanSession(t *testing.T) {
 	}
 }
 
-// TestKodactlEnforcesSessionFileAndDirectoryPermissions pins the 0600 file and
+// TestKodemaEnforcesSessionFileAndDirectoryPermissions pins the 0600 file and
 // 0700 directory rule for the human session source.
-func TestKodactlEnforcesSessionFileAndDirectoryPermissions(t *testing.T) {
+func TestKodemaEnforcesSessionFileAndDirectoryPermissions(t *testing.T) {
 	cases := []struct {
 		name         string
 		fileMode     os.FileMode
@@ -330,9 +330,9 @@ func TestKodactlEnforcesSessionFileAndDirectoryPermissions(t *testing.T) {
 	}
 }
 
-// TestKodactlRereadsTheSessionOnEveryCommand pins that the session credential
+// TestKodemaRereadsTheSessionOnEveryCommand pins that the session credential
 // source reads the file again for every command instead of caching it.
-func TestKodactlRereadsTheSessionOnEveryCommand(t *testing.T) {
+func TestKodemaRereadsTheSessionOnEveryCommand(t *testing.T) {
 	isolateUserConfig(t)
 	directory := t.TempDir()
 	if err := os.Chmod(directory, 0o700); err != nil {
@@ -373,9 +373,9 @@ func TestKodactlRereadsTheSessionOnEveryCommand(t *testing.T) {
 	}
 }
 
-// TestKodactlRefusesOversizedHumanSessionToken pins the public credential bound
+// TestKodemaRefusesOversizedHumanSessionToken pins the public credential bound
 // for the session source.
-func TestKodactlRefusesOversizedHumanSessionToken(t *testing.T) {
+func TestKodemaRefusesOversizedHumanSessionToken(t *testing.T) {
 	isolateUserConfig(t)
 	directory := t.TempDir()
 	if err := os.Chmod(directory, 0o700); err != nil {
@@ -404,11 +404,11 @@ func TestKodactlRefusesOversizedHumanSessionToken(t *testing.T) {
 	}
 }
 
-// TestKodactlLoginCannotReuseASeededSession pins that the real entry has no
+// TestKodemaLoginCannotReuseASeededSession pins that the real entry has no
 // seeded-session login path: `login` always runs the configured OAuth runtime,
 // so a seeded session without a reachable discovery document is a visible
 // failure and is never re-persisted as a login.
-func TestKodactlLoginCannotReuseASeededSession(t *testing.T) {
+func TestKodemaLoginCannotReuseASeededSession(t *testing.T) {
 	isolateUserConfig(t)
 	directory := t.TempDir()
 	if err := os.Chmod(directory, 0o700); err != nil {
@@ -461,10 +461,10 @@ func TestKodactlLoginCannotReuseASeededSession(t *testing.T) {
 	}
 }
 
-// TestKodactlHelperUsesConfiguredTrustedOrigins pins that the real entry loads
+// TestKodemaHelperUsesConfiguredTrustedOrigins pins that the real entry loads
 // the config file and returns the credential only for an exact registered
 // origin and its path descendants.
-func TestKodactlHelperUsesConfiguredTrustedOrigins(t *testing.T) {
+func TestKodemaHelperUsesConfiguredTrustedOrigins(t *testing.T) {
 	isolateUserConfig(t)
 	directory := t.TempDir()
 	tokenFile := filepath.Join(directory, "token")
@@ -498,7 +498,7 @@ func TestKodactlHelperUsesConfiguredTrustedOrigins(t *testing.T) {
 			code := run(context.Background(), []string{
 				"-config", configFile,
 				"-credential-file", tokenFile,
-				"helper", "get", testCase.url,
+				"git", "credential", "get", testCase.url,
 			}, &stdout, &stderr, defaultCLIDeps())
 			if code != 0 {
 				t.Fatalf("exit code = %d; stderr=%q", code, stderr.String())
@@ -517,9 +517,9 @@ func TestKodactlHelperUsesConfiguredTrustedOrigins(t *testing.T) {
 	}
 }
 
-// TestKodactlHelperWithoutRegisteredOriginsReturnsNothing pins that the entry
+// TestKodemaHelperWithoutRegisteredOriginsReturnsNothing pins that the entry
 // never fabricates a trusted origin when no config or flag registers one.
-func TestKodactlHelperWithoutRegisteredOriginsReturnsNothing(t *testing.T) {
+func TestKodemaHelperWithoutRegisteredOriginsReturnsNothing(t *testing.T) {
 	isolateUserConfig(t)
 	directory := t.TempDir()
 	tokenFile := filepath.Join(directory, "token")
@@ -529,7 +529,7 @@ func TestKodactlHelperWithoutRegisteredOriginsReturnsNothing(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	code := run(context.Background(), []string{
 		"-credential-file", tokenFile,
-		"helper", "get", "https://git.example.com/shop/repo.git",
+		"git", "credential", "get", "https://git.example.com/shop/repo.git",
 	}, &stdout, &stderr, defaultCLIDeps())
 	if code != 0 {
 		t.Fatalf("exit code = %d; stderr=%q", code, stderr.String())
@@ -539,8 +539,8 @@ func TestKodactlHelperWithoutRegisteredOriginsReturnsNothing(t *testing.T) {
 	}
 }
 
-// TestKodactlHelperUsesTrustedOriginFlag pins the explicit flag path.
-func TestKodactlHelperUsesTrustedOriginFlag(t *testing.T) {
+// TestKodemaHelperUsesTrustedOriginFlag pins the explicit flag path.
+func TestKodemaHelperUsesTrustedOriginFlag(t *testing.T) {
 	isolateUserConfig(t)
 	directory := t.TempDir()
 	tokenFile := filepath.Join(directory, "token")
@@ -551,7 +551,7 @@ func TestKodactlHelperUsesTrustedOriginFlag(t *testing.T) {
 	code := run(context.Background(), []string{
 		"-credential-file", tokenFile,
 		"-trusted-origin", "https://git.example.com/shop",
-		"helper", "get", "https://git.example.com/shop/repo.git",
+		"git", "credential", "get", "https://git.example.com/shop/repo.git",
 	}, &stdout, &stderr, defaultCLIDeps())
 	if code != 0 {
 		t.Fatalf("exit code = %d; stderr=%q", code, stderr.String())
@@ -565,16 +565,16 @@ func TestKodactlHelperUsesTrustedOriginFlag(t *testing.T) {
 	code = run(context.Background(), []string{
 		"-credential-file", tokenFile,
 		"-trusted-origin", "https://git.example.com/shop",
-		"helper", "get", "https://git.example.com/shopkeeper",
+		"git", "credential", "get", "https://git.example.com/shopkeeper",
 	}, &stdout, &stderr, defaultCLIDeps())
 	if code != 0 || stdout.Len() != 0 {
 		t.Fatalf("lookalike helper = %d/%q; want an empty success", code, stdout.String())
 	}
 }
 
-// TestKodactlReadsConfigFromEnvironment pins the KODEMA_CONFIG environment
+// TestKodemaReadsConfigFromEnvironment pins the KODEMA_CONFIG environment
 // path.
-func TestKodactlReadsConfigFromEnvironment(t *testing.T) {
+func TestKodemaReadsConfigFromEnvironment(t *testing.T) {
 	isolateUserConfig(t)
 	directory := t.TempDir()
 	tokenFile := filepath.Join(directory, "token")
@@ -591,7 +591,7 @@ func TestKodactlReadsConfigFromEnvironment(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	code := run(context.Background(), []string{
 		"-credential-file", tokenFile,
-		"helper", "get", "https://git.example.com/shop/repo.git",
+		"git", "credential", "get", "https://git.example.com/shop/repo.git",
 	}, &stdout, &stderr, defaultCLIDeps())
 	if code != 0 {
 		t.Fatalf("exit code = %d; stderr=%q", code, stderr.String())
@@ -601,9 +601,9 @@ func TestKodactlReadsConfigFromEnvironment(t *testing.T) {
 	}
 }
 
-// TestKodactlRefusesInvalidConfigFile pins that an unknown config member or an
+// TestKodemaRefusesInvalidConfigFile pins that an unknown config member or an
 // invalid trusted origin is a usage refusal that never renders a token.
-func TestKodactlRefusesInvalidConfigFile(t *testing.T) {
+func TestKodemaRefusesInvalidConfigFile(t *testing.T) {
 	isolateUserConfig(t)
 	directory := t.TempDir()
 	configFile := filepath.Join(directory, "config.json")
@@ -614,7 +614,7 @@ func TestKodactlRefusesInvalidConfigFile(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	code := run(context.Background(), []string{
 		"-config", configFile,
-		"helper", "get", "https://git.example.com/shop/repo.git",
+		"git", "credential", "get", "https://git.example.com/shop/repo.git",
 	}, &stdout, &stderr, defaultCLIDeps())
 	if code != 2 {
 		t.Fatalf("exit code = %d; want usage", code)
@@ -622,7 +622,7 @@ func TestKodactlRefusesInvalidConfigFile(t *testing.T) {
 	if stdout.Len() != 0 {
 		t.Fatalf("stdout = %q; want empty", stdout.String())
 	}
-	if !strings.Contains(stderr.String(), "invalid kodactl config") {
+	if !strings.Contains(stderr.String(), "invalid kodema config") {
 		t.Fatalf("stderr = %q; want an invalid-config diagnostic", stderr.String())
 	}
 }

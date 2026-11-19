@@ -1,6 +1,6 @@
 package app
 
-// The durable form of ProfileTest: `kodema server --profile test`
+// The durable form of ProfileTest: `kodema serve --profile test`
 // composes PostgreSQL, NATS, the Podman runtime, a local keyfile, OIDC humans
 // and the file log sink through the same durable builder production uses. The
 // fully injected harness form (Config.Test == nil) is pinned by

@@ -172,7 +172,7 @@ func testProfileRun(t *testing.T, binary string, env map[string]string, timeout 
 	return stdout.String(), stderr.String(), code
 }
 
-// testProfileServer is one running `kodema server --profile test` process.
+// testProfileServer is one running `kodema serve --profile test` process.
 type testProfileServer struct {
 	command *exec.Cmd
 	output  *lockedOutput

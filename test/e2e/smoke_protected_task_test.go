@@ -485,7 +485,7 @@ func (instance *live) smokeSeedProtectedRepository(
 	if err != nil {
 		t.Fatalf("read the committed admin policy: %v", err)
 	}
-	if err := smoke.CheckRepositoryPolicy(policy, repository.Name); err != nil {
+	if err := smoke.CheckRepositoryPolicy(policy, repository.Name, repository.ResourceID); err != nil {
 		t.Fatalf("the committed admin policy for %q: %v", repository.Name, err)
 	}
 

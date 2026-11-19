@@ -1,8 +1,9 @@
-package main
+package clientcmd
 
 import (
 	"bytes"
 	"context"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -10,7 +11,7 @@ import (
 	"github.com/optimiware/kodema/internal/userland/cli"
 )
 
-func TestKodactlDispatchesOnlyTheCLI(t *testing.T) {
+func TestKodemaDispatchesOnlyTheCLI(t *testing.T) {
 	isolateUserConfig(t)
 	calls := 0
 	var gotConfig cli.Config
@@ -56,7 +57,7 @@ func TestKodactlDispatchesOnlyTheCLI(t *testing.T) {
 	}
 }
 
-func TestKodactlWithoutServerURLStartsNoTransport(t *testing.T) {
+func TestKodemaWithoutServerURLStartsNoTransport(t *testing.T) {
 	isolateUserConfig(t)
 	var gotPorts cli.Ports
 	deps := cliDeps{runCLI: func(_ context.Context, _ cli.Config, _ []string, ports cli.Ports, _ cli.CommandDeps) int {
@@ -68,11 +69,11 @@ func TestKodactlWithoutServerURLStartsNoTransport(t *testing.T) {
 		t.Fatalf("exit code = %d", code)
 	}
 	if gotPorts.Client != nil {
-		t.Fatal("kodactl built a transport without a server URL")
+		t.Fatal("kodema built a transport without a server URL")
 	}
 }
 
-func TestKodactlRefusesUnknownFlags(t *testing.T) {
+func TestKodemaRefusesUnknownFlags(t *testing.T) {
 	called := false
 	deps := cliDeps{runCLI: func(context.Context, cli.Config, []string, cli.Ports, cli.CommandDeps) int {
 		called = true
@@ -94,7 +95,7 @@ func TestKodactlRefusesUnknownFlags(t *testing.T) {
 	}
 }
 
-func TestKodactlPassesEmptyCommandToUsage(t *testing.T) {
+func TestKodemaPassesEmptyCommandToUsage(t *testing.T) {
 	var gotArgs []string
 	deps := cliDeps{runCLI: func(_ context.Context, _ cli.Config, args []string, _ cli.Ports, _ cli.CommandDeps) int {
 		gotArgs = append([]string(nil), args...)
@@ -106,5 +107,51 @@ func TestKodactlPassesEmptyCommandToUsage(t *testing.T) {
 	}
 	if len(gotArgs) != 0 {
 		t.Fatalf("args = %v; want empty", gotArgs)
+	}
+}
+
+// TestMountedExecutionCredentialIsTheDefaultInsideAnAction pins that a client
+// command inside a container action authenticates with the mounted execution
+// credential without any flag, that an explicit credential file still wins and
+// that a workstation, which has no such mount, keeps the human session.
+func TestMountedExecutionCredentialIsTheDefaultInsideAnAction(t *testing.T) {
+	isolateUserConfig(t)
+	mounted := filepath.Join(t.TempDir(), "KODEMA_TOKEN")
+	if err := os.WriteFile(mounted, []byte("kodex.exec-1.signature"), 0o444); err != nil {
+		t.Fatal(err)
+	}
+	configured := func(t *testing.T, args ...string) cli.Config {
+		t.Helper()
+		var got cli.Config
+		deps := cliDeps{runCLI: func(_ context.Context, config cli.Config, _ []string, _ cli.Ports, _ cli.CommandDeps) int {
+			got = config
+			return 0
+		}}
+		var stdout, stderr bytes.Buffer
+		if code := run(context.Background(), append(args, "whoami"), &stdout, &stderr, deps); code != 0 {
+			t.Fatalf("exit code = %d; stderr=%s", code, stderr.String())
+		}
+		return got
+	}
+
+	previous := mountedCredentialFile
+	t.Cleanup(func() { mountedCredentialFile = previous })
+
+	mountedCredentialFile = mounted
+	t.Run("runtime context wins over workstation defaults in the image", func(t *testing.T) {
+		t.Setenv("KODEMA_URL", "https://workload.example")
+		t.Setenv("KODEMA_SERVER", "https://workstation.example")
+		t.Setenv("KODEMA_CREDENTIAL_FILE", "/workstation/credential")
+		if got := configured(t); got.ServerURL != "https://workload.example" || got.CredentialFile != mounted {
+			t.Fatalf("workload default = %q %q", got.ServerURL, got.CredentialFile)
+		}
+		if got := configured(t, "--server", "https://explicit.example", "--credential-file", "/run/secrets/service"); got.ServerURL != "https://explicit.example" || got.CredentialFile != "/run/secrets/service" {
+			t.Fatalf("explicit flags lost: %q %q", got.ServerURL, got.CredentialFile)
+		}
+	})
+
+	mountedCredentialFile = filepath.Join(t.TempDir(), "absent")
+	if got := configured(t).CredentialFile; got != "" {
+		t.Fatalf("credential file = %q; want none on a workstation", got)
 	}
 }

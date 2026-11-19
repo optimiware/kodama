@@ -30,7 +30,7 @@ func TestRunHelperGetSuccess(t *testing.T) {
 			ports, out, errOut := testPorts(&scriptedTransport{})
 			ports.Credential = source
 			code := cli.Run(context.Background(), testConfig(), []string{
-				"helper", "get", "https://git.example.com/shop/repo.git",
+				"git", "credential", "get", "https://git.example.com/shop/repo.git",
 			}, ports)
 			if code != cli.ExitSuccess {
 				t.Fatalf("exit code = %d; want %d (stderr: %s)", code, cli.ExitSuccess, errOut.String())
@@ -90,7 +90,7 @@ func TestRunHelperRefusals(t *testing.T) {
 			ports, out, errOut := testPorts(&scriptedTransport{})
 			ports.Credential = source
 			code := cli.Run(context.Background(), testConfig(), []string{
-				"helper", testCase.protocol, testCase.url,
+				"git", "credential", testCase.protocol, testCase.url,
 			}, ports)
 			if code != cli.ExitSuccess {
 				t.Fatalf("exit code = %d; want %d", code, cli.ExitSuccess)
@@ -119,7 +119,7 @@ func TestRunHelperReadsFreshToken(t *testing.T) {
 	}}
 	ports, out, errOut := testPorts(&scriptedTransport{})
 	ports.Credential = source
-	args := []string{"helper", "get", "https://git.example.com/shop/repo.git"}
+	args := []string{"git", "credential", "get", "https://git.example.com/shop/repo.git"}
 
 	if code := cli.Run(context.Background(), testConfig(), args, ports); code != cli.ExitSuccess {
 		t.Fatalf("first exit code = %d", code)
@@ -149,10 +149,10 @@ func TestRunHelperReadsFreshToken(t *testing.T) {
 func TestRunHelperUsageErrors(t *testing.T) {
 	source := &scriptedSource{credentials: []client.Credential{humanCredential()}}
 	cases := [][]string{
-		{"helper"},
-		{"helper", "get"},
-		{"helper", "bogus", "https://git.example.com/shop/repo.git"},
-		{"helper", "get", "not a url"},
+		{"git", "credential"},
+		{"git", "credential", "get"},
+		{"git", "credential", "bogus", "https://git.example.com/shop/repo.git"},
+		{"git", "credential", "get", "not a url"},
 	}
 	for _, args := range cases {
 		ports, out, errOut := testPorts(&scriptedTransport{})
@@ -169,6 +169,65 @@ func TestRunHelperUsageErrors(t *testing.T) {
 		}
 		if strings.Contains(errOut.String(), humanCredential().Token) {
 			t.Errorf("args %v: stderr leaked the token: %s", args, errOut.String())
+		}
+	}
+}
+
+// TestGitCredentialReadsGitsRequest pins the protocol Git itself speaks: the
+// operation is the argument and the request attributes arrive on standard
+// input, up to the first empty line.
+func TestGitCredentialReadsGitsRequest(t *testing.T) {
+	answer := "username=kodema\npassword=" + humanCredential().Token + "\n"
+	for _, testCase := range []struct {
+		name  string
+		stdin string
+		want  string
+	}{
+		{name: "a trusted origin and path", stdin: "protocol=https\nhost=git.example.com\npath=shop/repo.git\n\n", want: answer},
+		{name: "attributes after the empty line are not read", stdin: "protocol=https\nhost=git.example.com\npath=shop/repo.git\n\nhost=evil.example\n", want: answer},
+		{name: "attributes Git adds are ignored", stdin: "capability[]=authtype\nprotocol=https\nhost=git.example.com\npath=shop/repo.git\nwwwauth[]=Basic realm=\"kodema\"\n", want: answer},
+		{name: "another host", stdin: "protocol=https\nhost=evil.example\npath=shop/repo.git\n\n"},
+		{name: "a path outside the trusted one", stdin: "protocol=https\nhost=git.example.com\npath=shopkeeper\n\n"},
+		{name: "no path, when the trusted origin has one", stdin: "protocol=https\nhost=git.example.com\n\n"},
+		{name: "an insecure scheme", stdin: "protocol=http\nhost=git.example.com\npath=shop/repo.git\n\n"},
+		{name: "no host", stdin: "protocol=https\n\n"},
+		{name: "no protocol", stdin: "host=git.example.com\n\n"},
+		{name: "a line that is not an attribute", stdin: "protocol=https\nhost=git.example.com\nnonsense\n\n"},
+		{name: "a truncated request", stdin: "protocol=https\nhost=git.example.com\npath=shop/repo.git\nextra=" + strings.Repeat("x", 64<<10)},
+		{name: "host is not a path", stdin: "protocol=https\nhost=git.example.com/shop\n\n"},
+		{name: "an empty request", stdin: ""},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			ports, out, errOut := testPorts(&scriptedTransport{})
+			ports.Credential = &scriptedSource{credentials: []client.Credential{humanCredential()}}
+			ports.In = strings.NewReader(testCase.stdin)
+			code := cli.Run(context.Background(), testConfig(), []string{"git", "credential", "get"}, ports)
+			if code != cli.ExitSuccess {
+				t.Fatalf("exit code = %d; want %d (stderr: %s)", code, cli.ExitSuccess, errOut.String())
+			}
+			if out.String() != testCase.want {
+				t.Fatalf("stdout = %q; want %q", out.String(), testCase.want)
+			}
+			if errOut.Len() != 0 {
+				t.Fatalf("stderr = %q; want empty", errOut.String())
+			}
+		})
+	}
+}
+
+// TestGitCredentialStoreAndEraseReadNothing pins that Git's store and erase
+// calls succeed without reading the request or the credential source.
+func TestGitCredentialStoreAndEraseReadNothing(t *testing.T) {
+	for _, operation := range []string{"store", "erase"} {
+		source := &scriptedSource{credentials: []client.Credential{humanCredential()}}
+		ports, out, errOut := testPorts(&scriptedTransport{})
+		ports.Credential = source
+		ports.In = strings.NewReader("protocol=https\nhost=git.example.com\npath=shop/repo.git\nusername=kodema\npassword=secret\n\n")
+		if code := cli.Run(context.Background(), testConfig(), []string{"git", "credential", operation}, ports); code != cli.ExitSuccess {
+			t.Fatalf("%s exit code = %d; stderr: %s", operation, code, errOut.String())
+		}
+		if out.Len() != 0 || errOut.Len() != 0 || source.callCount() != 0 {
+			t.Fatalf("%s wrote %q/%q and read the credential %d time(s); want nothing", operation, out.String(), errOut.String(), source.callCount())
 		}
 	}
 }

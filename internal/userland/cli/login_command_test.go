@@ -1,4 +1,4 @@
-// Tests for the kodactl login/logout/refresh/status command logic. Every
+// Tests for the kodema login/logout/refresh/status command logic. Every
 // collaborator is a deterministic fake; the login library itself is covered
 // by the contract vectors.
 package cli_test
@@ -47,7 +47,7 @@ func commandDocument() api.DiscoveryDocument {
 	}
 }
 
-// commandConfig is the kodactl configuration bound to commandDocument.
+// commandConfig is the kodema configuration bound to commandDocument.
 func commandConfig() cli.Config {
 	config := testConfig()
 	config.ServerURL = commandAPI
@@ -1049,7 +1049,7 @@ func TestRunWithDepsStatusRendersNoTokens(t *testing.T) {
 	store := &commandStore{present: true, record: commandRecord(testNow().Add(time.Hour))}
 	ports, out, errOut := testPorts(&scriptedTransport{})
 	runtime := commandRuntime(&commandOIDC{document: commandDocument()}, store, &commandLock{}, commandClock{now: testNow()}, nil)
-	code, _, _ := runWithRuntime(t, commandConfig(), []string{"status"}, ports, runtime)
+	code, _, _ := runWithRuntime(t, commandConfig(), []string{"session"}, ports, runtime)
 	if code != cli.ExitSuccess || errOut.Len() != 0 {
 		t.Fatalf("exit/stderr = %d/%q", code, errOut.String())
 	}
@@ -1084,7 +1084,7 @@ func TestRunHelperUsesRefreshingSessionSource(t *testing.T) {
 	}
 	ports, out, errOut := testPorts(&scriptedTransport{})
 	ports.Credential = source
-	code := cli.Run(context.Background(), testConfig(), []string{"helper", "get", "https://git.example.com/shop/repo.git"}, ports)
+	code := cli.Run(context.Background(), testConfig(), []string{"git", "credential", "get", "https://git.example.com/shop/repo.git"}, ports)
 	if code != cli.ExitSuccess || errOut.Len() != 0 {
 		t.Fatalf("exit/stderr = %d/%q", code, errOut.String())
 	}
@@ -1097,7 +1097,7 @@ func TestRunHelperUsesRefreshingSessionSource(t *testing.T) {
 
 	untrusted, untrustedOut, _ := testPorts(&scriptedTransport{})
 	untrusted.Credential = source
-	if code := cli.Run(context.Background(), testConfig(), []string{"helper", "get", "https://evil.example/repo.git"}, untrusted); code != cli.ExitSuccess {
+	if code := cli.Run(context.Background(), testConfig(), []string{"git", "credential", "get", "https://evil.example/repo.git"}, untrusted); code != cli.ExitSuccess {
 		t.Fatalf("untrusted helper exit = %d", code)
 	}
 	if untrustedOut.Len() != 0 {
@@ -1106,7 +1106,7 @@ func TestRunHelperUsesRefreshingSessionSource(t *testing.T) {
 
 	stored, storedOut, _ := testPorts(&scriptedTransport{})
 	stored.Credential = source
-	if code := cli.Run(context.Background(), testConfig(), []string{"helper", "store", "https://git.example.com/shop/repo.git"}, stored); code != cli.ExitSuccess {
+	if code := cli.Run(context.Background(), testConfig(), []string{"git", "credential", "store", "https://git.example.com/shop/repo.git"}, stored); code != cli.ExitSuccess {
 		t.Fatalf("store helper exit = %d", code)
 	}
 	if storedOut.Len() != 0 {
@@ -1118,7 +1118,7 @@ func TestRunHelperUsesRefreshingSessionSource(t *testing.T) {
 	failing := cli.SessionCredentialSource{Store: &commandStore{}, Lock: lock, OIDC: oidc, APIURL: commandAPI, Clock: commandClock{now: testNow()}}
 	missingPorts, missingOut, _ := testPorts(&scriptedTransport{})
 	missingPorts.Credential = failing
-	if code := cli.Run(context.Background(), testConfig(), []string{"helper", "get", "https://git.example.com/shop/repo.git"}, missingPorts); code != cli.ExitSuccess {
+	if code := cli.Run(context.Background(), testConfig(), []string{"git", "credential", "get", "https://git.example.com/shop/repo.git"}, missingPorts); code != cli.ExitSuccess {
 		t.Fatalf("missing-session helper exit = %d", code)
 	}
 	if missingOut.Len() != 0 {

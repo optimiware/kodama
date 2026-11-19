@@ -10,7 +10,7 @@ import (
 	"github.com/optimiware/kodema/internal/userland/cli"
 )
 
-// TestCLIConfigInputs pins the kodactl configuration inputs: a trusted server
+// TestCLIConfigInputs pins the kodema configuration inputs: a trusted server
 // URL, an optional session file, an output format and registered trusted Git
 // origins. Insecure, ambiguous and unknown configuration is refused.
 func TestCLIConfigInputs(t *testing.T) {

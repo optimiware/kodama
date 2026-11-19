@@ -37,7 +37,7 @@ const fakeBrowserModeEnv = "KODEMA_BROWSER_MODE"
 // fakeBrowserLogEnv names the observation file the helper writes.
 const fakeBrowserLogEnv = "KODEMA_BROWSER_LOG"
 
-// loginHarness drives the real kodactl binary as a child process against the
+// loginHarness drives the real kodema binary as a child process against the
 // in-process OIDC and discovery fixtures. Everything the child can observe is
 // isolated in one temporary root so a tree-wide secret scan is meaningful.
 type loginHarness struct {
@@ -60,7 +60,7 @@ type loginHarness struct {
 	clientID    string
 }
 
-// newLoginHarness builds kodactl, starts the fixtures and prepares one isolated
+// newLoginHarness builds kodema, starts the fixtures and prepares one isolated
 // child environment. The fake browser is a re-exec of the test binary placed
 // first on PATH as xdg-open (and open for macOS).
 func newLoginHarness(t *testing.T) *loginHarness {
@@ -117,7 +117,7 @@ func newLoginHarness(t *testing.T) *loginHarness {
 		t.Fatalf("WriteFile CA: %v", err)
 	}
 
-	harness.binary = buildKodactl(t)
+	harness.binary = buildKodema(t)
 	if err := harness.installFakeBrowser(); err != nil {
 		t.Fatalf("install fake browser: %v", err)
 	}
@@ -187,7 +187,7 @@ func (harness *loginHarness) runTimed(extra map[string]string, args ...string) (
 	}
 	var exitErr *exec.ExitError
 	if !errors.As(err, &exitErr) {
-		harness.t.Fatalf("run kodactl: %v", err)
+		harness.t.Fatalf("run kodema: %v", err)
 	}
 	return exitErr.ExitCode(), stdout.String(), stderr.String(), elapsed
 }
@@ -201,7 +201,7 @@ func (harness *loginHarness) start(extra map[string]string, args ...string) func
 	command.Stdout = &stdout
 	command.Stderr = &stderr
 	if err := command.Start(); err != nil {
-		harness.t.Fatalf("start kodactl: %v", err)
+		harness.t.Fatalf("start kodema: %v", err)
 	}
 	return func() (int, string, string) {
 		err := command.Wait()
@@ -210,7 +210,7 @@ func (harness *loginHarness) start(extra map[string]string, args ...string) func
 		}
 		var exitErr *exec.ExitError
 		if !errors.As(err, &exitErr) {
-			harness.t.Fatalf("wait kodactl: %v", err)
+			harness.t.Fatalf("wait kodema: %v", err)
 		}
 		return exitErr.ExitCode(), stdout.String(), stderr.String()
 	}

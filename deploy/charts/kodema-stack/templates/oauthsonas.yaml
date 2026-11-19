@@ -69,7 +69,7 @@ substring checks below cannot express an empty value. */ -}}
 {{- end }}
 {{- $clientID := get $client "id" }}
 {{- if or (not $clientID) (eq (trim (toString $clientID)) "") }}
-{{- fail "oauthsonas.config client id must not be empty: kodactl and scripts/oauthsonas-token need the public client id" }}
+{{- fail "oauthsonas.config client id must not be empty: kodema login and scripts/oauthsonas-token need the public client id" }}
 {{- end }}
 {{- if hasKey $client "secret" }}
 {{- $clientSecret := get $client "secret" }}

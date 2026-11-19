@@ -342,7 +342,7 @@ type Config struct {
 
 	// Discovery is the optional public login discovery document served at
 	// api.DiscoveryPath. It is validated at construction; a nil value keeps the
-	// route a clean 404 so kodactl login reports that the login configuration
+	// route a clean 404 so kodema login reports that the login configuration
 	// is unavailable. The production profile may also (or instead) set
 	// ProductionConfig.Discovery next to the OIDC verifier it reuses.
 	Discovery *DiscoveryConfig

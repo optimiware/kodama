@@ -62,6 +62,7 @@ container action is given the same things:
 | The code | `/workspace`, shared by the actions of one execution and kept across approval waits. |
 | The task | `/kodema/task.json`, the task's conversation, with the inputs and the outputs of earlier actions as files. |
 | An identity | `/kodema/secrets/KODEMA_TOKEN`, an execution credential that is revoked while the execution waits for a decision and when it ends. |
+| Tools | `/kodema/bin/kodema`, on `PATH` on both Kubernetes and Podman. Git authenticates as the execution when the workload Git endpoint is configured; write declared outputs as files to `/kodema/outputs/<action>`. |
 | A model | The optional model proxy. The harness points `ANTHROPIC_BASE_URL` or `OPENAI_BASE_URL` at Kodema and sends the execution credential as its API key; the provider key stays in the control plane. |
 | A person | A question on its task, addressed to a role or a service. The reply starts a fresh execution with the whole conversation. |
 
@@ -131,16 +132,19 @@ young, and the design is ahead of the evidence in these places:
 
 On Linux with rootless Podman 5 or newer, or on macOS with a Podman machine:
 
+If the installer reports **0.2.3**, follow the [0.2.3 quickstart](https://github.com/optimiware/kodema/blob/v0.2.3/docs/runbooks/quickstart.md): that release uses `kodactl run` and has no workload toolbox.
+
 ```sh
 curl -fsSL https://raw.githubusercontent.com/optimiware/kodema/master/install.sh | sh
 kodema up
 source ~/.kodema/instances/default/env.sh
 ```
 
-The first line installs `kodema` and `kodactl` into `~/.local/bin`.
-[install.sh](install.sh) downloads them from the latest release for your
-system and checks them against the release's `SHA256SUMS`. `kodema up` then
-starts a complete local Kodema. Run a pipeline file on it:
+The first line installs `kodema` into `~/.local/bin`. It is one binary: the
+client, the local installation and the server. [install.sh](install.sh)
+downloads it from the latest release for your system and checks it against the
+release's `SHA256SUMS`. `kodema up` then starts a complete local Kodema. Run a
+pipeline file on it:
 
 ```sh
 podman pull docker.io/library/alpine:3.24
@@ -152,7 +156,7 @@ actions:
     commands:
       - echo "hello from a Kodema workload"
 EOF
-kodactl run hello.yaml
+kodema run hello.yaml
 ```
 
 ```text
@@ -166,18 +170,23 @@ sign-in, Git and MCP.
 
 ### Other ways to install
 
-Without the script: download the `kodema` and `kodactl` archives for your
-system and `SHA256SUMS` from the
+Without the script: download the `kodema` archive for your system and
+`SHA256SUMS` from the
 [latest release](https://github.com/optimiware/kodema/releases/latest), then:
 
 ```sh
 sha256sum --check --ignore-missing SHA256SUMS    # macOS: shasum -a 256 --check --ignore-missing SHA256SUMS
-tar -xzf kodema_*.tar.gz && tar -xzf kodactl_*.tar.gz
-install -m 0755 kodema_*/kodema kodactl_*/kodactl ~/.local/bin/
+tar -xzf kodema_*.tar.gz
+install -m 0755 kodema_*/kodema ~/.local/bin/
 ```
 
-From a checkout, with Go: `make build` builds `bin/kodema` and `bin/kodactl`;
-see the [quickstart](docs/runbooks/quickstart.md#from-a-checkout).
+From a checkout, with Go: `make build` builds `bin/kodema`; see the
+[quickstart](docs/runbooks/quickstart.md#from-a-checkout).
+
+Releases up to 0.2.3 shipped the client as a second binary, `kodactl`. Its
+commands are now `kodema`'s, under the same names: `kodactl run` is
+`kodema run`. Two were renamed: `kodactl status` is `kodema session`, and
+`kodactl helper` is `kodema git credential`.
 
 ### The Podman bundle
 
@@ -200,7 +209,7 @@ Then follow the [Podman bundle runbook](docs/runbooks/podman-quickstart.md) to
 |---|---|
 | [KODEMA.md](KODEMA.md) | The product specification and acceptance criteria. It governs on conflict. |
 | [docs/README.md](docs/README.md) | Detailed specifications and runbooks. |
-| [docs/runbooks/quickstart.md](docs/runbooks/quickstart.md) | A local Kodema with `kodema up`, and a first pipeline with `kodactl run`. |
+| [docs/runbooks/quickstart.md](docs/runbooks/quickstart.md) | A local Kodema with `kodema up`, and a first pipeline with `kodema run`. |
 | [docs/runbooks/podman-quickstart.md](docs/runbooks/podman-quickstart.md) | The Podman bundle: the single-host test installation the release smoke runs on. |
 | [docs/runbooks/production-deployment.md](docs/runbooks/production-deployment.md) | Deployment on Kubernetes (Scaleway, AWS, GCP). |
 | [docs/runbooks/release.md](docs/runbooks/release.md) | How a version is built and published. |
@@ -209,8 +218,7 @@ Then follow the [Podman bundle runbook](docs/runbooks/podman-quickstart.md) to
 
 | Path | Contents |
 |---|---|
-| `cmd/kodema` | The server binary: `up`, `server`, `git`, `auth`, `agent`, `services`, `migrate`, `bootstrap-admin`. |
-| `cmd/kodactl` | The command-line client. |
+| `cmd/kodema` | The one binary: the installation (`up`, `serve`, `git serve`, `auth`, `agent`, `services`, `migrate`, `bootstrap-admin`), the client (`run`, `login`, `inbox`, `approve`, `logs`, ...) and the toolbox of a container action (`output push`, `git credential`). |
 | `api`, `client` | The public API declarations and the Go client. |
 | `internal` | The Kernel, the Shell and Userland. |
 | `deploy` | The image, the Helm charts, the Podman bundle and the OpenTofu roots per cloud. |
@@ -222,10 +230,10 @@ Then follow the [Podman bundle runbook](docs/runbooks/podman-quickstart.md) to
 The Go version is pinned in [`.go-version`](.go-version).
 
 ```sh
-make build    # bin/kodema and bin/kodactl, stamped with the version and revision
+make build    # bin/kodema, stamped with the version and revision
 make image    # the container image of this checkout, which `kodema up` starts
 make check    # gofmt, vet, unit tests, race tests, architecture and docs checks
-make dist     # dist/: kodema and kodactl archives, Helm chart packages, SHA256SUMS (needs helm)
+make dist     # dist/: the kodema archives, Helm chart packages, SHA256SUMS (needs helm)
 ```
 
 The suites that need real infrastructure (Podman, kind, the stage) are

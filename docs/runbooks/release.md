@@ -26,8 +26,7 @@ A version has one of three forms:
 
 `0.1.0` is the first public release.
 
-`kodema version` and `kodactl version` print the version and the source
-revision of the binary:
+`kodema version` prints the version and the source revision of the binary:
 
 ```text
 kodema 0.1.0 (revision <40 hex>, go1.27.3, linux/amd64)
@@ -42,13 +41,16 @@ kodema 0.1.0 (revision <40 hex>, go1.27.3, linux/amd64)
 |---|---|
 | `kodema` image (`linux/amd64`, `linux/arm64`) | `ghcr.io/optimiware/kodema/kodema:<version>` (and `:latest` for non-prerelease versions); the release notes give the manifest index digest |
 | Charts `kodema` and `kodema-stack` | `oci://ghcr.io/optimiware/kodema/charts`, and attached to the GitHub release |
-| `kodema` and `kodactl` for linux and darwin, amd64 and arm64 | `kodema_<version>_<os>_<arch>.tar.gz` and `kodactl_<version>_<os>_<arch>.tar.gz` attached to the GitHub release |
+| `kodema` for linux and darwin, amd64 and arm64 | `kodema_<version>_<os>_<arch>.tar.gz` attached to the GitHub release |
 | `SHA256SUMS` | attached to the GitHub release; covers the archives and chart packages |
 
-[`install.sh`](../../install.sh) installs the two archives of the latest
-release from those attachments. It is read from `master`, not from a release,
-so a change to it reaches users when it is merged. Releases before 0.2.1 have
-no `kodema` archive.
+[`install.sh`](../../install.sh) installs the archive of the latest release
+from those attachments. It is read from `master`, not from a release, so a
+change to it reaches users when it is merged, and it must keep installing the
+releases that exist: releases up to 0.2.3 ship the client as a second archive,
+`kodactl_<version>_<os>_<arch>.tar.gz`, which the script installs when the
+release's `SHA256SUMS` lists it. Releases before 0.2.1 have no `kodema`
+archive.
 
 The packages are named after this repository because
 `ghcr.io/optimiware/kodema` holds the images of the archived v1 repository.
@@ -102,7 +104,7 @@ gh workflow run release.yml --ref <branch>
 ## Use a release
 
 ```sh
-# kodema and kodactl, into ~/.local/bin
+# kodema, into ~/.local/bin
 curl -fsSL https://raw.githubusercontent.com/optimiware/kodema/master/install.sh | KODEMA_VERSION=<version> sh
 
 # or by hand

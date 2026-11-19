@@ -29,6 +29,7 @@ func TestDispatchTable(t *testing.T) {
 		{"up", []string{"up"}, "up"},
 		{"down", []string{"down"}, "down"},
 		{"status", []string{"status"}, "status"},
+		{"serve", []string{"serve"}, "server"},
 		{"server", []string{"server"}, "server"},
 		{"git serve", []string{"git", "serve"}, "gitServe"},
 		{"auth serve", []string{"auth", "serve"}, "authServe"},
@@ -37,6 +38,10 @@ func TestDispatchTable(t *testing.T) {
 		{"services", []string{"services"}, "services"},
 		{"migrate", []string{"migrate"}, "migrate"},
 		{"bootstrap-admin", []string{"bootstrap-admin"}, "bootstrap"},
+		{"a client command", []string{"run", "hello.yaml"}, "client"},
+		{"client flags before the command", []string{"--server", "https://kodema.example", "whoami"}, "client"},
+		{"git credential", []string{"git", "credential", "get"}, "client"},
+		{"help for a client command", []string{"help", "run"}, "client"},
 	}
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
@@ -53,6 +58,7 @@ func TestDispatchTable(t *testing.T) {
 				services:        recorder.runner("services"),
 				migrate:         recorder.runner("migrate"),
 				bootstrap:       recorder.runner("bootstrap"),
+				client:          recorder.runner("client"),
 			}
 			var stdout, stderr bytes.Buffer
 			code := run(context.Background(), testCase.args, &stdout, &stderr, deps)
@@ -166,12 +172,10 @@ func TestUnknownCommandRefused(t *testing.T) {
 		services:  recorder.runner("services"),
 		migrate:   recorder.runner("migrate"),
 		bootstrap: recorder.runner("bootstrap"),
+		client:    recorder.runner("client"),
 	}
 	for _, args := range [][]string{
 		{},
-		{"unknown"},
-		{"git"},
-		{"git", "push"},
 		{"auth"},
 		{"auth", "unknown"},
 	} {
@@ -192,14 +196,59 @@ func TestUnknownCommandRefused(t *testing.T) {
 	}
 }
 
+// TestNamesTheInstallationDoesNotOwnReachOnlyTheClient proves that a name the
+// installation does not own is the client's to refuse, in the client's words,
+// and that it starts no installation command.
+func TestNamesTheInstallationDoesNotOwnReachOnlyTheClient(t *testing.T) {
+	for _, testCase := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"unknown"}, `unknown command "unknown"`},
+		{[]string{"git"}, "git requires a subcommand"},
+		{[]string{"git", "push"}, `unknown git subcommand "push"`},
+		{[]string{"helper", "get"}, `unknown command "helper"`},
+	} {
+		installation := func(name string) runner {
+			return func(context.Context, []string, io.Writer, io.Writer) int {
+				t.Errorf("args %v started the installation command %s", testCase.args, name)
+				return 1
+			}
+		}
+		deps := deps{
+			up: installation("up"), down: installation("down"), status: installation("status"),
+			server: installation("server"), gitServe: installation("gitServe"), gitHook: installation("gitHook"),
+			gitProvision: installation("gitProvision"), gitProvisionRepository: installation("gitProvisionRepository"),
+			authServe: installation("authServe"), authPrincipalID: installation("authPrincipalID"),
+			agent: installation("agent"), services: installation("services"),
+			migrate: installation("migrate"), bootstrap: installation("bootstrap"),
+			client: runClientEntry,
+		}
+		var stdout, stderr bytes.Buffer
+		code := run(context.Background(), testCase.args, &stdout, &stderr, deps)
+		if code != 2 {
+			t.Fatalf("args %v exit code = %d; want 2 (stderr=%q)", testCase.args, code, stderr.String())
+		}
+		if !strings.Contains(stderr.String(), testCase.want) {
+			t.Fatalf("args %v stderr = %q; want %q", testCase.args, stderr.String(), testCase.want)
+		}
+		if stdout.Len() != 0 {
+			t.Fatalf("args %v wrote stdout: %q", testCase.args, stdout.String())
+		}
+	}
+}
+
 func TestHelpWritesUsageToStdout(t *testing.T) {
 	var stdout, stderr bytes.Buffer
-	code := run(context.Background(), []string{"help"}, &stdout, &stderr, deps{})
+	code := run(context.Background(), []string{"help"}, &stdout, &stderr, deps{client: runClientEntry})
 	if code != 0 {
 		t.Fatalf("exit code = %d", code)
 	}
-	if !strings.Contains(stdout.String(), "usage: kodema") {
-		t.Fatalf("stdout = %q", stdout.String())
+	// One help lists both halves: the client commands and the installation's.
+	for _, want := range []string{"kodema [global flags] <command>", "  run ", "installation commands:", "  serve ", "  git serve "} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("stdout = %q; want it to contain %q", stdout.String(), want)
+		}
 	}
 	if stderr.Len() != 0 {
 		t.Fatalf("stderr = %q", stderr.String())

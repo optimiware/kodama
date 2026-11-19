@@ -103,6 +103,55 @@ func TestCreateContainerMapsSpecAndReturnsIdentity(t *testing.T) {
 	}
 }
 
+// TestCreateContainerMapsTheToolboxMountsAndWorkingDirectory pins the create
+// body of a workload with a toolbox: the working directory, the nested
+// read-only toolbox bind and the bounded, writable output tmpfs.
+func TestCreateContainerMapsTheToolboxMountsAndWorkingDirectory(t *testing.T) {
+	var got createSpec
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
+			t.Errorf("decode create body: %v", err)
+		}
+		writeJSON(w, http.StatusCreated, map[string]string{"Id": "container-1"})
+	}))
+	if _, err := client.CreateContainer(context.Background(), runtimepodman.ContainerSpec{
+		Name:       "kodema-workload-1",
+		Image:      "registry.example.com/tools/build@sha256:" + strings.Repeat("a", 64),
+		Entrypoint: []string{"/bin/sh", "-c", "launcher"},
+		WorkingDir: "/workspace",
+		Mounts: []runtimepodman.Mount{
+			{Type: "bind", Source: "/host/kodema", Destination: "/kodema", ReadOnly: true},
+			{Type: "volume", Source: "kodema-workspace-1", Destination: "/workspace"},
+			{Type: "bind", Source: "/host/.toolbox/abc", Destination: "/kodema/bin", ReadOnly: true},
+			{Type: "tmpfs", Destination: "/kodema/outputs/build", SizeBytes: 1 << 20},
+		},
+		RestartPolicy: "no",
+	}); err != nil {
+		t.Fatalf("CreateContainer: %v", err)
+	}
+	if got.WorkDir != "/workspace" {
+		t.Fatalf("create body work_dir = %q; want /workspace", got.WorkDir)
+	}
+	if len(got.Mounts) != 3 {
+		t.Fatalf("create body mounts = %+v; want the two binds and the tmpfs", got.Mounts)
+	}
+	toolbox, outputs := got.Mounts[1], got.Mounts[2]
+	if toolbox.Type != "bind" || toolbox.Destination != "/kodema/bin" || toolbox.Source != "/host/.toolbox/abc" || !contains(toolbox.Options, "ro") {
+		t.Fatalf("toolbox mount = %+v; want a read-only bind", toolbox)
+	}
+	if outputs.Type != "tmpfs" || outputs.Destination != "/kodema/outputs/build" {
+		t.Fatalf("output mount = %+v; want a tmpfs", outputs)
+	}
+	for _, option := range []string{"rw", "noexec", "nosuid", "nodev", "mode=1777", "size=1048576"} {
+		if !contains(outputs.Options, option) {
+			t.Fatalf("output mount options = %v; want %q", outputs.Options, option)
+		}
+	}
+	if contains(outputs.Options, "ro") {
+		t.Fatalf("output mount options = %v; the directory must be writable", outputs.Options)
+	}
+}
+
 func TestCreateContainerMapsNotFoundAndConflict(t *testing.T) {
 	status := http.StatusNotFound
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

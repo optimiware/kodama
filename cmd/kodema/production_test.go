@@ -89,6 +89,7 @@ func productionFixture(t *testing.T) (productionEnv, driverkube.InClusterConfig,
 		"KODEMA_KEY_BLOBS_DIR":               keys,
 		"KODEMA_TLS_DIR":                     dir,
 		"KODEMA_TENANT":                      "tenant-a",
+		"KODEMA_TOOLBOX_IMAGE":               "registry.example/kodema@sha256:" + strings.Repeat("a", 64),
 		"SCW_SECRET_KEY":                     "k",
 		"KODEMA_OIDC_ISSUER":                 "https://idp.example.com",
 		"KODEMA_OIDC_AUDIENCE":               "https://api.example.com",
@@ -636,6 +637,7 @@ func TestBuildProductionKeepsSingletonTenantCompatibility(t *testing.T) {
 // template, not only the first one.
 func TestBuildProductionMapsTenantListSettings(t *testing.T) {
 	getenv, kube, options := productionFixture(t)
+	options.WorkloadGitURL = "https://git-{tenant}.example"
 	override := func(name string) string {
 		switch name {
 		case "KODEMA_TENANT":
@@ -658,6 +660,10 @@ func TestBuildProductionMapsTenantListSettings(t *testing.T) {
 		t.Fatalf("buildProduction: %v", err)
 	}
 	for _, tenant := range build.Config.Production.Tenants {
+		adapter := reflect.ValueOf(tenant.Runtime).Elem()
+		if got := adapter.FieldByName("gitURL").String(); got != "https://git-"+string(tenant.TenantID)+".example" {
+			t.Errorf("tenant %s: wrong workload Git URL %q", tenant.TenantID, got)
+		}
 		template := tenant.WorkspacePVC
 		if template == nil || template.StorageClass != "storage-class-sentinel" || template.Size != "42Gi" || template.AccessMode != "ReadWriteMany" {
 			t.Fatalf("tenant %s claim template = %+v; want the configured storage settings", tenant.TenantID, template)

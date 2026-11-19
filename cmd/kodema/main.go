@@ -1,6 +1,8 @@
-// Command kodema is the single composition entrypoint. It dispatches one
-// explicit subcommand and never starts an unrelated process: `kodema git serve`
-// does not open the Shell store and `kodema agent` does not start a server.
+// Command kodema is the single entrypoint: the control plane and its
+// companions, the client on a workstation and the toolbox inside a container
+// action. It dispatches one explicit subcommand and never starts an unrelated
+// process: `kodema git serve` does not open the Shell store, `kodema agent`
+// does not start a server, and a client command does neither.
 package main
 
 import (
@@ -10,15 +12,19 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+
+	"github.com/optimiware/kodema/cmd/kodema/internal/clientcmd"
 )
 
-const usageText = `usage: kodema <command> [flags]
+const usageText = "usage: kodema <command> [flags]\n\n" + installationText
 
-commands:
-  up            start a local Kodema on Podman (then: kodactl run <pipeline.yaml>)
+// installationText lists the commands that run an installation. Every other
+// command is a client command, listed by `kodema help`.
+const installationText = `installation commands:
+  up            start a local Kodema on Podman (then: kodema run <pipeline.yaml>)
   down          stop the local Kodema (--purge removes its state)
   status        inspect the local Kodema
-  server        run the Shell composition (--profile development, test or production)
+  serve         run the Shell composition (--profile development, test or production)
   git serve     run the independent Git smart-HTTP service
   git hook      run one native Git hook callback
   git provision-tenant  create the tenant's trusted admin repository
@@ -31,7 +37,7 @@ commands:
   bootstrap-admin  create the first tenant and administrator from an OIDC token
   version       print the version and source revision of this binary
 
-Run "kodema <command> --help" for command flags.
+Run "kodema <command> --help" for the flags of an installation command.
 `
 
 // runner is one dispatched subcommand.
@@ -54,6 +60,9 @@ type deps struct {
 	services               runner
 	migrate                runner
 	bootstrap              runner
+	// client runs every command the installation does not own: the client
+	// commands over the public API and the toolbox commands of an action.
+	client runner
 }
 
 func main() {
@@ -78,7 +87,13 @@ func defaultDeps() deps {
 		services:               runServicesEntry,
 		migrate:                runMigrateEntry,
 		bootstrap:              runBootstrapAdminEntry,
+		client:                 runClientEntry,
 	}
+}
+
+// runClientEntry runs one client command. It opens no store and no listener.
+func runClientEntry(ctx context.Context, args []string, stdout, stderr io.Writer) int {
+	return clientcmd.Run(ctx, args, stdout, stderr, printVersion)
 }
 
 // run dispatches one command and returns its exit code. It never calls os.Exit.
@@ -89,7 +104,13 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer, deps deps
 	}
 	switch args[0] {
 	case "help", "-h", "--help":
-		fmt.Fprint(stdout, usageText)
+		if len(args) > 1 {
+			return deps.client(ctx, append([]string{"help"}, args[1:]...), stdout, stderr)
+		}
+		if code := deps.client(ctx, []string{"help"}, stdout, stderr); code != 0 {
+			return code
+		}
+		fmt.Fprint(stdout, "\n"+installationText)
 		return 0
 	case "version", "--version":
 		printVersion(stdout)
@@ -100,26 +121,23 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer, deps deps
 		return deps.down(ctx, args[1:], stdout, stderr)
 	case "status":
 		return deps.status(ctx, args[1:], stdout, stderr)
-	case "server":
+	case "serve", "server":
 		return deps.server(ctx, args[1:], stdout, stderr)
 	case "git":
-		if len(args) < 2 {
-			usage(stderr, "git requires a subcommand")
-			return 2
+		if len(args) > 1 {
+			switch args[1] {
+			case "serve":
+				return deps.gitServe(ctx, args[2:], stdout, stderr)
+			case "hook":
+				return deps.gitHook(ctx, args[2:], stdout, stderr)
+			case "provision-tenant":
+				return deps.gitProvision(ctx, args[2:], stdout, stderr)
+			case "provision-repository":
+				return deps.gitProvisionRepository(ctx, args[2:], stdout, stderr)
+			}
 		}
-		switch args[1] {
-		case "serve":
-			return deps.gitServe(ctx, args[2:], stdout, stderr)
-		case "hook":
-			return deps.gitHook(ctx, args[2:], stdout, stderr)
-		case "provision-tenant":
-			return deps.gitProvision(ctx, args[2:], stdout, stderr)
-		case "provision-repository":
-			return deps.gitProvisionRepository(ctx, args[2:], stdout, stderr)
-		default:
-			usage(stderr, fmt.Sprintf("unknown git subcommand %q", args[1]))
-			return 2
-		}
+		// `git credential` is the client's.
+		return deps.client(ctx, args, stdout, stderr)
 	case "auth":
 		if len(args) < 2 {
 			usage(stderr, "auth requires a subcommand")
@@ -143,8 +161,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer, deps deps
 	case "bootstrap-admin":
 		return deps.bootstrap(ctx, args[1:], stdout, stderr)
 	default:
-		usage(stderr, fmt.Sprintf("unknown command %q", args[0]))
-		return 2
+		return deps.client(ctx, args, stdout, stderr)
 	}
 }
 

@@ -1,12 +1,17 @@
 #!/bin/sh
-# install.sh: install the kodema and kodactl binaries of a Kodema release.
+# install.sh: install the kodema binary of a Kodema release.
 #
 #   curl -fsSL https://raw.githubusercontent.com/optimiware/kodema/master/install.sh | sh
 #
-# It detects the operating system and the architecture, downloads the two
-# archives of the release and its SHA256SUMS, checks both archives against it
-# and installs kodema and kodactl into ~/.local/bin. It needs curl and tar, and
-# never asks for root.
+# It detects the operating system and the architecture, downloads the archive
+# of the release and its SHA256SUMS, checks the archive against it and installs
+# kodema into ~/.local/bin. It needs curl and tar, and never asks for root.
+#
+# kodema is one binary: the client, the local installation (`kodema up`) and
+# the server. Releases up to 0.2.3 ship the client as a second binary,
+# kodactl. This script is read from master and installs any release, so it
+# installs kodactl too when the release has one, and says which commands to
+# use.
 #
 #   KODEMA_VERSION       the release to install, for example 0.2.1 (default: the latest)
 #   KODEMA_INSTALL_DIR   the directory to install into (default: ~/.local/bin)
@@ -82,7 +87,14 @@ main() {
 	say "downloading Kodema ${version} for ${os}/${arch}"
 	fetch --output "${work}/SHA256SUMS" "${releases}/download/v${version}/SHA256SUMS" ||
 		die "release ${version} was not found at ${releases}"
-	for binary in kodema kodactl; do
+	# A release whose SHA256SUMS lists a kodactl archive is 0.2.3 or older: its
+	# kodema has no client commands, so kodactl is installed beside it.
+	binaries=kodema
+	if awk -v name="kodactl_${version}_${os}_${arch}.tar.gz" \
+		'$2 == name || $2 == "*" name { found = 1 } END { exit !found }' "${work}/SHA256SUMS"; then
+		binaries="kodema kodactl"
+	fi
+	for binary in $binaries; do
 		archive="${binary}_${version}_${os}_${arch}.tar.gz"
 		fetch --output "${work}/${archive}" "${releases}/download/v${version}/${archive}" ||
 			die "release ${version} has no ${binary} for ${os}/${arch}; releases before 0.2.1 carry no kodema binary"
@@ -94,7 +106,7 @@ main() {
 	done
 
 	mkdir -p "$directory"
-	for binary in kodema kodactl; do
+	for binary in $binaries; do
 		name="${binary}_${version}_${os}_${arch}"
 		tar -xzf "${work}/${name}.tar.gz" -C "$work"
 		[ -f "${work}/${name}/${binary}" ] || die "${name}.tar.gz does not contain ${binary}"
@@ -104,7 +116,15 @@ main() {
 		chmod 0755 "${directory}/.${binary}.install.$$"
 		mv -f "${directory}/.${binary}.install.$$" "${directory}/${binary}"
 	done
-	say "installed kodema and kodactl ${version} in ${directory}"
+	if [ "$binaries" = kodema ]; then
+		say "installed kodema ${version} in ${directory}"
+		if [ -e "${directory}/kodactl" ]; then
+			say "${directory}/kodactl is from an earlier release; its commands are now kodema's (kodema run, kodema login): remove it"
+		fi
+	else
+		say "installed kodema and kodactl ${version} in ${directory}"
+		say "release ${version} keeps the client in kodactl: where the documentation says 'kodema run', use 'kodactl run'"
+	fi
 
 	case ":${PATH}:" in
 	*":${directory}:"*) ;;

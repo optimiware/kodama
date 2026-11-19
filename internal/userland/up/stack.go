@@ -181,8 +181,8 @@ func WriteEnvFiles(spec EnvFileSpec) error {
 		fmt.Fprintf(&buf, "export KODEMA_PROJECT=%s\n", shellSingleQuote(spec.ProjectID))
 		if spec.TenantAdminTokenPath != "" {
 			buf.WriteString("# The default credential is scoped to the project. Tenant administration\n")
-			buf.WriteString("# (kodactl member ...) needs the tenant-scoped one:\n")
-			buf.WriteString("#   kodactl --credential-file \"$KODEMA_TENANT_ADMIN_CREDENTIAL_FILE\" member list\n")
+			buf.WriteString("# (kodema member ...) needs the tenant-scoped one:\n")
+			buf.WriteString("#   kodema --credential-file \"$KODEMA_TENANT_ADMIN_CREDENTIAL_FILE\" member list\n")
 			fmt.Fprintf(&buf, "export KODEMA_TENANT_ADMIN_CREDENTIAL_FILE=%s\n", shellSingleQuote(spec.TenantAdminTokenPath))
 		}
 		if err := writeFileAtomic(spec.EnvFilePath, buf.Bytes(), 0o600); err != nil {
@@ -622,6 +622,8 @@ func Up(ctx context.Context, cfg UpConfig, stdout io.Writer) (_ StackDescriptor,
 		"KODEMA_OIDC_PROJECT_CLAIM=project_id",
 		"KODEMA_PUBLIC_URL=" + publicURL,
 		"KODEMA_WORKLOAD_URL=" + workloadOrigin,
+		// The gateway serves Git under /git/ of the same origin.
+		"KODEMA_WORKLOAD_GIT_URL=" + workloadOrigin + "/git",
 		"KODEMA_ADDRESS=0.0.0.0:8443",
 		"KODEMA_DISCOVERY_ISSUER=" + disc.Issuer,
 		"KODEMA_DISCOVERY_CLIENT_ID=" + disc.ClientID,
@@ -640,7 +642,7 @@ func Up(ctx context.Context, cfg UpConfig, stdout io.Writer) (_ StackDescriptor,
 		Name:    serverContainer,
 		Image:   kodemaImage,
 		User:    kodemaContainerUser,
-		Cmd:     []string{"server", "--profile", "test"},
+		Cmd:     []string{"serve", "--profile", "test"},
 		Env:     serverEnv,
 		Labels:  map[string]string{LabelInstance: instance, LabelComponent: "server"},
 		Network: networkName,
@@ -746,7 +748,7 @@ func Up(ctx context.Context, cfg UpConfig, stdout io.Writer) (_ StackDescriptor,
 	fmt.Fprintf(stdout, "  OIDC Auth:  %s/auth/.well-known/openid-configuration\n", publicURL)
 	fmt.Fprintf(stdout, "  Git HTTP:   %s/git/\n", publicURL)
 	fmt.Fprintf(stdout, "  Shell env:  source %s\n", shellSingleQuote(envFilePath))
-	fmt.Fprintf(stdout, "  CLI login:  kodactl --server %s login\n", shellSingleQuote(publicURL))
+	fmt.Fprintf(stdout, "  CLI login:  kodema --server %s login\n", shellSingleQuote(publicURL))
 	return desc, nil
 }
 

@@ -1,6 +1,6 @@
 package main
 
-// Both `kodema server` profiles read the optional model
+// Both `kodema serve` profiles read the optional model
 // gateway and external MCP tool proxy from the trusted files named by
 // KODEMA_MODELS_FILE and KODEMA_TOOL_PROXY_FILE. A named-but-unreadable or
 // malformed file is a configuration refusal that names the setting; an unnamed

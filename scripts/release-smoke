@@ -4,7 +4,7 @@
 #   scripts/release-smoke --image <reference in the local image store>
 #
 # It installs a throwaway installation of the image with the Podman bundle
-# (deploy/podman), starts the first pipeline of the Podman quickstart, requires
+# (deploy/podman), passes an output file from one action to the next, requires
 # the execution to succeed with the expected log line, and removes the
 # installation again. The release workflow runs it before anything is pushed.
 #
@@ -81,8 +81,16 @@ actions:
   - name: hello
     image: "${tools}"
     timeout: 2m
+    outputs: [message]
     commands:
-      - echo "${marker}"
+      - test "\$PWD" = /workspace
+      - printf 'url=%s/admin\n\n' "\$KODEMA_GIT_URL" | GIT_TERMINAL_PROMPT=0 git credential fill >/dev/null
+      - echo "${marker}" > /kodema/outputs/hello/message
+  - name: report
+    image: "${tools}"
+    timeout: 2m
+    commands:
+      - cat /kodema/outputs/hello/message
 EOF
 jq -n --arg project "$project" --arg yaml "$(base64 <"${work}/pipeline.yaml" | tr -d '\n')" \
   '{input: {project_id: $project, yaml: $yaml}, idempotency_key: "release-smoke"}' >"${work}/start.json"
@@ -104,7 +112,7 @@ done
   die "the execution ended as ${state_now}, not succeeded/complete"
 }
 
-action="$(jq -er '.body.actions[0].action_id' "${work}/inspect-response.json")"
+action="$(jq -er '.body.actions[] | select(.name == "report") | .action_id' "${work}/inspect-response.json")"
 jq -n --arg execution "$execution" --arg action "$action" \
   '{input: {execution_id: $execution, action_id: $action, stream: "stdout"}}' >"${work}/logs.json"
 output="$(call GET "/api/v1/executions/${execution}/logs" "${work}/logs.json" | jq -r '.body.chunks[].data | @base64d')"

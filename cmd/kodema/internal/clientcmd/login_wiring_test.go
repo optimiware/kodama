@@ -1,9 +1,9 @@
-// Tests for the real kodactl entrypoint wiring: the production login
+// Tests for the real kodema entrypoint wiring: the production login
 // runtime reaches an httptest OIDC provider and a loopback discovery document,
 // every command dispatches through cli.RunWithDeps, the renewing session
 // credential source refreshes under the real cross-process lock, and
 // `login` never reuses a seeded session.
-package main
+package clientcmd
 
 import (
 	"bytes"
@@ -373,11 +373,11 @@ func assertNoSecrets(t *testing.T, streams []string, secrets ...string) {
 	}
 }
 
-// TestKodactlBrowserLoginRunsTheRealRuntime drives the production login runtime
+// TestKodemaBrowserLoginRunsTheRealRuntime drives the production login runtime
 // through the real browser authorization-code + PKCE flow against a TLS fake
 // provider. The fake opener fetches the authorization URL and follows the
 // provider redirect to the real loopback listener.
-func TestKodactlBrowserLoginRunsTheRealRuntime(t *testing.T) {
+func TestKodemaBrowserLoginRunsTheRealRuntime(t *testing.T) {
 	isolateUserConfig(t)
 	_, sessionPath := sessionPaths(t)
 	provider := newFakeProvider(t)
@@ -456,9 +456,9 @@ func TestKodactlBrowserLoginRunsTheRealRuntime(t *testing.T) {
 		loginAccess, loginRefresh, deviceCode, "login-code-canary")
 }
 
-// TestKodactlDeviceLoginRunsTheRealRuntime drives the RFC 8628 device flow
+// TestKodemaDeviceLoginRunsTheRealRuntime drives the RFC 8628 device flow
 // through the real entry and deterministic clock.
-func TestKodactlDeviceLoginRunsTheRealRuntime(t *testing.T) {
+func TestKodemaDeviceLoginRunsTheRealRuntime(t *testing.T) {
 	isolateUserConfig(t)
 	_, sessionPath := sessionPaths(t)
 	provider := newFakeProvider(t)
@@ -507,9 +507,9 @@ func TestKodactlDeviceLoginRunsTheRealRuntime(t *testing.T) {
 	assertNoSecrets(t, []string{stdout, stderr}, loginAccess, loginRefresh, deviceCode)
 }
 
-// TestKodactlLogoutRevokesThenDeletes drives the real logout through the real
+// TestKodemaLogoutRevokesThenDeletes drives the real logout through the real
 // lock, provider revocation endpoint and session file deletion.
-func TestKodactlLogoutRevokesThenDeletes(t *testing.T) {
+func TestKodemaLogoutRevokesThenDeletes(t *testing.T) {
 	isolateUserConfig(t)
 	_, sessionPath := sessionPaths(t)
 	provider := newFakeProvider(t)
@@ -545,8 +545,8 @@ func TestKodactlLogoutRevokesThenDeletes(t *testing.T) {
 	assertNoSecrets(t, []string{stdout, stderr}, loginAccess, loginRefresh)
 }
 
-// TestKodactlStatusRendersNoToken drives status through the real runtime.
-func TestKodactlStatusRendersNoToken(t *testing.T) {
+// TestKodemaStatusRendersNoToken drives status through the real runtime.
+func TestKodemaStatusRendersNoToken(t *testing.T) {
 	isolateUserConfig(t)
 	_, sessionPath := sessionPaths(t)
 	provider := newFakeProvider(t)
@@ -562,7 +562,7 @@ func TestKodactlStatusRendersNoToken(t *testing.T) {
 		"-server", apiServer.URL,
 		"-session", sessionPath,
 		"-output", "json",
-		"status",
+		"session",
 	}, deps)
 	if code != cli.ExitSuccess || stderr != "" {
 		t.Fatalf("exit/stderr = %d/%q", code, stderr)
@@ -577,10 +577,10 @@ func TestKodactlStatusRendersNoToken(t *testing.T) {
 	assertNoSecrets(t, []string{stdout, stderr}, loginAccess, loginRefresh)
 }
 
-// TestKodactlClientRenewsExpiringSession pins that a client command renews a
+// TestKodemaClientRenewsExpiringSession pins that a client command renews a
 // session inside the refresh leeway under the real cross-process lock with
 // exactly one token call.
-func TestKodactlClientRenewsExpiringSession(t *testing.T) {
+func TestKodemaClientRenewsExpiringSession(t *testing.T) {
 	isolateUserConfig(t)
 	directory, sessionPath := sessionPaths(t)
 	provider := newFakeProvider(t)
@@ -649,10 +649,10 @@ func (blockingLock) Acquire(ctx context.Context) (func() error, error) {
 	return nil, ctx.Err()
 }
 
-// TestKodactlHungLockHolderTimesOut pins that the credential path hands the
+// TestKodemaHungLockHolderTimesOut pins that the credential path hands the
 // lock a deadline-bearing context, so a live lock holder produces a bounded
 // failure rather than an indefinite hang.
-func TestKodactlHungLockHolderTimesOut(t *testing.T) {
+func TestKodemaHungLockHolderTimesOut(t *testing.T) {
 	isolateUserConfig(t)
 	_, sessionPath := sessionPaths(t)
 	provider := newFakeProvider(t)
@@ -793,10 +793,10 @@ func (client *failingOIDC) discoveries() int {
 	return client.discover
 }
 
-// TestKodactlLoginNeverRepersistsASeededSession pins that the real entry always
+// TestKodemaLoginNeverRepersistsASeededSession pins that the real entry always
 // runs the OAuth runtime: a seeded session plus a failed discovery is a failure
 // and is never reported as "logged in".
-func TestKodactlLoginNeverRepersistsASeededSession(t *testing.T) {
+func TestKodemaLoginNeverRepersistsASeededSession(t *testing.T) {
 	isolateUserConfig(t)
 	_, sessionPath := sessionPaths(t)
 	provider := newFakeProvider(t)
@@ -841,10 +841,10 @@ func TestKodactlLoginNeverRepersistsASeededSession(t *testing.T) {
 	assertNoSecrets(t, []string{stdout, stderr}, loginAccess, loginRefresh)
 }
 
-// TestKodactlExecutionCredentialFileStillWins pins the selection
+// TestKodemaExecutionCredentialFileStillWins pins the selection
 // order: a configured mounted execution credential file is used instead of the
 // human session for client commands.
-func TestKodactlExecutionCredentialFileStillWins(t *testing.T) {
+func TestKodemaExecutionCredentialFileStillWins(t *testing.T) {
 	isolateUserConfig(t)
 	directory, sessionPath := sessionPaths(t)
 	provider := newFakeProvider(t)
@@ -879,9 +879,9 @@ func TestKodactlExecutionCredentialFileStillWins(t *testing.T) {
 	assertNoSecrets(t, []string{stdout, stderr}, "execution-token-canary", loginAccess, loginRefresh)
 }
 
-// TestKodactlRefreshCommandRotatesTheSession drives the exposed refresh command
+// TestKodemaRefreshCommandRotatesTheSession drives the exposed refresh command
 // through the real lock and provider.
-func TestKodactlRefreshCommandRotatesTheSession(t *testing.T) {
+func TestKodemaRefreshCommandRotatesTheSession(t *testing.T) {
 	isolateUserConfig(t)
 	_, sessionPath := sessionPaths(t)
 	provider := newFakeProvider(t)
@@ -993,9 +993,9 @@ func TestBrowserInvocationPassesURLAsOneArgument(t *testing.T) {
 	}
 }
 
-// TestKodactlSessionFlagAndServerAliases pins the --session/--server names
+// TestKodemaSessionFlagAndServerAliases pins the --session/--server names
 // plus their aliases and environment overrides.
-func TestKodactlSessionFlagAndServerAliases(t *testing.T) {
+func TestKodemaSessionFlagAndServerAliases(t *testing.T) {
 	isolateUserConfig(t)
 	_, sessionPath := sessionPaths(t)
 	provider := newFakeProvider(t)

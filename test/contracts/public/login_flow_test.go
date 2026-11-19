@@ -1,6 +1,6 @@
 // Login flow vectors.
 //
-// One `kodactl login` command selects either the browser authorization-code +
+// One `kodema login` command selects either the browser authorization-code +
 // PKCE (S256) flow or the RFC 8628 device authorization flow. Both run entirely
 // over the injected ports: no real browser, clock, entropy source or OIDC
 // network call is used, and a credential/code never reaches an error or output.

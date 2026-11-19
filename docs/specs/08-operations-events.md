@@ -4,7 +4,7 @@ Source: [events](../../KODEMA.md#events-and-operations), [push](../../KODEMA.md#
 
 ## 1. One operation router
 
-Every application operation has one typed schema, authorization rule, shared handler binding, result schema, and error mapping. REST and MCP JSON-RPC decode into the same operation invocation. `kodactl` uses REST through `client`. NATS never submits operations.
+Every application operation has one typed schema, authorization rule, shared handler binding, result schema, and error mapping. REST and MCP JSON-RPC decode into the same operation invocation. The client commands of `kodema` use REST through `client`. NATS never submits operations.
 
 C01/C03 freeze the complete 58-operation inventory and 1:1 REST/MCP parity before builders start. Required families:
 

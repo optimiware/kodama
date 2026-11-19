@@ -11,6 +11,7 @@ package podman
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -212,6 +213,69 @@ func (a *Adapter) ensureConfinedDirectories(ctx context.Context, workload id.Wor
 	return nil
 }
 
+// ensureMountPoint creates one empty directory inside the activation
+// directory, one component at a time, for a mount that nests in the read-only
+// activation bind.
+func (a *Adapter) ensureMountPoint(ctx context.Context, workload id.WorkloadID, logical string) error {
+	base := workloadRoot(a.root, workload)
+	relative, err := filepath.Rel(base, hostPath(a.root, workload, logical))
+	if err != nil || strings.HasPrefix(relative, "..") {
+		return fault.New(fault.InvalidInput, "mount point escapes the workload root")
+	}
+	current := base
+	for segment := range strings.SplitSeq(relative, string(filepath.Separator)) {
+		current = filepath.Join(current, segment)
+		if err := a.ensureDirectory(ctx, current); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// ensureToolbox installs the installation copy of the toolbox once. The Files
+// boundary replaces a file atomically, so a workload never binds a
+// half-written binary. An existing regular file is the copy of this exact
+// digest and is left alone. The source lies outside the adapter root, so it is
+// read directly, like the CA bundle.
+func (a *Adapter) ensureToolbox(ctx context.Context) error {
+	if a.toolboxDir == "" {
+		return nil
+	}
+	a.toolboxMu.Lock()
+	defer a.toolboxMu.Unlock()
+	target := filepath.Join(a.toolboxDir, workspace.ToolboxName)
+	info, err := a.files.Lstat(ctx, target)
+	switch {
+	case err == nil:
+		if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+			return fault.New(fault.Forbidden, "installed toolbox is not a regular file")
+		}
+		return nil
+	case !errors.Is(err, os.ErrNotExist):
+		return fault.Wrap(fault.DependencyUnavailable, "installed toolbox is unreachable", err)
+	}
+	data, err := os.ReadFile(a.toolboxFile)
+	if err != nil {
+		return fault.Wrap(fault.DependencyUnavailable, "toolbox file is unreadable", err)
+	}
+	// The configured executable can be replaced between New and the first
+	// Prepare (for example, by an installer). Never publish different bytes
+	// at a digest another version of the controller may already have pinned.
+	sum := sha256.Sum256(data)
+	if toolboxDigestName(sum[:]) != filepath.Base(a.toolboxDir) {
+		return fault.New(fault.DependencyUnavailable, "toolbox file changed since startup; restart the controller")
+	}
+	for _, directory := range []string{filepath.Dir(a.toolboxDir), a.toolboxDir} {
+		if err := a.ensureDirectory(ctx, directory); err != nil {
+			return err
+		}
+	}
+	if err := a.files.WriteFile(ctx, target, data, executableMode); err != nil {
+		return fault.Wrap(fault.DependencyUnavailable, "toolbox installation write outcome is unknown", err)
+	}
+	return nil
+}
+
 // replaceFile atomically replaces one host file: write a temporary sibling, then
 // rename it over the target. A failure leaves the previous bytes intact.
 func (a *Adapter) replaceFile(ctx context.Context, target string, data []byte) error {
@@ -320,16 +384,18 @@ func (a *Adapter) Prepare(ctx context.Context, request engine.PrepareRequest) (e
 		return engine.Preparation{}, fault.Wrap(fault.DependencyUnavailable, "workload image state is unreachable", err)
 	}
 
-	if err := a.ensureConfinedDirectories(ctx, request.Identity.WorkloadID, files); err != nil {
-		return engine.Preparation{}, err
-	}
-
-	record := preparationRecordFor(request, files, secrets)
-	recordBytes, err := encodePreparationRecord(record)
+	existing, existingRecordBytes, found, err := a.readPreparation(ctx, request.Identity.WorkloadID)
 	if err != nil {
 		return engine.Preparation{}, err
 	}
-	_, existingRecordBytes, found, err := a.readPreparation(ctx, request.Identity.WorkloadID)
+	record := a.preparationRecordFor(request, files, secrets)
+	if found {
+		// Compare the admitted request, not the version of the controller
+		// retrying it. Complete this preparation with its original launch settings.
+		record.Toolbox, record.GitURL, record.WorkingDir = existing.Toolbox, existing.GitURL, existing.WorkingDir
+		record.Outputs = existing.Toolbox != "" && len(request.Container.Outputs) > 0
+	}
+	recordBytes, err := encodePreparationRecord(record)
 	if err != nil {
 		return engine.Preparation{}, err
 	}
@@ -337,7 +403,23 @@ func (a *Adapter) Prepare(ctx context.Context, request engine.PrepareRequest) (e
 		return engine.Preparation{}, fault.New(fault.ChangedIdempotencyContent,
 			"preparation content changed for the same workload identity")
 	}
-
+	if err := a.ensureConfinedDirectories(ctx, request.Identity.WorkloadID, files); err != nil {
+		return engine.Preparation{}, err
+	}
+	if record.Toolbox == a.toolboxDir {
+		if err := a.ensureToolbox(ctx); err != nil {
+			return engine.Preparation{}, err
+		}
+	}
+	points, err := mountPoints(record)
+	if err != nil {
+		return engine.Preparation{}, err
+	}
+	for _, point := range points {
+		if err := a.ensureMountPoint(ctx, request.Identity.WorkloadID, point); err != nil {
+			return engine.Preparation{}, err
+		}
+	}
 	pending := make([]preparedFile, 0, len(files))
 	for _, file := range files {
 		host := hostPath(a.root, request.Identity.WorkloadID, file.logical)

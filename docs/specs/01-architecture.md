@@ -41,7 +41,7 @@ Paths below are exact ownership targets. A listed directory may contain a few co
 | P19 | `internal/shell/integration/oidc`, `internal/shell/integration/platform` | OIDC access-token checks and hosted authority |
 | P20 | `internal/shell/integration/registry` | Immutable image resolution |
 | P21 | `internal/shell/transport/ops`, `internal/shell/transport/httpapi`, `internal/shell/transport/mcp` | Single router and two thin public edges |
-| P22 | `client`, `internal/userland/cli` | REST client, `kodactl`, login/credential helper |
+| P22 | `client`, `internal/userland/cli` | REST client, the client and toolbox commands of `kodema`, login/credential helper |
 | P23 | `internal/userland/git` | Independent Git service, rules, journal, retention |
 | P24 | `internal/userland/session`, `internal/userland/skill` | Durable agent context; Markdown skill declarations and loader (`skill` is frozen by C-PUBLIC and no production package imports it yet) |
 | P25 | `internal/userland/agent` | Native agent runtime using public contracts |
@@ -54,7 +54,7 @@ Paths below are exact ownership targets. A listed directory may contain a few co
 | P32 | `internal/shell/store/units/platform` | Event outbox/ingress/read, verification, secret-lookup, gateway, and MCP store adapters |
 | P33 | `internal/shell/store/units/readers` | Store-backed readers for task execution views, log ownership, event cursors/validity, token receipts, and verification |
 
-`api` contains public DTOs/schemas only and is frozen by C03. `internal/installation` is configuration/tooling, not a fourth product layer or alternate composition root. `internal/shell/app`, Userland app wiring, `cmd/kodema`, `cmd/kodactl`, and `test/{component,integration,e2e,qualification}` are reserved for integration tasks after G2.
+`api` contains public DTOs/schemas only and is frozen by C03. `internal/installation` is configuration/tooling, not a fourth product layer or alternate composition root. `internal/shell/app`, Userland app wiring, `cmd/kodema`, and `test/{component,integration,e2e,qualification}` are reserved for integration tasks after G2.
 
 ## 3. Import rules
 

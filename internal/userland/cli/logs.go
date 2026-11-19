@@ -56,7 +56,7 @@ func (execution inspectedExecution) effectiveState() string {
 	return execution.Status
 }
 
-// logsJSONPage is the structured JSON output for `kodactl logs --output json`.
+// logsJSONPage is the structured JSON output for `kodema logs --output json`.
 type logsJSONPage struct {
 	ExecutionID string         `json:"execution_id"`
 	ActionID    string         `json:"action_id"`
@@ -450,7 +450,7 @@ func selectLogAction(inspected inspectedExecution) (inspectedAction, bool) {
 }
 
 // resolveFollowAction locates the explicit action or auto-selects the active
-// action during `kodactl logs --follow`.
+// action during `kodema logs --follow`.
 func resolveFollowAction(inspected inspectedExecution, explicit string) (inspectedAction, bool, error) {
 	if explicit != "" {
 		for _, action := range inspected.Actions {

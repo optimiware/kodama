@@ -9,6 +9,7 @@ package kube
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
@@ -133,6 +134,10 @@ func (a *Adapter) Prepare(ctx context.Context, request engine.PrepareRequest) (e
 	}
 
 	configMap := a.activationConfigMap(request.Identity, request.WorkspaceID, materialization, digest)
+	plan, err := a.prepareToolboxPlan(ctx, &configMap, request, renderedScript)
+	if err != nil {
+		return engine.Preparation{}, err
+	}
 	if err := a.checkDeclaredSecretContent(ctx, request.Identity, materialization); err != nil {
 		return engine.Preparation{}, err
 	}
@@ -146,6 +151,21 @@ func (a *Adapter) Prepare(ctx context.Context, request engine.PrepareRequest) (e
 	if err := checkStoredActivationConfigMap(storedConfigMap, request.Identity, request.WorkspaceID, string(a.tenant), digest); err != nil {
 		return engine.Preparation{}, err
 	}
+	caFile := ""
+	if plan.CASecret != "" {
+		caFile = WorkloadCAPath
+	}
+	gitEnv, err := workspace.GitEnvironment(plan.GitURL, caFile, plan.Image != "")
+	if err != nil {
+		return engine.Preparation{}, err
+	}
+	outputDir := ""
+	if plan.Image != "" && len(request.Container.Outputs) > 0 {
+		outputDir, err = workspace.OutputDirectory(request.ActionName)
+		if err != nil {
+			return engine.Preparation{}, err
+		}
+	}
 
 	secret := a.credentialSecret(request.Identity, request.WorkspaceID, materialization)
 	if _, err := a.cluster.PutSecret(ctx, secret); err != nil {
@@ -155,6 +175,9 @@ func (a *Adapter) Prepare(ctx context.Context, request engine.PrepareRequest) (e
 	activationPaths := make([]string, 0, len(materialization.Files))
 	for _, file := range materialization.Files {
 		activationPaths = append(activationPaths, file.Path)
+	}
+	if plan.Image != "" {
+		activationPaths = append(activationPaths, workloadScript)
 	}
 	sort.Strings(activationPaths)
 	secretNames := make([]id.SecretName, 0, len(materialization.Secrets))
@@ -178,6 +201,10 @@ func (a *Adapter) Prepare(ctx context.Context, request engine.PrepareRequest) (e
 		secret:          secret.Name,
 		job:             workloadJobName(request.Identity.WorkloadID),
 		activationPaths: activationPaths,
+		toolboxImage:    plan.Image,
+		caSecret:        plan.CASecret,
+		gitEnv:          gitEnv,
+		outputDir:       outputDir,
 		secretNames:     secretNames,
 	}
 	a.mu.Lock()
@@ -189,6 +216,60 @@ func (a *Adapter) Prepare(ctx context.Context, request engine.PrepareRequest) (e
 		Detail: fmt.Sprintf("materialized activation snapshot %q and credential secret %q for %s",
 			configMap.Name, secret.Name, describeIdentity(request.Identity)),
 	}, nil
+}
+
+// toolboxPlan is pinned in the immutable activation ConfigMap, alongside the
+// rendered script. The Job projects only the script and declared files.
+type toolboxPlan struct {
+	Image    string
+	GitURL   string
+	CASecret string
+	Outputs  []id.OutputKey
+}
+
+func (a *Adapter) prepareToolboxPlan(ctx context.Context, cm *ConfigMap, request engine.PrepareRequest, rendered string) (toolboxPlan, error) {
+	plan := toolboxPlan{Image: a.toolboxImage, GitURL: a.gitURL, CASecret: a.workloadCA.SecretName, Outputs: request.Container.Outputs}
+	existing, err := a.cluster.GetConfigMap(ctx, a.namespace, cm.Name)
+	switch {
+	case err == nil:
+		// Use the original installation settings on a retry, even across a
+		// controller upgrade. An older activation had no toolbox.
+		if !existing.Immutable {
+			return toolboxPlan{}, fault.New(fault.Forbidden, "activation snapshot is not immutable")
+		}
+		if err := checkStoredActivationConfigMap(existing, request.Identity, request.WorkspaceID, string(a.tenant), cm.Labels[LabelPreparation]); err != nil {
+			return toolboxPlan{}, err
+		}
+		raw, ok := existing.Data[toolboxPlanKey]
+		if !ok {
+			return toolboxPlan{CASecret: a.workloadCA.SecretName}, nil
+		}
+		if err := json.Unmarshal(raw, &plan); err != nil || plan.Image == "" {
+			return toolboxPlan{}, fault.New(fault.InvalidInput, "invalid stored toolbox plan")
+		}
+		if err := validateToolbox(plan.Image, plan.GitURL); err != nil {
+			return toolboxPlan{}, err
+		}
+		if plan.CASecret != "" {
+			if err := validateWorkloadCASecretName(plan.CASecret); err != nil {
+				return toolboxPlan{}, err
+			}
+		}
+		// Keep the request's declarations in the comparison PutConfigMap
+		// performs on the whole immutable snapshot.
+		plan.Outputs = request.Container.Outputs
+	case !errors.Is(err, ErrNotFound):
+		return toolboxPlan{}, fault.Wrap(fault.DependencyUnavailable, "activation snapshot is unavailable", err)
+	}
+	if plan.Image != "" {
+		payload, err := json.Marshal(plan)
+		if err != nil {
+			return toolboxPlan{}, err
+		}
+		cm.Data[toolboxPlanKey] = payload
+		cm.Data[workloadScript] = []byte(rendered)
+	}
+	return plan, nil
 }
 
 // checkStoredActivationConfigMap verifies the durable ConfigMap labels match

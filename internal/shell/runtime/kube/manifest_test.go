@@ -42,6 +42,47 @@ func startTestWorkload(t *testing.T, adapter *Adapter, identity engine.EffectIde
 	return result
 }
 
+func TestToolboxPreparationSurvivesControllerUpgrade(t *testing.T) {
+	fake, clock, _ := testSetup(t)
+	config := testConfig(fake, clock)
+	config.ToolboxImage = "registry.example/kodema@sha256:" + strings.Repeat("a", 64)
+	config.GitURL = "https://git-a.example"
+	before, err := New(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := testPrepareRequest()
+	request.Container.Outputs = []id.OutputKey{"result"}
+	prepareTestWorkload(t, before, request)
+
+	config.ToolboxImage = "registry.example/kodema@sha256:" + strings.Repeat("b", 64)
+	config.GitURL = "https://git-b.example"
+	after, err := New(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prepareTestWorkload(t, after, request)
+	startTestWorkload(t, after, request.Identity, request.WorkspaceID)
+	spec := fake.jobsSnapshot()[0].Spec
+	if spec.ToolboxImage != before.toolboxImage || spec.WorkingDir != "/workspace" {
+		t.Fatalf("recovered Job toolbox=%q working directory=%q", spec.ToolboxImage, spec.WorkingDir)
+	}
+	if value, _ := testEnvValue(spec.Env, workspace.EnvGitURL); value != "https://git-a.example" {
+		t.Errorf("prepared Git endpoint changed: %q", value)
+	}
+	request.Container.Outputs = nil
+	if _, err := after.Prepare(t.Context(), request); err == nil {
+		t.Fatal("rebound a prepared action to different outputs")
+	}
+	config.ToolboxImage = "registry.example/kodema:latest"
+	if _, err := New(config); err == nil {
+		t.Fatal("accepted mutable toolbox image")
+	}
+	if _, terminated := terminatedExit(Pod{Containers: []ContainerStatus{{Name: "install-toolbox", Terminated: true}}}); terminated {
+		t.Fatal("installer termination was interpreted as workload exit")
+	}
+}
+
 // TestPrepareMaterializesConfinedActivationSnapshot proves one complete,
 // all-or-nothing snapshot outside /workspace: exact input bytes, earlier
 // succeeded outputs, the optional task file, and declared secrets plus the

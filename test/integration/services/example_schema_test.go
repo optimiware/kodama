@@ -37,7 +37,7 @@ func TestExamplesMatchServedSchema(t *testing.T) {
 	})
 }
 
-// testExamplePipelineInvocations checks every `kodactl call` in every shipped
+// testExamplePipelineInvocations checks every `kodema call` in every shipped
 // pipeline against the served schema of that operation.
 func testExamplePipelineInvocations(t *testing.T, tools map[string]api.MCPTool) {
 	t.Helper()
@@ -121,9 +121,6 @@ func testDocumentedRoutes(t *testing.T, tools map[string]api.MCPTool) {
 func testShippedWireExamples(t *testing.T, tools map[string]api.MCPTool) {
 	t.Helper()
 	vectors := exampleLoadWireVectors(t)
-	if len(vectors) != 48 {
-		t.Fatalf("test/contracts/public/testdata/wire/operations.json has %d request/response examples; want 48", len(vectors))
-	}
 	seen := make(map[string]bool)
 	for _, vector := range vectors {
 		t.Run(vector.Operation, func(t *testing.T) {
@@ -142,6 +139,15 @@ func testShippedWireExamples(t *testing.T, tools map[string]api.MCPTool) {
 	}
 	if len(seen) != len(vectors) {
 		t.Fatalf("the shipped request/response examples repeat operations: %d distinct of %d", len(seen), len(vectors))
+	}
+	for operation := range tools {
+		switch operation {
+		case "actor.verify", "resource.report", "model.invoke":
+			continue // These have dedicated wire fixtures.
+		}
+		if !seen[operation] {
+			t.Errorf("the shipped wire examples are missing the served operation %q", operation)
+		}
 	}
 
 	// Capability example: the documented OpenAI-compatible tool-calling request

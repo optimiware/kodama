@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"net/http"
 	"path"
+	"strconv"
 	"strings"
 
 	"github.com/optimiware/kodema/internal/fault"
 	runtimekube "github.com/optimiware/kodema/internal/shell/runtime/kube"
+	"github.com/optimiware/kodema/internal/shell/workspace"
 )
 
 // Job request bodies. The shape is the pinned batch/v1 manifest the adapter
@@ -43,6 +45,7 @@ type podSpecBody struct {
 	HostNetwork                  bool                       `json:"hostNetwork"`
 	ImagePullSecrets             []localObjectReferenceBody `json:"imagePullSecrets,omitempty"`
 	Containers                   []containerBody            `json:"containers"`
+	InitContainers               []containerBody            `json:"initContainers,omitempty"`
 	Volumes                      []volumeBody               `json:"volumes,omitempty"`
 }
 
@@ -52,12 +55,22 @@ type localObjectReferenceBody struct {
 }
 
 type containerBody struct {
-	Name         string            `json:"name"`
-	Image        string            `json:"image"`
-	Command      []string          `json:"command,omitempty"`
-	Env          []envVarBody      `json:"env,omitempty"`
-	Resources    resourcesBody     `json:"resources"`
-	VolumeMounts []volumeMountBody `json:"volumeMounts,omitempty"`
+	Name            string             `json:"name"`
+	Image           string             `json:"image"`
+	Command         []string           `json:"command,omitempty"`
+	WorkingDir      string             `json:"workingDir,omitempty"`
+	Env             []envVarBody       `json:"env,omitempty"`
+	Resources       resourcesBody      `json:"resources"`
+	VolumeMounts    []volumeMountBody  `json:"volumeMounts,omitempty"`
+	SecurityContext *installerSecurity `json:"securityContext,omitempty"`
+}
+
+type installerSecurity struct {
+	RunAsNonRoot             bool                `json:"runAsNonRoot"`
+	AllowPrivilegeEscalation bool                `json:"allowPrivilegeEscalation"`
+	ReadOnlyRootFilesystem   bool                `json:"readOnlyRootFilesystem"`
+	Capabilities             map[string][]string `json:"capabilities"`
+	SeccompProfile           map[string]string   `json:"seccompProfile"`
 }
 
 type envVarBody struct {
@@ -81,6 +94,12 @@ type volumeBody struct {
 	PersistentVolumeClaim *claimVolumeBody     `json:"persistentVolumeClaim,omitempty"`
 	ConfigMap             *configMapVolumeBody `json:"configMap,omitempty"`
 	Secret                *secretVolumeBody    `json:"secret,omitempty"`
+	EmptyDir              *emptyDirVolumeBody  `json:"emptyDir,omitempty"`
+}
+
+type emptyDirVolumeBody struct {
+	Medium    string `json:"medium,omitempty"`
+	SizeLimit string `json:"sizeLimit,omitempty"`
 }
 
 type claimVolumeBody struct {
@@ -180,9 +199,26 @@ func buildJobManifest(job runtimekube.Job) (jobManifestBody, error) {
 		Name:         workloadContainerName,
 		Image:        job.Spec.Image,
 		Command:      append([]string(nil), job.Spec.Command...),
+		WorkingDir:   job.Spec.WorkingDir,
 		Env:          env,
 		Resources:    buildResources(job.Spec.Resources),
 		VolumeMounts: mounts,
+	}
+	var init []containerBody
+	if job.Spec.ToolboxImage != "" {
+		init = []containerBody{{
+			Name:         "install-toolbox",
+			Image:        job.Spec.ToolboxImage,
+			Command:      []string{"/bin/sh", "-ec", "cp -f /usr/local/bin/kodema /kodema/bin/kodema && chmod 0555 /kodema/bin/kodema"},
+			Resources:    buildResources(job.Spec.Resources),
+			VolumeMounts: []volumeMountBody{{Name: "toolbox", MountPath: workspace.ToolboxRoot}},
+			SecurityContext: &installerSecurity{
+				RunAsNonRoot:           true,
+				ReadOnlyRootFilesystem: true,
+				Capabilities:           map[string][]string{"drop": {"ALL"}},
+				SeccompProfile:         map[string]string{"type": "RuntimeDefault"},
+			},
+		}}
 	}
 
 	imagePullSecrets, err := buildImagePullSecrets(job.Spec.ImagePullSecrets)
@@ -213,6 +249,7 @@ func buildJobManifest(job runtimekube.Job) (jobManifestBody, error) {
 					HostNetwork:                  job.Spec.HostNetwork,
 					ImagePullSecrets:             imagePullSecrets,
 					Containers:                   []containerBody{container},
+					InitContainers:               init,
 					Volumes:                      volumes,
 				},
 			},
@@ -274,6 +311,12 @@ func validImagePullSecretName(name string) bool {
 // buildVolume maps one seam volume to exactly one source.
 func buildVolume(volume runtimekube.Volume) (volumeBody, error) {
 	switch {
+	case volume.EmptyDir:
+		dir := &emptyDirVolumeBody{}
+		if volume.MemoryBytes > 0 {
+			dir.Medium, dir.SizeLimit = "Memory", strconv.FormatInt(volume.MemoryBytes, 10)
+		}
+		return volumeBody{EmptyDir: dir}, nil
 	case strings.TrimSpace(volume.ClaimName) != "":
 		return volumeBody{PersistentVolumeClaim: &claimVolumeBody{ClaimName: volume.ClaimName}}, nil
 	case strings.TrimSpace(volume.ConfigMapName) != "":

@@ -16,7 +16,7 @@ import (
 	"github.com/optimiware/kodema/internal/userland/cli"
 )
 
-// fakeFS is the injected filesystem for kodactl tests. It mirrors the
+// fakeFS is the injected filesystem for kodema tests. It mirrors the
 // documented cli.FileSystem seam: WriteFile writes in place (creating no
 // parents), while ReplaceFile creates missing parents 0700, replaces the target
 // atomically and leaves it untouched on failure.
@@ -61,6 +61,11 @@ func (filesystem *fakeFS) ReadFile(name string) ([]byte, error) {
 		return nil, fs.ErrNotExist
 	}
 	return append([]byte(nil), data...), nil
+}
+
+func (filesystem *fakeFS) ReadRegularFile(name string, limit int64) ([]byte, error) {
+	data, err := filesystem.ReadFile(name)
+	return data[:min(int64(len(data)), limit)], err
 }
 
 func (filesystem *fakeFS) WriteFile(name string, data []byte, perm fs.FileMode) error {
@@ -248,7 +253,7 @@ func testNow() time.Time {
 	return time.Date(2026, 2, 3, 4, 5, 6, 0, time.UTC)
 }
 
-// testConfig is a valid kodactl configuration.
+// testConfig is a valid kodema configuration.
 func testConfig() cli.Config {
 	return cli.Config{
 		ServerURL:      "https://kodema.example.com",

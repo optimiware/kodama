@@ -5,8 +5,8 @@ package factorytest
 // Factory S11 row AC7: the Git credential helper is an origin-scoped credential
 // source, never authority.
 //
-// The test builds the real `kodactl` command and answers helper `get` requests
-// with the real kodactl configuration parser, the real mounted-credential file
+// The test builds the real `kodema` command and answers helper `get` requests
+// with the real kodema configuration parser, the real mounted-credential file
 // source and the registered served Git origin. The helper returns the live
 // execution credential only for its registered repository origin and never for a
 // lookalike path, a sibling repository, an insecure scheme or an unregistered
@@ -74,7 +74,7 @@ func TestFactoryGitCredentialHelperAuthority(t *testing.T) {
 	}
 	// store and erase never answer with a credential.
 	for _, protocol := range []string{"store", "erase"} {
-		command := exec.CommandContext(t.Context(), binary, "--config", configPath, "helper", protocol, repositoryURL)
+		command := exec.CommandContext(t.Context(), binary, "--config", configPath, "git", "credential", protocol, repositoryURL)
 		command.Env = credentialHelperEnvironment(t)
 		var out, errOut bytes.Buffer
 		command.Stdout = &out
@@ -190,7 +190,7 @@ func TestFactoryGitCredentialHelperAuthority(t *testing.T) {
 	}
 }
 
-// buildCredentialHelperBinary builds the real kodactl command from this
+// buildCredentialHelperBinary builds the real kodema command from this
 // checkout into the test's private directory.
 func buildCredentialHelperBinary(t *testing.T) string {
 	t.Helper()
@@ -208,13 +208,13 @@ func buildCredentialHelperBinary(t *testing.T) string {
 		}
 		root = parent
 	}
-	binary := filepath.Join(t.TempDir(), "kodactl")
-	command := exec.CommandContext(t.Context(), "go", "build", "-o", binary, "./cmd/kodactl")
+	binary := filepath.Join(t.TempDir(), "kodema")
+	command := exec.CommandContext(t.Context(), "go", "build", "-o", binary, "./cmd/kodema")
 	command.Dir = root
 	command.Env = append(os.Environ(), "CGO_ENABLED=0")
 	output, err := command.CombinedOutput()
 	if err != nil {
-		t.Fatalf("build kodactl: %v: %s", err, strings.TrimSpace(string(output)))
+		t.Fatalf("build kodema: %v: %s", err, strings.TrimSpace(string(output)))
 	}
 	return binary
 }
@@ -236,7 +236,7 @@ func credentialHelperEnvironment(t *testing.T) []string {
 // stderr.
 func runCredentialHelper(t *testing.T, binary, configPath, target string) (string, string) {
 	t.Helper()
-	command := exec.CommandContext(t.Context(), binary, "--config", configPath, "helper", "get", target)
+	command := exec.CommandContext(t.Context(), binary, "--config", configPath, "git", "credential", "get", target)
 	command.Env = credentialHelperEnvironment(t)
 	var stdout, stderr bytes.Buffer
 	command.Stdout = &stdout
@@ -261,7 +261,7 @@ func credentialHelperPassword(t *testing.T, stdout string) string {
 	return password
 }
 
-// writeCredentialHelperConfig writes one real kodactl configuration whose only
+// writeCredentialHelperConfig writes one real kodema configuration whose only
 // trusted origin is the exact served repository URL.
 func writeCredentialHelperConfig(t *testing.T, serverURL, tokenPath, repositoryURL string) string {
 	t.Helper()

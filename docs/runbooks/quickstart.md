@@ -1,6 +1,6 @@
 # Quickstart: a local Kodema with `kodema up`
 
-`kodema up` starts a complete Kodema on one machine, and `kodactl run` runs a
+`kodema up` starts a complete Kodema on one machine, and `kodema run` runs a
 pipeline file on it. This is the shortest way to try Kodema.
 
 It is **not a production installation**: one host, a local keyfile, and a
@@ -20,17 +20,23 @@ built-in sign-in that asks for no password. For production, see the
 
 ## Start
 
+Check the version printed by the installer. For **0.2.3**, use the
+[0.2.3 instructions](https://github.com/optimiware/kodema/blob/v0.2.3/docs/runbooks/quickstart.md);
+its client is `kodactl` and its workloads have no toolbox. To try the
+single-binary version before it is released, [build from a checkout](#from-a-checkout).
+
 ```sh
 curl -fsSL https://raw.githubusercontent.com/optimiware/kodema/master/install.sh | sh
 kodema up
 source ~/.kodema/instances/default/env.sh
-kodactl whoami
+kodema whoami
 ```
 
-[`install.sh`](../../install.sh) installs `kodema` and `kodactl` into
-`~/.local/bin`, which must be on your `PATH`. It downloads the two archives of
-the latest release for your operating system and architecture, and installs
-nothing unless both match the release's `SHA256SUMS`. `KODEMA_VERSION` names
+[`install.sh`](../../install.sh) installs `kodema` into `~/.local/bin`, which
+must be on your `PATH`. It is one binary: the client, the local installation
+and the server. The script downloads the archive of the latest release for
+your operating system and architecture, and installs nothing unless it matches
+the release's `SHA256SUMS`. `KODEMA_VERSION` names
 another release (0.2.1 or newer) and `KODEMA_INSTALL_DIR` another directory.
 Run it again to upgrade.
 
@@ -47,9 +53,9 @@ bin/kodema up
 source ~/.kodema/instances/default/env.sh
 ```
 
-`make build` builds `bin/kodema` and `bin/kodactl`. `make image` builds the
-container image of the same version, which is the image `kodema up` starts.
-The commands below are then `bin/kodema` and `bin/kodactl`.
+`make build` builds `bin/kodema`. `make image` builds the container image of
+the same version, which is the image `kodema up` starts. The command below is
+then `bin/kodema`.
 
 ## What `kodema up` does
 
@@ -62,7 +68,7 @@ The command is safe to run again. It:
    project `project-local`.
 3. Gives the four built-in personas their project roles: `admin` (every role),
    `engineer`, `reviewer` and `operator`.
-4. Writes `env.sh`, which points `kodactl` at this installation as `admin`.
+4. Writes `env.sh`, which points `kodema` at this installation as `admin`.
 
 Everything is kept in `~/.kodema/instances/default`. `whoami` should answer
 with the roles `admin,engineer,reviewer,operator`.
@@ -83,7 +89,7 @@ actions:
       - echo "hello from a Kodema workload"
 EOF
 
-kodactl run hello.yaml
+kodema run hello.yaml
 ```
 
 ```text
@@ -92,7 +98,7 @@ hello from a Kodema workload
 execution execution-… succeeded
 ```
 
-`kodactl run` starts the file, waits for the execution to end and prints the
+`kodema run` starts the file, waits for the execution to end and prints the
 output of its actions. It exits 0 when the execution succeeded and 1 when it
 failed, with the reason the server reports. The output appears when the
 execution ends, not while it runs.
@@ -117,17 +123,17 @@ actions:
     timeout: 10m
 EOF
 
-kodactl run review.yaml
+kodema run review.yaml
 ```
 
 `run` stops when the execution waits for a person and names the execution. It
 exits 1 then, as the execution has not succeeded. Answer it from the inbox:
 
 ```sh
-kodactl inbox
-kodactl approve <execution-id>      # or: kodactl reject <execution-id> --reason "…"
-kodactl watch <execution-id>
-kodactl logs <execution-id> --action prepare
+kodema inbox
+kodema approve <execution-id>      # or: kodema reject <execution-id> --reason "…"
+kodema watch <execution-id>
+kodema logs <execution-id> --action prepare
 ```
 
 ## Store a pipeline and start it from a task
@@ -136,9 +142,9 @@ kodactl logs <execution-id> --action prepare
 task:
 
 ```sh
-kodactl pipeline apply hello.yaml          # prints the pipeline id
-kodactl task run --title "First task" --pipeline <pipeline-id>
-kodactl task list
+kodema pipeline apply hello.yaml          # prints the pipeline id
+kodema task run --title "First task" --pipeline <pipeline-id>
+kodema task list
 ```
 
 ## Sign in as a person
@@ -148,8 +154,8 @@ the personas, sign in:
 
 ```sh
 unset KODEMA_CREDENTIAL_FILE
-kodactl login            # or: kodactl login --device, without a browser
-kodactl whoami
+kodema login            # or: kodema login --device, without a browser
+kodema whoami
 ```
 
 The sign-in page offers the four personas and asks for no password. It answers
@@ -159,30 +165,97 @@ Project and membership administration needs the tenant-wide administrator
 token instead:
 
 ```sh
-kodactl --credential-file "$KODEMA_TENANT_ADMIN_CREDENTIAL_FILE" member list
+kodema --credential-file "$KODEMA_TENANT_ADMIN_CREDENTIAL_FILE" member list
 ```
 
 ## Git
 
-The tenant's admin repository is served under `/git/`. Authenticate with a
-credential-store file, never an argument:
+The tenant's admin repository is served under `/git/`. Configure Git once for
+this installation's origin, with `kodema` as its only credential helper and
+the installation's CA:
 
 ```sh
-creds=~/.kodema/instances/default/git-credentials
-(
-  umask 077
-  printf 'protocol=https\nhost=127.0.0.1:8443\nusername=kodema\npassword=%s\n\n' \
-    "$(cat ~/.kodema/instances/default/admin-token)" |
-    git credential-store --file "$creds" store
-)
-git -c http.sslCAInfo="$KODEMA_CA_FILE" -c credential.helper="store --file=$creds" \
-  clone https://127.0.0.1:8443/git/admin
+origin=https://127.0.0.1:8443
+git config --global --replace-all "credential.$origin.helper" ''
+git config --global --add "credential.$origin.helper" \
+  "!kodema --trusted-origin $origin --credential-file ~/.kodema/instances/default/admin-token git credential"
+git config --global "http.$origin.sslCAInfo" ~/.kodema/instances/default/tls/ca.crt
+
+git clone https://127.0.0.1:8443/git/admin
 ```
+
+The first line empties the helper list of that origin. Without it a system
+helper, such as the macOS keychain, keeps the token Git used and offers it
+again after it has expired: the next Git command is then refused once. To act
+as a persona instead of the administrator, sign in with `kodema login` and
+leave `--credential-file` out. `kodema down --purge` does not remove these
+three settings; remove them with `git config --global --unset-all`.
+
+## Add a repository
+
+A repository is created in the Git service and registered with Kodema as a
+resource of the project. The default rules let everyone in the project read
+it, let engineers and executions write below `refs/heads/work/`, and let only
+an execution update `main`, after a reviewer approved that exact update:
+
+```sh
+podman exec kodema-default-git kodema git provision-repository \
+  --tenant tenant-local --storage-root ~/.kodema/instances/default/git/repos \
+  --repository demo --resource git-demo
+
+kodema call resource.binding.register --idempotency-key=bind-git-demo --input='{
+  "project_id": "project-local", "binding_id": "git-demo", "resource_id": "git-demo",
+  "enforcing_service": "git",
+  "trusted_origins": ["https://127.0.0.1:8443", "https://host.containers.internal:8443"],
+  "operations": ["git.read", "git.ref.update"], "reportable_events": ["git.ref.updated"]}'
+
+git clone https://127.0.0.1:8443/git/demo
+git -C demo commit --allow-empty -m "first commit"
+git -C demo push origin HEAD:refs/heads/work/first
+```
+
+The first command says to restart `kodema git serve`; a local Kodema needs no
+restart, because its Git service finds a registered repository by itself.
+
+## Use Git and outputs in a pipeline
+
+Every container action has the `kodema` binary at `/kodema/bin`, on its
+`PATH`, and Git already configured for this installation: a clone or a push to
+`$KODEMA_GIT_URL` authenticates as the execution, with no credential in the
+pipeline. An action that declares outputs writes each one to a file named for
+its key in `/kodema/outputs/<its name>`; later actions read the same path.
+
+```sh
+cat > outputs.yaml <<'EOF'
+actions:
+  - name: source
+    image: docker.io/library/alpine:3.24
+    timeout: 5m
+    outputs: [commit]
+    commands:
+      - apk add --no-cache git >/dev/null
+      - git clone --quiet --branch work/first "$KODEMA_GIT_URL/demo" demo
+      - git -C demo rev-parse HEAD > /kodema/outputs/source/commit
+  - name: report
+    image: docker.io/library/alpine:3.24
+    timeout: 2m
+    commands:
+      - echo "work/first is at $(cat /kodema/outputs/source/commit)"
+EOF
+
+kodema run outputs.yaml
+```
+
+After the last command of `source` has succeeded, Kodema runs
+`kodema output push`, which submits the files of its output directory with one
+trailing newline removed from each value. A refused value fails the action;
+its message is in `kodema logs <execution-id> --action source --stream stderr`.
+Commands start in `/workspace`, which the actions of one execution share.
 
 ## Connect an MCP client
 
 ```sh
-kodactl mcp install claude --print     # or cursor, codex; without --print it writes the client's config
+kodema mcp install claude --print     # or cursor, codex; without --print it writes the client's config
 ```
 
 ## Operate
@@ -213,7 +286,7 @@ kodema down --purge    # removes the containers, volumes and state
 - On Linux the gateway listens on every address, because containers reach the
   host on its outward address. It refuses every peer that is not this machine,
   so the installation is not reachable from another host.
-- Podman only. `kodactl run` prints a workload's output when the execution
+- Podman only. `kodema run` prints a workload's output when the execution
   ends; live output is not shown.
 - The [Podman bundle](podman-quickstart.md) (`deploy/podman/install.sh`) is a
   second single-host installation, with a separate identity provider. The

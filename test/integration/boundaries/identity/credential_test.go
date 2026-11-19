@@ -322,7 +322,7 @@ func TestSessionSecretsArePersistedOnlyInTheSessionFile(t *testing.T) {
 	helperCode := cli.Run(context.Background(), cli.Config{
 		ServerURL:      "https://factory.example",
 		TrustedOrigins: []string{"https://git.example.com/shop"},
-	}, []string{"helper", "get", "https://git.example.com/shop/repo.git"}, cli.Ports{
+	}, []string{"git", "credential", "get", "https://git.example.com/shop/repo.git"}, cli.Ports{
 		Credential: staticCredentialSource{credential: renewedCredential},
 		Out:        &helperOut,
 		Err:        &helperErr,
@@ -540,7 +540,7 @@ func TestHelperOutputShapeAndDiagnosticsRedaction(t *testing.T) {
 		Err:        &errOut,
 		Now:        func() time.Time { return now },
 	}
-	code := cli.Run(context.Background(), config, []string{"helper", "get", "https://git.example.com/shop/repo.git"}, ports)
+	code := cli.Run(context.Background(), config, []string{"git", "credential", "get", "https://git.example.com/shop/repo.git"}, ports)
 	if code != cli.ExitSuccess {
 		t.Fatalf("helper exit code = %d", code)
 	}
@@ -554,7 +554,7 @@ func TestHelperOutputShapeAndDiagnosticsRedaction(t *testing.T) {
 	for _, protocol := range []string{"store", "erase"} {
 		out.Reset()
 		errOut.Reset()
-		code = cli.Run(context.Background(), config, []string{"helper", protocol, "https://git.example.com/shop/repo.git"}, ports)
+		code = cli.Run(context.Background(), config, []string{"git", "credential", protocol, "https://git.example.com/shop/repo.git"}, ports)
 		if code != cli.ExitSuccess || out.Len() != 0 || errOut.Len() != 0 {
 			t.Fatalf("%s = %d/%q/%q; want an empty success", protocol, code, out.String(), errOut.String())
 		}
@@ -565,7 +565,7 @@ func TestHelperOutputShapeAndDiagnosticsRedaction(t *testing.T) {
 
 	out.Reset()
 	errOut.Reset()
-	code = cli.Run(context.Background(), config, []string{"helper", "get", "https://git.example.com/other/repo.git"}, ports)
+	code = cli.Run(context.Background(), config, []string{"git", "credential", "get", "https://git.example.com/other/repo.git"}, ports)
 	if code != cli.ExitSuccess || out.Len() != 0 {
 		t.Fatalf("unregistered helper = %d/%q; want an empty success", code, out.String())
 	}
@@ -575,7 +575,7 @@ func TestHelperOutputShapeAndDiagnosticsRedaction(t *testing.T) {
 
 	out.Reset()
 	errOut.Reset()
-	code = cli.Run(context.Background(), config, []string{"helper", "bogus", "https://git.example.com/shop/repo.git"}, ports)
+	code = cli.Run(context.Background(), config, []string{"git", "credential", "bogus", "https://git.example.com/shop/repo.git"}, ports)
 	if code != cli.ExitUsage {
 		t.Fatalf("usage exit code = %d; want %d", code, cli.ExitUsage)
 	}
@@ -590,7 +590,7 @@ func TestHelperNeverReadsCredentialForStoreOrErase(t *testing.T) {
 	for _, protocol := range []string{"store", "erase"} {
 		var out, errOut bytes.Buffer
 		ports := cli.Ports{Credential: source, Out: &out, Err: &errOut, Now: time.Now}
-		if code := cli.Run(context.Background(), config, []string{"helper", protocol, "https://git.example.com/shop/repo.git"}, ports); code != cli.ExitSuccess {
+		if code := cli.Run(context.Background(), config, []string{"git", "credential", protocol, "https://git.example.com/shop/repo.git"}, ports); code != cli.ExitSuccess {
 			t.Fatalf("%s exit code = %d", protocol, code)
 		}
 	}

@@ -35,13 +35,13 @@ func TestRenderWhoamiServerResultAndTaskListTable(t *testing.T) {
 		t.Fatalf("whoami json = %q; want %q", out.String(), whoamiBody)
 	}
 
-	taskListBody := json.RawMessage(`{"tasks":[{"task_id":"task-10","title":"Ship kodactl","state":"open","selected_pipeline":"pipe-1","current_execution":"exec-5","lifecycle_version":2}]}`)
+	taskListBody := json.RawMessage(`{"tasks":[{"task_id":"task-10","title":"Ship kodema","state":"open","selected_pipeline":"pipe-1","current_execution":"exec-5","lifecycle_version":2}]}`)
 	var tableOut, tableErr bytes.Buffer
 	code := renderTaskListTable(Ports{Out: &tableOut, Err: &tableErr}, api.Result{Operation: "task.list", Body: taskListBody})
 	if code != ExitSuccess {
 		t.Fatalf("renderTaskListTable exit = %d; stderr=%q", code, tableErr.String())
 	}
-	for _, want := range []string{"TASK", "STATE", "PIPELINE", "EXECUTION", "TITLE", "task-10", "open", "pipe-1", "exec-5", "Ship kodactl"} {
+	for _, want := range []string{"TASK", "STATE", "PIPELINE", "EXECUTION", "TITLE", "task-10", "open", "pipe-1", "exec-5", "Ship kodema"} {
 		if !strings.Contains(tableOut.String(), want) {
 			t.Fatalf("task.list table missing %q:\n%s", want, tableOut.String())
 		}

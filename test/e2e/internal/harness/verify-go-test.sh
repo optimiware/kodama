@@ -78,6 +78,12 @@ cleanup() {
 			kill -KILL -- "-$child_pid" 2>/dev/null || kill -KILL "$child_pid" 2>/dev/null
 		fi
 		wait "$child_pid" 2>/dev/null
+		# wait joins only our child, not orphaned grandchildren. After KILL,
+		# allow the kernel and their reaper to finish before reporting cleanup.
+		for ((attempt = 0; attempt < 20; attempt++)); do
+			group_alive || break
+			sleep 0.1
+		done
 	fi
 	rm -f -- "$result" "$status_file"
 	exit "$status"
