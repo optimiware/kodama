@@ -15,7 +15,7 @@ package services
 //
 // Examples covered:
 //   - every examples/pipelines/*.yaml and *.yml recipe (decode, apply, and
-//     every `kodactl call <operation> --input=<json>` invocation);
+//     every `kodema call <operation> --input=<json>` invocation);
 //   - examples/testdata/invalid/*.yaml and *.yml (the served admission must
 //     refuse them);
 //   - the documented subject example in docs/specs/03-admission.md;
@@ -71,7 +71,7 @@ func exampleRead(t *testing.T, rel string) []byte {
 
 // exampleFiles returns the sorted file names with any of the given extensions
 // in one repository-relative directory. Pipeline examples accept both .yaml and
-// .yml exactly like the real `kodactl pipeline apply` inventory.
+// .yml exactly like the real `kodema pipeline apply` inventory.
 func exampleFiles(t *testing.T, rel string, extensions ...string) []string {
 	t.Helper()
 	entries, err := os.ReadDir(filepath.Join(exampleRepoRoot(t), filepath.FromSlash(rel)))
@@ -263,18 +263,18 @@ func examplePublishedTools(t *testing.T, harness *factory.Harness) map[string]ap
 	return tools
 }
 
-// exampleInvocation is one `kodactl call` invocation extracted from an example
+// exampleInvocation is one `kodema call` invocation extracted from an example
 // command together with the exact JSON input it submits.
 type exampleInvocation struct {
 	Operation string
 	Input     json.RawMessage
 }
 
-// exampleCallPattern matches one `kodactl call <operation>` invocation. It is
+// exampleCallPattern matches one `kodema call <operation>` invocation. It is
 // the same invocation grammar the examples themselves document.
-var exampleCallPattern = regexp.MustCompile(`(?:^|[\s;&|(${])kodactl[ \t]+call[ \t]+([A-Za-z0-9_.-]+)`)
+var exampleCallPattern = regexp.MustCompile(`(?:^|[\s;&|(${])kodema[ \t]+call[ \t]+([A-Za-z0-9_.-]+)`)
 
-// exampleInvocations extracts every kodactl call and its JSON input from one
+// exampleInvocations extracts every kodema call and its JSON input from one
 // decoded pipeline example. The accepted shell forms are the shipped ones:
 // a literal JSON argument and `--input="$(printf '<json format>' ...)"`. Any
 // other dynamic form fails instead of being skipped, so a new example cannot
@@ -292,7 +292,7 @@ func exampleInvocations(t *testing.T, rel string, commands []string) []exampleIn
 			}
 			segment := command[match[3]:segmentEnd]
 			if count := strings.Count(segment, "--input="); count > 1 {
-				t.Fatalf("%s `kodactl call %s` declares %d --input arguments; want at most one", rel, operation, count)
+				t.Fatalf("%s `kodema call %s` declares %d --input arguments; want at most one", rel, operation, count)
 			}
 			var input json.RawMessage
 			if strings.Contains(segment, "--input=") {
@@ -375,14 +375,14 @@ func exampleJSONInput(t *testing.T, rel, text string) json.RawMessage {
 
 // exampleInputSchema decodes one published tool schema and returns the inner
 // request-input schema.
-func exampleInputSchema(t *testing.T, tool api.MCPTool) map[string]any {
+func exampleInputSchema(t *testing.T, tool api.MCPTool, operation string) map[string]any {
 	t.Helper()
 	var schema map[string]any
 	if err := json.Unmarshal(tool.InputSchema, &schema); err != nil {
 		t.Fatalf("%s inputSchema is not a JSON object: %v", tool.Name, err)
 	}
-	if title, _ := schema["title"].(string); title != tool.Name+".input.v1" {
-		t.Fatalf("%s inputSchema title = %q; want %q", tool.Name, title, tool.Name+".input.v1")
+	if title, _ := schema["title"].(string); title != operation+".input.v1" {
+		t.Fatalf("%s inputSchema title = %q; want %q", tool.Name, title, operation+".input.v1")
 	}
 	properties, ok := schema["properties"].(map[string]any)
 	if !ok {
@@ -405,7 +405,7 @@ func exampleValidateInput(t *testing.T, tool api.MCPTool, operation string, inpu
 	if err := decoder.Decode(&value); err != nil {
 		t.Fatalf("%s input is not one JSON object: %v; input=%s", operation, err, string(input))
 	}
-	violations := exampleSchemaViolations(exampleInputSchema(t, tool), value, operation+".input")
+	violations := exampleSchemaViolations(exampleInputSchema(t, tool, operation), value, operation+".input")
 	if len(violations) != 0 {
 		t.Fatalf("%s input drifts from the served schema:\n  %s\ninput=%s",
 			operation, strings.Join(violations, "\n  "), string(input))

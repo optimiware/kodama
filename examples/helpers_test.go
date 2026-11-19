@@ -76,7 +76,7 @@ func sortedDir(t *testing.T, dir, extension string) []string {
 }
 
 // sortedExampleYAML returns every shipped pipeline YAML in dir, accepting both
-// the .yaml and .yml spellings the real `kodactl pipeline apply` inventories.
+// the .yaml and .yml spellings the real `kodema pipeline apply` inventories.
 // The inventory must never silently skip one spelling: that would let an
 // example escape admission, schema and CLI validation.
 func sortedExampleYAML(t *testing.T, dir string) []string {

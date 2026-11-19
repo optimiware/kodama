@@ -12,11 +12,13 @@ import (
 	"hash"
 	"maps"
 	"sort"
+	"strings"
 
 	"github.com/optimiware/kodema/internal/fault"
 	"github.com/optimiware/kodema/internal/id"
 	"github.com/optimiware/kodema/internal/kernel/engine"
 	"github.com/optimiware/kodema/internal/kernel/script"
+	"github.com/optimiware/kodema/internal/shell/pipeline"
 	"github.com/optimiware/kodema/internal/shell/workspace"
 )
 
@@ -28,6 +30,25 @@ const readOnlyMode = 0o444
 
 // workloadCAVolumeName is the pinned name of the installation CA volume.
 const workloadCAVolumeName = "workload-ca"
+
+const (
+	toolboxPlanKey = "/kodema/toolbox-plan.json" // Control-plane data, never projected.
+	workloadScript = "/kodema/script"
+)
+
+func validateToolbox(image, gitURL string) error {
+	if image != "" {
+		if _, err := pipeline.ParseImageReference(image); err != nil {
+			return fault.Wrap(fault.InvalidInput, "toolbox image must be pinned by digest", err)
+		}
+	}
+	if gitURL != "" {
+		if _, err := workspace.GitOrigin(gitURL); err != nil {
+			return err
+		}
+	}
+	return nil
+}
 
 // activationConfigMapName returns the stable activation snapshot name.
 func activationConfigMapName(workload id.WorkloadID) string {
@@ -232,7 +253,11 @@ func (a *Adapter) jobManifest(prepared preparedWorkload, identity engine.EffectI
 
 	env := make([]EnvVar, 0, len(prepared.container.env)+4)
 	for _, entry := range prepared.container.env {
-		env = append(env, EnvVar{Name: string(entry.Name), Value: entry.Value})
+		if (prepared.caSecret != "" && entry.Name == workspace.EnvCAFile) ||
+			(len(prepared.gitEnv) > 0 && (entry.Name == workspace.EnvGitURL || workspace.IsGitConfigEnv(entry.Name))) {
+			continue
+		}
+		env = append(env, entry)
 	}
 	env = append(env,
 		EnvVar{Name: id.EnvURL, Value: a.kodemaURL},
@@ -242,10 +267,23 @@ func (a *Adapter) jobManifest(prepared preparedWorkload, identity engine.EffectI
 	if prepared.taskID != "" {
 		env = append(env, EnvVar{Name: id.EnvTask, Value: string(prepared.taskID)})
 	}
+	for _, entry := range prepared.gitEnv {
+		name, value, _ := strings.Cut(entry, "=")
+		env = append(env, EnvVar{Name: name, Value: value})
+	}
 
 	activationItems := make([]VolumeItem, 0, len(prepared.activationPaths))
+	var previousOutputs []VolumeItem
 	for _, path := range prepared.activationPaths {
-		activationItems = append(activationItems, VolumeItem{Key: path, Path: path, Mode: readOnlyMode})
+		item := VolumeItem{Key: path, Path: path, Mode: readOnlyMode}
+		// ConfigMap projection exposes top-level entries through symlinks.
+		// Don't project "outputs" as a symlink where kubelet needs a real
+		// directory for the nested writable mount.
+		if prepared.outputDir != "" && strings.HasPrefix(path, workspace.OutputRoot+"/") {
+			previousOutputs = append(previousOutputs, item)
+		} else {
+			activationItems = append(activationItems, item)
+		}
 	}
 
 	credentialItems := make([]VolumeItem, 0, len(prepared.secretNames)+1)
@@ -287,13 +325,13 @@ func (a *Adapter) jobManifest(prepared preparedWorkload, identity engine.EffectI
 	}
 	// The installation CA is an optional fourth, read-only Secret volume. It
 	// projects exactly the literal ca.crt key at the fixed trust path, outside
-	// the workspace, activation and credential mounts, and adds no environment
-	// variable: workloads opt in with an explicit --cacert.
-	if a.workloadCA.SecretName != "" {
+	// the workspace, activation and credential mounts.
+	if prepared.caSecret != "" {
+		env = append(env, EnvVar{Name: workspace.EnvCAFile, Value: WorkloadCAPath})
 		volumes = append(volumes, Volume{
 			Name:       workloadCAVolumeName,
 			MountPath:  WorkloadCAMountPath,
-			SecretName: a.workloadCA.SecretName,
+			SecretName: prepared.caSecret,
 			ReadOnly:   true,
 			Items: []VolumeItem{{
 				Key:  WorkloadCAKey,
@@ -301,6 +339,21 @@ func (a *Adapter) jobManifest(prepared preparedWorkload, identity engine.EffectI
 				Mode: readOnlyMode,
 			}},
 		})
+	}
+	workingDir := ""
+	if prepared.toolboxImage != "" {
+		workingDir = workspace.WorkspaceRoot
+		volumes = append(volumes, Volume{Name: "toolbox", MountPath: workspace.ToolboxRoot, ReadOnly: true, EmptyDir: true})
+	}
+	if prepared.outputDir != "" {
+		if len(previousOutputs) != 0 {
+			volumes = append(volumes, Volume{Name: "previous-outputs", MountPath: workspace.OutputRoot, ConfigMapName: prepared.configMap, ReadOnly: true, Items: previousOutputs})
+		}
+		volumes = append(volumes, Volume{Name: "action-outputs", MountPath: prepared.outputDir, EmptyDir: true, MemoryBytes: workspace.OutputDirectoryBytes})
+	}
+	command := []string{script.ShellPath, "-ec", prepared.container.script}
+	if prepared.toolboxImage != "" {
+		command = workspace.Entrypoint(workloadScript, workspace.Launch{Toolbox: true, Outputs: prepared.outputDir != ""})
 	}
 	return Job{
 		Name:      prepared.job,
@@ -310,9 +363,11 @@ func (a *Adapter) jobManifest(prepared preparedWorkload, identity engine.EffectI
 			AnnotationIdempotencyKey: identity.IdempotencyKey,
 		},
 		Spec: JobSpec{
-			Image:   prepared.container.image,
-			Command: []string{script.ShellPath, "-ec", prepared.container.script},
-			Env:     env,
+			Image:        prepared.container.image,
+			Command:      command,
+			ToolboxImage: prepared.toolboxImage,
+			WorkingDir:   workingDir,
+			Env:          env,
 			Resources: Resources{
 				CPURequest:    a.policy.CPURequest,
 				CPULimit:      a.policy.CPULimit,

@@ -176,6 +176,9 @@ func TestKodemaChartImageDigestSchemaRejectsNonDigest(t *testing.T) {
 	if !strings.Contains(rendered, "registry.example.com/kodema@"+digest) {
 		t.Errorf("rendered Deployment does not use the digest image reference:\n%s", rendered)
 	}
+	if !strings.Contains(rendered, "name: KODEMA_TOOLBOX_IMAGE\n              value: \"registry.example.com/kodema@"+digest+"\"") {
+		t.Error("tenant toolbox is not pinned to the control-plane image")
+	}
 }
 
 // TestKodemaChartDatabaseCAVolumeIsRequired proves the database CA Secret is

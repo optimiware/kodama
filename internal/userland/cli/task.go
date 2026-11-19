@@ -10,7 +10,7 @@ import (
 	"github.com/optimiware/kodema/api"
 )
 
-// runTask dispatches the ergonomic `kodactl task` subcommands.
+// runTask dispatches the ergonomic `kodema task` subcommands.
 func runTask(ctx context.Context, config Config, args []string, ports Ports, deps CommandDeps) int {
 	if len(args) == 0 {
 		return usage(ports.Err, "task requires a subcommand (create|run|list|show|start|reply|cancel)")

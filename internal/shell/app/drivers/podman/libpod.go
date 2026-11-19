@@ -600,6 +600,7 @@ type createSpec struct {
 	Entrypoint     []string          `json:"entrypoint,omitempty"`
 	Env            map[string]string `json:"env,omitempty"`
 	Labels         map[string]string `json:"labels,omitempty"`
+	WorkDir        string            `json:"work_dir,omitempty"`
 	Mounts         []bindMount       `json:"mounts,omitempty"`
 	Volumes        []volumeMount     `json:"volumes,omitempty"`
 	RestartPolicy  string            `json:"restart_policy,omitempty"`
@@ -635,8 +636,8 @@ type memoryLimit struct {
 	Limit int64 `json:"limit"`
 }
 
-// createBody maps the ContainerSpec onto the libpod create request. A
-// bind mount is a `mounts` entry; a named volume is a `volumes` entry. The
+// createBody maps the ContainerSpec onto the libpod create request. A bind
+// mount and a tmpfs are `mounts` entries; a named volume is a `volumes` entry. The
 // resource bound is applied here because the spec cannot express it.
 func createBody(spec runtimepodman.ContainerSpec) (createSpec, error) {
 	body := createSpec{
@@ -644,6 +645,7 @@ func createBody(spec runtimepodman.ContainerSpec) (createSpec, error) {
 		Image:         spec.Image,
 		Entrypoint:    append([]string(nil), spec.Entrypoint...),
 		Labels:        copyLabels(spec.Labels),
+		WorkDir:       spec.WorkingDir,
 		RestartPolicy: spec.RestartPolicy,
 		ResourceLimits: &resourceLimits{
 			CPU:    &cpuLimit{Quota: DefaultCPUQuota, Period: DefaultCPUPeriod},
@@ -678,8 +680,17 @@ func createBody(spec runtimepodman.ContainerSpec) (createSpec, error) {
 				IsAnonymous: false,
 				SubPath:     "",
 			})
+		case "tmpfs":
+			// Writable by whatever user the image runs as, like the workspace.
+			options := []string{"rw", "nosuid", "nodev", "noexec", "mode=1777"}
+			if mount.SizeBytes > 0 {
+				options = append(options, "size="+strconv.FormatInt(mount.SizeBytes, 10))
+			}
+			body.Mounts = append(body.Mounts, bindMount{
+				Destination: mount.Destination, Type: "tmpfs", Source: "tmpfs", Options: options,
+			})
 		default:
-			return createSpec{}, fault.New(fault.InvalidInput, "podman mount type is not bind or volume")
+			return createSpec{}, fault.New(fault.InvalidInput, "podman mount type is not bind, volume or tmpfs")
 		}
 	}
 	return body, nil

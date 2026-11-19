@@ -11,10 +11,10 @@ import (
 	"github.com/optimiware/kodema/internal/userland/cli"
 )
 
-// TestKodactlRunsAgainstTheComposedApp drives one parameterized kodactl command
+// TestKodemaRunsAgainstTheComposedApp drives one parameterized kodema command
 // through cli.Run against the served composition. The command uses the public
 // client transport, so it also proves the canonical route-field expansion.
-func TestKodactlRunsAgainstTheComposedApp(t *testing.T) {
+func TestKodemaRunsAgainstTheComposedApp(t *testing.T) {
 	harness := newHarness(t)
 	environment := harness.start(newFakeRuntime(modeComplete))
 	environment.grantEngineer("admin-1", projectID)
@@ -32,10 +32,10 @@ func TestKodactlRunsAgainstTheComposedApp(t *testing.T) {
 		Err:    &stderr,
 	})
 	if code != cli.ExitSuccess {
-		t.Fatalf("kodactl exit = %d; stderr=%s", code, stderr.String())
+		t.Fatalf("kodema exit = %d; stderr=%s", code, stderr.String())
 	}
 	if !strings.Contains(stdout.String(), `"items"`) {
-		t.Fatalf("kodactl output = %q; want the inbox result", stdout.String())
+		t.Fatalf("kodema output = %q; want the inbox result", stdout.String())
 	}
 }
 
@@ -45,7 +45,7 @@ func TestKodactlRunsAgainstTheComposedApp(t *testing.T) {
 // answers MCP tools/list, and its cleanup fails the test unless Serve returns
 // after cancellation and Wait reports no error.
 //
-// The commands themselves are not driven here. Both cmd/kodema and cmd/kodactl
+// The commands themselves are not driven here. Both cmd/kodema and cmd/kodema
 // are `package main` and expose no importable Run(ctx, args, io) seam, so this
 // suite exercises the same app.New entry they construct; their dispatch
 // behavior is covered by the cmd packages' own tests.

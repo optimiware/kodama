@@ -1,6 +1,6 @@
 // Unauthenticated discovery vectors.
 //
-// The kodactl login flow is configured with the Kodema API URL only. It reads
+// The kodema login flow is configured with the Kodema API URL only. It reads
 // one unauthenticated public discovery document from the fixed
 // /.well-known/kodema-configuration path, outside the 58-operation registry.
 // The document is strictly decoded, bounded, validated and carries no secret

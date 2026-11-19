@@ -1,4 +1,4 @@
-// Package userlandfs implements the Userland-declared kodactl filesystem port
+// Package userlandfs implements the Userland-declared kodema filesystem port
 // over the operating system file API.
 //
 // The wrapper is deliberately tiny: it exposes only the operations the
@@ -9,9 +9,11 @@ package userlandfs
 
 import (
 	"errors"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"syscall"
 
 	"github.com/optimiware/kodema/internal/userland/cli"
 )
@@ -24,6 +26,24 @@ var _ cli.FileSystem = FileSystem{}
 // ReadFile reads one file.
 func (FileSystem) ReadFile(name string) ([]byte, error) {
 	return os.ReadFile(name)
+}
+
+// ReadRegularFile checks the opened descriptor, not the earlier directory
+// listing: entries can change between the two. A FIFO must not block open.
+func (FileSystem) ReadRegularFile(name string, limit int64) ([]byte, error) {
+	file, err := os.OpenFile(name, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if !info.Mode().IsRegular() {
+		return nil, errors.New("not a regular file")
+	}
+	return io.ReadAll(io.LimitReader(file, limit))
 }
 
 // WriteFile writes one file with the requested mode.

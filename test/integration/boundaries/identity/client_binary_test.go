@@ -19,10 +19,10 @@ import (
 	"github.com/optimiware/kodema/internal/userland/cli"
 )
 
-// buildKodactl builds the real CLI entrypoint. Tests drive the binary so the
+// buildKodema builds the real CLI entrypoint. Tests drive the binary so the
 // flag/config wiring, the human-session source and the filesystem driver are
 // exercised together rather than through injected ports.
-func buildKodactl(t *testing.T) string {
+func buildKodema(t *testing.T) string {
 	t.Helper()
 	if _, err := exec.LookPath("go"); err != nil {
 		if os.Getenv("KODEMA_REQUIRE_INFRA") == "1" {
@@ -30,11 +30,11 @@ func buildKodactl(t *testing.T) string {
 		}
 		t.Skip("go toolchain is not available")
 	}
-	binary := filepath.Join(t.TempDir(), "kodactl")
-	command := exec.Command("go", "build", "-o", binary, "./cmd/kodactl")
+	binary := filepath.Join(t.TempDir(), "kodema")
+	command := exec.Command("go", "build", "-o", binary, "./cmd/kodema")
 	command.Dir = repositoryRoot(t)
 	if output, err := command.CombinedOutput(); err != nil {
-		t.Fatalf("build kodactl: %v\n%s", err, output)
+		t.Fatalf("build kodema: %v\n%s", err, output)
 	}
 	return binary
 }
@@ -57,9 +57,9 @@ func repositoryRoot(t *testing.T) string {
 	}
 }
 
-// isolateKodactlConfig keeps the developer's real ~/.config/kodema out of the
+// isolateKodemaConfig keeps the developer's real ~/.config/kodema out of the
 // test and gives the default config/session paths an empty root.
-func isolateKodactlConfig(t *testing.T) {
+func isolateKodemaConfig(t *testing.T) {
 	t.Helper()
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 }
@@ -149,8 +149,8 @@ func writeConfigFile(t *testing.T, path, contents string) {
 	}
 }
 
-// runKodactl executes the built binary and returns its exit code and streams.
-func runKodactl(t *testing.T, binary string, args ...string) (int, string, string) {
+// runKodema executes the built binary and returns its exit code and streams.
+func runKodema(t *testing.T, binary string, args ...string) (int, string, string) {
 	t.Helper()
 	command := exec.Command(binary, args...)
 	var stdout, stderr bytes.Buffer
@@ -162,17 +162,17 @@ func runKodactl(t *testing.T, binary string, args ...string) (int, string, strin
 	}
 	var exitErr *exec.ExitError
 	if !errors.As(err, &exitErr) {
-		t.Fatalf("run kodactl: %v", err)
+		t.Fatalf("run kodema: %v", err)
 	}
 	return exitErr.ExitCode(), stdout.String(), stderr.String()
 }
 
-// TestKodactlLoginNeverRepersistsASeededSession pins that the real entrypoint
+// TestKodemaLoginNeverRepersistsASeededSession pins that the real entrypoint
 // always runs the OAuth runtime, so a seeded session is not a login and a
 // failed discovery leaves the file untouched.
-func TestKodactlLoginNeverRepersistsASeededSession(t *testing.T) {
-	isolateKodactlConfig(t)
-	binary := buildKodactl(t)
+func TestKodemaLoginNeverRepersistsASeededSession(t *testing.T) {
+	isolateKodemaConfig(t)
+	binary := buildKodema(t)
 	directory := t.TempDir()
 	if err := os.Chmod(directory, 0o700); err != nil {
 		t.Fatalf("Chmod directory: %v", err)
@@ -187,7 +187,7 @@ func TestKodactlLoginNeverRepersistsASeededSession(t *testing.T) {
 
 	// Port 1 on loopback refuses immediately, so the discovery fails closed
 	// without any network fixture.
-	code, stdout, stderr := runKodactl(t, binary,
+	code, stdout, stderr := runKodema(t, binary,
 		"-server-url", "https://127.0.0.1:1",
 		"-session-file", sessionPath,
 		"login",
@@ -213,12 +213,12 @@ func TestKodactlLoginNeverRepersistsASeededSession(t *testing.T) {
 	}
 }
 
-// TestKodactlLoginIgnoresExecutionCredential pins that an execution credential
+// TestKodemaLoginIgnoresExecutionCredential pins that an execution credential
 // file is not a human session and is not a login mechanism: the real OAuth
 // runtime still discovers the provider and fails closed when it is down.
-func TestKodactlLoginIgnoresExecutionCredential(t *testing.T) {
-	isolateKodactlConfig(t)
-	binary := buildKodactl(t)
+func TestKodemaLoginIgnoresExecutionCredential(t *testing.T) {
+	isolateKodemaConfig(t)
+	binary := buildKodema(t)
 	directory := t.TempDir()
 	tokenFile := filepath.Join(directory, "token")
 	if err := os.WriteFile(tokenFile, []byte("kodex.execution-1.token\n"), 0o600); err != nil {
@@ -226,7 +226,7 @@ func TestKodactlLoginIgnoresExecutionCredential(t *testing.T) {
 	}
 	sessionPath := filepath.Join(directory, "session.json")
 
-	code, stdout, stderr := runKodactl(t, binary,
+	code, stdout, stderr := runKodema(t, binary,
 		"-server-url", "https://127.0.0.1:1",
 		"-credential-file", tokenFile,
 		"-session-file", sessionPath,
@@ -252,12 +252,12 @@ func TestKodactlLoginIgnoresExecutionCredential(t *testing.T) {
 	}
 }
 
-// TestKodactlHelperUsesConfiguredTrustedOrigins proves the real entrypoint
+// TestKodemaHelperUsesConfiguredTrustedOrigins proves the real entrypoint
 // loads the config file and returns the seeded session only for an exact
 // registered origin and its path descendants.
-func TestKodactlHelperUsesConfiguredTrustedOrigins(t *testing.T) {
-	isolateKodactlConfig(t)
-	binary := buildKodactl(t)
+func TestKodemaHelperUsesConfiguredTrustedOrigins(t *testing.T) {
+	isolateKodemaConfig(t)
+	binary := buildKodema(t)
 	directory := t.TempDir()
 	if err := os.Chmod(directory, 0o700); err != nil {
 		t.Fatalf("Chmod directory: %v", err)
@@ -286,10 +286,10 @@ func TestKodactlHelperUsesConfiguredTrustedOrigins(t *testing.T) {
 	}
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			code, stdout, stderr := runKodactl(t, binary,
+			code, stdout, stderr := runKodema(t, binary,
 				"-config", configPath,
 				"-session-file", sessionPath,
-				"helper", "get", testCase.url,
+				"git", "credential", "get", testCase.url,
 			)
 			if code != 0 {
 				t.Fatalf("helper exit code = %d; stderr=%q", code, stderr)
@@ -311,11 +311,11 @@ func TestKodactlHelperUsesConfiguredTrustedOrigins(t *testing.T) {
 	}
 }
 
-// TestKodactlHelperWithoutRegisteredOriginsReturnsNothing pins that the real
+// TestKodemaHelperWithoutRegisteredOriginsReturnsNothing pins that the real
 // entrypoint never fabricates a trusted origin when none is registered.
-func TestKodactlHelperWithoutRegisteredOriginsReturnsNothing(t *testing.T) {
-	isolateKodactlConfig(t)
-	binary := buildKodactl(t)
+func TestKodemaHelperWithoutRegisteredOriginsReturnsNothing(t *testing.T) {
+	isolateKodemaConfig(t)
+	binary := buildKodema(t)
 	directory := t.TempDir()
 	if err := os.Chmod(directory, 0o700); err != nil {
 		t.Fatalf("Chmod directory: %v", err)
@@ -323,9 +323,9 @@ func TestKodactlHelperWithoutRegisteredOriginsReturnsNothing(t *testing.T) {
 	sessionPath := filepath.Join(directory, "session.json")
 	writeRecord(t, sessionPath, "https://factory.example", "helper-human-session-token-abc123", time.Now().Add(time.Hour))
 
-	code, stdout, stderr := runKodactl(t, binary,
+	code, stdout, stderr := runKodema(t, binary,
 		"-session-file", sessionPath,
-		"helper", "get", "https://git.example.com/shop/repo.git",
+		"git", "credential", "get", "https://git.example.com/shop/repo.git",
 	)
 	if code != 0 {
 		t.Fatalf("helper exit code = %d; stderr=%q", code, stderr)
@@ -338,11 +338,11 @@ func TestKodactlHelperWithoutRegisteredOriginsReturnsNothing(t *testing.T) {
 	}
 }
 
-// TestKodactlHelperUsesTrustedOriginFlag pins the repeatable explicit flag path
+// TestKodemaHelperUsesTrustedOriginFlag pins the repeatable explicit flag path
 // on the real entrypoint.
-func TestKodactlHelperUsesTrustedOriginFlag(t *testing.T) {
-	isolateKodactlConfig(t)
-	binary := buildKodactl(t)
+func TestKodemaHelperUsesTrustedOriginFlag(t *testing.T) {
+	isolateKodemaConfig(t)
+	binary := buildKodema(t)
 	directory := t.TempDir()
 	if err := os.Chmod(directory, 0o700); err != nil {
 		t.Fatalf("Chmod directory: %v", err)
@@ -352,12 +352,12 @@ func TestKodactlHelperUsesTrustedOriginFlag(t *testing.T) {
 	serverURL := startDiscoveryServer(t)
 	writeRecord(t, sessionPath, serverURL, token, time.Now().Add(time.Hour))
 
-	code, stdout, stderr := runKodactl(t, binary,
+	code, stdout, stderr := runKodema(t, binary,
 		"-server-url", serverURL,
 		"-session-file", sessionPath,
 		"-trusted-origin", "https://git.example.com/shop",
 		"-trusted-origin", "https://git.example.com/other",
-		"helper", "get", "https://git.example.com/shop/repo.git",
+		"git", "credential", "get", "https://git.example.com/shop/repo.git",
 	)
 	if code != 0 {
 		t.Fatalf("helper exit code = %d; stderr=%q", code, stderr)
@@ -366,11 +366,11 @@ func TestKodactlHelperUsesTrustedOriginFlag(t *testing.T) {
 		t.Fatalf("stdout = %q; want %q", stdout, want)
 	}
 
-	code, stdout, stderr = runKodactl(t, binary,
+	code, stdout, stderr = runKodema(t, binary,
 		"-server-url", serverURL,
 		"-session-file", sessionPath,
 		"-trusted-origin", "https://git.example.com/shop",
-		"helper", "get", "https://git.example.com/shopkeeper",
+		"git", "credential", "get", "https://git.example.com/shopkeeper",
 	)
 	if code != 0 || stdout != "" || stderr != "" {
 		t.Fatalf("lookalike helper = %d/%q/%q; want an empty success", code, stdout, stderr)

@@ -98,7 +98,7 @@ func runWhoami(ctx context.Context, config Config, args []string, ports Ports, d
 	}
 
 	if !hasOffline {
-		return failure(ports.Err, fmt.Errorf("cannot determine principal identity: no active OIDC session with iss/sub claims found (run 'kodactl login')"))
+		return failure(ports.Err, fmt.Errorf("cannot determine principal identity: no active OIDC session with iss/sub claims found (run 'kodema login')"))
 	}
 	if format == OutputJSON {
 		if err := json.NewEncoder(ports.Out).Encode(offlineView); err != nil {
@@ -304,7 +304,7 @@ func operationRequiresRouteParam(operation, paramName string) bool {
 	return false
 }
 
-// runMember dispatches `kodactl member <list|grant|revoke>`.
+// runMember dispatches `kodema member <list|grant|revoke>`.
 func runMember(ctx context.Context, config Config, args []string, ports Ports, deps CommandDeps) int {
 	if len(args) == 0 {
 		return usage(ports.Err, "member requires a subcommand (list|grant|revoke)")
@@ -773,7 +773,7 @@ func resolveOIDCIssuer(ctx context.Context, config Config, ports Ports, deps Com
 	if discoveryErr != nil {
 		return "", fmt.Errorf("cannot resolve OIDC issuer from %s or current session: %w", api.DiscoveryPath, discoveryErr)
 	}
-	return "", fmt.Errorf("cannot resolve OIDC issuer: configure discovery (%s) or sign in with 'kodactl login'", api.DiscoveryPath)
+	return "", fmt.Errorf("cannot resolve OIDC issuer: configure discovery (%s) or sign in with 'kodema login'", api.DiscoveryPath)
 }
 
 func fetchAllMemberships(ctx context.Context, ports Ports, projectID string) ([]api.MembershipView, json.RawMessage, int, error) {

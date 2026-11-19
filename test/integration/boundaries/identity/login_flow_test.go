@@ -14,7 +14,7 @@ import (
 	idfix "github.com/optimiware/kodema/test/support/boundaries/identity"
 )
 
-// TestBrowserLoginWritesVersion2Session drives the real kodactl binary through
+// TestBrowserLoginWritesVersion2Session drives the real kodema binary through
 // the browser authorization-code + PKCE flow against the loopback fixtures. The
 // fake browser is a separate OS process on PATH, so the real systemBrowser,
 // loopback listener, discovery client, OIDC adapter and session store all run.
@@ -443,20 +443,20 @@ func TestLogoutRevocationFailureStillDeletes(t *testing.T) {
 	requireNoTokenOutput(t, []string{stdout, stderr}, record.Token, record.RefreshToken)
 }
 
-// TestStatusRendersNoToken proves the status view never carries a token.
-func TestStatusRendersNoToken(t *testing.T) {
+// TestSessionRendersNoToken proves the session view never carries a token.
+func TestSessionRendersNoToken(t *testing.T) {
 	harness := newLoginHarness(t)
 	record, _, _ := harness.login()
-	code, stdout, stderr := harness.run(nil, "-output", "json", "status")
+	code, stdout, stderr := harness.run(nil, "-output", "json", "session")
 	if code != 0 || stderr != "" {
-		t.Fatalf("status = %d/%q", code, stderr)
+		t.Fatalf("session = %d/%q", code, stderr)
 	}
 	var view map[string]any
 	if err := json.Unmarshal([]byte(stdout), &view); err != nil {
-		t.Fatalf("decode status: %v (%q)", err, stdout)
+		t.Fatalf("decode session: %v (%q)", err, stdout)
 	}
 	if view["issuer"] != record.Issuer || view["refreshable"] != true {
-		t.Fatalf("status view = %v", view)
+		t.Fatalf("session view = %v", view)
 	}
 	requireNoTokenOutput(t, []string{stdout, stderr}, record.Token, record.RefreshToken)
 }
@@ -474,7 +474,7 @@ func TestHelperReturnsFreshTokenForRegisteredOriginOnly(t *testing.T) {
 
 	code, stdout, stderr := harness.run(nil,
 		"-trusted-origin", "https://git.example.com/shop",
-		"helper", "get", "https://git.example.com/shop/repo.git")
+		"git", "credential", "get", "https://git.example.com/shop/repo.git")
 	if code != 0 || stderr != "" {
 		t.Fatalf("helper = %d/%q", code, stderr)
 	}
@@ -491,7 +491,7 @@ func TestHelperReturnsFreshTokenForRegisteredOriginOnly(t *testing.T) {
 
 	code, stdout, stderr = harness.run(nil,
 		"-trusted-origin", "https://git.example.com/shop",
-		"helper", "get", "https://git.example.com/shopkeeper/repo.git")
+		"git", "credential", "get", "https://git.example.com/shopkeeper/repo.git")
 	if code != 0 || stdout != "" || stderr != "" {
 		t.Fatalf("unregistered helper = %d/%q/%q; want an empty success", code, stdout, stderr)
 	}
@@ -606,7 +606,7 @@ func TestLegacySessionIsUnusableForLogin(t *testing.T) {
 
 	code, stdout, stderr := harness.run(nil,
 		"-trusted-origin", "https://git.example.com/shop",
-		"helper", "get", "https://git.example.com/shop/repo.git")
+		"git", "credential", "get", "https://git.example.com/shop/repo.git")
 	if code != 0 || stdout != "" || stderr != "" {
 		t.Fatalf("legacy helper = %d/%q/%q; want an empty refusal", code, stdout, stderr)
 	}

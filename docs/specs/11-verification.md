@@ -45,7 +45,7 @@ Every AC requires both its local cases and the later real proof.
 
 | AC | Unit cases / owning packages | Delayed system proof |
 |---|---|---|
-| 1 Kernel independence | K-INDEPENDENT, K-ORDER; Kernel/script/runtime adapters | I02, I04 ordinary images/logs, no runner/Shell dependency in Kernel |
+| 1 Kernel independence | K-INDEPENDENT, K-ORDER; Kernel/script/runtime adapters | I02, I04 ordinary images/logs, no supervising process, no toolbox/Shell dependency in Kernel |
 | 2 Immutable admission | A-PARSE/SNAPSHOT/INPUT; P04/P20 | I04 API-only/inline runs and edit immunity |
 | 3 Idempotency | S-START, E-RECEIPT/PUSH; P05–P08/P12/P13 | I02, I04, I06 duplicate interfaces/events/config-edit replay |
 | 4 Request settlement | K-REQUEST/DEADLINE, S-REQUEST; P03/P05 | I02, I04 real assignment/version/deadline races and restart |
@@ -55,8 +55,8 @@ Every AC requires both its local cases and the later real proof.
 | 8 Delivery evidence | Output retries/recipe fixtures; K03/P27 | I06, Q01 digest publication/test/promotion without rebuild |
 | 9 Cleanup | K-CLEANUP; P14–P16/P28 | I02, Q02/Q03 attributable pending cleanup and recovery |
 | 10 Optional capabilities | Public-only imports/disabled-capability configs; P10/P11/P22–P28 | I06, Q01 plain/Git-free/gateway-free, external/native agents |
-| 11 Materialization | A-ENV/runtime/secret snapshots; P09/P14–P17 | I02, I04, Q02 real files/permissions/renewal/isolation |
-| 12 Outputs | K-OUTPUT, output operation races; K03/P05/P13 | I02, I04 HTTP versus settlement and success-only visibility |
+| 11 Materialization | A-ENV/runtime/secret snapshots, launcher and Git configuration; P09/P14–P17 | I02, I04, Q02 real files/permissions/renewal/isolation, toolbox on `PATH` |
+| 12 Outputs | K-OUTPUT, output operation races, `output push` file rules; K03/P05/P13/P22 | I02, I04 HTTP versus settlement, file outputs and success-only visibility |
 | 13 Ordered flow | K-ORDER/DEADLINE, A-PARSE/REFERENCE; K01/K02/P04 | I04 unsupported syntax/preparation errors, persisted deadlines |
 | 14 Integrations | E-INGRESS/PUSH/BROKER, service fixtures; P07/P08/P18/P26 | I03, I06 scopes, delayed reports, trigger exclusions/queue |
 | 15 Broker independence | Fake-outage domain scenarios; K05/P07/P08/P18 | I04, I06, Q02 broker down during progression/reply/deadline/trigger |

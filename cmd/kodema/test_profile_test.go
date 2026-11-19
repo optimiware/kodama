@@ -22,7 +22,7 @@ import (
 	"github.com/optimiware/kodema/internal/shell/secret"
 )
 
-// testProfileFixture is one complete `kodema server --profile test`
+// testProfileFixture is one complete `kodema serve --profile test`
 // environment: TLS material, an owner-only keyfile, a listening Podman API
 // socket and sentinel database credentials, so every refusal can be scanned.
 type testProfileFixture struct {
@@ -46,6 +46,10 @@ func newTestProfileFixture(t *testing.T) *testProfileFixture {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(keyfile, key, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	toolbox := filepath.Join(t.TempDir(), "kodema")
+	if err := os.WriteFile(toolbox, []byte("toolbox"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	socket := filepath.Join(t.TempDir(), "podman.sock")
@@ -81,6 +85,7 @@ func newTestProfileFixture(t *testing.T) *testProfileFixture {
 			InstallationID: "installation-test-1",
 			PublicURL:      "https://kodema.test:8443",
 			WorkloadURL:    "https://host.containers.internal:8443",
+			ToolboxFile:    toolbox,
 			MCPPath:        "/mcp",
 		},
 	}
@@ -596,5 +601,68 @@ func TestBuildTestProfileWiresWorkloadCAAndWorkloadURL(t *testing.T) {
 	badFixture.options.WorkloadCAFile = "relative/ca.crt"
 	if _, err := buildTestProfile(badFixture.options, badFixture.getenv); err == nil || !strings.Contains(err.Error(), "workload CA") {
 		t.Fatalf("relative WorkloadCAFile = %v; want workload CA refusal", err)
+	}
+}
+
+// TestBuildTestProfileWiresTheToolboxAndGitURL pins that the test profile
+// hands the Podman runtime the toolbox binary and the workload Git URL, and
+// refuses a Git URL the credential helper would never answer.
+func TestBuildTestProfileWiresTheToolboxAndGitURL(t *testing.T) {
+	fixture := newTestProfileFixture(t)
+	fixture.options.WorkloadGitURL = "https://host.containers.internal:8443/git"
+	build, err := buildTestProfile(fixture.options, fixture.getenv)
+	if err != nil {
+		t.Fatalf("buildTestProfile: %v", err)
+	}
+	adapter, ok := build.Config.Test.Runtime.(*runtimepodman.Adapter)
+	if !ok {
+		t.Fatalf("Runtime = %T; want *runtimepodman.Adapter", build.Config.Test.Runtime)
+	}
+	if got := unexportedField(t, adapter, "toolboxFile").String(); got != fixture.options.ToolboxFile {
+		t.Fatalf("toolbox file = %q; want %q", got, fixture.options.ToolboxFile)
+	}
+	if got := unexportedField(t, adapter, "gitURL").String(); got != fixture.options.WorkloadGitURL {
+		t.Fatalf("Git URL = %q; want %q", got, fixture.options.WorkloadGitURL)
+	}
+
+	plain := newTestProfileFixture(t)
+	plain.options.WorkloadGitURL = "http://host.containers.internal:8080/git"
+	if _, err := buildTestProfile(plain.options, plain.getenv); err == nil || !strings.Contains(err.Error(), "workload Git URL") {
+		t.Fatalf("a plain-http workload Git URL = %v; want a refusal that names the setting", err)
+	}
+}
+
+// TestResolveTestToolboxFile pins which binary workloads mount: an explicit
+// file, else the running executable on Linux; any other system must name one.
+func TestResolveTestToolboxFile(t *testing.T) {
+	executable := func() (string, error) { return "/usr/local/bin/kodema", nil }
+	unlocated := func() (string, error) { return "", os.ErrNotExist }
+	for _, testCase := range []struct {
+		name       string
+		explicit   string
+		goos       string
+		executable func() (string, error)
+		want       string
+		refusal    string
+	}{
+		{name: "an explicit file wins on Linux", explicit: "/opt/kodema", goos: "linux", executable: executable, want: "/opt/kodema"},
+		{name: "an explicit file on another system", explicit: "/opt/kodema-linux", goos: "darwin", executable: executable, want: "/opt/kodema-linux"},
+		{name: "the running executable on Linux", goos: "linux", executable: executable, want: "/usr/local/bin/kodema"},
+		{name: "another system must name the Linux binary", goos: "darwin", executable: executable, refusal: "is required on darwin"},
+		{name: "a relative explicit file", explicit: "bin/kodema", goos: "linux", executable: executable, refusal: "must be an absolute path"},
+		{name: "an executable that cannot be located", goos: "linux", executable: unlocated, refusal: "cannot be located"},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			got, err := resolveTestToolboxFile(testCase.explicit, testCase.goos, testCase.executable)
+			if testCase.refusal != "" {
+				if err == nil || !strings.Contains(err.Error(), testCase.refusal) {
+					t.Fatalf("error = %v; want a refusal containing %q", err, testCase.refusal)
+				}
+				return
+			}
+			if err != nil || got != testCase.want {
+				t.Fatalf("toolbox = %q, %v; want %q", got, err, testCase.want)
+			}
+		})
 	}
 }

@@ -294,7 +294,7 @@ The chart also has two optional blocks, off by default: `gitService` (one
   ServiceAccount, which Helm creates after pre-install hooks, so a fresh
   `helm upgrade --install --wait` could never schedule it, and its container ran
   `kodema --help`, a gate that can only pass. No preflight subcommand or hook
-  exists today; the start-up preflight runs inside `kodema server`. A future
+  exists today; the start-up preflight runs inside `kodema serve`. A future
   hook must not depend on non-hook resources: either run without a chart ServiceAccount and set
   `automountServiceAccountToken: false`, or create a ServiceAccount that is
   itself a hook created first. Any restored hook must run a real command and

@@ -77,7 +77,7 @@ func terminatedExit(pod Pod) (int, bool) {
 	}
 	// The seam may omit container names; accept the unambiguous single
 	// container case but never guess among several.
-	if len(pod.Containers) == 1 && pod.Containers[0].Terminated {
+	if len(pod.Containers) == 1 && pod.Containers[0].Name == "" && pod.Containers[0].Terminated {
 		return pod.Containers[0].ExitCode, true
 	}
 	return 0, false

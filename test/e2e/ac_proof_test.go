@@ -877,7 +877,7 @@ func TestE2E_AC20UserlandGit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read the served admin policy: %v", err)
 	}
-	if err := smoke.CheckRepositoryPolicy(policy, repository.Name); err != nil {
+	if err := smoke.CheckRepositoryPolicy(policy, repository.Name, repository.ResourceID); err != nil {
 		t.Fatalf("served admin policy: %v", err)
 	}
 	engineerGit := instance.newHostGit(t, harness.PersonaEngineer, "ac20-engineer")

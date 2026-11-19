@@ -632,7 +632,7 @@ func wireApp(ctx context.Context, builder *builder, environment *environment) (*
 	}
 	// The optional public discovery document is validated at construction and
 	// served from a static provider that copies it on every call. Without it the
-	// fixed route stays a clean 404, so kodactl login reports that the login
+	// fixed route stays a clean 404, so kodema login reports that the login
 	// configuration is unavailable instead of inventing OAuth endpoints.
 	restConfig := httpapi.Config{Router: router}
 	document, discoveryConfigured, err := cfg.discoveryDocument()

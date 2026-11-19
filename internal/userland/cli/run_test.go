@@ -147,7 +147,7 @@ func TestRunUsageErrors(t *testing.T) {
 			config.Project = ""
 			return config
 		}},
-		{name: "helper invalid protocol", args: []string{"helper", "bogus", "https://git.example.com/shop/repo.git"}},
+		{name: "helper invalid protocol", args: []string{"git", "credential", "bogus", "https://git.example.com/shop/repo.git"}},
 		{name: "invalid config", args: []string{"call", "task.read"}, config: func() cli.Config {
 			config := testConfig()
 			config.ServerURL = "http://kodema.example.com"
@@ -386,7 +386,7 @@ func TestRunDoesNotRequireServerURLForHelper(t *testing.T) {
 	ports, out, errOut := testPorts(&scriptedTransport{})
 	ports.Credential = source
 	config := cli.Config{TrustedOrigins: []string{"https://git.example.com/shop"}}
-	code := cli.Run(context.Background(), config, []string{"helper", "get", "https://git.example.com/shop/repo.git"}, ports)
+	code := cli.Run(context.Background(), config, []string{"git", "credential", "get", "https://git.example.com/shop/repo.git"}, ports)
 	if code != cli.ExitSuccess {
 		t.Fatalf("exit code = %d; want %d (stderr: %s)", code, cli.ExitSuccess, errOut.String())
 	}

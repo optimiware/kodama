@@ -89,7 +89,7 @@ func TestExamplePipelinesDecode(t *testing.T) {
 }
 
 // TestExampleInventoryCoversYAMLSpellingsAndDeletions pins the inventory
-// contract: the .yml spelling the real `kodactl pipeline apply` accepts is
+// contract: the .yml spelling the real `kodema pipeline apply` accepts is
 // enumerated exactly like .yaml, dotfiles and unrelated files are ignored, and
 // a deleted or unexpected shipped example is reported by name instead of being
 // silently dropped from validation.
@@ -254,17 +254,17 @@ func TestTaskHandoffReferencesDurableContext(t *testing.T) {
 		t.Fatalf("%s ask action must target the current task through $KODEMA_TASK", rel)
 	}
 	// The real CLI dispatches served operations only through `call`; there is no
-	// `kodactl task ...` subcommand.
-	if !strings.Contains(commands, "kodactl call task.ask") {
-		t.Fatalf("%s ask action must invoke the served operation as `kodactl call task.ask`", rel)
+	// `kodema task ...` subcommand.
+	if !strings.Contains(commands, "kodema call task.ask") {
+		t.Fatalf("%s ask action must invoke the served operation as `kodema call task.ask`", rel)
 	}
 	if strings.Contains(commands, "task ask") {
-		t.Fatalf("%s ask action invokes the nonexistent `kodactl task ask` subcommand", rel)
+		t.Fatalf("%s ask action invokes the nonexistent `kodema task ask` subcommand", rel)
 	}
 	// /kodema/task.json carries no lifecycle version, so the example must read
 	// the current task first and pass the returned version as expected-version.
-	if !strings.Contains(commands, `kodactl call task.read`) {
-		t.Fatalf("%s ask action must read the current task with `kodactl call task.read`; /kodema/task.json carries no lifecycle version", rel)
+	if !strings.Contains(commands, `kodema call task.read`) {
+		t.Fatalf("%s ask action must read the current task with `kodema call task.read`; /kodema/task.json carries no lifecycle version", rel)
 	}
 	if !strings.Contains(commands, `--expected-version="$task_version"`) {
 		t.Fatalf("%s ask action must pass the read task version as --expected-version", rel)
@@ -313,9 +313,9 @@ func TestTaskHandoffReferencesDurableContext(t *testing.T) {
 }
 
 // TestExampleHandoffReadsVersionFromJSONOutput pins that the handoff example
-// reads the task lifecycle version from the real kodactl JSON rendering.
+// reads the task lifecycle version from the real kodema JSON rendering.
 //
-// kodactl renders JSON by writing the exact result body, while the default
+// kodema renders JSON by writing the exact result body, while the default
 // table rendering writes `lifecycle_version<TAB>7`. The example's extraction
 // expression only matches the JSON spelling, so the task.read invocation must
 // pin JSON output; without that pin task_version stays empty, the action exits
@@ -326,26 +326,26 @@ func TestExampleHandoffReadsVersionFromJSONOutput(t *testing.T) {
 	ask := decoded.Actions[len(decoded.Actions)-1]
 	commands := strings.Join(ask.Container.Commands, "\n")
 
-	readIndex := strings.Index(commands, "kodactl call task.read")
+	readIndex := strings.Index(commands, "kodema call task.read")
 	if readIndex < 0 {
-		t.Fatalf("%s must read the current task with `kodactl call task.read`", rel)
+		t.Fatalf("%s must read the current task with `kodema call task.read`", rel)
 	}
-	if askIndex := strings.Index(commands, "kodactl call task.ask"); askIndex < 0 || askIndex < readIndex {
+	if askIndex := strings.Index(commands, "kodema call task.ask"); askIndex < 0 || askIndex < readIndex {
 		t.Fatalf("%s must read the task before asking for it", rel)
 	}
 
 	// The table format is the CLI default, so an unpinned read renders the
 	// version in a form the extraction expression cannot match.
-	if !strings.Contains(commands, "KODEMA_OUTPUT=json kodactl call task.read") {
+	if !strings.Contains(commands, "KODEMA_OUTPUT=json kodema call task.read") {
 		t.Fatalf("%s task.read must pin JSON output with KODEMA_OUTPUT=json; the default table rendering carries no matchable lifecycle_version", rel)
 	}
 
 	script := handoffReadSedScript(t, rel, commands)
-	jsonOutput := renderKodactlTaskRead(t, cli.OutputJSON)
+	jsonOutput := renderKodemaTaskRead(t, cli.OutputJSON)
 	if got := runSed(t, script, jsonOutput); got != "7" {
 		t.Fatalf("%s sed %q on the real task.read JSON %q = %q; want \"7\"", rel, script, jsonOutput, got)
 	}
-	tableOutput := renderKodactlTaskRead(t, cli.OutputTable)
+	tableOutput := renderKodemaTaskRead(t, cli.OutputTable)
 	if !strings.Contains(tableOutput, "lifecycle_version\t7") {
 		t.Fatalf("task.read table rendering %q does not carry the lifecycle_version row; the fixture is wrong", tableOutput)
 	}
@@ -354,7 +354,7 @@ func TestExampleHandoffReadsVersionFromJSONOutput(t *testing.T) {
 	}
 }
 
-// taskReadTransport answers one canned operation result, so the real kodactl
+// taskReadTransport answers one canned operation result, so the real kodema
 // call path can render a task.read result without a server.
 type taskReadTransport struct{ result api.Result }
 
@@ -363,9 +363,9 @@ func (transport taskReadTransport) Invoke(context.Context, api.Invocation) (api.
 	return transport.result, nil
 }
 
-// renderKodactlTaskRead renders a real task.read result through the real
-// `kodactl call` path, including the real output renderer and public codec.
-func renderKodactlTaskRead(t *testing.T, format cli.OutputFormat) string {
+// renderKodemaTaskRead renders a real task.read result through the real
+// `kodema call` path, including the real output renderer and public codec.
+func renderKodemaTaskRead(t *testing.T, format cli.OutputFormat) string {
 	t.Helper()
 	codec := exampleOperationCodec(t, "task.read")
 	body, err := codec.EncodeResult(api.TaskReadResult{
@@ -421,18 +421,18 @@ func runSed(t *testing.T, script, input string) string {
 	return strings.TrimSpace(out.String())
 }
 
-// kodactlInvocation matches one `kodactl <subcommand>` token pair in a shipped
-// shell command, including command substitutions such as `$(kodactl ...)`.
-var kodactlInvocation = regexp.MustCompile(`(?:^|[\s;&|(${])kodactl[ \t]+([A-Za-z0-9_.-]+)`)
+// kodemaInvocation matches one `kodema <subcommand>` token pair in a shipped
+// shell command, including command substitutions such as `$(kodema ...)`.
+var kodemaInvocation = regexp.MustCompile(`(?:^|[\s;&|(${])kodema[ \t]+([A-Za-z0-9_.-]+)`)
 
-// kodactlCallOperation matches one `kodactl call <operation>` invocation.
-var kodactlCallOperation = regexp.MustCompile(`(?:^|[\s;&|(${])kodactl[ \t]+call[ \t]+([A-Za-z0-9_.-]+)`)
+// kodemaCallOperation matches one `kodema call <operation>` invocation.
+var kodemaCallOperation = regexp.MustCompile(`(?:^|[\s;&|(${])kodema[ \t]+call[ \t]+([A-Za-z0-9_.-]+)`)
 
-// TestExampleKodactlInvocationsMatchRealCLI rejects any example that teaches a
-// kodactl subcommand the real CLI does not dispatch. `kodactl task ask` is the
+// TestExampleKodemaInvocationsMatchRealCLI rejects any example that teaches a
+// kodema subcommand the real CLI does not dispatch. `kodema task ask` is the
 // concrete case: the CLI exposes served operations only through `call`,
 // and `call` must name a registered public operation.
-func TestExampleKodactlInvocationsMatchRealCLI(t *testing.T) {
+func TestExampleKodemaInvocationsMatchRealCLI(t *testing.T) {
 	for _, name := range sortedExampleYAML(t, "pipelines") {
 		rel := "pipelines/" + name
 		decoded := decodeExample(t, rel)
@@ -442,18 +442,18 @@ func TestExampleKodactlInvocationsMatchRealCLI(t *testing.T) {
 			}
 			for _, command := range action.Container.Commands {
 				calls := 0
-				for _, match := range kodactlInvocation.FindAllStringSubmatch(command, -1) {
+				for _, match := range kodemaInvocation.FindAllStringSubmatch(command, -1) {
 					subcommand := match[1]
-					if !realKodactlSubcommand(t, subcommand) {
-						t.Fatalf("%s action %q invokes `kodactl %s`; the real CLI has no %q subcommand", rel, action.Name, subcommand, subcommand)
+					if !realKodemaSubcommand(t, subcommand) {
+						t.Fatalf("%s action %q invokes `kodema %s`; the real CLI has no %q subcommand", rel, action.Name, subcommand, subcommand)
 					}
 					if subcommand == "call" {
 						calls++
 					}
 				}
-				operations := kodactlCallOperation.FindAllStringSubmatch(command, -1)
+				operations := kodemaCallOperation.FindAllStringSubmatch(command, -1)
 				if len(operations) != calls {
-					t.Fatalf("%s action %q has %d `kodactl call` invocations but %d named operations", rel, action.Name, calls, len(operations))
+					t.Fatalf("%s action %q has %d `kodema call` invocations but %d named operations", rel, action.Name, calls, len(operations))
 				}
 				for _, match := range operations {
 					if _, ok := api.LookupRoute(match[1]); !ok {
@@ -465,10 +465,10 @@ func TestExampleKodactlInvocationsMatchRealCLI(t *testing.T) {
 	}
 }
 
-// realKodactlSubcommand asks the real CLI dispatcher whether it recognizes one
+// realKodemaSubcommand asks the real CLI dispatcher whether it recognizes one
 // subcommand. An unrecognized name is the only path that prints
 // "unknown command".
-func realKodactlSubcommand(t *testing.T, subcommand string) bool {
+func realKodemaSubcommand(t *testing.T, subcommand string) bool {
 	t.Helper()
 	var errOut bytes.Buffer
 	cli.Run(context.Background(), cli.Config{}, []string{subcommand}, cli.Ports{Out: io.Discard, Err: &errOut})

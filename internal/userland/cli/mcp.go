@@ -22,7 +22,7 @@ const maxMCPStdioMessageBytes = 4 << 20
 
 var errMCPRedirectRefused = errors.New("MCP redirect refused")
 
-// runMCP dispatches `kodactl mcp <stdio|install>`.
+// runMCP dispatches `kodema mcp <stdio|install>`.
 func runMCP(ctx context.Context, config Config, args []string, ports Ports, deps CommandDeps) int {
 	if len(args) == 0 {
 		return usage(ports.Err, "mcp requires a subcommand (stdio|install)")
@@ -265,11 +265,11 @@ func runMCPInstall(_ context.Context, config Config, args []string, ports Ports,
 
 	cmdName := strings.TrimSpace(deps.CommandPath)
 	if cmdName == "" {
-		cmdName = "kodactl"
+		cmdName = "kodema"
 	}
 	mcpArgs := []string{"--url", config.ServerURL}
 	if caPath := strings.TrimSpace(config.CAFile); caPath != "" {
-		// The editor starts kodactl from its own working directory.
+		// The editor starts kodema from its own working directory.
 		absCAPath, err := filepath.Abs(caPath)
 		if err != nil {
 			return failure(ports.Err, fmt.Errorf("cannot resolve CA file %q: %w", caPath, err))

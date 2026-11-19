@@ -56,6 +56,27 @@ func TestFileSystemReportsMissingFile(t *testing.T) {
 	}
 }
 
+func TestReadRegularFileBoundsDataAndDoesNotFollowLinks(t *testing.T) {
+	dir := t.TempDir()
+	name := filepath.Join(dir, "output")
+	if err := os.WriteFile(name, []byte("abcdef"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	files := FileSystem{}
+	if data, err := files.ReadRegularFile(name, 3); err != nil || string(data) != "abc" {
+		t.Fatalf("bounded read = %q, %v", data, err)
+	}
+	link := filepath.Join(dir, "link")
+	if err := os.Symlink(name, link); err != nil {
+		t.Fatal(err)
+	}
+	for _, invalid := range []string{link, dir, os.DevNull} {
+		if _, err := files.ReadRegularFile(invalid, 3); err == nil {
+			t.Errorf("read non-regular output %s", invalid)
+		}
+	}
+}
+
 // TestReplaceFileCreatesMissingParent pins that a first login creates the
 // missing parent directory 0700 while leaving an existing directory mode
 // untouched, and that the final file has the requested mode.

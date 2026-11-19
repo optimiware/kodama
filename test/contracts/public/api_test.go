@@ -123,7 +123,7 @@
 //	  MergeKey{Repository, Ref}; Claim{Key, Owner, ExpiresAt};
 //	  MergeCoordinator interface { Claim; Release }; MergeResult; Validate
 //
-//	internal/userland/cli (kodactl, sessions and the Git credential helper)
+//	internal/userland/cli (kodema, sessions and the Git credential helper)
 //	  OutputFormat table/json; Config{ServerURL, CredentialFile, Output,
 //	          TrustedOrigins}; ParseConfig/Validate
 //	  Origin{Scheme, Host, Path}; ParseOrigin; (Origin).String()/Matches()

@@ -239,7 +239,7 @@ func runRun(ctx context.Context, config Config, args []string, ports Ports, deps
 				// A request assigned to a role waits for a human; one assigned
 				// to a service is answered without this caller.
 				if action.Kind == "request" && action.effectiveState() == "running" && strings.HasPrefix(action.Assignment, "role/") {
-					fmt.Fprintf(ports.Err, "execution %s is waiting for %s to answer request %q; see 'kodactl inbox' and 'kodactl approve %s'\n",
+					fmt.Fprintf(ports.Err, "execution %s is waiting for %s to answer request %q; see 'kodema inbox' and 'kodema approve %s'\n",
 						executionID, action.Assignment, action.Name, executionID)
 					return ExitFailure
 				}

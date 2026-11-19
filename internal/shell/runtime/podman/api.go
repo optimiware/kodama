@@ -14,6 +14,7 @@ import (
 	"encoding/hex"
 	"encoding/pem"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -24,6 +25,7 @@ import (
 	"github.com/optimiware/kodema/internal/id"
 	"github.com/optimiware/kodema/internal/kernel/engine"
 	"github.com/optimiware/kodema/internal/shell/runtime"
+	"github.com/optimiware/kodema/internal/shell/workspace"
 )
 
 const (
@@ -37,7 +39,7 @@ const (
 	WorkloadCAPath = "/kodema/ca.crt"
 	// EnvWorkloadCAFile exposes WorkloadCAPath in the container environment
 	// when Config.WorkloadCAFile is configured.
-	EnvWorkloadCAFile = "KODEMA_CA_FILE"
+	EnvWorkloadCAFile = workspace.EnvCAFile
 )
 
 // Container statuses the adapter interprets. Any other status stays unknown.
@@ -105,6 +107,15 @@ type Config struct {
 	// read-only at /kodema/ca.crt with KODEMA_CA_FILE=/kodema/ca.crt. Empty
 	// mounts no CA file and sets no KODEMA_CA_FILE variable.
 	WorkloadCAFile string
+	// ToolboxFile optionally names the absolute host path of the kodema
+	// binary, built for the containers' platform, that every workload mounts
+	// read-only at /kodema/bin. Empty mounts no toolbox: the entrypoint is the
+	// plain script and an action gets no output directory.
+	ToolboxFile string
+	// GitURL optionally names the base URL of the installation's Git service
+	// as workloads reach it. It is exposed as KODEMA_GIT_URL and, with a
+	// toolbox, configures Git for that origin alone.
+	GitURL string
 	// Cleanup bounds cleanup attempts per Remove call.
 	Cleanup CleanupPolicy
 	// Clock is optional; nil means a real clock.
@@ -113,14 +124,16 @@ type Config struct {
 
 // Mount is one container mount.
 type Mount struct {
-	// Type is "bind" or "volume".
+	// Type is "bind", "volume" or "tmpfs".
 	Type string
-	// Source is a host path or a named volume.
+	// Source is a host path or a named volume. A tmpfs has none.
 	Source string
 	// Destination is the in-container mount path.
 	Destination string
 	// ReadOnly reports whether the mount is read-only.
 	ReadOnly bool
+	// SizeBytes bounds a tmpfs. Other mount types ignore it.
+	SizeBytes int64
 }
 
 // ContainerSpec is the complete requested container.
@@ -133,7 +146,10 @@ type ContainerSpec struct {
 	Env []string
 	// Labels is the stable identity label set.
 	Labels map[string]string
-	// Mounts is the activation bind and the retained workspace volume.
+	// WorkingDir is the directory the commands start in.
+	WorkingDir string
+	// Mounts is the activation bind and the retained workspace volume, then
+	// the toolbox bind and the output tmpfs when the workload has them.
 	Mounts []Mount
 	// RestartPolicy is "no": the command is never replayed automatically.
 	RestartPolicy string
@@ -216,8 +232,16 @@ type Adapter struct {
 	root          string
 	kodemaURL     string
 	workloadCAPEM []byte
+	gitURL        string
 	cleanup       CleanupPolicy
 	clock         Clock
+
+	// toolboxFile is the configured toolbox source and toolboxDir the
+	// installation copy every workload binds; both are empty without a
+	// toolbox. toolboxMu serializes the one installation of that copy.
+	toolboxFile string
+	toolboxDir  string
+	toolboxMu   sync.Mutex
 
 	mu    sync.Mutex
 	locks map[id.WorkloadID]*sync.Mutex
@@ -255,6 +279,21 @@ func New(config Config) (*Adapter, error) {
 		}
 		workloadCAPEM = loaded
 	}
+	root := filepath.Clean(config.Root)
+	toolboxFile, toolboxDir := "", ""
+	if file := strings.TrimSpace(config.ToolboxFile); file != "" {
+		digest, err := toolboxDigest(file)
+		if err != nil {
+			return nil, err
+		}
+		toolboxFile, toolboxDir = file, filepath.Join(root, toolboxDirectory, digest)
+	}
+	gitURL := strings.TrimRight(strings.TrimSpace(config.GitURL), "/")
+	if gitURL != "" {
+		if _, err := workspace.GitOrigin(gitURL); err != nil {
+			return nil, err
+		}
+	}
 	clock := config.Clock
 	if clock == nil {
 		clock = realClock{}
@@ -262,9 +301,12 @@ func New(config Config) (*Adapter, error) {
 	return &Adapter{
 		libpod:        config.Libpod,
 		files:         config.Files,
-		root:          filepath.Clean(config.Root),
+		root:          root,
 		kodemaURL:     config.KodemaURL,
 		workloadCAPEM: workloadCAPEM,
+		gitURL:        gitURL,
+		toolboxFile:   toolboxFile,
+		toolboxDir:    toolboxDir,
 		cleanup:       config.Cleanup,
 		clock:         clock,
 		locks:         map[id.WorkloadID]*sync.Mutex{},
@@ -302,6 +344,31 @@ func loadWorkloadCAPEM(path string) ([]byte, error) {
 	}
 	return certs, nil
 }
+
+// toolboxDigest names one toolbox binary by its content, so two versions of
+// the control plane never share an installation copy and a workload that is
+// still running keeps the binary it started with.
+func toolboxDigest(path string) (string, error) {
+	if !filepath.IsAbs(path) {
+		return "", fault.New(fault.InvalidInput, "podman adapter toolbox file must be an absolute path")
+	}
+	info, err := os.Stat(path)
+	if err != nil || !info.Mode().IsRegular() {
+		return "", fault.New(fault.InvalidInput, "podman adapter toolbox file is unreadable")
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return "", fault.New(fault.InvalidInput, "podman adapter toolbox file is unreadable")
+	}
+	defer file.Close()
+	digest := sha256.New()
+	if _, err := io.Copy(digest, file); err != nil {
+		return "", fault.New(fault.InvalidInput, "podman adapter toolbox file is unreadable")
+	}
+	return toolboxDigestName(digest.Sum(nil)), nil
+}
+
+func toolboxDigestName(sum []byte) string { return hex.EncodeToString(sum)[:24] }
 
 // lockFor returns the per-workload mutex that serializes lifecycle effects on
 // one stable identity inside this process. It never substitutes for the durable

@@ -10,7 +10,7 @@ import (
 	"github.com/optimiware/kodema/api"
 )
 
-// servedInvocation is one embedded `kodactl call <operation>` request body from
+// servedInvocation is one embedded `kodema call <operation>` request body from
 // a shipped example, rendered with deterministic placeholder values so the real
 // public codecs can decode it.
 type servedInvocation struct {
@@ -22,8 +22,8 @@ type servedInvocation struct {
 	Command         string
 }
 
-// servedCallPattern matches one `kodactl call <operation>` invocation.
-var servedCallPattern = regexp.MustCompile(`kodactl[ \t]+call[ \t]+([A-Za-z0-9_.-]+)`)
+// servedCallPattern matches one `kodema call <operation>` invocation.
+var servedCallPattern = regexp.MustCompile(`kodema[ \t]+call[ \t]+([A-Za-z0-9_.-]+)`)
 
 // servedInputMarker introduces the JSON body of one call. Examples build it
 // with printf so a durable value can be substituted without a shell JSON
@@ -39,7 +39,7 @@ func TestTaskHandoffExampleUsesServedCodecs(t *testing.T) {
 	const rel = "pipelines/task-handoff.yaml"
 	invocations := exampleServedInvocations(t, rel)
 	if len(invocations) == 0 {
-		t.Fatalf("%s embeds no `kodactl call` request body", rel)
+		t.Fatalf("%s embeds no `kodema call` request body", rel)
 	}
 	seen := make(map[string]bool, len(invocations))
 	for _, invocation := range invocations {
@@ -50,7 +50,7 @@ func TestTaskHandoffExampleUsesServedCodecs(t *testing.T) {
 			if !json.Valid(body) {
 				t.Fatalf("%s %s request body is not valid JSON: %s", rel, invocation.Operation, invocation.Body)
 			}
-			// A kodactl call has no route path, so the input must carry every
+			// A kodema call has no route path, so the input must carry every
 			// route-derived field itself: this is the MCP carriage rule.
 			if _, err := api.DecodeMCPOperationRequest(invocation.Operation, body); err != nil {
 				t.Fatalf("%s %s request body %s does not decode through the served MCP codec: %v", rel, invocation.Operation, invocation.Body, err)
@@ -179,8 +179,8 @@ func TestExampleHandoffRetainsDurableReferencesAndVersion(t *testing.T) {
 	if !strings.Contains(commands, "/kodema/outputs/persist/context_commit") {
 		t.Fatalf("%s task.ask must pass the durable output /kodema/outputs/persist/context_commit", rel)
 	}
-	readIndex := strings.Index(commands, "kodactl call task.read")
-	askIndex := strings.Index(commands, "kodactl call task.ask")
+	readIndex := strings.Index(commands, "kodema call task.read")
+	askIndex := strings.Index(commands, "kodema call task.ask")
 	if readIndex < 0 || askIndex < 0 || readIndex > askIndex {
 		t.Fatalf("%s must read the task before asking for it", rel)
 	}
@@ -203,7 +203,7 @@ func TestExampleHandoffRetainsDurableReferencesAndVersion(t *testing.T) {
 	}
 }
 
-// exampleServedInvocations extracts every embedded `kodactl call` request body
+// exampleServedInvocations extracts every embedded `kodema call` request body
 // from one example pipeline and renders its printf placeholders with
 // deterministic values. A call without exactly one input is a fixture defect:
 // the public codecs cannot check a body that is not published.
@@ -222,7 +222,7 @@ func exampleServedInvocations(t *testing.T, rel string) []servedInvocation {
 	return invocations
 }
 
-// parseServedInvocations parses the `kodactl call` bodies of one shell command.
+// parseServedInvocations parses the `kodema call` bodies of one shell command.
 func parseServedInvocations(t *testing.T, rel, action, command string) []servedInvocation {
 	t.Helper()
 	matches := servedCallPattern.FindAllStringSubmatchIndex(command, -1)

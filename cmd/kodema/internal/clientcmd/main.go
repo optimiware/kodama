@@ -1,8 +1,9 @@
-// Command kodactl is the thin Userland CLI entrypoint. It starts no server and
-// no background process: it parses its own connection flags, constructs the real
-// login runtime and delegates every command to the injected Userland CLI command
-// logic.
-package main
+// Package clientcmd is the thin Userland CLI entrypoint of the kodema binary:
+// the client commands on a workstation and the toolbox commands inside a
+// container action. It starts no server and no background process: it parses
+// its own connection flags, constructs the real login runtime and delegates
+// every command to the injected Userland CLI command logic.
+package clientcmd
 
 import (
 	"bytes"
@@ -20,11 +21,9 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
-	"os/signal"
 	"path/filepath"
 	"runtime"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/optimiware/kodema/client"
@@ -44,6 +43,7 @@ const defaultSessionLockTimeout = 30 * time.Second
 // specific port.
 type cliDeps struct {
 	runCLI        func(context.Context, cli.Config, []string, cli.Ports, cli.CommandDeps) int
+	printVersion  func(io.Writer)
 	oidc          cli.OIDCClient
 	httpTransport http.RoundTripper
 	browser       cli.BrowserOpener
@@ -65,10 +65,12 @@ func defaultCLIDeps() cliDeps {
 	}
 }
 
-func main() {
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-	os.Exit(run(ctx, os.Args[1:], os.Stdout, os.Stderr, defaultCLIDeps()))
+// Run executes one client command and returns its exit code. printVersion
+// writes the build identity of the binary that links this package.
+func Run(ctx context.Context, args []string, stdout, stderr io.Writer, printVersion func(io.Writer)) int {
+	deps := defaultCLIDeps()
+	deps.printVersion = printVersion
+	return run(ctx, args, stdout, stderr, deps)
 }
 
 // run parses the leading connection flags, constructs the real login runtime
@@ -77,9 +79,9 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer, deps cliD
 	if deps.runCLI == nil {
 		deps.runCLI = cli.RunWithDeps
 	}
-	flags := flag.NewFlagSet("kodactl", flag.ContinueOnError)
+	flags := flag.NewFlagSet("kodema", flag.ContinueOnError)
 	flags.SetOutput(stderr)
-	configFile := flags.String("config", envOr("KODEMA_CONFIG", defaultConfigFile()), "kodactl configuration file")
+	configFile := flags.String("config", envOr("KODEMA_CONFIG", defaultConfigFile()), "client configuration file")
 	serverDefault := firstEnv("KODEMA_SERVER", "KODEMA_SERVER_URL", "KODEMA_URL")
 	serverURL := serverDefault
 	flags.StringVar(&serverURL, "server", serverDefault, "public server base URL")
@@ -116,7 +118,9 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer, deps cliD
 		if !*showVersion && containsHelpArg(flags.Args()[1:]) {
 			return deps.runCLI(ctx, cli.Config{}, []string{"help", "version"}, cli.Ports{Out: stdout, Err: stderr}, cli.CommandDeps{})
 		}
-		printVersion(stdout)
+		if deps.printVersion != nil {
+			deps.printVersion(stdout)
+		}
 		return 0
 	}
 	if flags.Arg(0) == "help" && !flagSet(flags, "ca-file") && !flagSet(flags, "config") {
@@ -541,12 +545,11 @@ func loadConfig(flags *flag.FlagSet, configFile, serverURL, caFile, credentialFi
 		case errors.Is(err, fs.ErrNotExist) && !explicitConfig:
 			// No default configuration file is a normal workstation state.
 		default:
-			return cli.Config{}, nil, usage(stderr, fmt.Sprintf("kodactl config %q is unreadable", configPath))
+			return cli.Config{}, nil, usage(stderr, fmt.Sprintf("config %q is unreadable", configPath))
 		}
 	}
-	explicitServer := flagSet(flags, "server") || flagSet(flags, "server-url") || flagSet(flags, "url") ||
-		envSet("KODEMA_SERVER") || envSet("KODEMA_SERVER_URL") || envSet("KODEMA_URL")
-	if explicitServer {
+	serverFlag := flagSet(flags, "server") || flagSet(flags, "server-url") || flagSet(flags, "url")
+	if serverFlag || envSet("KODEMA_SERVER") || envSet("KODEMA_SERVER_URL") || envSet("KODEMA_URL") {
 		config.ServerURL = serverURL
 	}
 	if flagSet(flags, "ca-file") || envSet("KODEMA_CA_FILE") {
@@ -558,6 +561,17 @@ func loadConfig(flags *flag.FlagSet, configFile, serverURL, caFile, credentialFi
 	}
 	if flagSet(flags, "credential-file") || envSet("KODEMA_CREDENTIAL_FILE") {
 		config.CredentialFile = credentialFile
+	}
+	if mountedCredentialPresent() {
+		// A workload image may have workstation defaults baked into it. Use
+		// the installation and identity supplied by the runtime unless the
+		// caller explicitly selected other ones on the command line.
+		if !serverFlag && os.Getenv("KODEMA_URL") != "" {
+			config.ServerURL = os.Getenv("KODEMA_URL")
+		}
+		if !flagSet(flags, "credential-file") {
+			config.CredentialFile = mountedCredentialFile
+		}
 	}
 	if flagSet(flags, "output") || envSet("KODEMA_OUTPUT") {
 		config.Output = cli.OutputFormat(output)
@@ -580,6 +594,19 @@ func loadConfig(flags *flag.FlagSet, configFile, serverURL, caFile, credentialFi
 		rootCAs = pool
 	}
 	return config, rootCAs, 0
+}
+
+// mountedCredentialFile is where a container runtime mounts the execution
+// credential. Inside a container action it is the credential of every
+// command, with no flag: the toolbox authenticates as the execution. It is a
+// variable so a test can point it at a temporary file.
+var mountedCredentialFile = "/kodema/secrets/KODEMA_TOKEN"
+
+// mountedCredentialPresent reports whether this process runs where a runtime
+// mounted an execution credential.
+func mountedCredentialPresent() bool {
+	info, err := os.Stat(mountedCredentialFile)
+	return err == nil && info.Mode().IsRegular()
 }
 
 // loadCABundleFile reads and validates one PEM CA certificate bundle file. It
@@ -692,7 +719,7 @@ func defaultSessionFile() string {
 	return filepath.Join(directory, "kodema", "session.json")
 }
 
-// defaultConfigFile returns the kodactl configuration path under the user
+// defaultConfigFile returns the client configuration path under the user
 // config directory.
 func defaultConfigFile() string {
 	directory, err := os.UserConfigDir()

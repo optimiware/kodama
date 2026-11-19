@@ -63,6 +63,7 @@ func resilienceProductionEnv(dir string) map[string]string {
 		"KODEMA_WORKSPACE_PVC_SIZE":          "1Gi",
 		"KODEMA_WORKSPACE_PVC_ACCESS_MODE":   "ReadWriteOnce",
 		"KODEMA_TENANT":                      "tenant-a",
+		"KODEMA_TOOLBOX_IMAGE":               "registry.example/kodema@sha256:" + strings.Repeat("a", 64),
 		"KODEMA_INSTALLATION_ID":             "installation-qualification",
 		"KODEMA_DATA_DIR":                    dir,
 		"KODEMA_PUBLIC_URL":                  "https://kodema.example",
@@ -152,7 +153,7 @@ func resilienceBuildEntrypoint(t *testing.T) string {
 	return binary
 }
 
-// resilienceRunEntrypoint runs `kodema server --profile=production` with the
+// resilienceRunEntrypoint runs `kodema serve --profile=production` with the
 // exact environment and returns its exit code and stderr. A process that does
 // not refuse within the bound fails the probe.
 func resilienceRunEntrypoint(t *testing.T, binary string, env map[string]string) (int, string) {

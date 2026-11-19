@@ -55,18 +55,18 @@ func ParseCABundle(pem []byte) (*x509.CertPool, error) {
 	return pool, nil
 }
 
-// ParseConfig decodes and validates one kodactl configuration. Unknown fields,
+// ParseConfig decodes and validates one kodema configuration. Unknown fields,
 // a non-object body and an invalid configuration refuse.
 func ParseConfig(data []byte) (Config, error) {
 	var config Config
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&config); err != nil {
-		return Config{}, fmt.Errorf("invalid kodactl config: %w", err)
+		return Config{}, fmt.Errorf("invalid kodema config: %w", err)
 	}
 	var extra any
 	if err := decoder.Decode(&extra); err != io.EOF {
-		return Config{}, fmt.Errorf("invalid kodactl config: trailing data")
+		return Config{}, fmt.Errorf("invalid kodema config: trailing data")
 	}
 	if err := config.Validate(); err != nil {
 		return Config{}, err

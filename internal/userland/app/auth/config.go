@@ -2,7 +2,7 @@
 // Login Broker (`kodema auth serve`).
 //
 // It uses only the Go standard library and public/Userland contracts, minting
-// standard ES256 JWTs that verify cleanly with both `kodactl login` and
+// standard ES256 JWTs that verify cleanly with both `kodema login` and
 // Kodema's S05 OIDC access-token verifier.
 package auth
 

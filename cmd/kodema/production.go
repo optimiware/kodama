@@ -119,6 +119,7 @@ func buildProduction(options serverOptions, getenv productionEnv, kube driverkub
 		"KODEMA_TLS_DIR",
 		"KODEMA_OIDC_ISSUER", "KODEMA_OIDC_AUDIENCE", "KODEMA_OIDC_JWKS_URL", "KODEMA_OIDC_TENANT_CLAIM",
 		"KODEMA_WORKSPACE_PVC_STORAGE_CLASS", "KODEMA_WORKSPACE_PVC_SIZE", "KODEMA_WORKSPACE_PVC_ACCESS_MODE",
+		"KODEMA_TOOLBOX_IMAGE",
 	} {
 		value, err := need(name)
 		if err != nil {
@@ -279,7 +280,7 @@ func buildProduction(options serverOptions, getenv productionEnv, kube driverkub
 	if tenants.list {
 		config.Production.Tenants = make([]shellapp.ProductionTenant, 0, len(tenants.entries))
 		for _, entry := range tenants.entries {
-			adapter, err := newProductionTenantAdapter(getenv, cluster, entry, options.PublicURL)
+			adapter, err := newProductionTenantAdapter(getenv, cluster, entry, options)
 			if err != nil {
 				return productionBuild{}, err
 			}
@@ -292,7 +293,7 @@ func buildProduction(options serverOptions, getenv productionEnv, kube driverkub
 		}
 	} else {
 		entry := tenants.entries[0]
-		adapter, err := newProductionTenantAdapter(getenv, cluster, entry, options.PublicURL)
+		adapter, err := newProductionTenantAdapter(getenv, cluster, entry, options)
 		if err != nil {
 			return productionBuild{}, err
 		}
@@ -415,16 +416,18 @@ func parseProductionTenants(getenv productionEnv) (productionTenantSet, error) {
 // newProductionTenantAdapter builds one tenant's Kubernetes runtime and
 // workspace adapter from the shared cluster client and the installation
 // workload policy.
-func newProductionTenantAdapter(getenv productionEnv, cluster *driverkube.Cluster, tenant productionTenantEntry, publicURL string) (*runtimekube.Adapter, error) {
+func newProductionTenantAdapter(getenv productionEnv, cluster *driverkube.Cluster, tenant productionTenantEntry, options serverOptions) (*runtimekube.Adapter, error) {
 	imagePullSecrets, err := parseImagePullSecrets(getenv("KODEMA_WORKLOAD_IMAGE_PULL_SECRETS"))
 	if err != nil {
 		return nil, err
 	}
 	adapter, err := runtimekube.New(runtimekube.Config{
-		Cluster:   cluster,
-		Namespace: tenant.Namespace,
-		TenantID:  tenant.ID,
-		KodemaURL: publicURL,
+		Cluster:      cluster,
+		Namespace:    tenant.Namespace,
+		TenantID:     tenant.ID,
+		KodemaURL:    options.PublicURL,
+		ToolboxImage: strings.TrimSpace(getenv("KODEMA_TOOLBOX_IMAGE")),
+		GitURL:       strings.ReplaceAll(options.WorkloadGitURL, "{tenant}", string(tenant.ID)),
 		Policy: runtimekube.Policy{
 			CPURequest:    envOrGetenv(getenv, "KODEMA_WORKLOAD_CPU_REQUEST", "250m"),
 			CPULimit:      envOrGetenv(getenv, "KODEMA_WORKLOAD_CPU_LIMIT", "1"),

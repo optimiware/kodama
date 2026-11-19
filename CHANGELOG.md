@@ -1,5 +1,63 @@
 # Changelog
 
+## Unreleased
+
+Changed:
+
+- Kodema is one binary. `kodactl` is gone: its commands are `kodema`'s, under
+  the same names (`kodema run`, `kodema login`, `kodema inbox`, `kodema
+  approve`, `kodema logs`, `kodema task`, `kodema pipeline`, `kodema call`,
+  `kodema mcp`). Two are renamed: `kodactl status` is `kodema session`, because
+  `kodema status` inspects the local installation, and `kodactl helper` is
+  `kodema git credential`. A release has one archive per platform,
+  `kodema_<version>_<os>_<arch>.tar.gz`. `install.sh` installs it, and still
+  installs `kodactl` from a release that ships one (0.2.3 and older).
+- `kodema serve` runs the control plane. `kodema server` remains accepted.
+- `kodema git credential <get|store|erase>` speaks Git's credential-helper
+  protocol: Git passes the request on standard input, so Git can call it
+  directly. A URL argument is still accepted in place of that request.
+- On Podman and Kubernetes a new container action starts in `/workspace`, not in the
+  image's working directory.
+
+Added:
+
+- The toolbox. On Podman and Kubernetes every container action has the control
+  plane's own `kodema` binary read-only at `/kodema/bin`, at the end of
+  `PATH`. Inside an action it authenticates with the mounted execution
+  credential and needs no flag: `kodema whoami`, `kodema call <operation>`.
+- Outputs as files. An action that declares outputs has a writable
+  `/kodema/outputs/<its name>`. A command writes a value to the file named for
+  its key, `git rev-parse HEAD > /kodema/outputs/build/candidate`, and after
+  the last command has succeeded Kodema runs `kodema output push`, which
+  submits the files in one request with one trailing newline removed from each
+  value. A refused submission fails the action. Submitting over HTTP from a
+  command keeps working.
+- Git with no credential code. With a workload Git URL (`--workload-git-url`,
+  `KODEMA_WORKLOAD_GIT_URL`; `kodema up` and the Podman bundle set it) an
+  action has `KODEMA_GIT_URL` and Git is configured, for that origin alone, to
+  authenticate as the execution through `kodema git credential` and to trust
+  the installation's CA: `git clone "$KODEMA_GIT_URL/<repository>"`. The
+  helper list of that origin is reset first, so no helper of the image is
+  asked for the execution credential or keeps it.
+- `kodema serve --toolbox-file` (`KODEMA_TOOLBOX_FILE`) names the binary the
+  test profile mounts. On Linux it defaults to the running executable; on
+  another system it is required.
+
+Documentation:
+
+- The quick start uses `kodema` throughout and configures Git with
+  `kodema git credential` as the only helper of the installation's origin. A
+  system helper such as the macOS keychain otherwise keeps a Kodema token past
+  its lifetime, and the first Git command after a renewal is refused once.
+
+Known limitations:
+
+- Production requires a digest-pinned control-plane image (`image.digest` in
+  Helm). Each Job copies `kodema` from that image in an init container. The
+  tenant's nodes need pull access to it as well as the action image.
+- The public OAuth client ID is still `kodactl` by default. It is an
+  identifier registered with identity providers, not the name of a binary.
+
 ## 0.2.3
 
 Fixed:

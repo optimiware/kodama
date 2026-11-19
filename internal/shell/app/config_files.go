@@ -2,7 +2,7 @@ package app
 
 // Trusted-file configuration of the optional Shell gateways.
 //
-// `kodema server` reads the model gateway and the external MCP tool proxy from
+// `kodema serve` reads the model gateway and the external MCP tool proxy from
 // operator-owned files named by KODEMA_MODELS_FILE and KODEMA_TOOL_PROXY_FILE.
 // The files are trusted configuration: they carry project scopes, provider or
 // upstream endpoints, secret names and bounds, never a secret value, a

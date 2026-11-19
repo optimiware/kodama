@@ -6,7 +6,7 @@
 # configurable. This file never writes, reads aloud or prints a secret.
 #
 # The bundle runs PostgreSQL, JetStream NATS, OAuthSonas (with a host-side TLS
-# terminator), `kodema server --profile test` and `kodema git serve` as
+# terminator), `kodema serve --profile test` and `kodema git serve` as
 # containers on the same rootless Podman store. Secrets live only in 0600
 # files under the state directory and reach containers through --env-file.
 

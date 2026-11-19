@@ -95,7 +95,7 @@ func CheckSubjectExact(subject *api.Subject, want map[string]string) error {
 // for engineers and executions, execution-only default-branch writes and
 // reviewer approval for the default branch. A weakened or missing rule is
 // refused; comments and blank lines are ignored.
-func CheckRepositoryPolicy(policy []byte, repository string) error {
+func CheckRepositoryPolicy(policy []byte, repository, resourceID string) error {
 	if strings.TrimSpace(repository) == "" {
 		return fmt.Errorf("repository name is empty")
 	}
@@ -129,6 +129,15 @@ func CheckRepositoryPolicy(policy []byte, repository string) error {
 	}
 	if !found {
 		return fmt.Errorf("the committed policy has no %q block", want[0])
+	}
+	// A statically mapped repository need not repeat its mapping. When the
+	// provisioner writes a resource option it must match this installation's
+	// descriptor exactly; don't silently discard arbitrary option lines.
+	if len(block) > 1 && strings.HasPrefix(block[1], "option resource") {
+		if resourceID == "" || block[1] != "option resource = "+resourceID {
+			return fmt.Errorf("the committed %q resource mapping %q does not match %q", repository, block[1], resourceID)
+		}
+		block = append(block[:1], block[2:]...)
 	}
 	if len(block) != len(want) {
 		return fmt.Errorf("the committed %q policy has %d rule(s) %v; want exactly %d %v", repository, len(block), block, len(want), want)

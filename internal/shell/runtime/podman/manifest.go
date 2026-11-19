@@ -44,6 +44,13 @@ const (
 	// never-started and is never replayed. It is removed with the identity's
 	// materialization.
 	startAttemptRecordName = "start-attempted.json"
+	// toolboxDirectory holds the installation copies of the toolbox, one
+	// directory per binary digest, as a sibling of the workload roots. A copy
+	// is bind-mounted read-only at /kodema/bin and is never removed with a
+	// workload: another workload may still run from it.
+	toolboxDirectory = ".toolbox"
+	// executableMode is the mode of the installed toolbox binary.
+	executableMode = os.FileMode(0o555)
 )
 
 // preparedFile is one complete activation file with its confined logical path.
@@ -71,6 +78,15 @@ type preparationRecord struct {
 	Env         []preparedEnvVar `json:"env,omitempty"`
 	Secrets     []id.SecretName  `json:"secrets,omitempty"`
 	Files       []string         `json:"files"`
+	// Toolbox is the installation copy bound at /kodema/bin, Outputs reports a
+	// declared output and GitURL is the Git service of the workload. They are
+	// recorded so a reconstructed adapter builds the identical container even
+	// when its configuration changed since.
+	Toolbox string `json:"toolbox,omitempty"`
+	Outputs bool   `json:"outputs,omitempty"`
+	GitURL  string `json:"git_url,omitempty"`
+	// An absent working directory in a 0.2.x record means use the image default.
+	WorkingDir string `json:"working_dir,omitempty"`
 }
 
 // workloadRoot returns the per-identity adapter root.
@@ -225,7 +241,7 @@ func buildPreparationWithCA(request engine.PrepareRequest, workloadCAPEM []byte)
 }
 
 // preparationRecordFor builds the durable preparation marker for one request.
-func preparationRecordFor(request engine.PrepareRequest, files []preparedFile, secrets []engine.SecretValue) preparationRecord {
+func (a *Adapter) preparationRecordFor(request engine.PrepareRequest, files []preparedFile, secrets []engine.SecretValue) preparationRecord {
 	env := make([]preparedEnvVar, 0, len(request.Container.Env))
 	for _, entry := range request.Container.Env {
 		env = append(env, preparedEnvVar{Name: entry.Name, Value: entry.Value})
@@ -248,6 +264,12 @@ func preparationRecordFor(request engine.PrepareRequest, files []preparedFile, s
 		Env:         env,
 		Secrets:     names,
 		Files:       paths,
+		Toolbox:     a.toolboxDir,
+		// Without a toolbox nothing submits the files, so no directory is
+		// mounted for them.
+		Outputs:    a.toolboxDir != "" && len(request.Container.Outputs) > 0,
+		GitURL:     a.gitURL,
+		WorkingDir: workspace.WorkspaceRoot,
 	}
 }
 
@@ -278,12 +300,24 @@ func (a *Adapter) containerSpec(prepared preparationRecord, identity engine.Effe
 	// Prepare records the CA file it wrote; the adapter's current
 	// configuration may have changed since.
 	hasCA := slices.Contains(prepared.Files, WorkloadCAPath)
-	env := make([]string, 0, len(prepared.Env)+5)
+	caFile := ""
+	if hasCA {
+		caFile = WorkloadCAPath
+	}
+	gitEnv, err := workspace.GitEnvironment(prepared.GitURL, caFile, prepared.Toolbox != "")
+	if err != nil {
+		return ContainerSpec{}, err
+	}
+	env := make([]string, 0, len(prepared.Env)+len(gitEnv)+5)
 	for _, entry := range prepared.Env {
-		if hasCA && string(entry.Name) == EnvWorkloadCAFile {
+		name := string(entry.Name)
+		if hasCA && name == EnvWorkloadCAFile {
 			continue
 		}
-		env = append(env, string(entry.Name)+"="+entry.Value)
+		if len(gitEnv) > 0 && (name == workspace.EnvGitURL || workspace.IsGitConfigEnv(name)) {
+			continue
+		}
+		env = append(env, name+"="+entry.Value)
 	}
 	env = append(env,
 		id.EnvURL+"="+a.kodemaURL,
@@ -296,28 +330,73 @@ func (a *Adapter) containerSpec(prepared preparationRecord, identity engine.Effe
 	if hasCA {
 		env = append(env, EnvWorkloadCAFile+"="+WorkloadCAPath)
 	}
-	return ContainerSpec{
-		Name:       name,
-		Image:      prepared.Image,
-		Entrypoint: []string{script.ShellPath, entrypointScriptPath},
-		Env:        env,
-		Labels:     a.labels(identity, prepared.WorkspaceID),
-		Mounts: []Mount{
-			{
-				Type:        "bind",
-				Source:      activationDir(a.root, identity.WorkloadID),
-				Destination: activationRoot,
-				ReadOnly:    true,
-			},
-			{
-				Type:        "volume",
-				Source:      volumeName,
-				Destination: workspace.WorkspaceRoot,
-				ReadOnly:    false,
-			},
+	env = append(env, gitEnv...)
+	mounts := []Mount{
+		{
+			Type:        "bind",
+			Source:      activationDir(a.root, identity.WorkloadID),
+			Destination: activationRoot,
+			ReadOnly:    true,
 		},
+		{
+			Type:        "volume",
+			Source:      volumeName,
+			Destination: workspace.WorkspaceRoot,
+			ReadOnly:    false,
+		},
+	}
+	// Both nest inside the read-only activation bind, on mount points Prepare
+	// created there.
+	if prepared.Toolbox != "" {
+		mounts = append(mounts, Mount{
+			Type:        "bind",
+			Source:      prepared.Toolbox,
+			Destination: workspace.ToolboxRoot,
+			ReadOnly:    true,
+		})
+	}
+	if prepared.Outputs {
+		outputs, err := workspace.OutputDirectory(prepared.ActionName)
+		if err != nil {
+			return ContainerSpec{}, err
+		}
+		mounts = append(mounts, Mount{
+			Type:        "tmpfs",
+			Destination: outputs,
+			SizeBytes:   workspace.OutputDirectoryBytes,
+		})
+	}
+	return ContainerSpec{
+		Name:  name,
+		Image: prepared.Image,
+		Entrypoint: workspace.Entrypoint(entrypointScriptPath, workspace.Launch{
+			Toolbox: prepared.Toolbox != "",
+			Outputs: prepared.Outputs,
+		}),
+		Env:           env,
+		Labels:        a.labels(identity, prepared.WorkspaceID),
+		WorkingDir:    prepared.WorkingDir,
+		Mounts:        mounts,
 		RestartPolicy: "no",
 	}, nil
+}
+
+// mountPoints returns the directories Prepare creates inside the activation
+// directory so the toolbox bind and the output tmpfs can nest in the read-only
+// activation bind.
+func mountPoints(record preparationRecord) ([]string, error) {
+	var points []string
+	if record.Toolbox != "" {
+		points = append(points, workspace.ToolboxRoot)
+	}
+	if record.Outputs {
+		outputs, err := workspace.OutputDirectory(record.ActionName)
+		if err != nil {
+			return nil, err
+		}
+		points = append(points, outputs)
+	}
+	return points, nil
 }
 
 // encodePreparationRecord marshals the marker deterministically so a repeated

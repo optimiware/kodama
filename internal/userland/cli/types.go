@@ -1,4 +1,4 @@
-// Package cli declares kodactl configuration, sessions, output formats and the
+// Package cli declares kodema configuration, sessions, output formats and the
 // Git credential-helper contract.
 //
 // The declarations take their filesystem, client and output collaborators as
@@ -15,7 +15,7 @@ import (
 	"github.com/optimiware/kodema/client"
 )
 
-// OutputFormat is one kodactl output format.
+// OutputFormat is one kodema output format.
 type OutputFormat string
 
 const (
@@ -38,7 +38,7 @@ func (format OutputFormat) Valid() bool {
 	return false
 }
 
-// Config is the kodactl configuration input.
+// Config is the kodema configuration input.
 type Config struct {
 	ServerURL      string       `json:"server_url"`
 	CredentialFile string       `json:"credential_file,omitempty"`
@@ -64,7 +64,7 @@ type DirEntry struct {
 	IsDir bool
 }
 
-// FileSystem is the injected kodactl filesystem boundary. It is a small
+// FileSystem is the injected kodema filesystem boundary. It is a small
 // consumer-owned port so command logic never opens a real file in unit tests.
 //
 // ReplaceFile is the durable-replace operation: it creates missing parent
@@ -82,6 +82,8 @@ type DirEntry struct {
 // their existing behavior.
 type FileSystem interface {
 	ReadFile(name string) ([]byte, error)
+	// ReadRegularFile reads at most limit bytes and refuses links and special files.
+	ReadRegularFile(name string, limit int64) ([]byte, error)
 	WriteFile(name string, data []byte, perm fs.FileMode) error
 	ReplaceFile(name string, data []byte, perm fs.FileMode) error
 	Remove(name string) error
@@ -102,7 +104,7 @@ type FileSessionStore struct {
 	Now   func() time.Time
 }
 
-// Ports are the injected kodactl collaborators. A command only uses the ports
+// Ports are the injected kodema collaborators. A command only uses the ports
 // it needs; a missing required port is a failure, never a panic.
 type Ports struct {
 	Client     client.Transport
@@ -123,7 +125,7 @@ type Origin struct {
 	Path   string `json:"path,omitempty"`
 }
 
-// Session is one kodactl session input. A human session and a mounted execution
+// Session is one kodema session input. A human session and a mounted execution
 // token are separate sources; a service credential is not a helper session.
 type Session struct {
 	Source    client.CredentialKind `json:"source"`

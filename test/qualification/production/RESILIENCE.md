@@ -30,7 +30,7 @@ only when a named host tool (`go`, `curl`, `sha256sum`) is missing.
 
 | Probe | Invariants |
 |---|---|
-| `TestHarnessProductionEntrypointRefusals` | The real `kodema server --profile=production` refuses test/dev key adapters (`keyfile`, `ephemeral`), plaintext broker transport, and the required OIDC settings and key reference when they are set explicitly empty; every refusal is non-zero, names the setting and renders no secret. |
+| `TestHarnessProductionEntrypointRefusals` | The real `kodema serve --profile=production` refuses test/dev key adapters (`keyfile`, `ephemeral`), plaintext broker transport, and the required OIDC settings and key reference when they are set explicitly empty; every refusal is non-zero, names the setting and renders no secret. |
 | `TestHarnessKMSNegativeMatrix` | A foreign key family, an unconfigured version, a KMS failure, a wrong-length key and a tampered envelope are refused without plaintext; a foreign reference or unknown version never reaches the KMS; a provider error is not echoed. |
 | `TestHarnessIdentityCredentialMatrix` | Admin is not Reviewer; a service holding Admin never administers; an execution may submit its own outputs but never resolve requests or administer; a role in one tenant never authorizes another; a disabled principal is refused; an unknown operation is an error. |
 
