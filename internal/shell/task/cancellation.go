@@ -42,6 +42,17 @@ func (service *Service) cancelReduction(
 	pointer id.ExecutionID,
 	at time.Time,
 ) (kernel.Execution, *flow.Commit, error) {
+	return service.cancelReductionWithReason(ctx, scope, pointer, flow.CancelRequested, "", at)
+}
+
+func (service *Service) cancelReductionWithReason(
+	ctx context.Context,
+	scope tenancy.Scope,
+	pointer id.ExecutionID,
+	reason flow.CancelReason,
+	detail string,
+	at time.Time,
+) (kernel.Execution, *flow.Commit, error) {
 	aggregate, err := service.aggregates.Load(ctx, scope, pointer)
 	if err != nil {
 		return kernel.Execution{}, nil, err
@@ -56,7 +67,8 @@ func (service *Service) cancelReduction(
 	}
 	_, commit, err := flow.Reduce(aggregate, flow.CancelFact{
 		ExecutionID: aggregate.ID,
-		Reason:      flow.CancelRequested,
+		Reason:      reason,
+		Detail:      detail,
 		At:          at,
 	})
 	if err != nil {

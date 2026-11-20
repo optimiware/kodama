@@ -16,7 +16,7 @@ import (
 // runTask dispatches the ergonomic `kodema task` subcommands.
 func runTask(ctx context.Context, config Config, args []string, ports Ports, deps CommandDeps) int {
 	if len(args) == 0 {
-		return usage(ports.Err, "task requires a subcommand (create|run|list|show|start|ask|reply|cancel)")
+		return usage(ports.Err, "task requires a subcommand (create|run|list|show|start|restart|ask|reply|cancel)")
 	}
 	if args[0] == "-h" || args[0] == "--help" || args[0] == "help" {
 		return runHelp(ports.Out, ports.Err, append([]string{"task"}, args[1:]...))
@@ -30,6 +30,8 @@ func runTask(ctx context.Context, config Config, args []string, ports Ports, dep
 		return runTaskShow(ctx, config, args[1:], ports)
 	case "start":
 		return runTaskStart(ctx, config, args[1:], ports, deps)
+	case "restart":
+		return runTaskRestart(ctx, config, args[1:], ports, deps)
 	case "ask":
 		return runTaskAsk(ctx, config, args[1:], ports, deps)
 	case "reply":
@@ -290,11 +292,19 @@ func runTaskStart(ctx context.Context, config Config, args []string, ports Ports
 		return runHelp(ports.Out, ports.Err, []string{"task", "start"})
 	}
 	var (
+		projectFlag        string
+		pipelineFlag       string
+		inputPairs         []string
+		outputInputPairs   []string
 		expectedVerRaw     string
 		outputFlag         string
 		idempotencyKeyFlag string
 	)
 	spec := newArgSpec()
+	spec.stringFlag(&projectFlag, "--project", "-p")
+	spec.stringFlag(&pipelineFlag, "--pipeline")
+	spec.listFlag(&inputPairs, "--input")
+	spec.listFlag(&outputInputPairs, "--input-from-output")
 	spec.stringFlag(&expectedVerRaw, "--expected-version")
 	spec.stringFlag(&outputFlag, "--output")
 	spec.stringFlag(&idempotencyKeyFlag, "--idempotency-key")
@@ -310,6 +320,14 @@ func runTaskStart(ctx context.Context, config Config, args []string, ports Ports
 	if err != nil {
 		return usage(ports.Err, err.Error())
 	}
+	inputs, err := parseKeyValues(inputPairs, "input")
+	if err != nil {
+		return usage(ports.Err, err.Error())
+	}
+	outputRefs, err := parseOutputInputRefs(outputInputPairs)
+	if err != nil {
+		return usage(ports.Err, err.Error())
+	}
 	format, err := resolveOutputFormat(outputFlag, config)
 	if err != nil {
 		return usage(ports.Err, err.Error())
@@ -317,45 +335,84 @@ func runTaskStart(ctx context.Context, config Config, args []string, ports Ports
 	if err := config.Validate(); err != nil {
 		return usage(ports.Err, err.Error())
 	}
-	req := api.TaskStartRequest{TaskID: taskID}
-	if err := req.Validate(); err != nil {
+	if err := (api.TaskReadRequest{TaskID: taskID}).Validate(); err != nil {
 		return usage(ports.Err, publicMessage(err))
 	}
 	if ports.Client == nil {
 		return failure(ports.Err, fmt.Errorf("no public client is configured"))
 	}
 
-	if expectedVer == nil {
-		_, readView, readErr := fetchTaskRead(ctx, ports, taskID)
+	projectID := resolveProject(projectFlag, config, deps)
+	pipelineTarget, resolvedByName, resolveErr := resolveTaskPipelineTarget(ctx, ports, projectID, strings.TrimSpace(pipelineFlag))
+	if resolveErr != nil {
+		return failure(ports.Err, resolveErr)
+	}
+
+	var readView api.TaskReadResult
+	if expectedVer == nil || len(outputRefs) > 0 {
+		_, fetched, readErr := fetchTaskRead(ctx, ports, taskID)
 		if readErr != nil {
 			return failure(ports.Err, readErr)
 		}
-		if readView.LifecycleVersion > 0 {
+		readView = fetched
+		if expectedVer == nil && readView.LifecycleVersion > 0 {
 			v := readView.LifecycleVersion
 			expectedVer = &v
 		}
 	}
+	if len(outputRefs) > 0 {
+		resolvedInputs, refErr := resolveInputsFromLatestSucceeded(ctx, ports, taskID, readView, outputRefs, inputs)
+		if refErr != nil {
+			return failure(ports.Err, refErr)
+		}
+		inputs = resolvedInputs
+	}
 
-	input, err := json.Marshal(req)
-	if err != nil {
-		return failure(ports.Err, err)
+	buildInvocation := func(pipelineID string) (api.Invocation, int) {
+		req := api.TaskStartRequest{
+			TaskID:     taskID,
+			PipelineID: pipelineID,
+			Inputs:     inputs,
+		}
+		if err := req.Validate(); err != nil {
+			return api.Invocation{}, usage(ports.Err, publicMessage(err))
+		}
+		input, err := json.Marshal(req)
+		if err != nil {
+			return api.Invocation{}, failure(ports.Err, err)
+		}
+		key, err := makeIdempotencyKey(idempotencyKeyFlag, "task.start", deps.Login.Random)
+		if err != nil {
+			return api.Invocation{}, failure(ports.Err, err)
+		}
+		invocation := api.Invocation{
+			Operation: "task.start",
+			Request: api.Request{
+				Input:           input,
+				ExpectedVersion: expectedVer,
+				IdempotencyKey:  key,
+			},
+		}
+		if err := invocation.Validate(); err != nil {
+			return api.Invocation{}, usage(ports.Err, publicMessage(err))
+		}
+		return invocation, ExitSuccess
 	}
-	key, err := makeIdempotencyKey(idempotencyKeyFlag, "task.start", deps.Login.Random)
-	if err != nil {
-		return failure(ports.Err, err)
-	}
-	invocation := api.Invocation{
-		Operation: "task.start",
-		Request: api.Request{
-			Input:           input,
-			ExpectedVersion: expectedVer,
-			IdempotencyKey:  key,
-		},
-	}
-	if err := invocation.Validate(); err != nil {
-		return usage(ports.Err, publicMessage(err))
+
+	invocation, status := buildInvocation(pipelineTarget)
+	if status != ExitSuccess {
+		return status
 	}
 	result, err := ports.Client.Invoke(ctx, invocation)
+	if err != nil && pipelineTarget != "" && !resolvedByName && projectID != "" && isNotFoundError(err) {
+		if resolved, found, lookupErr := resolvePipelineIDByName(ctx, ports, projectID, pipelineTarget); lookupErr == nil && found && resolved != pipelineTarget {
+			retryInv, retryStatus := buildInvocation(resolved)
+			if retryStatus != ExitSuccess {
+				return retryStatus
+			}
+			result, err = ports.Client.Invoke(ctx, retryInv)
+		}
+	}
 	if err != nil {
 		return failure(ports.Err, err)
 	}
@@ -373,6 +430,284 @@ func runTaskStart(ctx context.Context, config Config, args []string, ports Ports
 	fmt.Fprintf(ports.Out, "task_id\t%s\nexecution_id\t%s\nlifecycle_version\t%d\n",
 		taskID, started.ExecutionID, started.LifecycleVersion)
 	return ExitSuccess
+}
+
+func runTaskRestart(ctx context.Context, config Config, args []string, ports Ports, deps CommandDeps) int {
+	if hasHelpFlag(args) {
+		return runHelp(ports.Out, ports.Err, []string{"task", "restart"})
+	}
+	var (
+		reasonFlag         string
+		projectFlag        string
+		pipelineFlag       string
+		inputPairs         []string
+		outputInputPairs   []string
+		expectedVerRaw     string
+		outputFlag         string
+		idempotencyKeyFlag string
+	)
+	spec := newArgSpec()
+	spec.stringFlag(&reasonFlag, "--reason")
+	spec.stringFlag(&projectFlag, "--project", "-p")
+	spec.stringFlag(&pipelineFlag, "--pipeline")
+	spec.listFlag(&inputPairs, "--input")
+	spec.listFlag(&outputInputPairs, "--input-from-output")
+	spec.stringFlag(&expectedVerRaw, "--expected-version")
+	spec.stringFlag(&outputFlag, "--output")
+	spec.stringFlag(&idempotencyKeyFlag, "--idempotency-key")
+	positionals, _, err := spec.parse(args)
+	if err != nil {
+		return usage(ports.Err, err.Error())
+	}
+	if len(positionals) != 1 || strings.TrimSpace(positionals[0]) == "" {
+		return usage(ports.Err, "task restart requires <task-id>")
+	}
+	taskID := strings.TrimSpace(positionals[0])
+	expectedVer, err := parsePositiveVersion(expectedVerRaw, "--expected-version")
+	if err != nil {
+		return usage(ports.Err, err.Error())
+	}
+	inputs, err := parseKeyValues(inputPairs, "input")
+	if err != nil {
+		return usage(ports.Err, err.Error())
+	}
+	outputRefs, err := parseOutputInputRefs(outputInputPairs)
+	if err != nil {
+		return usage(ports.Err, err.Error())
+	}
+	format, err := resolveOutputFormat(outputFlag, config)
+	if err != nil {
+		return usage(ports.Err, err.Error())
+	}
+	if err := config.Validate(); err != nil {
+		return usage(ports.Err, err.Error())
+	}
+	if err := (api.TaskReadRequest{TaskID: taskID}).Validate(); err != nil {
+		return usage(ports.Err, publicMessage(err))
+	}
+	if ports.Client == nil {
+		return failure(ports.Err, fmt.Errorf("no public client is configured"))
+	}
+
+	projectID := resolveProject(projectFlag, config, deps)
+	pipelineTarget, resolvedByName, resolveErr := resolveTaskPipelineTarget(ctx, ports, projectID, strings.TrimSpace(pipelineFlag))
+	if resolveErr != nil {
+		return failure(ports.Err, resolveErr)
+	}
+
+	var readView api.TaskReadResult
+	if expectedVer == nil || len(outputRefs) > 0 {
+		_, fetched, readErr := fetchTaskRead(ctx, ports, taskID)
+		if readErr != nil {
+			return failure(ports.Err, readErr)
+		}
+		readView = fetched
+		if expectedVer == nil && readView.LifecycleVersion > 0 {
+			v := readView.LifecycleVersion
+			expectedVer = &v
+		}
+	}
+	if len(outputRefs) > 0 {
+		resolvedInputs, refErr := resolveInputsFromLatestSucceeded(ctx, ports, taskID, readView, outputRefs, inputs)
+		if refErr != nil {
+			return failure(ports.Err, refErr)
+		}
+		inputs = resolvedInputs
+	}
+
+	buildInvocation := func(pipelineID string) (api.Invocation, int) {
+		req := api.TaskRestartRequest{
+			TaskID:     taskID,
+			Reason:     reasonFlag,
+			PipelineID: pipelineID,
+			Inputs:     inputs,
+		}
+		if err := req.Validate(); err != nil {
+			return api.Invocation{}, usage(ports.Err, publicMessage(err))
+		}
+		input, err := json.Marshal(req)
+		if err != nil {
+			return api.Invocation{}, failure(ports.Err, err)
+		}
+		key, err := makeIdempotencyKey(idempotencyKeyFlag, "task.restart", deps.Login.Random)
+		if err != nil {
+			return api.Invocation{}, failure(ports.Err, err)
+		}
+		invocation := api.Invocation{
+			Operation: "task.restart",
+			Request: api.Request{
+				Input:           input,
+				ExpectedVersion: expectedVer,
+				IdempotencyKey:  key,
+			},
+		}
+		if err := invocation.Validate(); err != nil {
+			return api.Invocation{}, usage(ports.Err, publicMessage(err))
+		}
+		return invocation, ExitSuccess
+	}
+
+	invocation, status := buildInvocation(pipelineTarget)
+	if status != ExitSuccess {
+		return status
+	}
+	result, err := ports.Client.Invoke(ctx, invocation)
+	if err != nil && pipelineTarget != "" && !resolvedByName && projectID != "" && isNotFoundError(err) {
+		if resolved, found, lookupErr := resolvePipelineIDByName(ctx, ports, projectID, pipelineTarget); lookupErr == nil && found && resolved != pipelineTarget {
+			retryInv, retryStatus := buildInvocation(resolved)
+			if retryStatus != ExitSuccess {
+				return retryStatus
+			}
+			result, err = ports.Client.Invoke(ctx, retryInv)
+		}
+	}
+	if err != nil {
+		return failure(ports.Err, err)
+	}
+	if format == OutputJSON {
+		if err := renderResult(ports.Out, OutputJSON, result); err != nil {
+			return failure(ports.Err, err)
+		}
+		return ExitSuccess
+	}
+	var restarted api.TaskRestartResult
+	if err := json.Unmarshal(result.Body, &restarted); err != nil || restarted.ExecutionID == "" {
+		fmt.Fprintf(ports.Out, "restarted task %s\n", taskID)
+		return ExitSuccess
+	}
+	fmt.Fprintf(ports.Out, "task_id\t%s\nexecution_id\t%s\n", taskID, restarted.ExecutionID)
+	if restarted.SupersededExecution != "" {
+		fmt.Fprintf(ports.Out, "superseded_execution\t%s\n", restarted.SupersededExecution)
+	}
+	fmt.Fprintf(ports.Out, "lifecycle_version\t%d\n", restarted.LifecycleVersion)
+	return ExitSuccess
+}
+
+type outputInputRef struct {
+	inputKey   string
+	actionName string
+	outputKey  string
+}
+
+// resolveTaskPipelineTarget resolves dotted pipeline names upfront (dots are
+// valid pipeline names but not valid opaque IDs). Other targets are sent as-is
+// and retried via resolvePipelineIDByName if the server reports not_found.
+func resolveTaskPipelineTarget(ctx context.Context, ports Ports, projectID, target string) (string, bool, error) {
+	if target == "" || !strings.Contains(target, ".") {
+		return target, false, nil
+	}
+	if projectID == "" {
+		return "", false, fmt.Errorf("resolving pipeline name %q requires --project <id> or KODEMA_PROJECT", target)
+	}
+	resolved, found, err := resolvePipelineIDByName(ctx, ports, projectID, target)
+	if err != nil {
+		return "", false, err
+	}
+	if !found {
+		return "", false, fmt.Errorf("pipeline %q not found in project %q", target, projectID)
+	}
+	return resolved, true, nil
+}
+
+// parseOutputInputRefs parses repeatable `<input-key>=<action>.<output-key>`
+// flags used to populate task inputs from the task's latest succeeded execution.
+func parseOutputInputRefs(entries []string) ([]outputInputRef, error) {
+	if len(entries) == 0 {
+		return nil, nil
+	}
+	seen := make(map[string]bool, len(entries))
+	refs := make([]outputInputRef, 0, len(entries))
+	for _, entry := range entries {
+		inputKey, rhs, ok := strings.Cut(entry, "=")
+		if !ok || strings.TrimSpace(inputKey) == "" || inputKey != strings.TrimSpace(inputKey) {
+			return nil, fmt.Errorf("input-from-output %q must be <input-key>=<action>.<output-key>", entry)
+		}
+		if seen[inputKey] {
+			return nil, fmt.Errorf("input-from-output key %q is repeated", inputKey)
+		}
+		actionName, outputKey, dotOK := strings.Cut(rhs, ".")
+		if !dotOK || actionName == "" || outputKey == "" || strings.Contains(outputKey, ".") ||
+			actionName != strings.TrimSpace(actionName) || outputKey != strings.TrimSpace(outputKey) {
+			return nil, fmt.Errorf("input-from-output %q must reference <action>.<output-key>", entry)
+		}
+		seen[inputKey] = true
+		refs = append(refs, outputInputRef{
+			inputKey:   inputKey,
+			actionName: actionName,
+			outputKey:  outputKey,
+		})
+	}
+	return refs, nil
+}
+
+// resolveInputsFromLatestSucceeded inspects executions in reverse history order
+// to locate the task's latest succeeded execution and resolves each declared
+// output reference into the outgoing inputs map.
+func resolveInputsFromLatestSucceeded(
+	ctx context.Context,
+	ports Ports,
+	taskID string,
+	readView api.TaskReadResult,
+	refs []outputInputRef,
+	base map[string]string,
+) (map[string]string, error) {
+	merged := make(map[string]string, len(base)+len(refs))
+	for k, v := range base {
+		merged[k] = v
+	}
+	for _, ref := range refs {
+		if _, exists := merged[ref.inputKey]; exists {
+			return nil, fmt.Errorf("input key %q is specified by both --input and --input-from-output", ref.inputKey)
+		}
+	}
+	var latest *api.ExecutionInspectResult
+	for i := len(readView.ExecutionHistory) - 1; i >= 0; i-- {
+		execID := readView.ExecutionHistory[i]
+		reqBytes, err := json.Marshal(api.ExecutionInspectRequest{ExecutionID: execID})
+		if err != nil {
+			return nil, err
+		}
+		res, err := ports.Client.Invoke(ctx, api.Invocation{
+			Operation: "execution.inspect",
+			Request:   api.Request{Input: reqBytes},
+		})
+		if err != nil {
+			return nil, err
+		}
+		var inspected api.ExecutionInspectResult
+		if err := json.Unmarshal(res.Body, &inspected); err != nil {
+			return nil, fmt.Errorf("invalid execution.inspect response for %q: %w", execID, err)
+		}
+		if inspected.State == "succeeded" {
+			latest = &inspected
+			break
+		}
+	}
+	if latest == nil {
+		return nil, fmt.Errorf("task %q has no succeeded execution to read outputs from", taskID)
+	}
+	for _, ref := range refs {
+		foundAction := false
+		for _, action := range latest.Actions {
+			if action.Name != ref.actionName {
+				continue
+			}
+			foundAction = true
+			if action.State != "succeeded" {
+				return nil, fmt.Errorf("action %q in execution %q has state %q, not succeeded", ref.actionName, latest.ExecutionID, action.State)
+			}
+			val, ok := action.Outputs[ref.outputKey]
+			if !ok {
+				return nil, fmt.Errorf("action %q in execution %q has no output %q", ref.actionName, latest.ExecutionID, ref.outputKey)
+			}
+			merged[ref.inputKey] = val
+			break
+		}
+		if !foundAction {
+			return nil, fmt.Errorf("execution %q has no action named %q", latest.ExecutionID, ref.actionName)
+		}
+	}
+	return merged, nil
 }
 
 func isNotFoundError(err error) bool {

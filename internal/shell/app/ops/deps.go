@@ -180,6 +180,7 @@ type TaskOperations interface {
 	Create(context.Context, task.CreateCommand) (task.CreateResult, error)
 	Edit(context.Context, task.EditCommand) (task.EditResult, error)
 	Start(context.Context, task.StartCommand) (task.StartResult, error)
+	Restart(context.Context, task.RestartCommand) (task.RestartResult, error)
 	Ask(context.Context, task.AskCommand) (task.AskResult, error)
 	Reply(context.Context, task.ReplyCommand) (task.ReplyResult, error)
 	Cancel(context.Context, task.CancelCommand) (task.CancelResult, error)

@@ -100,7 +100,7 @@ func TestRolelessEnabledServiceProjectReadsAndAssignedResolutions(t *testing.T) 
 	deniedOps := []authorize.OperationName{
 		"pipeline.apply", "pipeline.update", "pipeline.delete", "pipeline.start",
 		"task.create", "task.edit", "task.comment", "task.select_pipeline",
-		"task.start", "task.create_and_start", "task.ask", "task.cancel",
+		"task.start", "task.restart", "task.create_and_start", "task.ask", "task.cancel",
 		"execution.cancel", "secret.write", "secret.delete",
 		"service.create", "service.update", "service.disable",
 		"resource.binding.register", "event.publish",

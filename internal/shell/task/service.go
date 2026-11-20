@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"maps"
 	"time"
+	"unicode/utf8"
 
 	"github.com/optimiware/kodema/internal/fault"
 	"github.com/optimiware/kodema/internal/id"
 	"github.com/optimiware/kodema/internal/kernel"
+	"github.com/optimiware/kodema/internal/kernel/flow"
 	"github.com/optimiware/kodema/internal/shell/authorize"
 	"github.com/optimiware/kodema/internal/shell/event"
 	"github.com/optimiware/kodema/internal/shell/identity"
@@ -18,6 +20,11 @@ import (
 	"github.com/optimiware/kodema/internal/shell/tenancy"
 	"github.com/optimiware/kodema/internal/shell/token"
 )
+
+// maxRestartReasonBytes bounds the optional restart reason text, matching
+// api.MaxSubjectValueBytes so the recorded failure detail always passes public
+// inspection validation.
+const maxRestartReasonBytes = 4096
 
 // Service orchestrates authorized task operations. Each mutation builds one
 // complete commit unit: current membership and the initiator's current start
@@ -318,9 +325,11 @@ func (service *Service) Edit(ctx context.Context, command EditCommand) (EditResu
 	return service.edits.Edit(ctx, unit)
 }
 
-// Start authorizes and commits one ordinary start.
+// Start authorizes and commits one task start, optionally switching the task's
+// selected pipeline and/or inputs atomically in the same transaction.
 func (service *Service) Start(ctx context.Context, command StartCommand) (StartResult, error) {
 	const operation authorize.OperationName = "task.start"
+	const selectOperation authorize.OperationName = "task.select_pipeline"
 	if err := validateProjectScope(command.Scope); err != nil {
 		return StartResult{}, err
 	}
@@ -338,11 +347,39 @@ func (service *Service) Start(ctx context.Context, command StartCommand) (StartR
 	if current.Scope != command.Scope {
 		return StartResult{}, fault.New(fault.NotFound, "task is not present in this scope")
 	}
-	if current.State != StateOpen {
+	pipelineChanged := command.PipelineID != "" && command.PipelineID != current.SelectedPipeline
+	inputsProvided := command.Inputs != nil
+	changingSelection := pipelineChanged || inputsProvided
+	if changingSelection {
+		if err := service.authorize(ctx, command.Actor, selectOperation, command.Scope); err != nil {
+			return StartResult{}, err
+		}
+		if _, err := service.confirmActor(ctx, command.Actor, selectOperation); err != nil {
+			return StartResult{}, err
+		}
+	}
+	switch current.State {
+	case StateOpen:
+	case StateDone:
+		// A completed stage may transition atomically to a different pipeline
+		// stage when authorized with pipeline-selection authority; an ordinary
+		// start without a pipeline switch keeps done terminal.
+		if !pipelineChanged {
+			return StartResult{}, fault.New(fault.VersionConflict, fmt.Sprintf("task state %q does not permit start", current.State))
+		}
+	default:
 		return StartResult{}, fault.New(fault.VersionConflict, fmt.Sprintf("task state %q does not permit start", current.State))
 	}
-	if current.SelectedPipeline == "" {
+	targetPipeline := current.SelectedPipeline
+	if command.PipelineID != "" {
+		targetPipeline = command.PipelineID
+	}
+	if targetPipeline == "" {
 		return StartResult{}, fault.New(fault.InvalidInput, "task has no selected pipeline")
+	}
+	targetInputs := cloneInputs(current.Inputs)
+	if inputsProvided {
+		targetInputs = cloneInputs(command.Inputs)
 	}
 	registered, ok := authorize.LookupOperation(operation)
 	if !ok {
@@ -351,7 +388,18 @@ func (service *Service) Start(ctx context.Context, command StartCommand) (StartR
 	requires := registered.Requires
 	conditional := authorize.ConditionalGrantChecks(registered, actor)
 	membership := newAuthorityRead(operation, requires, authorize.CheckMembership, command.Scope, command.Actor.ID, "", 0)
-	if err := service.confirm(ctx, []authorize.AuthorityRead{membership}); err != nil {
+	preConfirm := []authorize.AuthorityRead{membership}
+	var selectMembership *authorize.AuthorityRead
+	if changingSelection {
+		selectRequires, err := registryRequires(selectOperation)
+		if err != nil {
+			return StartResult{}, err
+		}
+		read := newAuthorityRead(selectOperation, selectRequires, authorize.CheckMembership, command.Scope, command.Actor.ID, "", 0)
+		selectMembership = &read
+		preConfirm = append(preConfirm, read)
+	}
+	if err := service.confirm(ctx, preConfirm); err != nil {
 		return StartResult{}, err
 	}
 	now := service.clock.Now()
@@ -369,8 +417,8 @@ func (service *Service) Start(ctx context.Context, command StartCommand) (StartR
 	}
 	admitted, err := service.admission.Admit(ctx, pipeline.AdmitRequest{
 		Scope:      command.Scope,
-		Definition: pipeline.Definition{ID: current.SelectedPipeline},
-		Inputs:     cloneInputs(current.Inputs),
+		Definition: pipeline.Definition{ID: targetPipeline},
+		Inputs:     cloneInputs(targetInputs),
 		Task: pipeline.TaskContext{
 			TaskID:       current.ID,
 			Title:        current.Title,
@@ -406,6 +454,9 @@ func (service *Service) Start(ctx context.Context, command StartCommand) (StartR
 		newAuthorityRead(operation, requires, authorize.CheckTaskVersion, command.Scope, command.Actor.ID, "", command.ExpectedLifecycleVersion),
 		newAuthorityRead(operation, requires, authorize.CheckPipelineVersion, command.Scope, command.Actor.ID, string(admitted.PipelineID), admitted.PipelineVersion),
 	}
+	if selectMembership != nil {
+		authority = append(authority, *selectMembership)
+	}
 	for _, check := range conditional {
 		authority = append(authority, newAuthorityRead(operation, requires, check, command.Scope, actor.ID, conditionalTarget, conditionalVersion))
 	}
@@ -422,15 +473,23 @@ func (service *Service) Start(ctx context.Context, command StartCommand) (StartR
 	if dispatch {
 		effects = append(effects, event.PostCommitEffect{Kind: event.PostDispatch, Target: string(newExecutionID)})
 	}
+	initiator := current.Initiator
+	if changingSelection {
+		initiator = command.Actor.ID
+	}
 	unit := StartUnit{
 		Owner:                    command.Scope,
 		TaskID:                   command.TaskID,
 		PipelineID:               admitted.PipelineID,
+		ExpectedState:            current.State,
 		ExpectedLifecycleVersion: command.ExpectedLifecycleVersion,
 		ExpectedPipelineVersion:  admitted.PipelineVersion,
+		Inputs:                   cloneInputs(command.Inputs),
+		UpdateInputs:             inputsProvided,
+		UpdateInitiator:          changingSelection,
 		Snapshot:                 admitted.Snapshot,
 		Actions:                  cloneActions(admitted.Actions),
-		Initiator:                current.Initiator,
+		Initiator:                initiator,
 		ExecutionPrincipal:       executionPrincipal,
 		NewExecutionID:           newExecutionID,
 		At:                       now,
@@ -441,6 +500,226 @@ func (service *Service) Start(ctx context.Context, command StartCommand) (StartR
 		PostCommit:               effects,
 	}
 	return service.starts.Start(ctx, unit)
+}
+
+// Restart atomically cancels any active nonterminal execution on an open task
+// as superseded (without faking a review rejection), optionally updates the
+// selected pipeline and/or inputs, and queues a fresh replacement execution
+// that honors Kodema's confirmed-stop predecessor dispatch barrier.
+func (service *Service) Restart(ctx context.Context, command RestartCommand) (RestartResult, error) {
+	const operation authorize.OperationName = "task.restart"
+	const startOperation authorize.OperationName = "task.start"
+	const cancelOperation authorize.OperationName = "task.cancel"
+	const selectOperation authorize.OperationName = "task.select_pipeline"
+	if err := validateProjectScope(command.Scope); err != nil {
+		return RestartResult{}, err
+	}
+	if !utf8.ValidString(command.Reason) {
+		return RestartResult{}, fault.New(fault.InvalidInput, "restart reason is not valid UTF-8")
+	}
+	if len(command.Reason) > maxRestartReasonBytes {
+		return RestartResult{}, fault.New(fault.InvalidInput, fmt.Sprintf("restart reason is %d bytes; at most %d are allowed", len(command.Reason), maxRestartReasonBytes))
+	}
+	if err := service.authorize(ctx, command.Actor, operation, command.Scope); err != nil {
+		return RestartResult{}, err
+	}
+	if _, err := service.confirmActor(ctx, command.Actor, operation); err != nil {
+		return RestartResult{}, err
+	}
+	if err := service.authorize(ctx, command.Actor, startOperation, command.Scope); err != nil {
+		return RestartResult{}, err
+	}
+	if _, err := service.confirmActor(ctx, command.Actor, startOperation); err != nil {
+		return RestartResult{}, err
+	}
+	current, err := service.reader.Get(ctx, command.Scope, command.TaskID)
+	if err != nil {
+		return RestartResult{}, err
+	}
+	if current.Scope != command.Scope {
+		return RestartResult{}, fault.New(fault.NotFound, "task is not present in this scope")
+	}
+	if current.State != StateOpen {
+		return RestartResult{}, fault.New(fault.VersionConflict, fmt.Sprintf("task state %q does not permit restart", current.State))
+	}
+	pipelineChanged := command.PipelineID != "" && command.PipelineID != current.SelectedPipeline
+	inputsProvided := command.Inputs != nil
+	changingSelection := pipelineChanged || inputsProvided
+	if changingSelection {
+		if err := service.authorize(ctx, command.Actor, selectOperation, command.Scope); err != nil {
+			return RestartResult{}, err
+		}
+		if _, err := service.confirmActor(ctx, command.Actor, selectOperation); err != nil {
+			return RestartResult{}, err
+		}
+	}
+	targetPipeline := current.SelectedPipeline
+	if command.PipelineID != "" {
+		targetPipeline = command.PipelineID
+	}
+	if targetPipeline == "" {
+		return RestartResult{}, fault.New(fault.InvalidInput, "task has no selected pipeline")
+	}
+	targetInputs := cloneInputs(current.Inputs)
+	if inputsProvided {
+		targetInputs = cloneInputs(command.Inputs)
+	}
+	requires, err := registryRequires(operation)
+	if err != nil {
+		return RestartResult{}, err
+	}
+	startRequires, err := registryRequires(startOperation)
+	if err != nil {
+		return RestartResult{}, err
+	}
+	now := service.clock.Now()
+	predecessor, known, err := service.predecessor(ctx, command.Scope, current.CurrentExecution)
+	if err != nil {
+		return RestartResult{}, err
+	}
+	var (
+		aggregate    kernel.Execution
+		cancelCommit *flow.Commit
+	)
+	if known {
+		aggregate, cancelCommit, err = service.cancelReductionWithReason(ctx, command.Scope, current.CurrentExecution, flow.CancelSuperseded, command.Reason, now)
+		if err != nil {
+			return RestartResult{}, err
+		}
+		if err := ValidateCancellationCommit(aggregate.Version, current.CurrentExecution, aggregate, cancelCommit); err != nil {
+			return RestartResult{}, err
+		}
+		if cancelCommit != nil {
+			if err := service.authorize(ctx, command.Actor, cancelOperation, command.Scope); err != nil {
+				return RestartResult{}, err
+			}
+			if _, err := service.confirmActor(ctx, command.Actor, cancelOperation); err != nil {
+				return RestartResult{}, err
+			}
+		}
+	}
+	membershipReads := []authorize.AuthorityRead{
+		newAuthorityRead(operation, requires, authorize.CheckMembership, command.Scope, command.Actor.ID, "", 0),
+		newAuthorityRead(startOperation, unconditionalStartRequires(startRequires), authorize.CheckMembership, command.Scope, command.Actor.ID, "", 0),
+	}
+	if cancelCommit != nil {
+		cancelRequires, err := registryRequires(cancelOperation)
+		if err != nil {
+			return RestartResult{}, err
+		}
+		membershipReads = append(membershipReads, newAuthorityRead(cancelOperation, cancelRequires, authorize.CheckMembership, command.Scope, command.Actor.ID, "", 0))
+	}
+	if changingSelection {
+		selectRequires, err := registryRequires(selectOperation)
+		if err != nil {
+			return RestartResult{}, err
+		}
+		membershipReads = append(membershipReads, newAuthorityRead(selectOperation, selectRequires, authorize.CheckMembership, command.Scope, command.Actor.ID, "", 0))
+	}
+	if err := service.confirm(ctx, membershipReads); err != nil {
+		return RestartResult{}, err
+	}
+	conversation, err := conversationBytes(current.Messages)
+	if err != nil {
+		return RestartResult{}, err
+	}
+	executionPrincipal, err := service.ids.NewPrincipalID()
+	if err != nil {
+		return RestartResult{}, err
+	}
+	newExecutionID, err := service.ids.NewExecutionID()
+	if err != nil {
+		return RestartResult{}, err
+	}
+	admitted, err := service.admission.Admit(ctx, pipeline.AdmitRequest{
+		Scope:      command.Scope,
+		Definition: pipeline.Definition{ID: targetPipeline},
+		Inputs:     cloneInputs(targetInputs),
+		Task: pipeline.TaskContext{
+			TaskID:       current.ID,
+			Title:        current.Title,
+			Description:  current.Description,
+			Conversation: conversation,
+			Metadata:     marshalMetadata(current.Metadata),
+		},
+		DefaultTimeout: service.defaultTimeout,
+	})
+	if err != nil {
+		return RestartResult{}, err
+	}
+	authority := append([]authorize.AuthorityRead(nil), membershipReads...)
+	authority = append(authority,
+		newAuthorityRead(operation, requires, authorize.CheckTaskVersion, command.Scope, command.Actor.ID, "", command.ExpectedLifecycleVersion),
+		newAuthorityRead(operation, requires, authorize.CheckPipelineVersion, command.Scope, command.Actor.ID, string(admitted.PipelineID), admitted.PipelineVersion),
+	)
+	if known {
+		authority = append(authority, newAuthorityRead(operation, requires, authorize.CheckExecutionVersion, command.Scope, command.Actor.ID, string(current.CurrentExecution), aggregate.Version))
+	}
+	hash := admitted.Snapshot.YAMLSHA256
+	record, audit, err := service.operationRecord(command.Scope, command.Actor.ID, string(operation), command.CallerKey, command.Content, now, newExecutionID, &hash)
+	if err != nil {
+		return RestartResult{}, err
+	}
+	audit.Detail = command.Reason
+	queued, err := service.newEvent(event.TypeExecutionQueued, command.Actor.ID, now, command.Scope, string(newExecutionID), 1)
+	if err != nil {
+		return RestartResult{}, err
+	}
+	events := []event.Envelope{queued}
+	if cancelCommit != nil {
+		events, err = appendCancellationProjection(events, command.Scope, aggregate, *cancelCommit)
+		if err != nil {
+			return RestartResult{}, err
+		}
+	}
+	dispatch := current.CurrentExecution == "" || (cancelCommit == nil && known && predecessor.StopEvidence.IsConfirmed())
+	effects := []event.PostCommitEffect{{Kind: event.PostPublishEvent}}
+	if dispatch {
+		effects = append(effects, event.PostCommitEffect{Kind: event.PostDispatch, Target: string(newExecutionID)})
+	}
+	initiator := current.Initiator
+	if changingSelection {
+		initiator = command.Actor.ID
+	}
+	unit := StartUnit{
+		Owner:                    command.Scope,
+		TaskID:                   command.TaskID,
+		PipelineID:               admitted.PipelineID,
+		ExpectedState:            StateOpen,
+		ExpectedLifecycleVersion: command.ExpectedLifecycleVersion,
+		ExpectedPipelineVersion:  admitted.PipelineVersion,
+		Inputs:                   cloneInputs(command.Inputs),
+		UpdateInputs:             inputsProvided,
+		UpdateInitiator:          changingSelection,
+		Snapshot:                 admitted.Snapshot,
+		Actions:                  cloneActions(admitted.Actions),
+		Initiator:                initiator,
+		ExecutionPrincipal:       executionPrincipal,
+		NewExecutionID:           newExecutionID,
+		At:                       now,
+		Receipt:                  record,
+		Audit:                    []event.Audit{audit},
+		Events:                   events,
+		Authority:                authority,
+		PostCommit:               effects,
+	}
+	if known {
+		unit.ExpectedExecutionVersion = aggregate.Version
+		unit.CancelCommit = cancelCommit
+		if cancelCommit != nil {
+			unit.CredentialUpdate = &token.Credential{}
+		}
+	}
+	committed, err := service.starts.Start(ctx, unit)
+	if err != nil {
+		return RestartResult{}, err
+	}
+	return RestartResult{
+		ExecutionID:         committed.ExecutionID,
+		SupersededExecution: committed.SupersededExecution,
+		LifecycleVersion:    committed.LifecycleVersion,
+		Replayed:            committed.Replayed,
+	}, nil
 }
 
 // Ask authorizes and commits one indivisible conversation handoff.

@@ -1,0 +1,72 @@
+# Stage 2 of the two-stage multi-pipeline task workflow: rebase -> build -> review -> merge -> deploy.
+#
+# Transitions atomically from implement-stage.yaml on the same task via:
+#   kodema task start <task-id> --pipeline integrate-stage \
+#     --input repository=shop/web --input target_ref=refs/heads/main \
+#     --input-from-output branch=push.branch
+#
+# When main advances while this stage is waiting at `review` (or during `build`),
+# supersede the active execution cleanly without faking a `decision=fail` rejection
+# and without re-running expensive coding steps from Stage 1:
+#   kodema task restart <task-id> --reason "rebase onto latest main"
+#
+# The `merge` request action delegates durable, serialized ref integration to an
+# external merge coordinator service running `kodema services --kind merge`, using
+# the exact four merge subject fields (repository, ref, base, candidate) and
+# declared merge observation outputs (base, candidate, output).
+inputs:
+  - repository
+  - branch
+  - target_ref
+actions:
+  - name: rebase
+    image: registry.example.com/kodema/git-tools@sha256:d4735e3a265e16eee03f59718b9b5d03019c07d8b6c51f90da3a666eec13ab35
+    commands:
+      - rebase-branch "$(cat /kodema/inputs/repository)" "$(cat /kodema/inputs/branch)" "$(cat /kodema/inputs/target_ref)"
+      - git rev-parse "origin/$(cat /kodema/inputs/target_ref)" > /kodema/outputs/rebase/base
+      - git rev-parse HEAD > /kodema/outputs/rebase/candidate
+    outputs:
+      - base
+      - candidate
+  - name: build
+    image: registry.example.com/kodema/build@sha256:44575cf5b28512d75644bf54a517dcef304ff809fd511747621b4d64f19aac66
+    commands:
+      - build-and-test-candidate "$(cat /kodema/outputs/rebase/candidate)"
+      - write-image-digest > /kodema/outputs/build/image
+    outputs:
+      - image
+  - name: review
+    request: role/reviewer
+    timeout: 72h
+    subject:
+      operation: git.ref.update
+      resource:
+        from: inputs.repository
+      ref:
+        from: inputs.target_ref
+      expected_base:
+        from: rebase.outputs.base
+      candidate:
+        from: rebase.outputs.candidate
+    outputs:
+      - approved
+  - name: merge
+    request: service/merge-coordinator
+    timeout: 1h
+    subject:
+      repository:
+        from: inputs.repository
+      ref:
+        from: inputs.target_ref
+      base:
+        from: rebase.outputs.base
+      candidate:
+        from: rebase.outputs.candidate
+    outputs:
+      - base
+      - candidate
+      - output
+  - name: deploy
+    image: registry.example.com/kodema/integrate@sha256:ad9b338ab555c072a2131a946e8ed993cfcee4fe61c1f65efa37a1ce78ecfed5
+    commands:
+      - deploy-candidate "$(cat /kodema/outputs/build/image)" "$(cat /kodema/outputs/merge/output)"

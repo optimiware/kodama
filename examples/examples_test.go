@@ -41,6 +41,7 @@ import (
 	"github.com/optimiware/kodema/internal/fault"
 	"github.com/optimiware/kodema/internal/kernel/definition"
 	"github.com/optimiware/kodema/internal/userland/cli"
+	"github.com/optimiware/kodema/internal/userland/services"
 )
 
 // requiredPipelines is the shipped pipeline example inventory.
@@ -61,6 +62,8 @@ var requiredPipelines = []string{
 	"promote.yaml",
 	"rollback.yaml",
 	"readiness.yaml",
+	"implement-stage.yaml",
+	"integrate-stage.yaml",
 }
 
 // TestExamplePipelinesDecode is the shared gate: every shipped example is a
@@ -709,6 +712,74 @@ func TestOCIBuildExampleIsUnprivilegedAndPublishesDigest(t *testing.T) {
 		if strings.Contains(commands, privileged) {
 			t.Fatalf("%s build commands must not require %q", rel, privileged)
 		}
+	}
+}
+
+// TestTwoStageImplementAndIntegratePipelines validates the two-stage pipeline
+// pair (implement-stage.yaml -> integrate-stage.yaml) and confirms the merge
+// request action matches the merge coordinator's exact subject and output
+// contracts.
+func TestTwoStageImplementAndIntegratePipelines(t *testing.T) {
+	impl := decodeExample(t, "pipelines/implement-stage.yaml")
+	assertKinds(t, "pipelines/implement-stage.yaml", impl, "container", "container", "container")
+	for _, key := range []string{"repository", "base_ref"} {
+		if !hasInput(impl, key) {
+			t.Fatalf("implement-stage.yaml must declare input %q", key)
+		}
+	}
+	push := impl.Actions[2]
+	if !hasOutput(push, "branch") || !hasOutput(push, "commit") {
+		t.Fatalf("implement-stage.yaml push action must declare branch and commit outputs")
+	}
+
+	integ := decodeExample(t, "pipelines/integrate-stage.yaml")
+	assertKinds(t, "pipelines/integrate-stage.yaml", integ, "container", "container", "request", "request", "container")
+	for _, key := range []string{"repository", "branch", "target_ref"} {
+		if !hasInput(integ, key) {
+			t.Fatalf("integrate-stage.yaml must declare input %q", key)
+		}
+	}
+	rebase := integ.Actions[0]
+	if !hasOutput(rebase, "base") || !hasOutput(rebase, "candidate") {
+		t.Fatalf("integrate-stage.yaml rebase action must declare base and candidate outputs")
+	}
+	review := integ.Actions[2]
+	if !strings.HasPrefix(review.Request.Assignment, "role/") {
+		t.Fatalf("integrate-stage.yaml review assignment = %q; want role/<role>", review.Request.Assignment)
+	}
+	if op := literalField(t, "pipelines/integrate-stage.yaml", review, "operation"); op != "git.ref.update" {
+		t.Fatalf("integrate-stage.yaml review operation = %q; want git.ref.update", op)
+	}
+	outputReference(t, "pipelines/integrate-stage.yaml", review, "expected_base", "rebase", "base")
+	outputReference(t, "pipelines/integrate-stage.yaml", review, "candidate", "rebase", "candidate")
+
+	merge := integ.Actions[3]
+	if !strings.HasPrefix(merge.Request.Assignment, "service/") {
+		t.Fatalf("integrate-stage.yaml merge assignment = %q; want service/<id>", merge.Request.Assignment)
+	}
+	resolvedSubject := &api.Subject{Fields: make([]api.SubjectField, 0, merge.Request.Subject.Len())}
+	sampleValues := map[string]string{
+		"repository": "shop/web",
+		"ref":        "refs/heads/main",
+		"base":       "1111111111111111111111111111111111111111",
+		"candidate":  "2222222222222222222222222222222222222222",
+	}
+	for name := range merge.Request.Subject.Fields() {
+		resolvedSubject.Fields = append(resolvedSubject.Fields, api.SubjectField{
+			Name:  name,
+			Kind:  "string",
+			Value: sampleValues[name],
+		})
+	}
+	if _, err := services.ParseMergeSubject(resolvedSubject); err != nil {
+		t.Fatalf("integrate-stage.yaml merge subject is incompatible with ParseMergeSubject: %v", err)
+	}
+	mergeOutputs := make([]string, len(merge.Request.Outputs))
+	for i, k := range merge.Request.Outputs {
+		mergeOutputs[i] = string(k)
+	}
+	if err := services.ValidateMergeOutputs(mergeOutputs); err != nil {
+		t.Fatalf("integrate-stage.yaml merge outputs %v are incompatible with ValidateMergeOutputs: %v", mergeOutputs, err)
 	}
 }
 

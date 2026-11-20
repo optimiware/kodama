@@ -596,6 +596,13 @@ func (adapter *Task) Start(ctx context.Context, unit task.StartUnit) (task.Start
 	if err := validateReceipt(unit.Receipt); err != nil {
 		return task.StartResult{}, err
 	}
+	expectedState := unit.ExpectedState
+	if expectedState == "" {
+		expectedState = task.StateOpen
+	}
+	if expectedState != task.StateOpen && expectedState != task.StateDone {
+		return task.StartResult{}, fault.New(fault.InvalidInput, fmt.Sprintf("start expected state %q is not permitted", expectedState))
+	}
 	history, err := adapter.appendedHistory(ctx, unit.Owner, unit.TaskID, unit.NewExecutionID)
 	if err != nil {
 		return task.StartResult{}, err
@@ -603,6 +610,9 @@ func (adapter *Task) Start(ctx context.Context, unit task.StartUnit) (task.Start
 	result := task.StartResult{
 		ExecutionID:      unit.NewExecutionID,
 		LifecycleVersion: unit.ExpectedLifecycleVersion + 1,
+	}
+	if unit.CancelCommit != nil {
+		result.SupersededExecution = unit.CancelCommit.ExecutionID
 	}
 	record, err := withResult(unit.Receipt, result)
 	if err != nil {
@@ -627,22 +637,35 @@ func (adapter *Task) Start(ctx context.Context, unit task.StartUnit) (task.Start
 	if err != nil {
 		return task.StartResult{}, err
 	}
-	writes = append(writes, taskWrite(unit.TaskID, map[string]any{
-		"state":             string(task.StateOpen),
+	taskExpect := map[string]any{
+		"state":             string(expectedState),
 		"lifecycle_version": int64(unit.ExpectedLifecycleVersion),
-	}, map[string]any{
+	}
+	taskValues := map[string]any{
 		"state":                string(task.StateOpen),
 		"lifecycle_version":    int64(unit.ExpectedLifecycleVersion + 1),
 		"pipeline_id":          string(unit.PipelineID),
 		"current_execution_id": string(unit.NewExecutionID),
 		"execution_history":    historyValue,
-	}))
+	}
+	if unit.UpdateInputs {
+		if len(unit.Inputs) > 0 {
+			encoded, err := jsonColumn(unit.Inputs)
+			if err != nil {
+				return task.StartResult{}, err
+			}
+			taskValues["inputs"] = encoded
+		} else {
+			taskValues["inputs"] = nil
+		}
+	}
+	if unit.UpdateInitiator && unit.Initiator != "" {
+		taskValues["initiator_id"] = string(unit.Initiator)
+	}
+	writes = append(writes, taskWrite(unit.TaskID, taskExpect, taskValues))
 	locks := []store.Lock{
 		pipelineLock(unit.PipelineID, unit.ExpectedPipelineVersion),
-		taskLock(unit.TaskID, map[string]any{
-			"state":             string(task.StateOpen),
-			"lifecycle_version": int64(unit.ExpectedLifecycleVersion),
-		}),
+		taskLock(unit.TaskID, taskExpect),
 	}
 	// A durable receipt with this idempotency identity means the invocation
 	// already committed (or reused its key with changed content). The
@@ -656,6 +679,24 @@ func (adapter *Task) Start(ctx context.Context, unit task.StartUnit) (task.Start
 	replaying, err := adapter.committedReceipt(ctx, unit.Owner, unit.Receipt.Key)
 	if err != nil {
 		return task.StartResult{}, err
+	}
+	if !replaying && (unit.CancelCommit != nil || unit.ExpectedExecutionVersion != 0) {
+		cancelLocks, cancelWrites, cancelErr := adapter.cancellationPlan(
+			ctx, unit.Owner, unit.TaskID, unit.ExpectedExecutionVersion, unit.CancelCommit, unit.CredentialUpdate,
+		)
+		if cancelErr != nil {
+			committed, lookupErr := adapter.committedReceipt(ctx, unit.Owner, unit.Receipt.Key)
+			if lookupErr != nil {
+				return task.StartResult{}, lookupErr
+			}
+			if !committed {
+				return task.StartResult{}, cancelErr
+			}
+			replaying = true
+		} else {
+			locks = append(locks, cancelLocks...)
+			writes = append(writes, cancelWrites...)
+		}
 	}
 	if replaying {
 		// The ordinary membership read (when the unit carries one) stays and is

@@ -575,10 +575,16 @@ func reduceCancel(execution kernel.Execution, fact CancelFact) (kernel.Execution
 		return execution, nil, refuseInvalid("flow: cancel reason %q is not supported", fact.Reason)
 	}
 	if execution.State.Terminal() {
-		// Explicit cancellation is the only reason recorded at execution scope,
-		// so an identical requested cancel converges and every other fact
-		// conflicts with terminal history.
-		if execution.State == kernel.ExecutionCancelled && fact.Reason == CancelRequested {
+		// Explicit cancellation and superseded cancellation converge on an
+		// identical retry; every other fact conflicts with terminal history.
+		if execution.State == kernel.ExecutionCancelled && fact.Reason == CancelRequested && execution.Failure == nil {
+			return execution, nil, nil
+		}
+		if execution.State == kernel.ExecutionCancelled && fact.Reason == CancelSuperseded &&
+			execution.Failure != nil &&
+			execution.Failure.Kind == kernel.FailureCancelled &&
+			execution.Failure.Reason == string(CancelSuperseded) &&
+			execution.Failure.Detail == fact.Detail {
 			return execution, nil, nil
 		}
 		return execution, nil, refuseChanged("flow: cancellation conflicts with the settled state %q", execution.State)
@@ -602,6 +608,15 @@ func reduceCancel(execution kernel.Execution, fact CancelFact) (kernel.Execution
 		InvalidateCredential:     true,
 		At:                       fact.At,
 	}
+	cleanupReason := "cancelled"
+	if fact.Reason == CancelSuperseded {
+		commit.Failure = &Failure{
+			Kind:   kernel.FailureCancelled,
+			Reason: string(CancelSuperseded),
+			Detail: fact.Detail,
+		}
+		cleanupReason = string(CancelSuperseded)
+	}
 	if running >= 0 {
 		primary := execution.Actions[running]
 		commit.ActionID = primary.ID
@@ -619,7 +634,7 @@ func reduceCancel(execution kernel.Execution, fact CancelFact) (kernel.Execution
 			commit.Stop = &stop
 		}
 	}
-	commit.Cleanup = &CleanupIntent{WorkloadID: workload, WorkspaceID: execution.WorkspaceID, Reason: "cancelled"}
+	commit.Cleanup = &CleanupIntent{WorkloadID: workload, WorkspaceID: execution.WorkspaceID, Reason: cleanupReason}
 	commit.CleanupUpdate = &CleanupUpdate{State: kernel.CleanupPending, WorkloadID: workload, WorkspaceID: execution.WorkspaceID}
 
 	next := project(execution, *commit)

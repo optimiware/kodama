@@ -96,13 +96,14 @@ Flags:
 	},
 	"task": {
 		usage:   "kodema task <subcommand> [arguments]",
-		summary: "Create, run, list, inspect, ask, reply to, and manage tasks",
+		summary: "Create, run, list, inspect, start, restart, ask, reply to, and manage tasks",
 		description: `Subcommands:
   create   kodema task create --project <id> --title <t> [--description <d>] [--pipeline <name|id>] [--input <k=v>] [--meta|--metadata <k=v>]
   run      kodema task run --project <id> --title <t> --pipeline <name|id> [--description <d>] [--input <k=v>] [--meta|--metadata <k=v>]
   list     kodema task list --project <id>
   show     kodema task show <task-id>
-  start    kodema task start <task-id> [--expected-version <v>]
+  start    kodema task start <task-id> [--pipeline <name|id>] [--input <k=v>...] [--input-from-output <k=action.output>...] [--expected-version <v>]
+  restart  kodema task restart <task-id> [--reason <text>] [--pipeline <name|id>] [--input <k=v>...] [--input-from-output <k=action.output>...] [--expected-version <v>]
   ask      kodema task ask [<task-id>] --question <text> --to <assignment> [--ref <ref>...]
   reply    kodema task reply <task-id> --answer <text>
   cancel   kodema task cancel <task-id> [--expected-version <v>]`,
@@ -145,9 +146,39 @@ Flags:
 		description: `Invokes task.read for <task-id>. --output json prints the full task, including its messages.`,
 	},
 	"task start": {
-		usage:       "kodema task start <task-id> [--expected-version <v>]",
-		summary:     "Start a new execution for an existing task",
-		description: `Reads the current lifecycle version when --expected-version is omitted and invokes task.start.`,
+		usage:   "kodema task start <task-id> [--pipeline <name|id>] [--input <k=v>...] [--input-from-output <k=action.output>...] [--expected-version <v>]",
+		summary: "Start a new execution for an existing task, optionally switching pipeline stage and inputs",
+		description: `Reads the current lifecycle version when --expected-version is omitted and invokes task.start.
+Passing --pipeline switches the task's selected pipeline atomically (including transitioning a
+completed stage to a new pipeline stage). Passing --input or --input-from-output updates inputs
+atomically in the same transaction.
+
+Flags:
+  --project, -p <id>                      Project ID for resolving --pipeline by name (defaults to KODEMA_PROJECT)
+  --pipeline <name|id>                    Optional pipeline name or ID to switch to atomically
+  --input <k=v>                           Pipeline input key=value pair (repeatable)
+  --input-from-output <k=action.output>   Read input value from the task's latest succeeded execution (repeatable)
+  --expected-version <v>                  Task lifecycle version (auto-fetched when omitted)
+  --idempotency-key <key>                 Explicit idempotency key
+  --output <table|json>                   Output format`,
+	},
+	"task restart": {
+		usage:   "kodema task restart <task-id> [--reason <text>] [--pipeline <name|id>] [--input <k=v>...] [--input-from-output <k=action.output>...] [--expected-version <v>]",
+		summary: "Supersede any active execution on an open task and queue a fresh attempt",
+		description: `Atomically cancels any active nonterminal execution on <task-id> as superseded
+(recording --reason without fabricating a review rejection), optionally switches
+the pipeline and/or inputs, and queues a fresh replacement execution that waits
+for confirmed stop of its predecessor before activating.
+
+Flags:
+  --reason <text>                         Optional reason recorded for superseding the active execution
+  --project, -p <id>                      Project ID for resolving --pipeline by name (defaults to KODEMA_PROJECT)
+  --pipeline <name|id>                    Optional pipeline name or ID to switch to atomically
+  --input <k=v>                           Pipeline input key=value pair (repeatable)
+  --input-from-output <k=action.output>   Read input value from the task's latest succeeded execution (repeatable)
+  --expected-version <v>                  Task lifecycle version (auto-fetched when omitted)
+  --idempotency-key <key>                 Explicit idempotency key
+  --output <table|json>                   Output format`,
 	},
 	"task ask": {
 		usage:   "kodema task ask [<task-id>] --question <text> --to <role/<role>|service/<id>> [--ref <ref>...]",

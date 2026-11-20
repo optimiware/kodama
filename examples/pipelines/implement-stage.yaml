@@ -1,0 +1,42 @@
+# Stage 1 of the two-stage multi-pipeline task workflow: implement -> integrate.
+#
+# Keeping expensive coding work in its own pipeline lets Stage 2 (integrate-stage.yaml)
+# rebase, rebuild, review, merge, and deploy on a fresh execution without re-running
+# plan/code/push when the target branch moves or a review needs a clean restart.
+#
+# Typical two-stage workflow on one task:
+#   1. Start Stage 1:
+#        kodema task run --project <project> --title "Implement change" \
+#          --pipeline implement-stage \
+#          --input repository=shop/web --input base_ref=refs/heads/main
+#   2. After Stage 1 succeeds, atomically switch the task to Stage 2 (carrying the
+#      pushed work branch from Stage 1's settled push.branch output):
+#        kodema task start <task-id> --pipeline integrate-stage \
+#          --input repository=shop/web --input target_ref=refs/heads/main \
+#          --input-from-output branch=push.branch
+#   3. If main advances while Stage 2 waits at review, supersede Stage 2 cleanly
+#      without faking a review rejection or re-running Stage 1:
+#        kodema task restart <task-id> --reason "rebase onto latest main"
+inputs:
+  - repository
+  - base_ref
+actions:
+  - name: plan
+    image: registry.example.com/kodema/coding-agent@sha256:6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b
+    commands:
+      - plan-from-task-spec /kodema/task/spec.json /kodema/task.json
+    outputs:
+      - plan_summary
+  - name: code
+    image: registry.example.com/kodema/coding-agent@sha256:6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b
+    commands:
+      - implement-change "$(cat /kodema/inputs/repository)" "$(cat /kodema/inputs/base_ref)"
+      - run-unit-tests
+  - name: push
+    image: registry.example.com/kodema/git-tools@sha256:d4735e3a265e16eee03f59718b9b5d03019c07d8b6c51f90da3a666eec13ab35
+    commands:
+      - push-work-branch "$(cat /kodema/inputs/repository)" > /kodema/outputs/push/branch
+      - git rev-parse HEAD > /kodema/outputs/push/commit
+    outputs:
+      - branch
+      - commit
