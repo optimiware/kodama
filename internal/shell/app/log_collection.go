@@ -1,20 +1,31 @@
 package app
 
-// Retained-log collection before workload cleanup.
+// Retained-log collection on workload exit and before workload cleanup.
 //
 // The composition serves the read side of retained logs, but the Kernel
 // removes the workload container directly, which would discard the
 // container's output. This file adds a composition-only decorator around the
-// Kernel runtime port: before the runtime removes a workload it drains the
-// adapter's log read seam into the retained sink, and before a destructive stop
+// Kernel runtime port: when Observe confirms a workload has exited and stopped
+// it drains the completed output into the retained sink immediately (so
+// downstream request waits can read build/test logs without removing the
+// container or releasing the workspace early), before a destructive Stop
 // (Kubernetes suspension terminates and deletes the active Pod) it makes the
-// currently readable prefix durable first.
+// currently readable prefix durable first, and before Remove it performs the
+// authoritative final drain.
 //
-// Collection is read-only. It never prepares or starts a workload, and it never
-// invents log content beyond the one explicit unavailability marker.
+// Collection is read-only. It never prepares or starts a workload, never alters
+// lifecycle observation authority, and never invents log content beyond the one
+// explicit unavailability marker.
 //
 // Ordering is the whole safety argument:
 //
+//   - on Observe, once the inner observation confirms the workload exited and
+//     stopped, stop any live-log pump and drain the completed output into the
+//     retained sink (recording the completion token on EOF) before returning the
+//     observation; any fault or NotFound during this post-exit drain leaves the
+//     completion token unset and returns the confirmed observation unchanged so
+//     logs never acquire lifecycle authority and Remove remains the
+//     authoritative retryable cleanup boundary;
 //   - before Stop, after the cursor already says completion, delegate;
 //   - otherwise resolve the execution's immutable owning scope, read a bounded
 //     number of pages from the runtime after the saved opaque cursor, append
@@ -171,8 +182,16 @@ type logCollectionConfig struct {
 	LiveInterval time.Duration
 }
 
-// logCollectingRuntime decorates the Kernel runtime port so every removal first
-// drains the workload's retained output into the sink.
+// collectionLockEntry serializes retained-log collection for one workload
+// identity across concurrent Observe, Stop, and Remove calls.
+type collectionLockEntry struct {
+	mu   sync.Mutex
+	refs int
+}
+
+// logCollectingRuntime decorates the Kernel runtime port so completed
+// workloads drain their retained output on confirmed exit and every removal
+// completes any remaining drain before deleting the workload.
 type logCollectingRuntime struct {
 	inner     kernelengine.Runtime
 	sink      shelllog.RetainedSink
@@ -188,6 +207,12 @@ type logCollectingRuntime struct {
 	liveMu       sync.Mutex
 	liveClosed   bool
 	livePumps    map[string]*liveLogPump
+
+	// collectMu guards the per-workload-identity collection locks so concurrent
+	// Observe/Stop/Remove calls for the same identity never interleave cursor
+	// updates or regress the completion token.
+	collectMu    sync.Mutex
+	collectLocks map[string]*collectionLockEntry
 
 	// stopMu guards the in-process consecutive checkpoint-fault count used to
 	// bound how long a persistent fault may withhold the destructive stop.
@@ -237,14 +262,44 @@ func newLogCollectingRuntime(config logCollectionConfig) (*logCollectingRuntime,
 	}, nil
 }
 
+// lockCollection serializes retained-log reads and cursor updates for one
+// workload identity. The lock is released before delegating destructive Stop
+// or Remove calls to the inner runtime.
+func (runtime *logCollectingRuntime) lockCollection(identity kernelengine.EffectIdentity) func() {
+	key := liveLogKey(identity)
+	runtime.collectMu.Lock()
+	if runtime.collectLocks == nil {
+		runtime.collectLocks = map[string]*collectionLockEntry{}
+	}
+	entry := runtime.collectLocks[key]
+	if entry == nil {
+		entry = &collectionLockEntry{}
+		runtime.collectLocks[key] = entry
+	}
+	entry.refs++
+	runtime.collectMu.Unlock()
+
+	entry.mu.Lock()
+	return func() {
+		entry.mu.Unlock()
+		runtime.collectMu.Lock()
+		entry.refs--
+		if entry.refs == 0 {
+			delete(runtime.collectLocks, key)
+		}
+		runtime.collectMu.Unlock()
+	}
+}
+
 // Remove collects the workload's retained output and then removes it. Any
 // collection fault leaves the removal to a later cleanup attempt.
 //
 // A durably completed collection is the one exception: the completion token is
-// written before the destructive removal, so a retry whose inner Remove already
-// deleted the credential Secret and whose workspace Release is still pending
-// does not need the log source (or its redaction values) again. The inner
-// Remove stays idempotent, so replaying it is safe.
+// written before the destructive removal (either at confirmed exit in Observe
+// or on an earlier Remove pass), so a retry whose inner Remove already deleted
+// the credential Secret and whose workspace Release is still pending does not
+// need the log source (or its redaction values) again. The inner Remove stays
+// idempotent, so replaying it is safe.
 func (runtime *logCollectingRuntime) Remove(ctx context.Context, request kernelengine.RemoveRequest) (kernelengine.Removal, error) {
 	if ctx == nil {
 		ctx = context.Background()
@@ -253,22 +308,51 @@ func (runtime *logCollectingRuntime) Remove(ctx context.Context, request kernele
 	// boundary, so stop it before the final retained drain reads the same
 	// source again.
 	runtime.stopLiveLogs(ctx, request.Identity)
-	cursor, complete, err := runtime.loadCollectionCursor(ctx, request.Identity)
-	if err != nil {
-		return kernelengine.Removal{}, collectionFault(ctx, logCauseCursorUnavailable, err)
-	}
-	if !complete {
-		scope, err := runtime.scopes.ExecutionScope(ctx, request.Identity.ExecutionID)
-		if err != nil {
-			// A scope failure is never "nothing left to remove": it must stay a
-			// retryable dependency fault so cleanup does not treat it as absence.
-			return kernelengine.Removal{}, collectionFault(ctx, logCauseScopeUnavailable, err)
-		}
-		if err := runtime.collect(ctx, request.Identity, scope, cursor); err != nil {
-			return kernelengine.Removal{}, err
-		}
+	if err := runtime.drainBeforeRemove(ctx, request.Identity); err != nil {
+		return kernelengine.Removal{}, err
 	}
 	return runtime.inner.Remove(ctx, request)
+}
+
+// drainBeforeRemove performs the authoritative retained-log drain under the
+// per-workload-identity lock before Remove deletes the workload.
+func (runtime *logCollectingRuntime) drainBeforeRemove(ctx context.Context, identity kernelengine.EffectIdentity) error {
+	unlock := runtime.lockCollection(identity)
+	defer unlock()
+
+	cursor, complete, err := runtime.loadCollectionCursor(ctx, identity)
+	if err != nil {
+		return collectionFault(ctx, logCauseCursorUnavailable, err)
+	}
+	if complete {
+		return nil
+	}
+	scope, err := runtime.scopes.ExecutionScope(ctx, identity.ExecutionID)
+	if err != nil {
+		// A scope failure is never "nothing left to remove": it must stay a
+		// retryable dependency fault so cleanup does not treat it as absence.
+		return collectionFault(ctx, logCauseScopeUnavailable, err)
+	}
+	return runtime.collectDrain(ctx, identity, scope, cursor, true)
+}
+
+// drainCompleted drains an affirmatively exited and stopped workload into the
+// retained sink on Observe. Any failure (including a vanished source) leaves
+// the completion token unset without recording an unavailability marker so
+// Remove remains the authoritative retryable cleanup boundary.
+func (runtime *logCollectingRuntime) drainCompleted(ctx context.Context, identity kernelengine.EffectIdentity) {
+	unlock := runtime.lockCollection(identity)
+	defer unlock()
+
+	cursor, complete, err := runtime.loadCollectionCursor(ctx, identity)
+	if err != nil || complete {
+		return
+	}
+	scope, err := runtime.scopes.ExecutionScope(ctx, identity.ExecutionID)
+	if err != nil {
+		return
+	}
+	_ = runtime.collectDrain(ctx, identity, scope, cursor, false)
 }
 
 // loadCollectionCursor reads the durable per-workload-identity collection state.
@@ -291,11 +375,12 @@ func (runtime *logCollectingRuntime) loadCollectionCursor(ctx context.Context, i
 	return cursor, false, nil
 }
 
-// collect drains every currently available log page for one action. It returns
-// nil only when the sink durably holds the collected pages up to the adapter's
-// final cursor, or when the container is already gone and the action is marked,
-// and it then records the completion token so a later retry is idempotent.
-func (runtime *logCollectingRuntime) collect(ctx context.Context, identity kernelengine.EffectIdentity, scope tenancy.Scope, cursor int64) error {
+// collectDrain drains every currently available log page for one action. It
+// returns nil only when the sink durably holds the collected pages up to the
+// adapter's final cursor (or, when markAbsent is true, when the container is
+// already gone and the action is marked), and it then records the completion
+// token so a later retry or terminal Remove is idempotent.
+func (runtime *logCollectingRuntime) collectDrain(ctx context.Context, identity kernelengine.EffectIdentity, scope tenancy.Scope, cursor int64, markAbsent bool) error {
 	for {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -307,7 +392,10 @@ func (runtime *logCollectingRuntime) collect(ctx context.Context, identity kerne
 		})
 		if err != nil {
 			if isNotFound(err) {
-				return runtime.markUnavailable(ctx, identity, scope)
+				if markAbsent {
+					return runtime.markUnavailable(ctx, identity, scope)
+				}
+				return collectionFault(ctx, retainedLogFailureCause(err), err)
 			}
 			return collectionFault(ctx, retainedLogFailureCause(err), err)
 		}
@@ -348,9 +436,9 @@ func (runtime *logCollectingRuntime) collect(ctx context.Context, identity kerne
 // after it is durable; live delivery is best-effort and never fails collection.
 //
 // Offering the piece to the live publisher here can republish an offset the
-// live pump already sent while the action was running (Stop's checkpoint and
-// Remove's final drain read from a cursor the pump also advanced). Live offsets
-// are therefore not strictly monotonic across a lifecycle boundary, and a
+// live pump already sent while the action was running (Observe's post-exit
+// drain, Stop's checkpoint and Remove's final drain read from a cursor the pump
+// also advanced). Live offsets are therefore not strictly monotonic across a lifecycle boundary, and a
 // consumer must deduplicate by the (execution, action, stream, offset) identity
 // instead of assuming each offset arrives exactly once.
 func (runtime *logCollectingRuntime) appendBatch(ctx context.Context, identity kernelengine.EffectIdentity, scope tenancy.Scope, chunks []kernelengine.LogChunk) error {
@@ -384,6 +472,9 @@ func (runtime *logCollectingRuntime) appendBatch(ctx context.Context, identity k
 // holds nothing. Any other read, append or cursor fault is returned, so the
 // destructive stop is not delegated before durable retention succeeded.
 func (runtime *logCollectingRuntime) checkpointBeforeStop(ctx context.Context, identity kernelengine.EffectIdentity) error {
+	unlock := runtime.lockCollection(identity)
+	defer unlock()
+
 	cursor, complete, err := runtime.loadCollectionCursor(ctx, identity)
 	if err != nil {
 		return collectionFault(ctx, logCauseCursorUnavailable, err)
@@ -905,12 +996,38 @@ func (runtime *logCollectingRuntime) Start(ctx context.Context, request kernelen
 	return result, err
 }
 
-// Observe delegates unchanged.
+// Observe delegates to the inner runtime. When the observation confirms the
+// workload has exited and stopped, it stops any live-log pump and drains the
+// workload's completed output into the retained sink before returning the
+// observation.
+//
+// Draining on confirmed exit makes a completed container action's output
+// immediately readable—including while downstream request actions wait for
+// approval—without removing the workload container early or releasing the
+// retained workspace. Completion is recorded in the same durable
+// per-workload-identity cursor slot that Remove checks, so terminal cleanup
+// skips re-reading an already-drained workload and never produces duplicate
+// chunks or re-redacts.
+//
+// Logs carry no lifecycle authority: any drain fault leaves the completion
+// token unset without modifying or failing the confirmed exit observation, and
+// Remove remains the authoritative retryable cleanup boundary.
 func (runtime *logCollectingRuntime) Observe(ctx context.Context, request kernelengine.ObserveRequest) (kernel.Observation, error) {
-	return runtime.inner.Observe(ctx, request)
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	observation, err := runtime.inner.Observe(ctx, request)
+	if err != nil {
+		return observation, err
+	}
+	if observation.StopConfirmed() {
+		runtime.stopLiveLogs(ctx, request.Identity)
+		runtime.drainCompleted(ctx, request.Identity)
+	}
+	return observation, nil
 }
 
-// Logs delegates unchanged. The collector only reads logs around Remove.
+// Logs delegates unchanged.
 func (runtime *logCollectingRuntime) Logs(ctx context.Context, request kernelengine.LogsRequest) (kernelengine.LogBatch, error) {
 	return runtime.inner.Logs(ctx, request)
 }

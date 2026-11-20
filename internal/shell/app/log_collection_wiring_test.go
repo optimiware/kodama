@@ -172,13 +172,13 @@ func (fixture *composedLogFixture) runExecution(t *testing.T) (string, string, a
 	return started.ExecutionID, inspected.Actions[0].ActionID, inspected
 }
 
-func (fixture *composedLogFixture) readStdout(t *testing.T, executionID, actionID string) string {
+func (fixture *composedLogFixture) readStream(t *testing.T, executionID, actionID, stream string) string {
 	t.Helper()
 	recorder, result, publicError := restCall(t, fixture.handler, http.MethodGet,
 		"/api/v1/executions/"+executionID+"/logs", "dev-project-token",
-		api.ExecutionLogsReadRequest{ActionID: actionID, Stream: "stdout"}, nil, "log-read-1")
+		api.ExecutionLogsReadRequest{ActionID: actionID, Stream: stream}, nil, "")
 	if recorder.Code != api.HTTPStatusSuccess {
-		t.Fatalf("execution.logs.read status=%d error=%+v", recorder.Code, publicError)
+		t.Fatalf("execution.logs.read (%s) status=%d error=%+v", stream, recorder.Code, publicError)
 	}
 	page := decodeBody[api.ExecutionLogsReadResult](t, result)
 	var collected strings.Builder
@@ -186,6 +186,11 @@ func (fixture *composedLogFixture) readStdout(t *testing.T, executionID, actionI
 		collected.Write(chunk.Data)
 	}
 	return collected.String()
+}
+
+func (fixture *composedLogFixture) readStdout(t *testing.T, executionID, actionID string) string {
+	t.Helper()
+	return fixture.readStream(t, executionID, actionID, "stdout")
 }
 
 func TestComposedLogsReadAfterContainerRemoval(t *testing.T) {
@@ -236,7 +241,11 @@ func TestComposedLogsReadAfterContainerRemoval(t *testing.T) {
 }
 
 func TestComposedLogCollectionRetriesBeforeRemoval(t *testing.T) {
-	fixture := newComposedLogFixture(t, 1)
+	// Inject two consecutive log read failures: the first fails the post-exit
+	// drain on Observe (which preserves exit settlement and defers to Remove),
+	// and the second fails the first Remove attempt so terminal cleanup records
+	// a pending attempt and retries before deleting the workload.
+	fixture := newComposedLogFixture(t, 2)
 	executionID, actionID, inspected := fixture.runExecution(t)
 
 	collected := fixture.readStdout(t, executionID, actionID)
@@ -287,5 +296,159 @@ func TestComposedLogsReadRefusesUnknownExecutionWithNotFound(t *testing.T) {
 		api.ExecutionLogsReadRequest{ActionID: "act-missing", Stream: "stdout"}, nil, "")
 	if recorder.Code != http.StatusNotFound || publicError.Code != api.CodeNotFound {
 		t.Fatalf("unknown action logs status=%d error=%+v; want 404 not_found", recorder.Code, publicError)
+	}
+}
+
+func TestComposedLogsReadableDuringRequestWait(t *testing.T) {
+	const composedLogStderr = "composed container stderr\n"
+	fixture := newComposedLogFixture(t, 0)
+	fixture.runtime.mu.Lock()
+	fixture.runtime.pages = map[int64]kernelengine.LogBatch{
+		0: {
+			Chunks: []kernelengine.LogChunk{
+				{Stream: kernelengine.LogStdout, Offset: 0, Sequence: 1, Data: []byte(composedLogOutput)},
+				{Stream: kernelengine.LogStderr, Offset: 0, Sequence: 1, Data: []byte(composedLogStderr)},
+			},
+			NextOffset: int64(len(composedLogOutput) + len(composedLogStderr)),
+		},
+		int64(len(composedLogOutput) + len(composedLogStderr)): {
+			NextOffset: int64(len(composedLogOutput) + len(composedLogStderr)),
+		},
+	}
+	fixture.runtime.mu.Unlock()
+
+	// Grant reviewer alongside admin/engineer so the test can resolve the wait.
+	membershipVersion := uint64(1)
+	recorder, _, publicError := restCall(t, fixture.handler, http.MethodPut,
+		"/api/v1/projects/project-1/memberships/admin-1", "dev-admin-token",
+		api.MembershipGrantRequest{Roles: []string{"admin", "engineer", "reviewer"}}, &membershipVersion, "membership-reviewer")
+	if recorder.Code != api.HTTPStatusSuccess {
+		t.Fatalf("membership.grant reviewer status=%d error=%+v", recorder.Code, publicError)
+	}
+
+	const requestPipeline = `actions:
+  - name: prepare
+    image: busybox:latest
+    commands:
+      - echo prepare
+  - name: approve
+    request: role/reviewer
+    subject:
+      stage: prepare
+  - name: integrate
+    image: busybox:latest
+    commands:
+      - echo integrate
+`
+	projectToken := "dev-project-token"
+	recorder, result, publicError := restCall(t, fixture.handler, http.MethodPut,
+		"/api/v1/projects/project-1/pipelines/review-flow", projectToken,
+		api.PipelineApplyRequest{Name: "review-flow", YAML: []byte(requestPipeline)}, nil, "review-pipeline-1")
+	if recorder.Code != api.HTTPStatusSuccess {
+		t.Fatalf("pipeline.apply status=%d error=%+v", recorder.Code, publicError)
+	}
+	applied := decodeBody[api.PipelineApplyResult](t, result)
+	recorder, result, publicError = restCall(t, fixture.handler, http.MethodPost,
+		"/api/v1/projects/project-1/tasks/create-and-start", projectToken,
+		api.TaskCreateAndStartRequest{Title: "review-logs", PipelineID: applied.PipelineID}, nil, "review-task-1")
+	if recorder.Code != api.HTTPStatusSuccess {
+		t.Fatalf("task.create_and_start status=%d error=%+v", recorder.Code, publicError)
+	}
+	started := decodeBody[api.TaskCreateAndStartResult](t, result)
+
+	var waiting api.ExecutionInspectResult
+	eventually(t, 5*time.Second, func() bool {
+		_, inspectedResult, _ := restCall(t, fixture.handler, http.MethodGet,
+			"/api/v1/executions/"+started.ExecutionID, projectToken, nil, nil, "")
+		if err := json.Unmarshal(inspectedResult.Body, &waiting); err != nil {
+			return false
+		}
+		return waiting.State == "running" && len(waiting.Actions) == 3 &&
+			waiting.Actions[0].State == "succeeded" && waiting.Actions[1].State == "running"
+	})
+
+	prepareAction := waiting.Actions[0]
+	integrateAction := waiting.Actions[2]
+
+	// Container removal and workspace release must NOT have happened yet while
+	// the request action is waiting, yet prepare's stdout and stderr must
+	// already be durably readable.
+	if got := fixture.runtime.removeCount(); got != 0 {
+		t.Fatalf("runtime Remove calls during request wait = %d; want 0", got)
+	}
+	if got := fixture.workspace.releaseCount(); got != 0 {
+		t.Fatalf("workspace Release calls during request wait = %d; want 0", got)
+	}
+	if got := fixture.readStream(t, started.ExecutionID, prepareAction.ActionID, "stdout"); got != composedLogOutput {
+		t.Fatalf("prepare stdout during request wait = %q; want %q", got, composedLogOutput)
+	}
+	if got := fixture.readStream(t, started.ExecutionID, prepareAction.ActionID, "stderr"); got != composedLogStderr {
+		t.Fatalf("prepare stderr during request wait = %q; want %q", got, composedLogStderr)
+	}
+
+	// Approve the request so the execution completes and runs terminal cleanup.
+	// Re-inspect on version_conflict because the served inspect view can straddle
+	// an activation/credential-revocation commit (same pattern as requests_test.go).
+	resolved := false
+	for range 20 {
+		_, currentResult, _ := restCall(t, fixture.handler, http.MethodGet,
+			"/api/v1/executions/"+started.ExecutionID, projectToken, nil, nil, "")
+		var current api.ExecutionInspectResult
+		if err := json.Unmarshal(currentResult.Body, &current); err != nil {
+			t.Fatalf("unmarshal execution inspect: %v", err)
+		}
+		currentApprove := current.Actions[1]
+		expectedVersion := current.Version
+		recorder, _, publicError = restCall(t, fixture.handler, http.MethodPost,
+			"/api/v1/executions/"+started.ExecutionID+"/actions/"+currentApprove.ActionID+"/resolve",
+			projectToken,
+			api.ExecutionRequestResolveRequest{
+				ExecutionID:           started.ExecutionID,
+				ActionID:              currentApprove.ActionID,
+				ExpectedActionVersion: currentApprove.Version,
+				Decision:              "pass",
+			},
+			&expectedVersion,
+			"resolve-approve-1",
+		)
+		if publicError.Code == api.CodeVersionConflict {
+			continue
+		}
+		if recorder.Code != api.HTTPStatusSuccess {
+			t.Fatalf("execution.request.resolve status=%d error=%+v", recorder.Code, publicError)
+		}
+		resolved = true
+		break
+	}
+	if !resolved {
+		t.Fatal("execution.request.resolve did not converge on a current execution version")
+	}
+
+	var finished api.ExecutionInspectResult
+	eventually(t, 5*time.Second, func() bool {
+		_, inspectedResult, _ := restCall(t, fixture.handler, http.MethodGet,
+			"/api/v1/executions/"+started.ExecutionID, projectToken, nil, nil, "")
+		if err := json.Unmarshal(inspectedResult.Body, &finished); err != nil {
+			return false
+		}
+		return finished.State == "succeeded" && finished.Cleanup.State == "complete"
+	})
+
+	if got := fixture.runtime.removeCount(); got != 2 {
+		t.Fatalf("runtime Remove calls after completion = %d; want 2 (prepare + integrate)", got)
+	}
+	if got := fixture.workspace.releaseCount(); got != 1 {
+		t.Fatalf("workspace Release calls after completion = %d; want 1", got)
+	}
+	// Terminal cleanup must not duplicate prepare's already-drained chunks, and
+	// integrate's logs must also be retained.
+	if got := fixture.readStream(t, started.ExecutionID, prepareAction.ActionID, "stdout"); got != composedLogOutput {
+		t.Fatalf("prepare stdout after cleanup = %q; want exact single copy %q", got, composedLogOutput)
+	}
+	if got := fixture.readStream(t, started.ExecutionID, prepareAction.ActionID, "stderr"); got != composedLogStderr {
+		t.Fatalf("prepare stderr after cleanup = %q; want exact single copy %q", got, composedLogStderr)
+	}
+	if got := fixture.readStream(t, started.ExecutionID, integrateAction.ActionID, "stdout"); got != composedLogOutput {
+		t.Fatalf("integrate stdout after cleanup = %q; want %q", got, composedLogOutput)
 	}
 }

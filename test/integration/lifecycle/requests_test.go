@@ -52,6 +52,9 @@ const (
 	requestApproval   = "approved:" + requestArtifact
 	requestIntegrated = "integrated:" + requestApproval
 
+	prepareStdoutMarker = "prepare-stdout:ready-for-review"
+	prepareStderrMarker = "prepare-stderr:diagnostic-line"
+
 	// requestWaitTimeout is the long request deadline used by every subtest
 	// except the expiry subtest. The persisted deadline is compared by the
 	// store's transaction clock (real PostgreSQL time), so a long timeout keeps
@@ -176,7 +179,11 @@ func sameSubject(left, right *api.Subject) bool {
 // and replays an MCP resolve to exactly one receipt.
 func testRequestPass(t *testing.T, harness *factory.Harness) {
 	ctx := t.Context()
-	applied := applyRequestPipeline(t, harness, "request-pass", requestWaitTimeout, nil, nil)
+	prepareLogs := []string{
+		fmt.Sprintf("printf '%s\\n'", prepareStdoutMarker),
+		fmt.Sprintf("printf '%s\\n' >&2", prepareStderrMarker),
+	}
+	applied := applyRequestPipeline(t, harness, "request-pass", requestWaitTimeout, prepareLogs, nil)
 	started := startPipeline(t, harness, harness.ProjectToken, applied.PipelineID,
 		map[string]string{"seed": requestSeed}, "start-request-pass")
 
@@ -209,6 +216,18 @@ func testRequestPass(t *testing.T, harness *factory.Harness) {
 	// trusted.
 	assertRequestWaitResources(t, harness, started.ExecutionID)
 	assertRunningContainersPositiveControl(t, harness, started.ExecutionID)
+
+	// Completed container logs must already be drained and readable while the
+	// downstream request action waits, before terminal execution cleanup removes
+	// the stopped container.
+	waitStdout := readActionLogs(t, harness, harness.ProjectToken, started.ExecutionID, prepare.ActionID, "stdout")
+	if got := strings.Count(waitStdout, prepareStdoutMarker); got != 1 {
+		t.Fatalf("prepare stdout during request wait = %q; want %q once", waitStdout, prepareStdoutMarker)
+	}
+	waitStderr := readActionLogs(t, harness, harness.ProjectToken, started.ExecutionID, prepare.ActionID, "stderr")
+	if got := strings.Count(waitStderr, prepareStderrMarker); got != 1 {
+		t.Fatalf("prepare stderr during request wait = %q; want %q once", waitStderr, prepareStderrMarker)
+	}
 
 	// The inbox is derived from the authoritative running action and filtered by
 	// the caller's current role: the reviewer sees it, an operator-only human
@@ -326,9 +345,18 @@ func testRequestPass(t *testing.T, harness *factory.Harness) {
 	requireEvent(t, readRequestEvents(t, harness, "request.resolved"), "request.resolved", started.ExecutionID, approve.ActionID)
 
 	// Settlement does not rewrite the resolved subject, and the terminal
-	// execution releases its workload and retained workspace.
+	// execution releases its workload and retained workspace without duplicating
+	// the already-drained action logs.
 	assertRequestSubject(t, harness, started.ExecutionID, "approve")
 	assertExecutionResourcesReleased(t, harness, started.ExecutionID)
+	afterStdout := readActionLogs(t, harness, harness.ProjectToken, started.ExecutionID, prepare.ActionID, "stdout")
+	if got := strings.Count(afterStdout, prepareStdoutMarker); got != 1 {
+		t.Fatalf("prepare stdout after terminal cleanup = %q; want %q once (no duplicate drain)", afterStdout, prepareStdoutMarker)
+	}
+	afterStderr := readActionLogs(t, harness, harness.ProjectToken, started.ExecutionID, prepare.ActionID, "stderr")
+	if got := strings.Count(afterStderr, prepareStderrMarker); got != 1 {
+		t.Fatalf("prepare stderr after terminal cleanup = %q; want %q once (no duplicate drain)", afterStderr, prepareStderrMarker)
+	}
 }
 
 // testRequestRejected proves a failing decision fails the execution with the
@@ -952,6 +980,36 @@ func readRequestEvents(t *testing.T, harness *factory.Harness, types ...string) 
 	var events api.EventReadResult
 	harness.Decode(result, &events)
 	return events
+}
+
+// readActionLogs drains every retained log page for one action and stream
+// through the public execution.logs.read operation.
+func readActionLogs(t *testing.T, harness *factory.Harness, token, executionID, actionID, stream string) string {
+	t.Helper()
+	var builder strings.Builder
+	cursor := ""
+	for range 64 {
+		req := api.ExecutionLogsReadRequest{
+			ExecutionID: executionID,
+			ActionID:    actionID,
+			Stream:      stream,
+		}
+		if cursor != "" {
+			req.Page = &api.Page{Cursor: cursor}
+		}
+		result := harness.MustREST(token, "execution.logs.read", req, nil, "")
+		var page api.ExecutionLogsReadResult
+		harness.Decode(result, &page)
+		for _, chunk := range page.Chunks {
+			_, _ = builder.Write(chunk.Data)
+		}
+		if page.NextCursor == "" {
+			return builder.String()
+		}
+		cursor = page.NextCursor
+	}
+	t.Fatalf("execution.logs.read for %s/%s (%s) exceeded 64 pages", executionID, actionID, stream)
+	return ""
 }
 
 // requireEvent proves one committed event of the exact type names one of the

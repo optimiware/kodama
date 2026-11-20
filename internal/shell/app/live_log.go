@@ -3,11 +3,11 @@ package app
 // Live log publication while an action is still running.
 //
 // Retained collection alone is too late for a live subscription: the runtime's
-// output is only made durable at the pre-stop checkpoint and at Remove, so
-// a subscriber observes nothing while the workload is producing output. This
-// file adds a bounded, best-effort poller that reads the same runtime log seam
-// with its own continuation cursor and publishes each bounded piece through the
-// composition's live publisher.
+// output is only made durable on confirmed exit (Observe), at the pre-stop
+// checkpoint (Stop) and at Remove, so a subscriber observes nothing while the
+// workload is producing output. This file adds a bounded, best-effort poller
+// that reads the same runtime log seam with its own continuation cursor and
+// publishes each bounded piece through the composition's live publisher.
 //
 // The live pump is never the retained source:
 //
@@ -28,14 +28,15 @@ package app
 //   - a read, split or publish failure is live loss only. Retained collection
 //     at Stop/Remove continues to provide the complete read-back fallback.
 //
-// The pump is cancelled before the pre-stop retention checkpoint and before
-// Remove, so the durable cursor and the live stream do not chase each other.
-// A composition Close cancels every remaining pump.
+// The pump is cancelled on confirmed exit (Observe), before the pre-stop
+// retention checkpoint (Stop), and before Remove, so the durable cursor and the
+// live stream do not chase each other. A composition Close cancels every
+// remaining pump.
 //
 // Live offsets are not strictly monotonic across a lifecycle boundary. The
-// pre-stop checkpoint (Stop) and the final drain (Remove) read output the live
-// pump may already have published, and they offer those pieces to the live
-// publisher again. A consumer therefore sees the same (execution, action,
+// post-exit drain (Observe), the pre-stop checkpoint (Stop) and the final drain
+// (Remove) read output the live pump may already have published, and they offer
+// those pieces to the live publisher again. A consumer therefore sees the same (execution, action,
 // stream, offset) piece more than when the runtime's cursor moved once: it must
 // deduplicate by that chunk identity exactly as the retained sink does, and it
 // must not treat a repeated or lower offset at a checkpoint as a new chunk.
