@@ -40,6 +40,9 @@ func TestTaskRestartActivatesReplacementAfterPredecessorStopSettles(t *testing.T
 	created := decodeBody[api.TaskCreateAndStartResult](t, createRes)
 
 	waitForActivationPrepares(t, fixture.runtime, 1)
+	// Wait for the running observation to settle before task.restart cancels
+	// the predecessor so CheckExecutionVersion does not race startup.
+	waitForStableExecutionVersion(t, handler, "dev-project-token", created.ExecutionID)
 
 	// 2. Restart the task atomically onto stageTwo while stageOne is still running.
 	expectedLifecycle := created.LifecycleVersion
