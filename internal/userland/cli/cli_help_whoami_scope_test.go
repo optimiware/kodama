@@ -361,6 +361,25 @@ func TestProjectScopeMismatchHintOnProjectNotVisible(t *testing.T) {
 			}
 		}
 	})
+
+	t.Run("explicit credential file does not fall through to saved session store", func(t *testing.T) {
+		cfg := testConfig()
+		cfg.CredentialFile = "/nonexistent/explicit-token"
+		ports, _, errOut := testPorts(notVisibleTransport)
+		ports.Session = &fakeSessionStore{load: client.Credential{
+			Kind:      client.KindSession,
+			Token:     projectScopedJWT,
+			ExpiresAt: testNow().Add(time.Hour),
+		}}
+
+		code := cli.Run(context.Background(), cfg, []string{"task", "list", "--project", "other-proj"}, ports)
+		if code != cli.ExitFailure {
+			t.Fatalf("exit=%d; want %d", code, cli.ExitFailure)
+		}
+		if strings.Contains(errOut.String(), "hint:") {
+			t.Fatalf("unexpected hint from session fallback when CredentialFile is set:\n%s", errOut.String())
+		}
+	})
 }
 
 // TestCallSchemaAdvertisesStringValuedMetadata pins that `kodema call --schema`

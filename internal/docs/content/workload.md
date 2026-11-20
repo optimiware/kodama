@@ -11,6 +11,10 @@ Every container action receives the same filesystem layout, environment variable
 | `/kodema/outputs/<action>/<key>` | Read-only | Settled outputs of earlier succeeded actions in this execution. |
 | `/kodema/outputs/<current-action>/` | Writable | Present when the current action declares `outputs`. Write one file per declared key; Kodema automatically runs `kodema output push` after the last command succeeds (trimming one trailing newline per file, max 8 keys, max 4 KiB each). |
 | `/kodema/task.json` | Read-only | Task conversation snapshot at admission: a JSON array of messages (`author`, `at`, `body`, optional `references`). Absent for task-free executions. |
+| `/kodema/task/title` | Read-only | Admitted task title (UTF-8 text, immutable for the execution). Absent for task-free executions. |
+| `/kodema/task/description` | Read-only | Admitted task Markdown description (UTF-8 text, empty file when unset). Absent for task-free executions. |
+| `/kodema/task/metadata.json` | Read-only | Admitted task metadata as a deterministic JSON object of string values (`{}` when unset). Absent for task-free executions. |
+| `/kodema/task/spec.json` | Read-only | Combined admitted task specification JSON object (`{"id", "title", "description", "metadata"}`). Absent for task-free executions. |
 | `/kodema/secrets/<NAME>` | Read-only | Declared project secrets resolved at container activation. |
 | `/kodema/secrets/KODEMA_TOKEN` | Read-only | Live execution credential (`kodex.*`), automatically renewed by the controller during long actions and revoked during request waits or terminal transitions. |
 | `/kodema/bin/kodema` | Read-only | Control-plane-matched `kodema` CLI toolbox, automatically added to `PATH`. |

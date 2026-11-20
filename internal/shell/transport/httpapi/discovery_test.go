@@ -1,7 +1,7 @@
 package httpapi_test
 
 // These tests pin the one unauthenticated public discovery route served by the
-// REST edge, api.DiscoveryPath. It is a fixed root route outside the 58-operation
+// REST edge, api.DiscoveryPath. It is a fixed root route outside the operation
 // registry: it is served before authentication and before operation routing,
 // validates the consumer-owned provider's document on every response, and never
 // falls back to a partial, invalid or oversized document.
@@ -490,7 +490,7 @@ func discoveryURLOfEncodedSize(t *testing.T, document api.DiscoveryDocument, siz
 }
 
 // TestDiscoveryIsAbsentFromRegistries pins that the discovery route is not one
-// of the 58 operations: it is not in the declared route table, does not resolve
+// of the registered operations: it is not in the declared route table, does not resolve
 // through api.Match and is not advertised as an MCP tool.
 func TestDiscoveryIsAbsentFromRegistries(t *testing.T) {
 	routes := api.Routes()

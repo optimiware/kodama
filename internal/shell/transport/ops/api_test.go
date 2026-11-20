@@ -420,7 +420,7 @@ func newHarness(t *testing.T) *harness {
 }
 
 // prepare selects a principal and scope the real authorize matrix grants for
-// one registry operation. It keeps the 58-operation parity and receipt-policy
+// one registry operation. It keeps the full operation parity and receipt-policy
 // tables on the production grant matrix instead of an allow-all fake.
 func (h *harness) prepare(operation authorize.Operation) {
 	h.t.Helper()

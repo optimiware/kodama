@@ -2,7 +2,7 @@
 //
 // The kodema login flow is configured with the Kodema API URL only. It reads
 // one unauthenticated public discovery document from the fixed
-// /.well-known/kodema-configuration path, outside the 58-operation registry.
+// /.well-known/kodema-configuration path, outside the operation registry.
 // The document is strictly decoded, bounded, validated and carries no secret
 // or JWKS material.
 package publiccontract
@@ -231,7 +231,7 @@ func discoveryPaddedTo(t *testing.T, size int) []byte {
 }
 
 // TestDiscoveryRouteIsOutsideOperationRegistry pins the unauthenticated
-// discovery route: a fixed root path, not one of the 58 operations, not
+// discovery route: a fixed root path, not one of the registered operations, not
 // matchable by the operation router and not requiring a credential to decode.
 func TestDiscoveryRouteIsOutsideOperationRegistry(t *testing.T) {
 	if api.DiscoveryPath != "/.well-known/kodema-configuration" {

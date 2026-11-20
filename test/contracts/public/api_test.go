@@ -11,7 +11,7 @@
 // signatures, JSON keys, vocabularies, bounds and refusal classes are fixed by
 // these tests. The domain's separate resource-operation vocabulary
 // (`git.ref.update`) is accepted by the verification/report schemas while the
-// 58-operation router registry is not. Git reads are local Git RBAC
+// router operation registry is not. Git reads are local Git RBAC
 // decisions, the approval subject names the repository `resource`, and the
 // public lifecycle name is `action.requested`.
 //

@@ -143,11 +143,99 @@ func TestCLITaskStartWithPipelineNameInputsAndOutputRef(t *testing.T) {
 		}
 	})
 
-	t.Run("task start rejects invalid or colliding input-from-output", func(t *testing.T) {
-		cfg := testConfig()
-		ports, _, errOut := testPorts(&scriptedTransport{})
-		if code := cli.Run(context.Background(), cfg, []string{"task", "start", "task-10", "--input-from-output", "badformat"}, ports); code != cli.ExitUsage {
-			t.Fatalf("bad format exit = %d; want usage (%q)", code, errOut.String())
+	t.Run("task start rejects invalid or colliding input-from-output upfront without RPC", func(t *testing.T) {
+		for _, tc := range []struct {
+			name string
+			argv []string
+		}{
+			{
+				name: "bad format",
+				argv: []string{"task", "start", "task-10", "--input-from-output", "badformat"},
+			},
+			{
+				name: "task start collision",
+				argv: []string{"task", "start", "task-10", "--input", "branch=manual", "--input-from-output", "branch=push.branch"},
+			},
+			{
+				name: "task restart collision",
+				argv: []string{"task", "restart", "task-10", "--input", "branch=manual", "--input-from-output", "branch=push.branch"},
+			},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				calls := 0
+				transport := &scriptedTransport{respond: func(_ context.Context, _ int, inv api.Invocation) (api.Result, error) {
+					calls++
+					t.Fatalf("unexpected RPC %s on usage error", inv.Operation)
+					return api.Result{}, nil
+				}}
+				cfg := testConfig()
+				ports, _, errOut := testPorts(transport)
+				if code := cli.Run(context.Background(), cfg, tc.argv, ports); code != cli.ExitUsage {
+					t.Fatalf("exit = %d; want usage (%d), stderr=%q", code, cli.ExitUsage, errOut.String())
+				}
+				if calls != 0 {
+					t.Fatalf("RPC count = %d; want 0", calls)
+				}
+			})
+		}
+	})
+
+	t.Run("task start input-from-output surfaces missing succeeded execution or output clearly", func(t *testing.T) {
+		noSuccessTask, _ := json.Marshal(api.TaskReadResult{
+			TaskID: "task-12", Title: "T", State: "open", ContentVersion: 1, LifecycleVersion: 2, Initiator: "oidc-1",
+			ExecutionHistory: []string{"exec-failed"},
+		})
+		failedExec, _ := json.Marshal(api.ExecutionInspectResult{
+			ExecutionID: "exec-failed", State: "failed", Version: 2,
+		})
+		succeededTask, _ := json.Marshal(api.TaskReadResult{
+			TaskID: "task-13", Title: "T", State: "done", ContentVersion: 1, LifecycleVersion: 3, Initiator: "oidc-1",
+			ExecutionHistory: []string{"exec-ok"},
+		})
+		succeededExec, _ := json.Marshal(api.ExecutionInspectResult{
+			ExecutionID: "exec-ok", State: "succeeded", Version: 3,
+			Actions: []api.ExecutionAction{
+				{ActionID: "act-1", Name: "push", Kind: "container", State: "succeeded", Version: 2, Outputs: map[string]string{"branch": "work/1"}},
+			},
+		})
+
+		cases := []struct {
+			name     string
+			taskID   string
+			taskBody []byte
+			execBody []byte
+			ref      string
+			wantErr  string
+		}{
+			{"no succeeded execution", "task-12", noSuccessTask, failedExec, "branch=push.branch", "no succeeded execution"},
+			{"missing action", "task-13", succeededTask, succeededExec, "branch=build.branch", `no action named "build"`},
+			{"missing output key", "task-13", succeededTask, succeededExec, "commit=push.commit", `no output "commit"`},
+		}
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				transport := &scriptedTransport{respond: func(_ context.Context, _ int, inv api.Invocation) (api.Result, error) {
+					switch inv.Operation {
+					case "task.read":
+						return api.Result{Operation: inv.Operation, Body: tc.taskBody}, nil
+					case "execution.inspect":
+						return api.Result{Operation: inv.Operation, Body: tc.execBody}, nil
+					default:
+						t.Fatalf("unexpected op %s", inv.Operation)
+						return api.Result{}, nil
+					}
+				}}
+				cfg := testConfig()
+				ports, _, errOut := testPorts(transport)
+				code := cli.Run(context.Background(), cfg, []string{
+					"task", "start", tc.taskID, "--pipeline", "pipe-next", "--input-from-output", tc.ref,
+				}, ports)
+				if code != cli.ExitFailure {
+					t.Fatalf("exit = %d; want failure (%d), stderr=%q", code, cli.ExitFailure, errOut.String())
+				}
+				if !strings.Contains(errOut.String(), tc.wantErr) {
+					t.Fatalf("stderr = %q; want substring %q", errOut.String(), tc.wantErr)
+				}
+			})
 		}
 	})
 }

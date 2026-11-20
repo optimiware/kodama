@@ -35,6 +35,7 @@ var PortableE2ETests = []string{
 	"TestE2E_AC18TaskProgress",
 	"TestE2E_AC19AuthorizationVerification",
 	"TestE2E_AC20UserlandGit",
+	"TestE2E_AC21V06Capabilities",
 	"TestE2E_InstallationAccess",
 	"TestE2E_Parity",
 }
