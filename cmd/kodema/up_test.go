@@ -51,6 +51,27 @@ func TestUpDownStatusCLICommands(t *testing.T) {
 	if capturedUp.Instance != "demo" || capturedUp.ListenAddr != "127.0.0.1:9443" || capturedUp.Stderr != &errBuf {
 		t.Fatalf("capturedUp = %+v (stderr wired=%v)", capturedUp, capturedUp.Stderr == &errBuf)
 	}
+	// Bare `kodema up` leaves TenantID/ProjectID empty so Up preserves an
+	// existing instance's stored identity or applies defaults on first boot.
+	if capturedUp.TenantID != "" || capturedUp.ProjectID != "" {
+		t.Fatalf("bare runUpEntry identity = %q/%q; want empty", capturedUp.TenantID, capturedUp.ProjectID)
+	}
+	// Explicit --tenant / --project flags (even when matching the defaults) are
+	// forwarded so preflight identity mismatch checks catch conflicting flags.
+	if code := runUpEntry(context.Background(), []string{"--name", "demo", "--tenant", up.DefaultTenantID, "--project", up.DefaultProjectID}, &out, &errBuf); code != 0 {
+		t.Fatalf("runUpEntry with explicit default identity exit = %d: %s", code, errBuf.String())
+	}
+	if capturedUp.TenantID != up.DefaultTenantID || capturedUp.ProjectID != up.DefaultProjectID {
+		t.Fatalf("explicit identity = %q/%q; want %q/%q", capturedUp.TenantID, capturedUp.ProjectID, up.DefaultTenantID, up.DefaultProjectID)
+	}
+	t.Setenv("KODEMA_UP_TENANT", "tenant-env")
+	t.Setenv("KODEMA_UP_PROJECT", "project-env")
+	if code := runUpEntry(context.Background(), []string{"--name", "demo"}, &out, &errBuf); code != 0 {
+		t.Fatalf("runUpEntry with env identity exit = %d: %s", code, errBuf.String())
+	}
+	if capturedUp.TenantID != "tenant-env" || capturedUp.ProjectID != "project-env" {
+		t.Fatalf("env identity = %q/%q; want tenant-env/project-env", capturedUp.TenantID, capturedUp.ProjectID)
+	}
 
 	// KODEMA_SOCKET names the Podman socket of every command, and --socket wins.
 	t.Setenv("KODEMA_SOCKET", "/env/podman.sock")

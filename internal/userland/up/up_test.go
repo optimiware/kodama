@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/fault"
 )
 
 func TestDetectRuntimeDeterministicOrderAndOverrides(t *testing.T) {
@@ -996,8 +997,9 @@ func TestStackUpStatusAndDownWithMockEngine(t *testing.T) {
 	if !strings.Contains(serverBinds, "/run/user/501/podman/podman.sock:/var/run/kodema-container.sock") {
 		t.Fatalf("server binds = %s, want the engine's own socket", serverBinds)
 	}
-	// A fresh `kodema up` configures project-scoped workload secret rules so
-	// project secrets written via secret.write can materialize in workloads.
+	// A fresh `kodema up` configures tenant-scoped workload secret rules so
+	// project secrets written via secret.write can materialize in workloads
+	// across projects in the local tenant.
 	secretRulesPath := filepath.Join(desc.StateDir, secretRulesFileName)
 	serverEnv := engine.containerEnv(t, "kodema-test-server")
 	if !slices.Contains(serverEnv, "KODEMA_SECRET_RULES_FILE="+secretRulesPath) {
@@ -1013,10 +1015,13 @@ func TestStackUpStatusAndDownWithMockEngine(t *testing.T) {
 	}
 	if len(parsedRules.SecretRules) != 1 ||
 		parsedRules.SecretRules[0].TenantID != DefaultTenantID ||
-		parsedRules.SecretRules[0].ProjectID != DefaultProjectID ||
+		parsedRules.SecretRules[0].ProjectID != "" ||
 		!parsedRules.SecretRules[0].AllowAll ||
 		len(parsedRules.SecretRules[0].Names) != 0 {
-		t.Fatalf("default secret-rules.json = %+v; want project-scoped allow_all", parsedRules)
+		t.Fatalf("default secret-rules.json = %+v; want tenant-scoped allow_all", parsedRules)
+	}
+	if strings.Contains(string(rulesData), `"project_id"`) {
+		t.Fatalf("default secret-rules.json unexpectedly serialized project_id:\n%s", rulesData)
 	}
 	// Every container that mounts a host path runs unconfined by SELinux; the
 	// broker mounts a named volume only and stays confined.
@@ -1801,4 +1806,448 @@ func TestDiscoverDefaultInstance(t *testing.T) {
 			t.Fatal("DiscoverDefaultInstance returned true for stopped instance")
 		}
 	})
+}
+
+func TestUpPreflightRefusesIdentityMismatchWithoutSideEffects(t *testing.T) {
+	home := t.TempDir()
+	engine := newMockEngine(t)
+	port, err := allocateLoopbackPort()
+	if err != nil {
+		t.Fatal(err)
+	}
+	listenAddr := fmt.Sprintf("127.0.0.1:%d", port)
+	detectOpts := &DetectOptions{
+		ExplicitSocket: "/mock/podman.sock",
+		GOOS:           "darwin",
+		HomeDir:        home,
+		StatSocket:     func(string) bool { return true },
+		PingSocket:     func(context.Context, string) (RuntimeKind, error) { return KindPodman, nil },
+	}
+
+	// Bootstrap an initial instance with custom tenant and project.
+	gwCtx, stopGW := context.WithCancel(context.Background())
+	defer stopGW()
+	desc, err := Up(context.Background(), UpConfig{
+		Instance:   "multi",
+		TenantID:   "tenant-alpha",
+		ProjectID:  "project-alpha",
+		ListenAddr: listenAddr,
+		GOOS:       "darwin",
+		HomeDir:    home,
+		DetectOpts: detectOpts,
+		EngineHTTP: engine.client,
+		SpawnGateway: func(stateDir string) (int, error) {
+			go func() { _ = ServeStackGateway(gwCtx, stateDir) }()
+			return os.Getpid(), nil
+		},
+		Provision: func(context.Context, provisionConfig) (string, error) { return "kodsvc.alpha", nil },
+	}, io.Discard)
+	if err != nil {
+		t.Fatalf("initial Up failed: %v", err)
+	}
+
+	// Attach a live dummy gateway process matching --gateway-only so we can
+	// prove mismatch refusal never signals it or removes gateway.pid.
+	gateway := exec.Command("sh", "-c", "while :; do sleep 1; done", "--gateway-only")
+	if err := gateway.Start(); err != nil {
+		t.Fatal(err)
+	}
+	var stopDummyOnce sync.Once
+	stopDummyGateway := func() {
+		stopDummyOnce.Do(func() {
+			_ = gateway.Process.Kill()
+			_ = gateway.Wait()
+		})
+	}
+	defer stopDummyGateway()
+	gatewayPIDPath := filepath.Join(desc.StateDir, "gateway.pid")
+	if err := os.WriteFile(gatewayPIDPath, []byte(strconv.Itoa(gateway.Process.Pid)+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	desc.GatewayPID = gateway.Process.Pid
+	if err := saveStackDescriptor(desc.StateDir, desc); err != nil {
+		t.Fatal(err)
+	}
+
+	stackJSONPath := filepath.Join(desc.StateDir, "stack.json")
+	envShPath := filepath.Join(desc.StateDir, "env.sh")
+	wantStackJSON, err := os.ReadFile(stackJSONPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantEnvSh, err := os.ReadFile(envShPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	engineTouched := false
+	failIfEngineTouched := &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			engineTouched = true
+			return nil, fmt.Errorf("unexpected engine request %s %s", req.Method, req.URL.Path)
+		}),
+	}
+	spawnCalled := false
+	provisionCalled := false
+
+	for _, tc := range []struct {
+		name      string
+		tenantID  string
+		projectID string
+		wantSubs  []string
+	}{
+		{
+			name:      "project mismatch",
+			projectID: "project-beta",
+			wantSubs:  []string{`instance "multi"`, `tenant "tenant-alpha"`, `project "project-alpha"`, `project "project-beta"`, "--name", "create another project"},
+		},
+		{
+			name:      "explicit default project mismatches custom project",
+			projectID: DefaultProjectID,
+			wantSubs:  []string{`instance "multi"`, `project "project-alpha"`, DefaultProjectID, "--name"},
+		},
+		{
+			name:     "tenant mismatch",
+			tenantID: "tenant-beta",
+			wantSubs: []string{`instance "multi"`, `tenant "tenant-alpha"`, `tenant "tenant-beta"`, "--name"},
+		},
+		{
+			name:      "both tenant and project mismatch",
+			tenantID:  "tenant-beta",
+			projectID: "project-beta",
+			wantSubs:  []string{`instance "multi"`, `tenant "tenant-alpha"`, `project "project-alpha"`, `tenant "tenant-beta"`, `project "project-beta"`},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			engineTouched = false
+			spawnCalled = false
+			provisionCalled = false
+			_, err := Up(context.Background(), UpConfig{
+				Instance:   "multi",
+				TenantID:   tc.tenantID,
+				ProjectID:  tc.projectID,
+				ListenAddr: listenAddr,
+				GOOS:       "darwin",
+				HomeDir:    home,
+				DetectOpts: detectOpts,
+				EngineHTTP: failIfEngineTouched,
+				SpawnGateway: func(string) (int, error) {
+					spawnCalled = true
+					return 0, fmt.Errorf("SpawnGateway should not run")
+				},
+				Provision: func(context.Context, provisionConfig) (string, error) {
+					provisionCalled = true
+					return "", fmt.Errorf("Provision should not run")
+				},
+			}, io.Discard)
+			if err == nil {
+				t.Fatalf("Up(%s) succeeded; want identity mismatch error", tc.name)
+			}
+			for _, sub := range tc.wantSubs {
+				if !strings.Contains(err.Error(), sub) {
+					t.Errorf("error = %q; want substring %q", err.Error(), sub)
+				}
+			}
+			if engineTouched {
+				t.Error("container engine was contacted despite preflight identity mismatch")
+			}
+			if spawnCalled {
+				t.Error("SpawnGateway was called despite preflight identity mismatch")
+			}
+			if provisionCalled {
+				t.Error("Provision was called despite preflight identity mismatch")
+			}
+			if !processAlive(gateway.Process.Pid) {
+				t.Fatal("existing gateway process was stopped on preflight mismatch")
+			}
+			if pid := readPIDFile(gatewayPIDPath); pid != gateway.Process.Pid {
+				t.Fatalf("gateway.pid = %d; want untouched %d", pid, gateway.Process.Pid)
+			}
+			gotStackJSON, readErr := os.ReadFile(stackJSONPath)
+			if readErr != nil || string(gotStackJSON) != string(wantStackJSON) {
+				t.Fatalf("stack.json was modified on preflight mismatch (err=%v)", readErr)
+			}
+			gotEnvSh, readErr := os.ReadFile(envShPath)
+			if readErr != nil || string(gotEnvSh) != string(wantEnvSh) {
+				t.Fatalf("env.sh was modified on preflight mismatch (err=%v)", readErr)
+			}
+		})
+	}
+
+	// Re-running bare Up (empty TenantID / ProjectID) preserves the stored
+	// custom identity instead of refusing or reverting to defaults.
+	t.Run("bare restart preserves stored custom tenant and project", func(t *testing.T) {
+		// Stop the dummy shell gateway before the valid restart binds the port.
+		stopDummyGateway()
+		_ = os.Remove(gatewayPIDPath)
+		stopGW()
+
+		restartCtx, stopRestartGW := context.WithCancel(context.Background())
+		defer stopRestartGW()
+		var provisioned provisionConfig
+		restarted, err := Up(context.Background(), UpConfig{
+			Instance:   "multi",
+			ListenAddr: listenAddr,
+			GOOS:       "darwin",
+			HomeDir:    home,
+			DetectOpts: detectOpts,
+			EngineHTTP: engine.client,
+			SpawnGateway: func(stateDir string) (int, error) {
+				go func() { _ = ServeStackGateway(restartCtx, stateDir) }()
+				return os.Getpid(), nil
+			},
+			Provision: func(_ context.Context, cfg provisionConfig) (string, error) {
+				provisioned = cfg
+				return "kodsvc.alpha.renewed", nil
+			},
+		}, io.Discard)
+		if err != nil {
+			t.Fatalf("bare Up restart failed: %v", err)
+		}
+		if restarted.TenantID != "tenant-alpha" || restarted.ProjectID != "project-alpha" {
+			t.Fatalf("restarted descriptor = %s/%s; want tenant-alpha/project-alpha", restarted.TenantID, restarted.ProjectID)
+		}
+		if provisioned.TenantID != "tenant-alpha" || provisioned.ProjectID != "project-alpha" {
+			t.Fatalf("provisioned = %s/%s; want tenant-alpha/project-alpha", provisioned.TenantID, provisioned.ProjectID)
+		}
+	})
+}
+
+func TestUpProvisionErrorLogTailFormatting(t *testing.T) {
+	const containerLog = "2026/01/02 03:04:05 WARN test profile\n" +
+		"2026/01/02 03:04:06 INFO server listening\n"
+
+	runWithProvisionErr := func(t *testing.T, provErr error) error {
+		t.Helper()
+		home := t.TempDir()
+		engine := newMockEngine(t)
+		engine.logs = containerLog
+		port, err := allocateLoopbackPort()
+		if err != nil {
+			t.Fatal(err)
+		}
+		gwCtx, stopGW := context.WithCancel(context.Background())
+		defer stopGW()
+		_, upErr := Up(context.Background(), UpConfig{
+			Instance:   "errfmt",
+			ListenAddr: fmt.Sprintf("127.0.0.1:%d", port),
+			GOOS:       "darwin",
+			HomeDir:    home,
+			DetectOpts: &DetectOptions{
+				ExplicitSocket: "/mock/podman.sock",
+				GOOS:           "darwin",
+				HomeDir:        home,
+				StatSocket:     func(string) bool { return true },
+				PingSocket:     func(context.Context, string) (RuntimeKind, error) { return KindPodman, nil },
+			},
+			EngineHTTP: engine.client,
+			SpawnGateway: func(stateDir string) (int, error) {
+				go func() { _ = ServeStackGateway(gwCtx, stateDir) }()
+				return os.Getpid(), nil
+			},
+			Provision: func(context.Context, provisionConfig) (string, error) { return "", provErr },
+		}, io.Discard)
+		return upErr
+	}
+
+	t.Run("structured api.Error omits container startup logs", func(t *testing.T) {
+		provErr := fmt.Errorf("project.create: %w", api.Error{
+			Code:    api.CodeChangedIdempotencyContent,
+			Message: "idempotency key reused with different content",
+		})
+		err := runWithProvisionErr(t, provErr)
+		if err == nil {
+			t.Fatal("Up succeeded; want error")
+		}
+		if strings.Contains(err.Error(), "the log of container") || strings.Contains(err.Error(), "see the logs of container") || strings.Contains(err.Error(), "server listening") {
+			t.Fatalf("structured api.Error unexpectedly attached container logs: %q", err.Error())
+		}
+		if !strings.Contains(err.Error(), "idempotency key reused") {
+			t.Fatalf("error = %q; want original api.Error message", err.Error())
+		}
+		if shouldAttachServerLogTail(&api.Error{Code: api.CodeChangedIdempotencyContent, Message: "changed"}) {
+			t.Fatal("shouldAttachServerLogTail(*api.Error) = true; want false")
+		}
+	})
+
+	t.Run("client API fault refusal omits container startup logs", func(t *testing.T) {
+		provErr := fmt.Errorf("project.create: %w", fault.New(fault.ChangedIdempotencyContent, "idempotency content changed"))
+		err := runWithProvisionErr(t, provErr)
+		if err == nil {
+			t.Fatal("Up succeeded; want error")
+		}
+		if strings.Contains(err.Error(), "the log of container") || strings.Contains(err.Error(), "see the logs of container") || strings.Contains(err.Error(), "server listening") {
+			t.Fatalf("structured client API fault unexpectedly attached container logs: %q", err.Error())
+		}
+		if !strings.Contains(err.Error(), "idempotency content changed") {
+			t.Fatalf("error = %q; want original fault message", err.Error())
+		}
+	})
+
+	t.Run("transport and readiness failures still append container logs", func(t *testing.T) {
+		for _, tc := range []struct {
+			name string
+			err  error
+		}{
+			{"readiness timeout", fmt.Errorf("the server was not ready within 90s")},
+			{"transport unavailable", fmt.Errorf("project.create: %w", fault.New(fault.DependencyUnavailable, "the public endpoint is unavailable"))},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				err := runWithProvisionErr(t, tc.err)
+				if err == nil {
+					t.Fatal("Up succeeded; want error")
+				}
+				if !strings.Contains(err.Error(), "the log of container kodema-errfmt-server ends with:\n") {
+					t.Fatalf("error = %q; want server container log tail", err.Error())
+				}
+				if !strings.Contains(err.Error(), "server listening") {
+					t.Fatalf("error = %q; want container log content", err.Error())
+				}
+			})
+		}
+	})
+}
+
+func TestReconcileSecretRulesFileScopes(t *testing.T) {
+	t.Run("default writes tenant-scoped allow_all without project_id", func(t *testing.T) {
+		dir := t.TempDir()
+		path, err := reconcileSecretRulesFile(dir, "tenant-local", "project-local", false, nil)
+		if err != nil {
+			t.Fatalf("reconcileSecretRulesFile: %v", err)
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(data), `"project_id"`) {
+			t.Fatalf("default rule serialized project_id:\n%s", data)
+		}
+		var parsed localSecretRulesFile
+		if err := json.Unmarshal(data, &parsed); err != nil {
+			t.Fatal(err)
+		}
+		if len(parsed.SecretRules) != 1 ||
+			parsed.SecretRules[0].TenantID != "tenant-local" ||
+			parsed.SecretRules[0].ProjectID != "" ||
+			!parsed.SecretRules[0].AllowAll ||
+			len(parsed.SecretRules[0].Names) != 0 {
+			t.Fatalf("parsed = %+v; want tenant-scoped allow_all", parsed)
+		}
+	})
+
+	t.Run("explicit allowSecrets restricts to project exact names", func(t *testing.T) {
+		dir := t.TempDir()
+		path, err := reconcileSecretRulesFile(dir, "tenant-local", "project-local", false, []string{"API_KEY"})
+		if err != nil {
+			t.Fatalf("reconcileSecretRulesFile: %v", err)
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var parsed localSecretRulesFile
+		if err := json.Unmarshal(data, &parsed); err != nil {
+			t.Fatal(err)
+		}
+		if len(parsed.SecretRules) != 1 ||
+			parsed.SecretRules[0].TenantID != "tenant-local" ||
+			parsed.SecretRules[0].ProjectID != "project-local" ||
+			parsed.SecretRules[0].AllowAll ||
+			!slices.Equal(parsed.SecretRules[0].Names, []string{"API_KEY"}) {
+			t.Fatalf("parsed = %+v; want project-scoped exact names", parsed)
+		}
+	})
+
+	t.Run("denyAll removes stale file and returns empty path", func(t *testing.T) {
+		dir := t.TempDir()
+		existing, err := reconcileSecretRulesFile(dir, "tenant-local", "project-local", false, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		path, err := reconcileSecretRulesFile(dir, "tenant-local", "project-local", true, nil)
+		if err != nil {
+			t.Fatalf("reconcileSecretRulesFile(denyAll): %v", err)
+		}
+		if path != "" {
+			t.Fatalf("path = %q; want empty", path)
+		}
+		if _, err := os.Stat(existing); !os.IsNotExist(err) {
+			t.Fatalf("stale secret-rules.json still present: %v", err)
+		}
+	})
+}
+
+func TestProvisionIdempotencyKeysAreProjectScopedAndBounded(t *testing.T) {
+	var (
+		mu   sync.Mutex
+		keys = map[string]string{}
+	)
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/readyz" {
+			return
+		}
+		route, _, ok := api.Match(api.Method(r.Method), r.URL.Path)
+		if !ok {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		var req api.Request
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		if req.IdempotencyKey != "" {
+			mu.Lock()
+			keys[route.Operation+":"+req.IdempotencyKey] = req.IdempotencyKey
+			mu.Unlock()
+		}
+		w.Header().Set("Content-Type", api.MediaType)
+		body := `{}`
+		switch route.Operation {
+		case "service.list":
+			body = `{"services":[{"service_id":"git","state":"enabled","roles":["viewer"],"version":1}]}`
+		case "service.credential.rotate":
+			body = `{"state":"current","version":2,"token":"kodsvc.rotated"}`
+		}
+		_, _ = fmt.Fprintf(w, `{"operation":%q,"body":%s}`, route.Operation, body)
+	}))
+	defer server.Close()
+	pool := x509.NewCertPool()
+	pool.AddCert(server.Certificate())
+
+	for _, projectID := range []string{"project-a", "project-b"} {
+		if _, err := provision(context.Background(), provisionConfig{
+			PublicURL:    server.URL,
+			RootCAs:      pool,
+			Issuer:       "https://127.0.0.1:8443/auth",
+			TenantID:     "tenant-local",
+			ProjectID:    projectID,
+			TenantToken:  "tenant-token",
+			ProjectToken: "project-token",
+			GitOrigins:   []string{"https://127.0.0.1:8443"},
+		}); err != nil {
+			t.Fatalf("provision(%s): %v", projectID, err)
+		}
+	}
+
+	for _, want := range []string{
+		"project.create:kodema-up-project-project-a",
+		"project.create:kodema-up-project-project-b",
+		"membership.grant:kodema-up-member-admin-project-a",
+		"membership.grant:kodema-up-member-admin-project-b",
+		"service.create:kodema-up-service-git-project-a",
+		"service.create:kodema-up-service-git-project-b",
+		"resource.binding.register:kodema-up-binding-git-admin-project-a",
+		"resource.binding.register:kodema-up-binding-git-admin-project-b",
+	} {
+		if _, ok := keys[want]; !ok {
+			t.Errorf("missing project-scoped idempotency key %q (got %v)", want, keys)
+		}
+	}
+
+	longProject := strings.Repeat("p", 128)
+	key := provisionIdempotencyKey("kodema-up-binding-git-admin", longProject)
+	if len(key) > api.MaxIdempotencyKeyBytes {
+		t.Fatalf("long project key length = %d; max %d", len(key), api.MaxIdempotencyKeyBytes)
+	}
+	if key != provisionIdempotencyKey("kodema-up-binding-git-admin", longProject) {
+		t.Fatal("provisionIdempotencyKey is not deterministic for long project IDs")
+	}
 }
