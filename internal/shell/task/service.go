@@ -169,7 +169,9 @@ func (service *Service) Create(ctx context.Context, command CreateCommand) (Crea
 			Definition: pipeline.Definition{ID: command.PipelineID},
 			Inputs:     cloneInputs(command.Inputs),
 			Task: pipeline.TaskContext{
-				TaskID: taskID,
+				TaskID:      taskID,
+				Title:       command.Title,
+				Description: command.Description,
 				// A brand-new task has zero messages, so its admitted
 				// conversation is the present JSON empty array (never nil): a
 				// task-bound execution must still materialize /kodema/task.json.
@@ -366,10 +368,16 @@ func (service *Service) Start(ctx context.Context, command StartCommand) (StartR
 		return StartResult{}, err
 	}
 	admitted, err := service.admission.Admit(ctx, pipeline.AdmitRequest{
-		Scope:          command.Scope,
-		Definition:     pipeline.Definition{ID: current.SelectedPipeline},
-		Inputs:         cloneInputs(current.Inputs),
-		Task:           pipeline.TaskContext{TaskID: current.ID, Conversation: conversation, Metadata: marshalMetadata(current.Metadata)},
+		Scope:      command.Scope,
+		Definition: pipeline.Definition{ID: current.SelectedPipeline},
+		Inputs:     cloneInputs(current.Inputs),
+		Task: pipeline.TaskContext{
+			TaskID:       current.ID,
+			Title:        current.Title,
+			Description:  current.Description,
+			Conversation: conversation,
+			Metadata:     marshalMetadata(current.Metadata),
+		},
 		DefaultTimeout: service.defaultTimeout,
 	})
 	if err != nil {
@@ -618,10 +626,16 @@ func (service *Service) Reply(ctx context.Context, command ReplyCommand) (ReplyR
 		return ReplyResult{}, err
 	}
 	admitted, err := service.admission.Admit(ctx, pipeline.AdmitRequest{
-		Scope:          command.Scope,
-		Definition:     pipeline.Definition{ID: current.SelectedPipeline},
-		Inputs:         cloneInputs(current.Inputs),
-		Task:           pipeline.TaskContext{TaskID: current.ID, Conversation: conversation, Metadata: marshalMetadata(current.Metadata)},
+		Scope:      command.Scope,
+		Definition: pipeline.Definition{ID: current.SelectedPipeline},
+		Inputs:     cloneInputs(current.Inputs),
+		Task: pipeline.TaskContext{
+			TaskID:       current.ID,
+			Title:        current.Title,
+			Description:  current.Description,
+			Conversation: conversation,
+			Metadata:     marshalMetadata(current.Metadata),
+		},
 		DefaultTimeout: service.defaultTimeout,
 	})
 	if err != nil {

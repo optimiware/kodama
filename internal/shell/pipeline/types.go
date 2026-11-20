@@ -212,6 +212,8 @@ type SnapshotInput struct {
 	SecretNames  []id.SecretName
 	Requirements []string
 	TaskID       id.TaskID
+	Title        string
+	Description  string
 	Conversation []byte
 	References   []string
 	Metadata     map[string]string
@@ -223,7 +225,8 @@ type SnapshotInput struct {
 // default set. Conversation is the admitted task conversation bytes and is
 // absent (nil) for a task-free execution; an admitted empty conversation is
 // present and empty, which Conversation/HasConversation preserve and the JSON
-// form keeps distinct (null versus an empty string).
+// form keeps distinct (null versus an empty string). Title and Description
+// record the admitted task title and description for task-associated runs.
 type Snapshot struct {
 	YAMLSHA256   [32]byte               `json:"yaml_sha256"`
 	Inputs       map[id.InputKey]string `json:"inputs,omitempty"`
@@ -232,6 +235,8 @@ type Snapshot struct {
 	SecretNames  []id.SecretName        `json:"secret_names,omitempty"`
 	Requirements []string               `json:"requirements,omitempty"`
 	TaskID       id.TaskID              `json:"task_id,omitempty"`
+	Title        string                 `json:"title,omitempty"`
+	Description  string                 `json:"description,omitempty"`
 	Conversation []byte                 `json:"conversation"`
 	References   []string               `json:"references,omitempty"`
 	Metadata     map[string]string      `json:"metadata,omitempty"`
@@ -272,6 +277,8 @@ func NewSnapshot(input SnapshotInput) (Snapshot, error) {
 		SecretNames:  append([]id.SecretName(nil), input.SecretNames...),
 		Requirements: append([]string(nil), input.Requirements...),
 		TaskID:       input.TaskID,
+		Title:        input.Title,
+		Description:  input.Description,
 		Conversation: cloneBytes(input.Conversation),
 		References:   append([]string(nil), input.References...),
 		Metadata:     cloneMetadata(input.Metadata),

@@ -611,9 +611,102 @@ func TestStartOmitsTaskContextWhenTaskFree(t *testing.T) {
 	if _, ok := configMap.Data[workspace.TaskPath]; ok {
 		t.Fatalf("task-free workload mounted %q", workspace.TaskPath)
 	}
+	for key := range configMap.Data {
+		if strings.HasPrefix(key, workspace.TaskRoot+"/") {
+			t.Fatalf("task-free workload mounted task spec file %q", key)
+		}
+	}
 	job := fake.jobsSnapshot()[0]
 	if _, ok := testEnvValue(job.Spec.Env, id.EnvTask); ok {
 		t.Fatal("task-free workload injected KODEMA_TASK")
+	}
+}
+
+// TestPrepareAndStartMaterializeTaskSpecFiles proves Kubernetes workloads carry
+// read-only /kodema/task/{title,description,metadata.json,spec.json} alongside
+// /kodema/task.json in the immutable activation ConfigMap and projected Job
+// volume, refuse changed task-spec content on retry, and refuse stray task
+// files when task-free.
+func TestPrepareAndStartMaterializeTaskSpecFiles(t *testing.T) {
+	taskFiles, err := workspace.BuildTaskFiles(
+		"task-1",
+		"Kube task title",
+		"Kube description",
+		map[string]string{"env": "prod", "component": "api"},
+	)
+	if err != nil {
+		t.Fatalf("BuildTaskFiles: %v", err)
+	}
+
+	fake, _, adapter := testSetup(t)
+	request := testPrepareRequest()
+	request.Task = []byte("[]")
+	request.TaskFiles = taskFiles
+
+	prepareTestWorkload(t, adapter, request)
+	startTestWorkload(t, adapter, request.Identity, request.WorkspaceID)
+
+	want := map[string]string{
+		workspace.TaskPath:            "[]",
+		workspace.TaskTitlePath:       "Kube task title",
+		workspace.TaskDescriptionPath: "Kube description",
+		workspace.TaskMetadataPath:    `{"component":"api","env":"prod"}`,
+		workspace.TaskSpecPath:        `{"id":"task-1","title":"Kube task title","description":"Kube description","metadata":{"component":"api","env":"prod"}}`,
+	}
+	configMap := fake.configMapsSnapshot()[0]
+	for path, expected := range want {
+		got, ok := configMap.Data[path]
+		if !ok {
+			t.Fatalf("activation configmap missing %q", path)
+		}
+		if string(got) != expected {
+			t.Fatalf("activation configmap[%q] = %q; want %q", path, got, expected)
+		}
+	}
+
+	job := fake.jobsSnapshot()[0]
+	activationVol := testVolumeAt(t, job.Spec, "/kodema")
+	projected := make(map[string]VolumeItem, len(activationVol.Items))
+	for _, item := range activationVol.Items {
+		projected[item.Path] = item
+	}
+	for path := range want {
+		item, ok := projected[path]
+		if !ok {
+			t.Fatalf("activation volume missing projected item %q", path)
+		}
+		if item.Key != path || item.Mode != 0o444 {
+			t.Fatalf("activation volume item %q = %+v; want key=%q mode=0444", path, item, path)
+		}
+	}
+
+	// Re-preparing with changed task-spec bytes is refused.
+	changed := request
+	changed.TaskFiles = map[string][]byte{
+		workspace.TaskTitleFile:       []byte("Changed kube title"),
+		workspace.TaskDescriptionFile: taskFiles[workspace.TaskDescriptionFile],
+		workspace.TaskMetadataFile:    taskFiles[workspace.TaskMetadataFile],
+		workspace.TaskSpecFile:        taskFiles[workspace.TaskSpecFile],
+	}
+	if _, err := adapter.Prepare(context.Background(), changed); err == nil {
+		t.Fatal("Prepare accepted changed task spec for the same workload identity")
+	} else if class, ok := fault.ClassOf(err); !ok || class != fault.ChangedIdempotencyContent {
+		t.Fatalf("changed task spec fault class = %v; want ChangedIdempotencyContent", err)
+	}
+
+	// Task-free request with stray task files is refused before cluster calls.
+	fakeFree, _, adapterFree := testSetup(t)
+	freeReq := testPrepareRequest()
+	freeReq.TaskID = ""
+	freeReq.Task = nil
+	freeReq.TaskFiles = taskFiles
+	if _, err := adapterFree.Prepare(context.Background(), freeReq); err == nil {
+		t.Fatal("Prepare accepted stray task files for a task-free workload")
+	} else if class, ok := fault.ClassOf(err); !ok || class != fault.InvalidInput {
+		t.Fatalf("stray task files fault class = %v; want InvalidInput", err)
+	}
+	if len(fakeFree.configMapsSnapshot()) != 0 {
+		t.Fatal("refused task-free Prepare created a ConfigMap")
 	}
 }
 

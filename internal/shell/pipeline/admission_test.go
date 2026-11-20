@@ -224,6 +224,8 @@ func TestAdmissionTaskContextBounds(t *testing.T) {
 	withTask := base
 	withTask.Task = pipeline.TaskContext{
 		TaskID:       "task-1",
+		Title:        "Fix flaky test",
+		Description:  "Reproduce under -race and stabilize.",
 		Conversation: []byte("please review"),
 		References:   []string{"refs/heads/main"},
 		Metadata:     []byte(`{"source":"git","ref":"refs/heads/main"}`),
@@ -232,6 +234,12 @@ func TestAdmissionTaskContextBounds(t *testing.T) {
 	requireNoError(t, err, "Admit with task context")
 	if result.Snapshot.TaskID != "task-1" {
 		t.Fatalf("snapshot task id = %q", result.Snapshot.TaskID)
+	}
+	if result.Snapshot.Title != "Fix flaky test" {
+		t.Fatalf("snapshot title = %q; want %q", result.Snapshot.Title, "Fix flaky test")
+	}
+	if result.Snapshot.Description != "Reproduce under -race and stabilize." {
+		t.Fatalf("snapshot description = %q; want %q", result.Snapshot.Description, "Reproduce under -race and stabilize.")
 	}
 	if len(result.Snapshot.References) != 1 || result.Snapshot.References[0] != "refs/heads/main" {
 		t.Fatalf("snapshot references = %v", result.Snapshot.References)
@@ -989,13 +997,21 @@ func TestAdmissionPreservesConversationPresence(t *testing.T) {
 		t.Fatalf("absent conversation serialized as %s; want null", encoded)
 	}
 
-	// A task-free admission carries no conversation even if stray bytes arrive.
+	// A task-free admission carries no task title, description, or conversation
+	// even if stray values arrive.
 	taskFree := base
-	taskFree.Task = pipeline.TaskContext{Conversation: []byte{}}
+	taskFree.Task = pipeline.TaskContext{
+		Title:        "stray title",
+		Description:  "stray description",
+		Conversation: []byte{},
+	}
 	result, err = admission.Admit(t.Context(), taskFree)
 	requireNoError(t, err, "Admit task-free with stray conversation")
 	if result.Snapshot.HasConversation() || result.Snapshot.ConversationBytes() != nil {
 		t.Fatalf("task-free conversation = %q; want nil", result.Snapshot.ConversationBytes())
+	}
+	if result.Snapshot.Title != "" || result.Snapshot.Description != "" {
+		t.Fatalf("task-free snapshot carried stray title=%q description=%q; want empty", result.Snapshot.Title, result.Snapshot.Description)
 	}
 }
 

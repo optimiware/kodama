@@ -12,7 +12,7 @@ import (
 // prepareContextExecution builds a queued execution whose snapshot carries
 // literal pipeline env defaults and a task identity, and whose build action
 // overrides one default and adds one action-only entry.
-func prepareContextExecution(executionID, workspaceID string, taskID id.TaskID, task []byte) kernel.Execution {
+func prepareContextExecution(executionID, workspaceID string, taskID id.TaskID, task []byte, taskFiles map[string][]byte) kernel.Execution {
 	build := containerAction("act-build", "build", 0, time.Hour)
 	build.Container.Definition.Env = []definition.EnvVar{
 		{Name: "BUILD_MODE", Value: "action-release"},
@@ -42,10 +42,11 @@ func prepareContextExecution(executionID, workspaceID string, taskID id.TaskID, 
 					},
 				}},
 			},
-			YAML:   []byte("name: prepare-context\n"),
-			Inputs: map[string]string{"repository": "example/repo"},
-			Task:   task,
-			TaskID: taskID,
+			YAML:      []byte("name: prepare-context\n"),
+			Inputs:    map[string]string{"repository": "example/repo"},
+			Task:      task,
+			TaskID:    taskID,
+			TaskFiles: taskFiles,
 		}),
 		Actions:       []kernel.Action{build},
 		CurrentAction: -1,
@@ -58,7 +59,9 @@ func prepareContextExecution(executionID, workspaceID string, taskID id.TaskID, 
 // and stable declaration order. Building the request must not mutate admitted
 // state.
 func TestPrepareRequestCarriesPrepareContext(t *testing.T) {
-	execution := prepareContextExecution("exec-prepare-context", "ws-prepare-context", "task-1", []byte(`{"id":"task-1"}`))
+	execution := prepareContextExecution("exec-prepare-context", "ws-prepare-context", "task-1", []byte(`{"id":"task-1"}`), map[string][]byte{
+		"title": []byte("Implement issue 40"),
+	})
 	h := newHarness(t, execution)
 
 	h.reconcileUntil("build running", 8, func(candidate kernel.Execution) bool {
@@ -78,6 +81,9 @@ func TestPrepareRequestCarriesPrepareContext(t *testing.T) {
 	}
 	if request.TaskID != id.TaskID("task-1") {
 		t.Fatalf("prepare task id = %q; want task-1", request.TaskID)
+	}
+	if string(request.TaskFiles["title"]) != "Implement issue 40" {
+		t.Fatalf("prepare task files = %v; want title=%q", request.TaskFiles, "Implement issue 40")
 	}
 
 	wantEnv := []definition.EnvVar{
@@ -110,9 +116,13 @@ func TestPrepareRequestCarriesPrepareContext(t *testing.T) {
 	// Mutating the request must not reach the persisted snapshot or action.
 	request.Container.Env[0].Value = "mutated"
 	request.Container.Env = append(request.Container.Env, definition.EnvVar{Name: "EXTRA", Value: "x"})
+	request.TaskFiles["title"][0] = 'X'
 	loaded = h.load()
 	if loaded.Snapshot.Pipeline().Env[0].Value != "info" {
 		t.Fatal("mutating the prepare request changed the admitted pipeline env")
+	}
+	if string(loaded.Snapshot.TaskFiles()["title"]) != "Implement issue 40" {
+		t.Fatal("mutating the prepare request changed the admitted task files")
 	}
 	persisted = mustAction(t, loaded, "build")
 	if persisted.Container.Definition.Env[0].Value != "action-release" {
@@ -123,7 +133,7 @@ func TestPrepareRequestCarriesPrepareContext(t *testing.T) {
 // TestPrepareRequestOmitsTaskIDWhenTaskFree proves a task-free execution sends
 // an empty task identity and no task bytes.
 func TestPrepareRequestOmitsTaskIDWhenTaskFree(t *testing.T) {
-	execution := prepareContextExecution("exec-prepare-task-free", "ws-prepare-task-free", "", nil)
+	execution := prepareContextExecution("exec-prepare-task-free", "ws-prepare-task-free", "", nil, nil)
 	h := newHarness(t, execution)
 
 	h.reconcileUntil("build running", 8, func(candidate kernel.Execution) bool {
@@ -139,5 +149,8 @@ func TestPrepareRequestOmitsTaskIDWhenTaskFree(t *testing.T) {
 	}
 	if len(request.Task) != 0 {
 		t.Fatalf("task-free prepare task bytes = %q; want none", request.Task)
+	}
+	if len(request.TaskFiles) != 0 {
+		t.Fatalf("task-free prepare task files = %v; want none", request.TaskFiles)
 	}
 }

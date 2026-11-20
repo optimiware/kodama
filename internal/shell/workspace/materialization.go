@@ -9,7 +9,10 @@
 package workspace
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"maps"
 	"os"
 	"slices"
 
@@ -23,6 +26,94 @@ import (
 // materializedFileMode is the explicit regular, read-only mode of every
 // immutable prepared file. Preparation never materializes a writable file.
 const materializedFileMode os.FileMode = 0o444
+
+// Relative filenames materialized under /kodema/task/ for task-associated runs.
+const (
+	TaskTitleFile       = "title"
+	TaskDescriptionFile = "description"
+	TaskMetadataFile    = "metadata.json"
+	TaskSpecFile        = "spec.json"
+)
+
+type taskSpecDocument struct {
+	ID          id.TaskID         `json:"id"`
+	Title       string            `json:"title"`
+	Description string            `json:"description"`
+	Metadata    map[string]string `json:"metadata"`
+}
+
+// BuildTaskFiles builds the deterministic read-only file set materialized under
+// /kodema/task/ for a task-associated execution: title (UTF-8), description
+// (UTF-8), metadata.json (deterministic JSON object, "{}" when empty), and
+// spec.json (structured JSON object combining id, title, description and
+// metadata). For a task-free execution (empty taskID), it returns nil.
+func BuildTaskFiles(taskID id.TaskID, title, description string, metadata map[string]string) (map[string][]byte, error) {
+	if taskID == "" {
+		return nil, nil
+	}
+	meta := make(map[string]string, len(metadata))
+	maps.Copy(meta, metadata)
+	metadataJSON, err := marshalCompactJSON(meta)
+	if err != nil {
+		return nil, fault.Wrap(fault.InternalFailure, "task metadata cannot be encoded", err)
+	}
+	specJSON, err := marshalCompactJSON(taskSpecDocument{
+		ID:          taskID,
+		Title:       title,
+		Description: description,
+		Metadata:    meta,
+	})
+	if err != nil {
+		return nil, fault.Wrap(fault.InternalFailure, "task specification cannot be encoded", err)
+	}
+	return map[string][]byte{
+		TaskTitleFile:       []byte(title),
+		TaskDescriptionFile: []byte(description),
+		TaskMetadataFile:    metadataJSON,
+		TaskSpecFile:        specJSON,
+	}, nil
+}
+
+// TaskMaterializationFiles validates, sorts and deep-copies opaque task files
+// into confined immutable /kodema/task/<name> File entries with the given
+// read-only mode.
+func TaskMaterializationFiles(taskFiles map[string][]byte, mode os.FileMode) ([]File, error) {
+	if len(taskFiles) == 0 {
+		return nil, nil
+	}
+	names := make([]string, 0, len(taskFiles))
+	for name := range taskFiles {
+		names = append(names, name)
+	}
+	slices.Sort(names)
+	files := make([]File, 0, len(names))
+	for _, name := range names {
+		path, err := TaskFilePath(name)
+		if err != nil {
+			return nil, err
+		}
+		data := append([]byte(nil), taskFiles[name]...)
+		if data == nil {
+			data = []byte{}
+		}
+		files = append(files, File{
+			Path: path,
+			Data: data,
+			Mode: mode,
+		})
+	}
+	return files, nil
+}
+
+func marshalCompactJSON(value any) ([]byte, error) {
+	var buf bytes.Buffer
+	encoder := json.NewEncoder(&buf)
+	encoder.SetEscapeHTML(false)
+	if err := encoder.Encode(value); err != nil {
+		return nil, err
+	}
+	return bytes.TrimSuffix(buf.Bytes(), []byte{'\n'}), nil
+}
 
 // MaterializationConfig is the activation-time configuration for one snapshot.
 // Scope must be a valid ownership scope. Secrets may be nil only when the
@@ -93,6 +184,11 @@ func BuildMaterialization(ctx context.Context, request engine.PrepareRequest, co
 	if request.Task != nil {
 		task = append([]byte(nil), request.Task...)
 		files = append(files, File{Path: TaskPath, Data: append([]byte(nil), task...), Mode: materializedFileMode})
+		taskFiles, err := TaskMaterializationFiles(request.TaskFiles, materializedFileMode)
+		if err != nil {
+			return Materialization{}, err
+		}
+		files = append(files, taskFiles...)
 	}
 
 	secrets := make([]engine.SecretValue, 0, len(request.Container.Secrets))
@@ -163,6 +259,9 @@ func Environment(request engine.PrepareRequest, url string) ([]string, error) {
 	if (request.Task != nil) != taskPresent {
 		return nil, fault.New(fault.InvalidInput, "reserved environment task id and snapshot must be present together")
 	}
+	if !taskPresent && len(request.TaskFiles) > 0 {
+		return nil, fault.New(fault.InvalidInput, "reserved environment task files require a task snapshot")
+	}
 	environment = append(environment,
 		id.EnvURL+"="+url,
 		id.EnvExecution+"="+string(executionID),
@@ -201,6 +300,14 @@ func validatePrepareRequest(request engine.PrepareRequest, config Materializatio
 	}
 	if (request.Task != nil) != taskPresent {
 		return fault.New(fault.InvalidInput, "prepare task id and snapshot must be present together")
+	}
+	if !taskPresent && len(request.TaskFiles) > 0 {
+		return fault.New(fault.InvalidInput, "prepare task files require a task snapshot")
+	}
+	for name := range request.TaskFiles {
+		if _, err := TaskFilePath(name); err != nil {
+			return err
+		}
 	}
 
 	for key := range request.Inputs {

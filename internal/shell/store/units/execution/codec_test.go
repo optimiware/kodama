@@ -2,6 +2,7 @@ package executionstore
 
 import (
 	"bytes"
+	"encoding/json"
 	"testing"
 
 	"github.com/optimiware/kodema/internal/fault"
@@ -10,6 +11,7 @@ import (
 	"github.com/optimiware/kodema/internal/kernel/definition"
 	"github.com/optimiware/kodema/internal/shell/pipeline"
 	"github.com/optimiware/kodema/internal/shell/store/units/execution/snapshotdoc"
+	"github.com/optimiware/kodema/internal/shell/workspace"
 )
 
 func TestDecodeSnapshotMapsTheSharedDocument(t *testing.T) {
@@ -99,6 +101,97 @@ func TestDecodeSnapshotPreservesAbsentTask(t *testing.T) {
 	if _, present := decoded.Task(); present {
 		t.Fatal("an absent task must not decode as present")
 	}
+	if got := decoded.TaskFiles(); got != nil {
+		t.Fatalf("task-free snapshot task files = %v; want nil", got)
+	}
+}
+
+func TestDecodeSnapshotBuildsTaskFiles(t *testing.T) {
+	t.Run("with title description and metadata", func(t *testing.T) {
+		snapshot, err := pipeline.NewSnapshot(pipeline.SnapshotInput{
+			YAML:         []byte("name: a\n"),
+			TaskID:       "task-42",
+			Title:        "Fix A -> B",
+			Description:  "Line 1\nLine 2 with <tag> & details",
+			Conversation: []byte("[]"),
+			Metadata:     map[string]string{"z": "last", "a": "first"},
+		})
+		if err != nil {
+			t.Fatalf("NewSnapshot: %v", err)
+		}
+		document, err := snapshotdoc.Encode(snapshotdoc.Admitted{
+			Snapshot: snapshot,
+			Actions:  []pipeline.AdmittedAction{containerAction()},
+		})
+		if err != nil {
+			t.Fatalf("Encode: %v", err)
+		}
+		decoded, err := decodeSnapshot(document)
+		if err != nil {
+			t.Fatalf("decodeSnapshot: %v", err)
+		}
+		files := decoded.TaskFiles()
+		if len(files) != 4 {
+			t.Fatalf("task files = %v; want 4 entries", files)
+		}
+		if got := string(files[workspace.TaskTitleFile]); got != "Fix A -> B" {
+			t.Fatalf("title = %q; want %q", got, "Fix A -> B")
+		}
+		if got := string(files[workspace.TaskDescriptionFile]); got != "Line 1\nLine 2 with <tag> & details" {
+			t.Fatalf("description = %q", got)
+		}
+		if got := string(files[workspace.TaskMetadataFile]); got != `{"a":"first","z":"last"}` {
+			t.Fatalf("metadata.json = %q; want deterministic sorted JSON", got)
+		}
+		wantSpec := `{"id":"task-42","title":"Fix A -> B","description":"Line 1\nLine 2 with <tag> & details","metadata":{"a":"first","z":"last"}}`
+		if got := string(files[workspace.TaskSpecFile]); got != wantSpec {
+			t.Fatalf("spec.json = %q; want %q", got, wantSpec)
+		}
+	})
+
+	t.Run("empty metadata and empty description", func(t *testing.T) {
+		snapshot, err := pipeline.NewSnapshot(pipeline.SnapshotInput{
+			YAML:         []byte("name: a\n"),
+			TaskID:       "task-empty",
+			Title:        "Minimal task",
+			Conversation: []byte("[]"),
+		})
+		if err != nil {
+			t.Fatalf("NewSnapshot: %v", err)
+		}
+		document, err := snapshotdoc.Encode(snapshotdoc.Admitted{
+			Snapshot: snapshot,
+			Actions:  []pipeline.AdmittedAction{containerAction()},
+		})
+		if err != nil {
+			t.Fatalf("Encode: %v", err)
+		}
+		decoded, err := decodeSnapshot(document)
+		if err != nil {
+			t.Fatalf("decodeSnapshot: %v", err)
+		}
+		files := decoded.TaskFiles()
+		if got := string(files[workspace.TaskTitleFile]); got != "Minimal task" {
+			t.Fatalf("title = %q", got)
+		}
+		if got := string(files[workspace.TaskDescriptionFile]); got != "" {
+			t.Fatalf("description = %q; want empty", got)
+		}
+		if got := string(files[workspace.TaskMetadataFile]); got != "{}" {
+			t.Fatalf("metadata.json = %q; want {}", got)
+		}
+		var spec map[string]any
+		if err := json.Unmarshal(files[workspace.TaskSpecFile], &spec); err != nil {
+			t.Fatalf("unmarshal spec.json: %v", err)
+		}
+		if spec["id"] != "task-empty" || spec["title"] != "Minimal task" || spec["description"] != "" {
+			t.Fatalf("spec.json = %+v", spec)
+		}
+		meta, ok := spec["metadata"].(map[string]any)
+		if !ok || len(meta) != 0 {
+			t.Fatalf("spec.json metadata = %#v; want empty object", spec["metadata"])
+		}
+	})
 }
 
 func TestDecodeSnapshotRejectsMalformedData(t *testing.T) {

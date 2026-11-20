@@ -99,6 +99,9 @@ type PrepareRequest struct {
 	Outputs map[id.ActionName]kernel.Outputs
 	// Task is the opaque admitted task snapshot; nil when task-free.
 	Task []byte
+	// TaskFiles are optional opaque admitted task files materialized under
+	// /kodema/task/<name>; nil when task-free.
+	TaskFiles map[string][]byte
 	// Credential is the current execution credential material. It is never
 	// logged.
 	Credential string

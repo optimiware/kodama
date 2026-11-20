@@ -68,10 +68,12 @@ func (action AdmittedAction) Validate() error {
 	return nil
 }
 
-// TaskContext is the optional task conversation/reference/metadata carried by
-// one admission. TaskID is empty for a task-free inline run.
+// TaskContext is the optional task title/description/conversation/reference/
+// metadata carried by one admission. TaskID is empty for a task-free inline run.
 type TaskContext struct {
 	TaskID       id.TaskID
+	Title        string
+	Description  string
 	Conversation []byte
 	References   []string
 	Metadata     []byte
@@ -149,10 +151,16 @@ func (service *AdmissionService) Admit(ctx context.Context, request AdmitRequest
 	if err != nil {
 		return AdmissionResult{}, err
 	}
-	// The conversation belongs to a task. A task-free admission carries none,
-	// even if a caller supplied stray bytes.
-	var conversation []byte
+	// Task title, description and conversation belong to a task. A task-free
+	// admission carries none, even if a caller supplied stray values.
+	var (
+		title        string
+		description  string
+		conversation []byte
+	)
 	if request.Task.TaskID != "" {
+		title = request.Task.Title
+		description = request.Task.Description
 		conversation = request.Task.Conversation
 	}
 	actions, images, secretNames, err := service.admitActions(ctx, parsed.pipeline, request.DefaultTimeout)
@@ -167,6 +175,8 @@ func (service *AdmissionService) Admit(ctx context.Context, request AdmitRequest
 		SecretNames:  secretNames,
 		Requirements: request.Requirements,
 		TaskID:       request.Task.TaskID,
+		Title:        title,
+		Description:  description,
 		Conversation: conversation,
 		References:   request.Task.References,
 		Metadata:     metadata,

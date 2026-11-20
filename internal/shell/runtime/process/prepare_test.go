@@ -17,6 +17,7 @@ import (
 	"github.com/optimiware/kodema/internal/kernel/definition"
 	"github.com/optimiware/kodema/internal/kernel/engine"
 	"github.com/optimiware/kodema/internal/kernel/script"
+	"github.com/optimiware/kodema/internal/shell/workspace"
 )
 
 // TestPrepareMaterializesConfinedActivationSnapshot proves one complete,
@@ -158,6 +159,7 @@ func TestPrepareOmitsTaskContextWhenTaskFree(t *testing.T) {
 
 	prepareTestWorkload(t, fx.adapter, fx.request)
 	assertNoPath(t, fx.hostPath(t, "/kodema/task.json"))
+	assertNoPath(t, fx.hostPath(t, "/kodema/task"))
 
 	startTestWorkload(t, fx.adapter, fx.request.Identity, fx.request.WorkspaceID)
 	spawn := fx.executor.spawnRequests()[0]
@@ -170,6 +172,54 @@ func TestPrepareOmitsTaskContextWhenTaskFree(t *testing.T) {
 	if !slices.Equal(spawn.Env, wantEnv) {
 		t.Fatalf("task-free env = %q; want %q", spawn.Env, wantEnv)
 	}
+}
+
+// TestPrepareMaterializesTaskSpecFiles proves task-bound executions materialize
+// read-only /kodema/task/{title,description,metadata.json,spec.json} alongside
+// /kodema/task.json, detect changed task-spec content on retry, and refuse
+// stray task files when task-free.
+func TestPrepareMaterializesTaskSpecFiles(t *testing.T) {
+	taskFiles, err := workspace.BuildTaskFiles(
+		"task-1",
+		"Fix issue 40",
+		"Materialize task spec into workloads.",
+		map[string]string{"priority": "p1", "area": "runtime"},
+	)
+	if err != nil {
+		t.Fatalf("BuildTaskFiles: %v", err)
+	}
+
+	fx := newFixture(t)
+	fx.request.Task = []byte("[]")
+	fx.request.TaskFiles = taskFiles
+
+	prepareTestWorkload(t, fx.adapter, fx.request)
+
+	assertHostFile(t, fx.hostPath(t, workspace.TaskPath), "[]")
+	assertHostFile(t, fx.hostPath(t, workspace.TaskTitlePath), "Fix issue 40")
+	assertHostFile(t, fx.hostPath(t, workspace.TaskDescriptionPath), "Materialize task spec into workloads.")
+	assertHostFile(t, fx.hostPath(t, workspace.TaskMetadataPath), `{"area":"runtime","priority":"p1"}`)
+	assertHostFile(t, fx.hostPath(t, workspace.TaskSpecPath), `{"id":"task-1","title":"Fix issue 40","description":"Materialize task spec into workloads.","metadata":{"area":"runtime","priority":"p1"}}`)
+
+	// Changing task spec content for the same workload identity is refused.
+	changed := fx.request
+	changed.TaskFiles = map[string][]byte{
+		workspace.TaskTitleFile:       []byte("Mutated title"),
+		workspace.TaskDescriptionFile: taskFiles[workspace.TaskDescriptionFile],
+		workspace.TaskMetadataFile:    taskFiles[workspace.TaskMetadataFile],
+		workspace.TaskSpecFile:        taskFiles[workspace.TaskSpecFile],
+	}
+	_, err = fx.adapter.Prepare(context.Background(), changed)
+	assertRefusedClass(t, err, fault.ChangedIdempotencyContent)
+
+	// Task-free request carrying stray task files is refused before writing.
+	fxFree := newFixture(t)
+	fxFree.request.TaskID = ""
+	fxFree.request.Task = nil
+	fxFree.request.TaskFiles = taskFiles
+	_, err = fxFree.adapter.Prepare(context.Background(), fxFree.request)
+	assertRefusedClass(t, err, fault.InvalidInput)
+	assertNoPath(t, fxFree.hostPath(t, workspace.TaskRoot))
 }
 
 // TestPrepareRefusesReservedEnvironmentNames proves the reserved context is

@@ -28,8 +28,19 @@ const (
 	InputRoot = "/kodema/inputs"
 	// OutputRoot holds earlier succeeded action outputs.
 	OutputRoot = "/kodema/outputs"
-	// TaskPath is the admitted task snapshot file. It is absent when task-free.
+	// TaskPath is the admitted task conversation file. It is absent when task-free.
 	TaskPath = "/kodema/task.json"
+	// TaskRoot holds admitted read-only task specification files. It is absent
+	// when task-free.
+	TaskRoot = "/kodema/task"
+	// TaskTitlePath is the admitted task title (UTF-8 text).
+	TaskTitlePath = TaskRoot + "/title"
+	// TaskDescriptionPath is the admitted task description (UTF-8 text).
+	TaskDescriptionPath = TaskRoot + "/description"
+	// TaskMetadataPath is the admitted task metadata (deterministic JSON object).
+	TaskMetadataPath = TaskRoot + "/metadata.json"
+	// TaskSpecPath is the admitted task specification JSON object.
+	TaskSpecPath = TaskRoot + "/spec.json"
 	// SecretRoot holds declared activation-time secret values.
 	SecretRoot = "/kodema/secrets"
 	// ReservedCredentialPath is the sole mutable mounted credential file. A
@@ -70,7 +81,7 @@ func ValidatePath(path string) error {
 	if path == TaskPath {
 		return nil
 	}
-	for _, root := range []string{InputRoot, OutputRoot, SecretRoot} {
+	for _, root := range []string{InputRoot, OutputRoot, TaskRoot, SecretRoot} {
 		if strings.HasPrefix(path, root+"/") {
 			return nil
 		}
@@ -82,6 +93,31 @@ func ValidatePath(path string) error {
 // mount. Stored secret declarations cannot use it.
 func IsReservedPath(path string) bool {
 	return path == ReservedCredentialPath
+}
+
+// TaskFilePath returns the confined path for one admitted task specification
+// file under /kodema/task/. Name must be a single safe filename without path
+// separators, traversal or control characters.
+func TaskFilePath(name string) (string, error) {
+	if name == "" || name == "." || name == ".." {
+		return "", fault.New(fault.InvalidInput, "task file name is invalid")
+	}
+	for index := 0; index < len(name); index++ {
+		character := name[index]
+		switch {
+		case character >= 'a' && character <= 'z':
+		case character >= 'A' && character <= 'Z':
+		case character >= '0' && character <= '9':
+		case character == '.', character == '_', character == '-':
+		default:
+			return "", fault.New(fault.InvalidInput, "task file name is invalid")
+		}
+	}
+	path := TaskRoot + "/" + name
+	if err := ValidatePath(path); err != nil {
+		return "", err
+	}
+	return path, nil
 }
 
 // InputPath returns the confined path for one admitted input key.
@@ -178,7 +214,7 @@ func (materialization Materialization) Validate() error {
 		if err := file.Validate(); err != nil {
 			return err
 		}
-		if file.Path == TaskPath && materialization.Task == nil {
+		if (file.Path == TaskPath || strings.HasPrefix(file.Path, TaskRoot+"/")) && materialization.Task == nil {
 			return fault.New(fault.InvalidInput, "materialization declares a task file without a task snapshot")
 		}
 	}

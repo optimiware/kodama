@@ -5,6 +5,8 @@ package kube_test
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"io"
 	"maps"
@@ -16,6 +18,7 @@ import (
 	"github.com/optimiware/kodema/internal/fault"
 	driverkube "github.com/optimiware/kodema/internal/shell/app/drivers/kube"
 	runtimekube "github.com/optimiware/kodema/internal/shell/runtime/kube"
+	"github.com/optimiware/kodema/internal/shell/workspace"
 )
 
 const (
@@ -824,6 +827,123 @@ func TestPutConfigMapRefusesAnUpdateVersion(t *testing.T) {
 	assertFaultClass(t, err, fault.InvalidInput)
 	if calls := api.callCount(); calls != 0 {
 		t.Fatalf("update attempt made %d API calls; want 0", calls)
+	}
+}
+
+// TestTaskSpecConfigMapAndJobProjection proves nested /kodema/task/* paths
+// encode as valid Kubernetes ConfigMap keys (unpadded base64url, no slashes),
+// round-trip empty and UTF-8 payloads through binaryData, and project as
+// relative task/<name> keyToPath items under the read-only /kodema volume.
+func TestTaskSpecConfigMapAndJobProjection(t *testing.T) {
+	taskData := map[string][]byte{
+		workspace.TaskPath:            []byte("[]"),
+		workspace.TaskTitlePath:       []byte("Fix issue 40"),
+		workspace.TaskDescriptionPath: []byte{},
+		workspace.TaskMetadataPath:    []byte(`{"team":"core"}`),
+		workspace.TaskSpecPath:        []byte(`{"id":"task-1","title":"Fix issue 40","description":"","metadata":{"team":"core"}}`),
+	}
+	var sentConfigMap map[string]any
+	var sentJob map[string]any
+	api := newAPI(t, func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == configMapsPath():
+			if err := json.Unmarshal(body, &sentConfigMap); err != nil {
+				t.Errorf("unmarshal ConfigMap request: %v", err)
+			}
+			writeJSON(w, http.StatusCreated, map[string]any{
+				"metadata": map[string]any{
+					"name":            "kodema-activation-task",
+					"namespace":       testNamespace,
+					"resourceVersion": "1",
+				},
+				"immutable":  true,
+				"binaryData": sentConfigMap["binaryData"],
+			})
+		case r.Method == http.MethodPost && r.URL.Path == jobsPath():
+			if err := json.Unmarshal(body, &sentJob); err != nil {
+				t.Errorf("unmarshal Job request: %v", err)
+			}
+			writeJSON(w, http.StatusCreated, map[string]any{
+				"metadata": map[string]any{"name": "kodema-job-task", "namespace": testNamespace, "uid": "uid-1"},
+			})
+		default:
+			t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusNotImplemented)
+		}
+	})
+	cluster := newClusterFor(t, api)
+
+	cm, err := cluster.PutConfigMap(context.Background(), runtimekube.ConfigMap{
+		Name:      "kodema-activation-task",
+		Namespace: testNamespace,
+		Data:      taskData,
+		Immutable: true,
+	})
+	if err != nil {
+		t.Fatalf("PutConfigMap: %v", err)
+	}
+	wireBinary, ok := sentConfigMap["binaryData"].(map[string]any)
+	if !ok || len(wireBinary) != len(taskData) {
+		t.Fatalf("wire binaryData = %v; want %d entries", sentConfigMap["binaryData"], len(taskData))
+	}
+	for key := range wireBinary {
+		if strings.ContainsAny(key, "/+=") {
+			t.Fatalf("ConfigMap key %q contains invalid Kubernetes key characters", key)
+		}
+	}
+	for path, want := range taskData {
+		got, ok := cm.Data[path]
+		if !ok {
+			t.Fatalf("decoded ConfigMap missing %q", path)
+		}
+		if string(got) != string(want) {
+			t.Fatalf("decoded ConfigMap[%q] = %q; want %q", path, got, want)
+		}
+	}
+
+	job := testJob()
+	job.Name = "kodema-job-task"
+	job.Spec.Volumes[1] = runtimekube.Volume{
+		Name:          "activation",
+		MountPath:     "/kodema",
+		ConfigMapName: "kodema-activation-task",
+		ReadOnly:      true,
+		Items: []runtimekube.VolumeItem{
+			{Key: workspace.TaskPath, Path: workspace.TaskPath, Mode: 0o444},
+			{Key: workspace.TaskDescriptionPath, Path: workspace.TaskDescriptionPath, Mode: 0o444},
+			{Key: workspace.TaskMetadataPath, Path: workspace.TaskMetadataPath, Mode: 0o444},
+			{Key: workspace.TaskSpecPath, Path: workspace.TaskSpecPath, Mode: 0o444},
+			{Key: workspace.TaskTitlePath, Path: workspace.TaskTitlePath, Mode: 0o444},
+		},
+	}
+	if _, err := cluster.CreateJob(context.Background(), job); err != nil {
+		t.Fatalf("CreateJob: %v", err)
+	}
+	spec := sentJob["spec"].(map[string]any)["template"].(map[string]any)["spec"].(map[string]any)
+	volumes := spec["volumes"].([]any)
+	activation := volumes[1].(map[string]any)["configMap"].(map[string]any)
+	items := activation["items"].([]any)
+	gotItems := make(map[string]string, len(items))
+	for _, raw := range items {
+		item := raw.(map[string]any)
+		gotItems[item["path"].(string)] = item["key"].(string)
+		if int(item["mode"].(float64)) != 0o444 {
+			t.Fatalf("item %v mode = %v; want 0444", item["path"], item["mode"])
+		}
+	}
+	wantRelative := map[string]string{
+		"task.json":          workspace.TaskPath,
+		"task/title":         workspace.TaskTitlePath,
+		"task/description":   workspace.TaskDescriptionPath,
+		"task/metadata.json": workspace.TaskMetadataPath,
+		"task/spec.json":     workspace.TaskSpecPath,
+	}
+	for rel, logical := range wantRelative {
+		wantKey := base64.RawURLEncoding.EncodeToString([]byte(logical))
+		if gotItems[rel] != wantKey {
+			t.Fatalf("projected item %q key = %q; want %q", rel, gotItems[rel], wantKey)
+		}
 	}
 }
 

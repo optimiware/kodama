@@ -16,11 +16,17 @@ func TestSnapshotClonePreservesTaskID(t *testing.T) {
 		YAML:   []byte("name: clone\n"),
 		TaskID: "task-1",
 		Task:   []byte(`{"id":"task-1"}`),
+		TaskFiles: map[string][]byte{
+			"title": []byte("Clone title"),
+		},
 	})
 
 	cloned := cloneSnapshot(snapshot)
 	if got := cloned.TaskID(); got != id.TaskID("task-1") {
 		t.Fatalf("cloned snapshot task id = %q; want task-1", got)
+	}
+	if got := cloned.TaskFiles(); string(got["title"]) != "Clone title" {
+		t.Fatalf("cloned snapshot task files = %v; want title=Clone title", got)
 	}
 
 	execution := testExecution("exec-clone-task", "ws-clone-task", testContainerAction("act-build", "build", 0, kernel.ActionPending, 0))

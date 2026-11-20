@@ -30,8 +30,9 @@
 //
 //   - File bytes are exact: no newline is appended and no string is
 //     reinterpreted. Inputs materialize at /kodema/inputs/<key>, earlier
-//     succeeded outputs at /kodema/outputs/<action>/<key>, and the task
-//     snapshot at /kodema/task.json only when a task snapshot exists.
+//     succeeded outputs at /kodema/outputs/<action>/<key>, the task
+//     conversation at /kodema/task.json, and optional task specification files
+//     under /kodema/task/ only when a task snapshot exists.
 //   - Every File has an explicit regular, read-only mode. Secret values are
 //     returned in Materialization.Secrets (never as ordinary files) and the
 //     credential is returned in Materialization.Credential, so
@@ -54,6 +55,9 @@ import (
 // Compile-time pins for the declarations the behavior tests consume.
 var (
 	_ = workspace.BuildMaterialization
+	_ = workspace.BuildTaskFiles
+	_ = workspace.TaskMaterializationFiles
+	_ = workspace.TaskFilePath
 	_ = workspace.Environment
 	_ workspace.MaterializationConfig
 )

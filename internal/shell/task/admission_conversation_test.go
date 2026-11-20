@@ -328,3 +328,95 @@ func TestStartReplayKeepsPresentEmptyConversationAndOneAppliedAdmission(t *testi
 		requirePresentEmptyConversation(t, "task.start retry", admitted.Task.Conversation)
 	}
 }
+
+// TestTaskAdmissionsPassTitleDescriptionAndMetadata pins that all three
+// task-bound admission paths (create_and_start, start, reply) pass the task's
+// Title, Description, Metadata, and Conversation into Admission.Admit and
+// persist them in the admitted snapshot.
+func TestTaskAdmissionsPassTitleDescriptionAndMetadata(t *testing.T) {
+	t.Run("create_and_start", func(t *testing.T) {
+		env := newTestEnv(t)
+		actor := humanActor(engineerPrincipal, tenancy.RoleEngineer)
+		command := createCommand(actor, "Fix login race")
+		command.Start = true
+		command.Description = "Reproduce under -race and guard token refresh."
+		command.Metadata = []byte(`{"priority":"high","component":"auth"}`)
+
+		_, err := env.service.Create(t.Context(), command)
+		requireNoError(t, err, "Create(Start=true)")
+
+		admitted := env.admission.requestsSnapshot()[0]
+		if admitted.Task.Title != command.Title || admitted.Task.Description != command.Description {
+			t.Fatalf("create_and_start admitted title/description = %q/%q; want %q/%q",
+				admitted.Task.Title, admitted.Task.Description, command.Title, command.Description)
+		}
+		requireAdmittedMetadata(t, "create_and_start", admitted.Task.Metadata, map[string]string{"priority": "high", "component": "auth"})
+		unit := env.ports.lastCreate(t)
+		if unit.Start == nil || unit.Start.Snapshot.Title != command.Title || unit.Start.Snapshot.Description != command.Description {
+			t.Fatalf("create_and_start snapshot title/description = %q/%q; want %q/%q",
+				unit.Start.Snapshot.Title, unit.Start.Snapshot.Description, command.Title, command.Description)
+		}
+		if unit.Start.Snapshot.Metadata["priority"] != "high" || unit.Start.Snapshot.Metadata["component"] != "auth" {
+			t.Fatalf("create_and_start snapshot metadata = %+v", unit.Start.Snapshot.Metadata)
+		}
+	})
+
+	t.Run("start", func(t *testing.T) {
+		env := newTestEnv(t)
+		actor := humanActor(engineerPrincipal, tenancy.RoleEngineer)
+		value := openTaskWithoutExecution()
+		value.Title = "Harden webhook parser"
+		value.Description = "Reject malformed signatures."
+		value.Metadata = map[string]string{"team": "platform", "issue": "40"}
+		env.reader.put(value)
+
+		_, err := env.service.Start(t.Context(), startCommand(actor, value.LifecycleVersion))
+		requireNoError(t, err, "Start")
+
+		admitted := env.admission.requestsSnapshot()[0]
+		if admitted.Task.Title != value.Title || admitted.Task.Description != value.Description {
+			t.Fatalf("start admitted title/description = %q/%q; want %q/%q",
+				admitted.Task.Title, admitted.Task.Description, value.Title, value.Description)
+		}
+		requireAdmittedMetadata(t, "start", admitted.Task.Metadata, value.Metadata)
+		unit := env.ports.lastStart(t)
+		if unit.Snapshot.Title != value.Title || unit.Snapshot.Description != value.Description {
+			t.Fatalf("start snapshot title/description = %q/%q; want %q/%q",
+				unit.Snapshot.Title, unit.Snapshot.Description, value.Title, value.Description)
+		}
+		if !reflect.DeepEqual(unit.Snapshot.Metadata, value.Metadata) {
+			t.Fatalf("start snapshot metadata = %+v; want %+v", unit.Snapshot.Metadata, value.Metadata)
+		}
+	})
+
+	t.Run("reply", func(t *testing.T) {
+		env := newTestEnv(t)
+		reviewer := humanActor(reviewerPrincipal, tenancy.RoleReviewer)
+		value := waitingTask(t)
+		value.Title = "Updated task title"
+		value.Description = "Updated description before reply."
+		value.Metadata = map[string]string{"env": "staging"}
+		env.reader.put(value)
+		env.executions.put(task.ExecutionView{
+			ID: executionOne, Version: 2, State: kernel.ExecutionCancelled, StopEvidence: confirmedStop(),
+		})
+
+		_, err := env.service.Reply(t.Context(), replyCommand(reviewer, value.LifecycleVersion, questionID, value.Question.Version, "Proceed"))
+		requireNoError(t, err, "Reply")
+
+		admitted := env.admission.requestsSnapshot()[0]
+		if admitted.Task.Title != value.Title || admitted.Task.Description != value.Description {
+			t.Fatalf("reply admitted title/description = %q/%q; want %q/%q",
+				admitted.Task.Title, admitted.Task.Description, value.Title, value.Description)
+		}
+		requireAdmittedMetadata(t, "reply", admitted.Task.Metadata, value.Metadata)
+		unit := env.ports.lastReply(t)
+		if unit.Snapshot.Title != value.Title || unit.Snapshot.Description != value.Description {
+			t.Fatalf("reply snapshot title/description = %q/%q; want %q/%q",
+				unit.Snapshot.Title, unit.Snapshot.Description, value.Title, value.Description)
+		}
+		if !reflect.DeepEqual(unit.Snapshot.Metadata, value.Metadata) {
+			t.Fatalf("reply snapshot metadata = %+v; want %+v", unit.Snapshot.Metadata, value.Metadata)
+		}
+	})
+}

@@ -155,7 +155,10 @@ func aggregateFromRowWithAdmitted(ctx context.Context, source aggregateSource, r
 	if err != nil {
 		return kernel.Execution{}, snapshotdoc.Admitted{}, nil, err
 	}
-	snapshot := definitionSnapshot(admitted)
+	snapshot, err := definitionSnapshot(admitted)
+	if err != nil {
+		return kernel.Execution{}, snapshotdoc.Admitted{}, nil, err
+	}
 	failure, err := decodeFailure(row.Values["failure"])
 	if err != nil {
 		return kernel.Execution{}, snapshotdoc.Admitted{}, nil, err
