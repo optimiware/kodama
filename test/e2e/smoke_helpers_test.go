@@ -430,9 +430,9 @@ func (instance *live) smokeResolve(ctx context.Context, t *testing.T, token harn
 
 // smokeRequireForbidden asserts an authenticated persona without the role is
 // refused with the public forbidden code.
-func (instance *live) smokeRequireForbidden(ctx context.Context, t *testing.T, token harness.Secret, method api.Method, operation string, input any) {
+func (instance *live) smokeRequireForbidden(ctx context.Context, t *testing.T, token harness.Secret, method api.Method, operation string, input any, idempotencyKey string) {
 	t.Helper()
-	_, err := instance.invoke(ctx, token, method, operation, input, "", nil)
+	_, err := instance.invoke(ctx, token, method, operation, input, idempotencyKey, nil)
 	var refusal *harness.APIError
 	if !errors.As(err, &refusal) || refusal.Code != api.CodeForbidden {
 		t.Fatalf("%s = %v; want the public forbidden refusal", operation, err)

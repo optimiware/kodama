@@ -98,9 +98,16 @@ func testReleaseSmokeOperatorRetry(t *testing.T, instance *live, names smoke.Nam
 	if discovered.Version != task.LifecycleVersion {
 		t.Fatalf("failed_task version = %d; want the task lifecycle version %d", discovered.Version, task.LifecycleVersion)
 	}
-	// The operator acts only through the inbox and the conditional start: it
-	// cannot read the task directly.
-	instance.smokeRequireForbidden(ctx, t, operator, api.MethodGet, "task.read", api.TaskReadRequest{TaskID: created.TaskID})
+	// Project-scoped reads are open to every project member, so the operator
+	// can inspect the failed task directly while engineer-only task mutations
+	// stay forbidden.
+	operatorTask := instance.smokeTaskRead(ctx, t, operator, created.TaskID)
+	if operatorTask.TaskID != created.TaskID || operatorTask.State != "open" || operatorTask.CurrentExecution != created.ExecutionID {
+		t.Fatalf("operator task.read = %+v; want open task %q with current execution %q",
+			operatorTask, created.TaskID, created.ExecutionID)
+	}
+	instance.smokeRequireForbidden(ctx, t, operator, api.MethodPatch, "task.edit",
+		api.TaskEditRequest{TaskID: created.TaskID, Title: "operator-refused-edit"}, names.Key("operator-edit"))
 
 	commented := instance.smokeTaskComment(ctx, t, engineer, api.TaskCommentRequest{
 		TaskID: created.TaskID,

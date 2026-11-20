@@ -274,9 +274,9 @@ Humans authenticate through external OAuth/OIDC with RBAC. Tenant and project me
 - **Engineer:** repositories, pipelines, tasks, and execution.
 - **Reviewer:** assigned review decisions.
 - **Operator:** runtime operations.
-- **Viewer:** authorized read access.
+- **Viewer:** read-only project membership holding no mutation or approval role.
 
-The Admin role grants no review authority, and access to service-owned resources follows each owning service's rules.
+The Project is the read/visibility boundary for non-secret project operational state: every authenticated human member of a project (holding any membership role in scope) and every enabled service account in that project (including services with no assigned roles) can read project-scoped operational state (`execution.*`, `task.*`, `pipeline.*`, `resource.binding.*`, `secret.metadata.*`, `service.list`, `event.read`, `event.subscribe`), while roles enforce mutation, approval, and administration authority. The Admin role grants no review authority, and access to service-owned resources follows each owning service's rules.
 
 Humans present OAuth access tokens issued for Kodema's audience, to Kodema APIs and to enforcing services that forward them to verification. The Shell validates issuer, signature, audience, and expiry, then resolves current memberships: role changes apply on the next call, and identity-provider disablement within the short access-token lifetime. `kodema login` holds the session, and `kodema git credential` is the Git credential helper that supplies a fresh access token as the password for username `kodema`. Automation uses service accounts, never human sessions.
 
@@ -286,7 +286,7 @@ Tenant isolation applies to database records, execution, networking, credentials
 
 **Userland services authenticate as service accounts:** tenant/project-scoped software principals outside executions, unrelated to Kubernetes ServiceAccounts. `services` records scope, enabled state, roles, and the credential fields below. Admins create/disable accounts and issue/rotate/revoke credentials through the API; ordinary management reads expose metadata only.
 
-Services have scoped human-style roles excluding Admin. Requests and conversation replies require explicit service-ID assignment, never human-role membership. Broker access derives from scope/roles: subscribe to authorized events/logs and publish custom observations under the authenticated source. Admin-managed resource bindings permit verification calls and specified event reports, not arbitrary impersonation or approval.
+Services have scoped human-style roles excluding Admin; enabled services without mutation roles (`roles: []`) still have project-scoped operational read visibility and can poll their inbox and answer explicit `service/<id>` assignments. Requests and conversation replies require explicit service-ID assignment, never human-role membership. Broker access derives from scope/roles: subscribe to authorized events/logs and publish custom observations under the authenticated source. Admin-managed resource bindings permit verification calls and specified event reports, not arbitrary impersonation or approval.
 
 Services have no factory database access, plaintext secret-management reads, or execution-token issuance. Forwarded actor credentials follow the verification contract and cannot be persisted or used for unrelated operations.
 

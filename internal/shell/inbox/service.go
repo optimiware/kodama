@@ -10,7 +10,6 @@ package inbox
 import (
 	"context"
 	"fmt"
-	"slices"
 
 	"github.com/optimiware/kodema/api"
 	"github.com/optimiware/kodema/internal/fault"
@@ -134,7 +133,7 @@ func (service *Service) Query(ctx context.Context, command QueryCommand) (Page, 
 	if current.ID != command.Actor.ID {
 		return Page{}, fault.New(fault.InternalFailure, "principal reader returned another principal")
 	}
-	if !current.Enabled || current.Kind != command.Actor.Kind || current.Scope != command.Scope || !grantHeld(current, registered.Requires) {
+	if !current.Enabled || current.Kind != command.Actor.Kind || current.Scope != command.Scope || !registered.Requires.Allows(current) {
 		return Page{}, fault.New(fault.Forbidden, "principal does not currently hold the inbox grant in scope")
 	}
 	kinds := make([]Kind, len(command.Kinds))
@@ -153,15 +152,4 @@ func scopeContains(owner, target tenancy.Scope) bool {
 		return false
 	}
 	return owner.ProjectID == "" || owner.ProjectID == target.ProjectID
-}
-
-func grantHeld(principal identity.Principal, requires authorize.Requires) bool {
-	switch principal.Kind {
-	case identity.KindHuman:
-		return slices.ContainsFunc(requires.HumanRoles, principal.HasRole)
-	case identity.KindService:
-		return slices.ContainsFunc(requires.ServiceRoles, principal.HasRole)
-	default:
-		return false
-	}
 }

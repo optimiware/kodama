@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"maps"
-	"slices"
 	"sort"
 	"sync"
 	"time"
@@ -13,7 +12,6 @@ import (
 	"github.com/optimiware/kodema/internal/id"
 	"github.com/optimiware/kodema/internal/shell/authorize"
 	"github.com/optimiware/kodema/internal/shell/event"
-	"github.com/optimiware/kodema/internal/shell/identity"
 	"github.com/optimiware/kodema/internal/shell/pipeline"
 	"github.com/optimiware/kodema/internal/shell/receipt"
 	"github.com/optimiware/kodema/internal/shell/tenancy"
@@ -213,15 +211,8 @@ func registryDecision(principal authorize.Principal, operation authorize.Operati
 	if !ok {
 		return authorize.DecisionDeny
 	}
-	switch principal.Kind {
-	case identity.KindHuman:
-		if slices.ContainsFunc(registered.Requires.HumanRoles, principal.HasRole) {
-			return authorize.DecisionAllow
-		}
-	case identity.KindService:
-		if slices.ContainsFunc(registered.Requires.ServiceRoles, principal.HasRole) {
-			return authorize.DecisionAllow
-		}
+	if registered.Requires.Allows(principal) {
+		return authorize.DecisionAllow
 	}
 	return authorize.DecisionDeny
 }

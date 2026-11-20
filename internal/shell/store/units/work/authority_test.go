@@ -429,3 +429,38 @@ func TestPipelineChangeRefusesDemotedPushServiceAdmin(t *testing.T) {
 	}
 	fixture.requireUnchanged(t, scope, before)
 }
+
+// TestAuthorityAnyEnabledServiceForRolelessService proves the work authority
+// resolver admits an enabled roleless service for AnyEnabledService operations
+// (such as task.reply) while refusing disabled services and role-gated
+// mutations.
+func TestAuthorityAnyEnabledServiceForRolelessService(t *testing.T) {
+	fixture := newFixture(t)
+	scope := testScope()
+	fixture.seedServiceWithRoles(t, scope, "service-roleless", serviceStateEnabled, 1)
+	fixture.seedServiceWithRoles(t, scope, "service-disabled", "disabled", 1)
+
+	replyOp, ok := authorize.LookupOperation("task.reply")
+	if !ok {
+		t.Fatal("task.reply missing")
+	}
+	locks, err := authorityLocks(context.Background(), fixture.store, fixture.store, []authorize.AuthorityRead{
+		membershipRead(scope, replyOp.Name, "service-roleless", replyOp.Requires),
+	}, authorityContext{})
+	if err != nil {
+		t.Fatalf("authorityLocks enabled roleless service: %v", err)
+	}
+	if len(locks) != 1 || locks[0].Table != "services" || locks[0].Expect["state"] != serviceStateEnabled {
+		t.Fatalf("locks = %+v; want one enabled services lock", locks)
+	}
+
+	_, err = authorityLocks(context.Background(), fixture.store, fixture.store, []authorize.AuthorityRead{
+		membershipRead(scope, replyOp.Name, "service-disabled", replyOp.Requires),
+	}, authorityContext{})
+	mustClass(t, err, fault.Forbidden)
+
+	_, err = authorityLocks(context.Background(), fixture.store, fixture.store, []authorize.AuthorityRead{
+		membershipRead(scope, "task.create", "service-roleless", engineerRequires()),
+	}, authorityContext{})
+	mustClass(t, err, fault.Forbidden)
+}

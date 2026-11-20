@@ -142,7 +142,12 @@ func testReleaseSmokeConversationHandoff(t *testing.T, instance *live, names smo
 	if _, found := smokeFindWaitingTask(operatorInbox, created.TaskID); found {
 		t.Fatalf("operator-only inbox exposed the reviewer-assigned waiting task: %+v", operatorInbox.Items)
 	}
-	instance.smokeRequireForbidden(ctx, t, reviewer, api.MethodGet, "task.read", api.TaskReadRequest{TaskID: created.TaskID})
+	reviewerTask := instance.smokeTaskRead(ctx, t, reviewer, created.TaskID)
+	if reviewerTask.TaskID != created.TaskID || reviewerTask.State != "waiting" {
+		t.Fatalf("reviewer task.read = %+v; want waiting task %q", reviewerTask, created.TaskID)
+	}
+	instance.smokeRequireForbidden(ctx, t, reviewer, api.MethodPatch, "task.edit",
+		api.TaskEditRequest{TaskID: created.TaskID, Title: "reviewer-refused-edit"}, names.Key("reviewer-edit"))
 
 	replyRequest := api.TaskReplyRequest{
 		TaskID:                  created.TaskID,

@@ -8,11 +8,8 @@ package factorytest
 // operation against a real factory composition and real request decisions. They
 // do not claim protected Git integration or reviewer-only discovery.
 //
-// The reader/reviewer principal is explicitly dual-role. Reviewers cannot read
-// execution versions through execution.inspect (the operation registry grants
-// that read to engineer/operator/viewer only), while execution.request.resolve
-// requires the assigned human role/reviewer. The suite therefore mints one OIDC
-// human and grants exactly engineer+reviewer through the public membership
+// The reader/reviewer principal is explicitly dual-role. The suite mints one
+// OIDC human and grants exactly engineer+reviewer through the public membership
 // operation, then uses that single principal for inspection and resolution. No
 // broader role is borrowed from the shared project token.
 

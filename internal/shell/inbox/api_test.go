@@ -660,6 +660,24 @@ func TestQueryServiceSeesOnlyExactAssignment(t *testing.T) {
 		}
 	})
 
+	t.Run("roleless enabled service sees only its explicit service assignment", func(t *testing.T) {
+		actor := serviceActor(id.PrincipalID("service-a"))
+		got, err := env.service.Query(t.Context(), queryCommand(actor))
+		requireNoError(t, err, "Query roleless service")
+		if len(got.Items) != 1 || got.Items[0].TaskID != serviceItem.TaskID {
+			t.Fatalf("roleless service page = %+v; want only %q", got.Items, serviceItem.TaskID)
+		}
+	})
+
+	t.Run("human admin queries inbox and sees only items assigned to admin", func(t *testing.T) {
+		actor := humanActor(id.PrincipalID("principal-admin"), tenancy.RoleAdmin)
+		got, err := env.service.Query(t.Context(), queryCommand(actor))
+		requireNoError(t, err, "Query admin")
+		if len(got.Items) != 0 {
+			t.Fatalf("admin page = %+v; want no reviewer/service items", got.Items)
+		}
+	})
+
 	t.Run("different service sees nothing", func(t *testing.T) {
 		actor := serviceActor(id.PrincipalID("service-b"), tenancy.RoleReviewer)
 		got, err := env.service.Query(t.Context(), queryCommand(actor))

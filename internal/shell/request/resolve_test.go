@@ -274,6 +274,24 @@ func TestResolveServiceAssignmentRequiresExactEnabledService(t *testing.T) {
 		requireServiceAssignmentRead(t, fixture.resolutions.captured()[0].Authority, "svc-1")
 	})
 
+	t.Run("exact enabled roleless service succeeds", func(t *testing.T) {
+		fixture, scope, aggregate, _ := newResolveFixture(t, "service/svc-1", "approved")
+		actor := serviceActor("tenant-1", "project-1", "svc-1")
+		_, err := fixture.service.Resolve(context.Background(), resolveCommand(scope, aggregate, 0, actor, request.DecisionPass, kernel.Outputs{"approved": "yes"}))
+		requireNoError(t, err, "Resolve roleless service assignment")
+		requireServiceAssignmentRead(t, fixture.resolutions.captured()[0].Authority, "svc-1")
+	})
+
+	t.Run("roleless service cannot answer a human role assignment", func(t *testing.T) {
+		fixture, scope, aggregate, _ := newResolveFixture(t, "role/reviewer", "approved")
+		actor := serviceActor("tenant-1", "project-1", "svc-1")
+		_, err := fixture.service.Resolve(context.Background(), resolveCommand(scope, aggregate, 0, actor, request.DecisionPass, kernel.Outputs{"approved": "yes"}))
+		requireFaultClass(t, err, fault.Forbidden)
+		if fixture.resolutions.callCount() != 0 {
+			t.Fatalf("resolve port calls = %d; want zero", fixture.resolutions.callCount())
+		}
+	})
+
 	t.Run("another service is refused", func(t *testing.T) {
 		fixture, scope, aggregate, _ := newResolveFixture(t, "service/svc-1", "approved")
 		actor := serviceActor("tenant-1", "project-1", "svc-2", tenancy.RoleReviewer)

@@ -6,16 +6,16 @@ Source: [authorization](../../KODEMA.md#authorization-and-verification), [human 
 
 Principals are verified humans, enabled services, or eligible executions. URL IDs, environment variables, body roles, network location, and correlation strings are not proof of identity. Resource scope comes from relational ownership; creation scope comes from the owning tenant/project.
 
-One `Authorize(principal, operation, resource)` implementation serves Shell capabilities and public edges. C01 freezes an explicit operation/grant matrix with all unknown operations/resources refused. Baseline semantics:
+One `Authorize(principal, operation, resource)` implementation serves Shell capabilities and public edges. C01 freezes an explicit operation/grant matrix with all unknown operations/resources refused. The **Project** is the read/visibility boundary for non-secret operational state: every human project member (holding any membership role in scope) and every enabled service in that project (including `roles: []`) is authorized for project-scoped operational reads (`execution.inspect/list/logs.read`, `task.read/list/history/inbox`, `pipeline.read/list`, `resource.binding.read/list`, `secret.metadata.read/list`, `service.list`, `event.read/subscribe`), while roles strictly gate mutations, approvals, and administration. Baseline semantics:
 
 | Principal | Authority |
 |---|---|
-| Human Admin | Configuration/membership administration; no implicit Reviewer authority |
-| Human Engineer | Authorized project pipelines, tasks, and execution operations |
-| Human Reviewer | Current assigned human-role decisions in scope |
-| Human Operator | Authorized runtime follow-up/retry/cancel and operational inbox |
-| Human Viewer | Authorized read access |
-| Service | Current scoped roles excluding Admin; answers only explicit `service/<id>` assignments |
+| Human Admin | Configuration/membership administration and project read visibility; no implicit Reviewer authority |
+| Human Engineer | Authorized project pipelines, tasks, execution mutations, and project read visibility |
+| Human Reviewer | Project read visibility and current assigned human-role decisions in scope |
+| Human Operator | Project read visibility, operational inbox, and authorized runtime follow-up/retry/cancel |
+| Human Viewer | Read-only project membership holding no mutation or approval role |
+| Service | Project read visibility for any enabled service (including `roles: []`); mutation authority only from current scoped roles excluding Admin; answers only explicit `service/<id>` assignments |
 | Execution | Current running container's admitted permissions: task content/metadata, project task creation, own-task ask, own outputs/events, configured models/tools |
 
 Execution authority excludes request resolution, assigned task replies, membership/pipeline/binding administration, and plaintext secret-management reads. Enforcing services decide their own resource access using returned facts.
@@ -79,7 +79,7 @@ Tokens use HTTPS Bearer. Git helper supplies a current token as password for use
 ## 6. Unit test obligations
 
 - Golden MAC vectors; tampering, wrong kind/tenant, absent fields, expired token, deterministic replacement/rotation.
-- Every operation's allow/deny matrix and cross-scope combinations; Admin is not Reviewer.
+- Every operation's allow/deny matrix and cross-scope combinations; Admin is not Reviewer; project-scoped operational reads admit all human project roles and any enabled service (`roles: []`), while mutations remain role-gated and roleless enabled services answer only explicit `service/<id>` assignments.
 - Concurrent revocation/renewal and request-wait/terminal lifecycle preconditions through fake atomic state.
 - Separate service and actor identities; unknown binding/operation; no service impersonation.
 - Prior/foreign execution, wrong role/service assignment, failed/expired/cancelled request, wrong resource/operation/candidate/base, forged output strings, display-field handling.

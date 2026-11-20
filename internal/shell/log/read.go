@@ -22,7 +22,6 @@ package log
 import (
 	"context"
 	"fmt"
-	"slices"
 	"strconv"
 	"strings"
 
@@ -230,27 +229,10 @@ func confirmPrincipalGrant(principal identity.Principal, actor authorize.Princip
 		}
 		return nil
 	}
-	if !readerGrantHeld(principal, requires) {
+	if !requires.Allows(principal) {
 		return fault.New(fault.Forbidden, "principal does not currently hold the grant for execution.logs.read")
 	}
 	return nil
-}
-
-// readerGrantHeld reports whether a human or service principal currently holds
-// one of the registry row's roles for its kind. Execution authority is handled
-// separately and is never a membership grant.
-func readerGrantHeld(principal identity.Principal, requires authorize.Requires) bool {
-	switch principal.Kind {
-	case identity.KindHuman:
-		if slices.ContainsFunc(requires.HumanRoles, principal.HasRole) {
-			return true
-		}
-	case identity.KindService:
-		if slices.ContainsFunc(requires.ServiceRoles, principal.HasRole) {
-			return true
-		}
-	}
-	return false
 }
 
 // confirmOwnTask binds an execution principal to its own task's current

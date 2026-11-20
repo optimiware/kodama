@@ -24,7 +24,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"slices"
 	"time"
 
 	"github.com/optimiware/kodema/internal/fault"
@@ -336,24 +335,10 @@ func (admin *CredentialAdmin) confirmActor(ctx context.Context, actor authorize.
 		}
 		return nil
 	}
-	if !grantHeld(principal, op.Requires) {
+	if !op.Requires.Allows(principal) {
 		return fault.New(fault.Forbidden, fmt.Sprintf("principal does not currently hold the grant for %q", op.Name))
 	}
 	return nil
-}
-
-func grantHeld(principal identity.Principal, requires authorize.Requires) bool {
-	switch principal.Kind {
-	case identity.KindHuman:
-		if slices.ContainsFunc(requires.HumanRoles, principal.HasRole) {
-			return true
-		}
-	case identity.KindService:
-		if slices.ContainsFunc(requires.ServiceRoles, principal.HasRole) {
-			return true
-		}
-	}
-	return false
 }
 
 func admit(actor authorize.Principal, name authorize.OperationName) (authorize.Operation, error) {
@@ -366,15 +351,15 @@ func admit(actor authorize.Principal, name authorize.OperationName) (authorize.O
 	}
 	switch actor.Kind {
 	case identity.KindHuman:
-		if len(op.Requires.HumanRoles) == 0 {
+		if !op.Requires.AdmitsKind(identity.KindHuman) {
 			return authorize.Operation{}, fault.New(fault.Forbidden, "the operation grants no human role")
 		}
 	case identity.KindService:
-		if len(op.Requires.ServiceRoles) == 0 {
+		if !op.Requires.AdmitsKind(identity.KindService) {
 			return authorize.Operation{}, fault.New(fault.Forbidden, "the operation grants no service role")
 		}
 	case identity.KindExecution:
-		if op.Requires.Execution == authorize.ExecNone {
+		if !op.Requires.AdmitsKind(identity.KindExecution) {
 			return authorize.Operation{}, fault.New(fault.Forbidden, "the operation grants no execution permission")
 		}
 	default:

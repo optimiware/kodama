@@ -321,21 +321,22 @@ func TestE2E_Parity(t *testing.T) {
 		t.Fatalf("missing pipeline.read code = %q; want %q", notFound.code, api.CodeNotFound)
 	}
 
-	// An authenticated human without the role is refused identically, and the
-	// same principal still succeeds on an operation its role carries: the
-	// refusal is authorization, not a broken credential or a CLI-only policy.
+	// An authenticated human without the mutation role is refused identically,
+	// and the same principal still succeeds on project reads: the refusal is
+	// authorization, not a broken credential or a CLI-only policy.
 	operator, ok := instance.tokens[harness.PersonaOperator]
 	if !ok {
 		t.Fatal("the operator persona credential is not configured")
 	}
-	forbiddenRead := api.PipelineReadRequest{ProjectID: instance.projectID, PipelineID: pipelineID}
-	forbidden := requireSameFailure(t, "operator pipeline.read",
-		namedFailure{"REST", probe.restFailure(operator, api.MethodGet, "pipeline.read", forbiddenRead, "", nil)},
-		namedFailure{"MCP", probe.mcpFailure(operator, "pipeline.read", forbiddenRead, "", nil)},
-		namedFailure{"CLI", probe.cliFailure(operator, "pipeline.read", forbiddenRead, "", nil)},
+	forbiddenApply := api.PipelineApplyRequest{ProjectID: instance.projectID, Name: name, YAML: document}
+	forbiddenKey := instance.key("parity-operator-apply")
+	forbidden := requireSameFailure(t, "operator pipeline.apply",
+		namedFailure{"REST", probe.restFailure(operator, api.MethodPut, "pipeline.apply", forbiddenApply, forbiddenKey, nil)},
+		namedFailure{"MCP", probe.mcpFailure(operator, "pipeline.apply", forbiddenApply, forbiddenKey, nil)},
+		namedFailure{"CLI", probe.cliFailure(operator, "pipeline.apply", forbiddenApply, forbiddenKey, nil)},
 	)
 	if forbidden.code != api.CodeForbidden {
-		t.Fatalf("operator pipeline.read code = %q; want %q", forbidden.code, api.CodeForbidden)
+		t.Fatalf("operator pipeline.apply code = %q; want %q", forbidden.code, api.CodeForbidden)
 	}
 	// The operator's role carries execution.list. One bounded, pipeline-scoped
 	// page is served byte-identically by every edge, and it must contain the

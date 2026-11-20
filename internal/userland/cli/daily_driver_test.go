@@ -1279,3 +1279,214 @@ func TestMCPStdioAndInstall(t *testing.T) {
 		}
 	})
 }
+
+// TestPurePersonaCLIWorkflows pins the exact CLI read-before-write operation
+// sequences used by pure reviewer (inbox, inspect, logs, approve, reject), pure
+// operator (inbox, task show, bare task start), and roleless service accounts
+// (inbox, approve). All reads are project-scoped operations admitted for every
+// project member and enabled service.
+func TestPurePersonaCLIWorkflows(t *testing.T) {
+	t.Run("pure reviewer runs inbox, inspect, logs, approve, and reject", func(t *testing.T) {
+		var seen []string
+		transport := &scriptedTransport{respond: func(_ context.Context, _ int, inv api.Invocation) (api.Result, error) {
+			seen = append(seen, inv.Operation)
+			switch inv.Operation {
+			case "task.inbox":
+				body, _ := json.Marshal(api.TaskInboxResult{
+					Items: []api.InboxItem{{
+						Kind:        "request",
+						ExecutionID: "exec-rev-1",
+						ActionID:    "act-review",
+						Assignment:  "role/reviewer",
+						Version:     2,
+						At:          testNow(),
+					}},
+				})
+				return api.Result{Operation: inv.Operation, Body: body}, nil
+			case "execution.inspect":
+				body, _ := json.Marshal(map[string]any{
+					"execution_id": "exec-rev-1",
+					"state":        "running",
+					"version":      3,
+					"actions": []map[string]any{
+						{"action_id": "act-build", "name": "build", "kind": "container", "state": "succeeded", "version": 2},
+						{"action_id": "act-review", "name": "review", "kind": "request", "state": "running", "version": 2},
+					},
+				})
+				return api.Result{Operation: inv.Operation, Body: body}, nil
+			case "execution.logs.read":
+				body, _ := json.Marshal(api.ExecutionLogsReadResult{
+					Chunks: []api.LogChunk{{
+						Offset:   0,
+						Sequence: 1,
+						Stream:   "stdout",
+						Data:     []byte("tests passed\n"),
+					}},
+				})
+				return api.Result{Operation: inv.Operation, Body: body}, nil
+			case "execution.request.resolve":
+				body, _ := json.Marshal(api.ExecutionRequestResolveResult{ExecutionVersion: 4, ActionVersion: 3})
+				return api.Result{Operation: inv.Operation, Body: body}, nil
+			default:
+				t.Fatalf("unexpected operation %s", inv.Operation)
+				return api.Result{}, nil
+			}
+		}}
+
+		cfg := testConfig()
+		cfg.Output = cli.OutputTable
+		for _, argv := range [][]string{
+			{"inbox"},
+			{"inspect", "exec-rev-1"},
+			{"logs", "exec-rev-1", "--action", "act-build"},
+			{"approve", "exec-rev-1", "--action", "act-review"},
+			{"reject", "exec-rev-1", "--action", "act-review", "--reason", "needs fix"},
+		} {
+			ports, out, errOut := testPorts(transport)
+			if code := cli.Run(context.Background(), cfg, argv, ports); code != cli.ExitSuccess {
+				t.Fatalf("%v exit = %d; stderr=%q", argv, code, errOut.String())
+			}
+			if out.Len() == 0 {
+				t.Fatalf("%v produced empty output", argv)
+			}
+		}
+		wantOps := []string{
+			"task.inbox",
+			"execution.inspect",
+			"execution.inspect",
+			"execution.logs.read",
+			"execution.inspect",
+			"execution.request.resolve",
+			"execution.inspect",
+			"execution.request.resolve",
+		}
+		if strings.Join(seen, ",") != strings.Join(wantOps, ",") {
+			t.Fatalf("reviewer operations = %v; want %v", seen, wantOps)
+		}
+	})
+
+	t.Run("pure operator runs inbox, task show, and bare task start on a failed task", func(t *testing.T) {
+		var seen []string
+		transport := &scriptedTransport{respond: func(_ context.Context, _ int, inv api.Invocation) (api.Result, error) {
+			seen = append(seen, inv.Operation)
+			switch inv.Operation {
+			case "task.inbox":
+				body, _ := json.Marshal(api.TaskInboxResult{
+					Items: []api.InboxItem{{
+						Kind:    "failed_task",
+						TaskID:  "task-failed-1",
+						Version: 4,
+						At:      testNow(),
+					}},
+				})
+				return api.Result{Operation: inv.Operation, Body: body}, nil
+			case "task.read":
+				body, _ := json.Marshal(api.TaskReadResult{
+					TaskID:           "task-failed-1",
+					Title:            "Recover failed deploy",
+					State:            "open",
+					ContentVersion:   1,
+					LifecycleVersion: 4,
+					SelectedPipeline: "pipe-deploy",
+					CurrentExecution: "exec-failed-1",
+				})
+				return api.Result{Operation: inv.Operation, Body: body}, nil
+			case "task.start":
+				if inv.Request.ExpectedVersion == nil || *inv.Request.ExpectedVersion != 4 {
+					t.Fatalf("task.start expected_version = %v; want 4", inv.Request.ExpectedVersion)
+				}
+				body, _ := json.Marshal(api.TaskStartResult{ExecutionID: "exec-retry-2", LifecycleVersion: 5})
+				return api.Result{Operation: inv.Operation, Body: body}, nil
+			default:
+				t.Fatalf("unexpected operation %s", inv.Operation)
+				return api.Result{}, nil
+			}
+		}}
+
+		cfg := testConfig()
+		cfg.Output = cli.OutputTable
+		for _, argv := range [][]string{
+			{"inbox"},
+			{"task", "show", "task-failed-1"},
+			{"task", "start", "task-failed-1"},
+		} {
+			ports, out, errOut := testPorts(transport)
+			if code := cli.Run(context.Background(), cfg, argv, ports); code != cli.ExitSuccess {
+				t.Fatalf("%v exit = %d; stderr=%q", argv, code, errOut.String())
+			}
+			if out.Len() == 0 {
+				t.Fatalf("%v produced empty output", argv)
+			}
+		}
+		wantOps := []string{"task.inbox", "task.read", "task.read", "task.start"}
+		if strings.Join(seen, ",") != strings.Join(wantOps, ",") {
+			t.Fatalf("operator operations = %v; want %v", seen, wantOps)
+		}
+	})
+
+	t.Run("roleless service account runs inbox and approve", func(t *testing.T) {
+		var seen []string
+		transport := &scriptedTransport{respond: func(_ context.Context, _ int, inv api.Invocation) (api.Result, error) {
+			seen = append(seen, inv.Operation)
+			switch inv.Operation {
+			case "task.inbox":
+				body, _ := json.Marshal(api.TaskInboxResult{
+					Items: []api.InboxItem{{
+						Kind:        "request",
+						ExecutionID: "exec-svc-1",
+						ActionID:    "act-bot-gate",
+						Assignment:  "service/bot-approver",
+						Version:     2,
+						At:          testNow(),
+					}},
+				})
+				return api.Result{Operation: inv.Operation, Body: body}, nil
+			case "execution.inspect":
+				body, _ := json.Marshal(map[string]any{
+					"execution_id": "exec-svc-1",
+					"state":        "running",
+					"version":      3,
+					"actions": []map[string]any{
+						{"action_id": "act-bot-gate", "name": "bot-gate", "kind": "request", "state": "running", "version": 2},
+					},
+				})
+				return api.Result{Operation: inv.Operation, Body: body}, nil
+			case "execution.request.resolve":
+				if inv.Request.ExpectedVersion == nil || *inv.Request.ExpectedVersion != 3 {
+					t.Fatalf("execution.request.resolve expected_version = %v; want 3", inv.Request.ExpectedVersion)
+				}
+				var req api.ExecutionRequestResolveRequest
+				if err := json.Unmarshal(inv.Request.Input, &req); err != nil {
+					t.Fatalf("unmarshal resolve: %v", err)
+				}
+				if req.ExecutionID != "exec-svc-1" || req.ActionID != "act-bot-gate" || req.ExpectedActionVersion != 2 || req.Decision != "pass" {
+					t.Fatalf("resolve req = %+v", req)
+				}
+				body, _ := json.Marshal(api.ExecutionRequestResolveResult{ExecutionVersion: 4, ActionVersion: 3})
+				return api.Result{Operation: inv.Operation, Body: body}, nil
+			default:
+				t.Fatalf("unexpected operation %s", inv.Operation)
+				return api.Result{}, nil
+			}
+		}}
+
+		cfg := testConfig()
+		cfg.Output = cli.OutputTable
+		for _, argv := range [][]string{
+			{"inbox"},
+			{"approve", "exec-svc-1", "--action", "act-bot-gate"},
+		} {
+			ports, out, errOut := testPorts(transport)
+			if code := cli.Run(context.Background(), cfg, argv, ports); code != cli.ExitSuccess {
+				t.Fatalf("%v exit = %d; stderr=%q", argv, code, errOut.String())
+			}
+			if out.Len() == 0 {
+				t.Fatalf("%v produced empty output", argv)
+			}
+		}
+		wantOps := []string{"task.inbox", "execution.inspect", "execution.request.resolve"}
+		if strings.Join(seen, ",") != strings.Join(wantOps, ",") {
+			t.Fatalf("service operations = %v; want %v", seen, wantOps)
+		}
+	})
+}

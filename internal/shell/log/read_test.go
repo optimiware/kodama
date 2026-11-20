@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
-	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -50,23 +49,23 @@ func otherReaderScope() tenancy.Scope {
 	return testScope("tenant-b", "project-b")
 }
 
-func readerHuman(principalID id.PrincipalID, role tenancy.Role) authorize.Principal {
+func readerHuman(principalID id.PrincipalID, roles ...tenancy.Role) authorize.Principal {
 	return authorize.Principal{
 		ID:      principalID,
 		Kind:    identity.KindHuman,
 		Scope:   readerScope(),
-		Roles:   []tenancy.Role{role},
+		Roles:   roles,
 		Enabled: true,
 		Version: 1,
 	}
 }
 
-func readerService(principalID id.PrincipalID, role tenancy.Role) authorize.Principal {
+func readerService(principalID id.PrincipalID, roles ...tenancy.Role) authorize.Principal {
 	return authorize.Principal{
 		ID:      principalID,
 		Kind:    identity.KindService,
 		Scope:   readerScope(),
-		Roles:   []tenancy.Role{role},
+		Roles:   roles,
 		Enabled: true,
 		Version: 1,
 	}
@@ -149,15 +148,8 @@ func readerRegistryDecision(principal authorize.Principal, operation authorize.O
 	if !ok || !principal.Enabled || !readerScopeContains(principal.Scope, scope) {
 		return authorize.DecisionDeny
 	}
-	switch principal.Kind {
-	case identity.KindHuman:
-		if slices.ContainsFunc(registered.Requires.HumanRoles, principal.HasRole) {
-			return authorize.DecisionAllow
-		}
-	case identity.KindService:
-		if slices.ContainsFunc(registered.Requires.ServiceRoles, principal.HasRole) {
-			return authorize.DecisionAllow
-		}
+	if registered.Requires.Allows(principal) {
+		return authorize.DecisionAllow
 	}
 	return authorize.DecisionDeny
 }
@@ -393,12 +385,16 @@ func TestReaderAllowsRegistryRoles(t *testing.T) {
 		name  string
 		actor authorize.Principal
 	}{
+		{name: "human admin", actor: readerHuman(adminPrincipal, tenancy.RoleAdmin)},
 		{name: "human engineer", actor: readerHuman(engineerPrincipal, tenancy.RoleEngineer)},
+		{name: "human reviewer", actor: readerHuman(reviewerPrincipal, tenancy.RoleReviewer)},
 		{name: "human operator", actor: readerHuman(operatorPrincipal, tenancy.RoleOperator)},
 		{name: "human viewer", actor: readerHuman(viewerPrincipal, tenancy.RoleViewer)},
 		{name: "service engineer", actor: readerService(engineerPrincipal, tenancy.RoleEngineer)},
+		{name: "service reviewer", actor: readerService(reviewerPrincipal, tenancy.RoleReviewer)},
 		{name: "service operator", actor: readerService(operatorPrincipal, tenancy.RoleOperator)},
 		{name: "service viewer", actor: readerService(viewerPrincipal, tenancy.RoleViewer)},
+		{name: "service roleless", actor: readerService(id.PrincipalID("service-roleless"))},
 	}
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
@@ -447,9 +443,15 @@ func TestReaderRefusesUngrantedPrincipals(t *testing.T) {
 		actor authorize.Principal
 		setup func(*readerEnv)
 	}{
-		{name: "human admin", actor: readerHuman(adminPrincipal, tenancy.RoleAdmin)},
-		{name: "human reviewer", actor: readerHuman(reviewerPrincipal, tenancy.RoleReviewer)},
-		{name: "service reviewer", actor: readerService(reviewerPrincipal, tenancy.RoleReviewer)},
+		{name: "human without roles", actor: readerHuman(adminPrincipal)},
+		{
+			name: "disabled roleless service",
+			actor: func() authorize.Principal {
+				actor := readerService(reviewerPrincipal)
+				actor.Enabled = false
+				return actor
+			}(),
+		},
 		{
 			name: "disabled actor",
 			actor: func() authorize.Principal {
@@ -471,7 +473,7 @@ func TestReaderRefusesUngrantedPrincipals(t *testing.T) {
 			name:  "current role removed",
 			actor: readerHuman(engineerPrincipal, tenancy.RoleEngineer),
 			setup: func(env *readerEnv) {
-				env.principals.put(readerPrincipalFor(readerHuman(engineerPrincipal, tenancy.RoleReviewer)))
+				env.principals.put(readerPrincipalFor(readerHuman(engineerPrincipal)))
 			},
 		},
 		{

@@ -120,41 +120,63 @@ func subscribeCommand(actor identity.Principal, scope tenancy.Scope) event.Subsc
 	}
 }
 
-// TestSubscriberAllowsEveryRegistryRole asserts event.subscribe admits exactly
-// the declared human/service roles and refuses every other role.
+// TestSubscriberAllowsEveryRegistryRole asserts event.subscribe admits every
+// human project member role and every enabled service in scope (including
+// roles: []), and refuses roleless humans and disabled services.
 func TestSubscriberAllowsEveryRegistryRole(t *testing.T) {
-	kinds := []struct {
-		name      string
-		principal func(tenancy.Role) identity.Principal
-	}{
-		{"human", humanWithRole},
-		{"service", serviceWithRole},
+	for _, role := range tenancy.HumanRoles() {
+		t.Run("human/"+string(role)+"/allowed", func(t *testing.T) {
+			actor := humanWithRole(role)
+			harness := newSubscribeHarness(t, actor)
+			if _, err := harness.subscriber.Setup(context.Background(), subscribeCommand(actor, testScope())); err != nil {
+				t.Fatalf("Setup: %v", err)
+			}
+			if harness.cursor.callCount() != 1 || harness.validity.callCount() != 1 {
+				t.Errorf("cursor/validity calls = %d/%d, want 1/1", harness.cursor.callCount(), harness.validity.callCount())
+			}
+		})
 	}
-	for _, kind := range kinds {
-		for _, role := range []tenancy.Role{tenancy.RoleEngineer, tenancy.RoleOperator, tenancy.RoleViewer} {
-			t.Run(kind.name+"/"+string(role)+"/allowed", func(t *testing.T) {
-				actor := kind.principal(role)
-				harness := newSubscribeHarness(t, actor)
-				if _, err := harness.subscriber.Setup(context.Background(), subscribeCommand(actor, testScope())); err != nil {
-					t.Fatalf("Setup: %v", err)
-				}
-				if harness.cursor.callCount() != 1 || harness.validity.callCount() != 1 {
-					t.Errorf("cursor/validity calls = %d/%d, want 1/1", harness.cursor.callCount(), harness.validity.callCount())
-				}
-			})
-		}
-		for _, role := range deniedRoles(kind.name) {
-			t.Run(kind.name+"/"+string(role)+"/refused", func(t *testing.T) {
-				actor := kind.principal(role)
-				harness := newSubscribeHarness(t, actor)
-				_, err := harness.subscriber.Setup(context.Background(), subscribeCommand(actor, testScope()))
-				assertFaultClass(t, err, fault.Forbidden)
-				if harness.cursor.callCount() != 0 || harness.validity.callCount() != 0 {
-					t.Errorf("cursor/validity calls = %d/%d, want 0/0 for an ungranted role", harness.cursor.callCount(), harness.validity.callCount())
-				}
-			})
-		}
+	for _, role := range tenancy.ServiceRoles() {
+		t.Run("service/"+string(role)+"/allowed", func(t *testing.T) {
+			actor := serviceWithRole(role)
+			harness := newSubscribeHarness(t, actor)
+			if _, err := harness.subscriber.Setup(context.Background(), subscribeCommand(actor, testScope())); err != nil {
+				t.Fatalf("Setup: %v", err)
+			}
+			if harness.cursor.callCount() != 1 || harness.validity.callCount() != 1 {
+				t.Errorf("cursor/validity calls = %d/%d, want 1/1", harness.cursor.callCount(), harness.validity.callCount())
+			}
+		})
 	}
+	t.Run("service/roleless/allowed", func(t *testing.T) {
+		actor := rolelessService()
+		harness := newSubscribeHarness(t, actor)
+		if _, err := harness.subscriber.Setup(context.Background(), subscribeCommand(actor, testScope())); err != nil {
+			t.Fatalf("Setup roleless service: %v", err)
+		}
+		if harness.cursor.callCount() != 1 || harness.validity.callCount() != 1 {
+			t.Errorf("cursor/validity calls = %d/%d, want 1/1", harness.cursor.callCount(), harness.validity.callCount())
+		}
+	})
+	t.Run("human/no_roles/refused", func(t *testing.T) {
+		actor := rolelessHuman()
+		harness := newSubscribeHarness(t, actor)
+		_, err := harness.subscriber.Setup(context.Background(), subscribeCommand(actor, testScope()))
+		assertFaultClass(t, err, fault.Forbidden)
+		if harness.cursor.callCount() != 0 || harness.validity.callCount() != 0 {
+			t.Errorf("cursor/validity calls = %d/%d, want 0/0 for an ungranted human", harness.cursor.callCount(), harness.validity.callCount())
+		}
+	})
+	t.Run("service/disabled_roleless/refused", func(t *testing.T) {
+		actor := rolelessService()
+		actor.Enabled = false
+		harness := newSubscribeHarness(t, actor)
+		_, err := harness.subscriber.Setup(context.Background(), subscribeCommand(actor, testScope()))
+		assertFaultClass(t, err, fault.Forbidden)
+		if harness.cursor.callCount() != 0 || harness.validity.callCount() != 0 {
+			t.Errorf("cursor/validity calls = %d/%d, want 0/0 for a disabled service", harness.cursor.callCount(), harness.validity.callCount())
+		}
+	})
 }
 
 // TestSubscriberRefusesExecutionPrincipal asserts event.subscribe declares no

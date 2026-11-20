@@ -32,9 +32,11 @@ package lifecycle
 // Reviewer question discovery: the waiting_task inbox item carries question_id,
 // the question body, durable references, the task lifecycle version and a
 // Version equal to the outstanding question version. A reviewer-only principal
-// therefore answers from its own inbox without task.read or task.history, which
-// stay forbidden to that role. The tests assert both the projection and the
-// reply that uses it.
+// can answer directly from its own inbox projection as well as inspect the task
+// via task.read and task.history (project read boundary), while task mutations
+// such as task.edit and task.cancel stay forbidden to that role. The tests
+// assert the inbox projection, the read boundary, the mutation refusals, and
+// the reply that uses the projection.
 //
 // Failed-task discovery (KODEMA.md line 218): an authorized human operator
 // discovers an open task whose current execution failed through the failed_task
@@ -294,8 +296,7 @@ func TestOperatorRetry(t *testing.T) {
 	}
 
 	// The operator's granted mutation path is cancellation: task.cancel is
-	// granted to operator and engineer. The operator cannot read the task
-	// (task.read is engineer/viewer only), so it refreshes its own failed_task
+	// granted to operator and engineer. The operator refreshes its failed_task
 	// inbox discovery for the current failure; that item's Version is the task
 	// lifecycle version the cancel must name. Cancelling the failed open task
 	// must settle it without queueing another execution.
@@ -540,9 +541,9 @@ func testTaskAskHandoff(t *testing.T, harness *factory.Harness) {
 		t.Fatalf("waiting_task assignment = %q; want role/reviewer", item.Assignment)
 	}
 	// The waiting_task item carries the complete outstanding-question
-	// projection, so the exact assignee can answer without any read the
-	// reviewer role is not granted. Version stays the QUESTION version;
-	// LifecycleVersion is the task lifecycle version.
+	// projection, so the exact assignee can answer directly from its inbox.
+	// Version stays the QUESTION version; LifecycleVersion is the task
+	// lifecycle version.
 	if item.QuestionID != waiting.Question.QuestionID {
 		t.Fatalf("waiting_task question_id = %q; want %q", item.QuestionID, waiting.Question.QuestionID)
 	}
@@ -565,13 +566,29 @@ func testTaskAskHandoff(t *testing.T, harness *factory.Harness) {
 		t.Fatalf("operator-only inbox exposed a reviewer-assigned waiting task: %+v", operatorInbox.Items)
 	}
 
-	// The reviewer still cannot read the task directly: the inbox projection is
-	// the intended discovery path, not a widening of task.read/task.history.
-	if _, err := harness.REST(harness.ReviewerToken, "task.read", api.TaskReadRequest{TaskID: created.TaskID}, nil, ""); err.Code != api.CodeForbidden {
-		t.Fatalf("reviewer task.read code = %q; want %q", err.Code, api.CodeForbidden)
+	// Project-scoped reads (task.read and task.history) follow the project read
+	// boundary and are allowed for the reviewer, while task mutations stay
+	// forbidden to the reviewer role.
+	reviewerRead := readTask(t, harness, harness.ReviewerToken, created.TaskID)
+	if reviewerRead.TaskID != created.TaskID || reviewerRead.State != "waiting" {
+		t.Fatalf("reviewer task.read = %+v; want waiting task %q", reviewerRead, created.TaskID)
 	}
-	if _, err := harness.REST(harness.ReviewerToken, "task.history", api.TaskHistoryRequest{TaskID: created.TaskID}, nil, ""); err.Code != api.CodeForbidden {
-		t.Fatalf("reviewer task.history code = %q; want %q", err.Code, api.CodeForbidden)
+	historyResult := harness.MustREST(harness.ReviewerToken, "task.history", api.TaskHistoryRequest{TaskID: created.TaskID}, nil, "")
+	var reviewerHistory api.TaskHistoryResult
+	harness.Decode(historyResult, &reviewerHistory)
+	if len(reviewerHistory.Entries) == 0 {
+		t.Fatalf("reviewer task.history returned no entries for waiting task %q", created.TaskID)
+	}
+	if _, err := harness.REST(harness.ReviewerToken, "task.edit", api.TaskEditRequest{
+		TaskID: created.TaskID,
+		Title:  "reviewer-refused-edit",
+	}, &waiting.ContentVersion, "task-ask-reviewer-edit"); err.Code != api.CodeForbidden {
+		t.Fatalf("reviewer task.edit code = %q; want %q", err.Code, api.CodeForbidden)
+	}
+	if _, err := harness.REST(harness.ReviewerToken, "task.cancel", api.TaskCancelRequest{
+		TaskID: created.TaskID,
+	}, &waiting.LifecycleVersion, "task-ask-reviewer-cancel"); err.Code != api.CodeForbidden {
+		t.Fatalf("reviewer task.cancel code = %q; want %q", err.Code, api.CodeForbidden)
 	}
 	encoded, marshalErr := json.Marshal(item)
 	if marshalErr != nil {
@@ -613,8 +630,7 @@ func testTaskReply(t *testing.T, harness *factory.Harness) {
 		t.Fatalf("waiting task has no outstanding question")
 	}
 	// The assigned reviewer discovers the question identity through its own
-	// inbox, not through the engineer's task.read: the reviewer role is not
-	// granted task.read or task.history.
+	// inbox projection rather than relying on an engineer's task.read.
 	reviewerInbox := inboxWaitingTasks(t, harness, harness.ReviewerToken)
 	inboxItem, ok := findWaitingTask(reviewerInbox, created.TaskID)
 	if !ok {

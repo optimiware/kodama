@@ -60,17 +60,9 @@ func registryDecision(principal authorize.Principal, operation authorize.Operati
 		return authorize.DecisionDeny
 	}
 	switch principal.Kind {
-	case identity.KindHuman:
-		for _, role := range registered.Requires.HumanRoles {
-			if principal.HasRole(role) {
-				return authorize.DecisionAllow
-			}
-		}
-	case identity.KindService:
-		for _, role := range registered.Requires.ServiceRoles {
-			if principal.HasRole(role) {
-				return authorize.DecisionAllow
-			}
+	case identity.KindHuman, identity.KindService:
+		if registered.Requires.Allows(principal) {
+			return authorize.DecisionAllow
 		}
 	case identity.KindExecution:
 		if principal.Enabled && registered.Requires.Execution != authorize.ExecNone {

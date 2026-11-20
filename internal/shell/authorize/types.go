@@ -17,6 +17,7 @@ package authorize
 
 import (
 	"context"
+	"slices"
 	"time"
 
 	"github.com/optimiware/kodema/internal/fault"
@@ -269,10 +270,78 @@ func (permission ExecutionPermission) Valid() bool {
 type OperationName string
 
 // Requires is the principal grant set of one operation.
+//
+// AnyEnabledService admits every enabled service in scope regardless of its
+// assigned roles (including a service created with roles: []). When
+// AnyEnabledService is false, a service must hold at least one role in
+// ServiceRoles. Services never hold Admin regardless of either field.
 type Requires struct {
-	HumanRoles   []tenancy.Role      `json:"human_roles"`
-	ServiceRoles []tenancy.Role      `json:"service_roles"`
-	Execution    ExecutionPermission `json:"execution"`
+	HumanRoles        []tenancy.Role      `json:"human_roles"`
+	ServiceRoles      []tenancy.Role      `json:"service_roles"`
+	AnyEnabledService bool                `json:"any_enabled_service,omitempty"`
+	Execution         ExecutionPermission `json:"execution"`
+}
+
+// Allows reports whether an enabled human or service principal currently
+// satisfies the grant set. Execution authority is evaluated separately through
+// AuthorizeExecution and never through Allows. Disabled principals are always
+// refused.
+func (requires Requires) Allows(principal identity.Principal) bool {
+	if !principal.Enabled {
+		return false
+	}
+	switch principal.Kind {
+	case identity.KindHuman:
+		return requires.AllowsRoles(false, principal.Roles)
+	case identity.KindService:
+		if principal.HasRole(tenancy.RoleAdmin) {
+			return false
+		}
+		return requires.AllowsRoles(true, principal.Roles)
+	default:
+		return false
+	}
+}
+
+// AllowsRoles reports whether an enabled human (service=false) or enabled
+// service (service=true) holding roles satisfies the grant set.
+//
+// For services, AnyEnabledService admits any enabled service in scope
+// (including empty roles), while role-gated operations match against
+// tenancy.AssignableServiceRoles(roles) so a corrupt row carrying Admin or an
+// unknown role can never satisfy a service role requirement.
+func (requires Requires) AllowsRoles(service bool, roles []tenancy.Role) bool {
+	if service {
+		if requires.AnyEnabledService {
+			return true
+		}
+		return anyRoleMatches(tenancy.AssignableServiceRoles(roles), requires.ServiceRoles)
+	}
+	return anyRoleMatches(roles, requires.HumanRoles)
+}
+
+// AdmitsKind reports whether any principal of kind could satisfy this grant
+// set before evaluating specific roles or execution permissions.
+func (requires Requires) AdmitsKind(kind identity.PrincipalKind) bool {
+	switch kind {
+	case identity.KindHuman:
+		return len(requires.HumanRoles) > 0
+	case identity.KindService:
+		return requires.AnyEnabledService || len(requires.ServiceRoles) > 0
+	case identity.KindExecution:
+		return requires.Execution != ExecNone
+	default:
+		return false
+	}
+}
+
+func anyRoleMatches(current, required []tenancy.Role) bool {
+	for _, role := range current {
+		if slices.Contains(required, role) {
+			return true
+		}
+	}
+	return false
 }
 
 // Operation is one declared registry row.

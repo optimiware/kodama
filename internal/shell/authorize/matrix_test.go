@@ -44,8 +44,9 @@ func TestHumanGrantMatrixAllowsExactlyTheDeclaredRoles(t *testing.T) {
 }
 
 // TestServiceGrantMatrixAllowsExactlyTheDeclaredServiceRoles asserts a service
-// principal is allowed exactly when the operation lists one of its current
-// service roles, and never for an Admin-only or execution-only operation.
+// principal is allowed exactly when the operation admits any enabled service
+// (including empty roles) or lists one of its current service roles, and never
+// for an Admin-only or execution-only operation.
 func TestServiceGrantMatrixAllowsExactlyTheDeclaredServiceRoles(t *testing.T) {
 	matrix := authorize.NewMatrix()
 	ctx := context.Background()
@@ -61,11 +62,34 @@ func TestServiceGrantMatrixAllowsExactlyTheDeclaredServiceRoles(t *testing.T) {
 			if err != nil {
 				t.Fatalf("%s for service %s: unexpected error: %v", operation.Name, role, err)
 			}
-			want := containsRole(operation.Requires.ServiceRoles, role)
+			want := operation.Requires.AnyEnabledService || containsRole(operation.Requires.ServiceRoles, role)
 			if got := decision == authorize.DecisionAllow; got != want {
-				t.Errorf("%s for service %s: allow = %v, want %v (declared service roles %v)",
-					operation.Name, role, got, want, operation.Requires.ServiceRoles)
+				t.Errorf("%s for service %s: allow = %v, want %v (anyEnabled=%v declared service roles %v)",
+					operation.Name, role, got, want, operation.Requires.AnyEnabledService, operation.Requires.ServiceRoles)
 			}
+		}
+
+		// Roleless enabled services (roles: []) are admitted iff the operation
+		// declares AnyEnabledService (or is principal.whoami).
+		decision, err := matrix.Authorize(ctx, servicePrincipal(nil, scope), operation.Name, scope)
+		if err != nil {
+			t.Fatalf("%s for roleless service: unexpected error: %v", operation.Name, err)
+		}
+		wantRoleless := operation.Name == "principal.whoami" || operation.Requires.AnyEnabledService
+		if got := decision == authorize.DecisionAllow; got != wantRoleless {
+			t.Errorf("%s for roleless service: allow = %v, want %v (anyEnabled=%v)",
+				operation.Name, got, wantRoleless, operation.Requires.AnyEnabledService)
+		}
+
+		// Disabled roleless services are always denied, even for AnyEnabledService.
+		disabled := servicePrincipal(nil, scope)
+		disabled.Enabled = false
+		decision, err = matrix.Authorize(ctx, disabled, operation.Name, scope)
+		if err != nil {
+			t.Fatalf("%s for disabled roleless service: unexpected error: %v", operation.Name, err)
+		}
+		if decision != authorize.DecisionDeny {
+			t.Errorf("%s admitted a disabled roleless service", operation.Name)
 		}
 	}
 }
@@ -85,7 +109,7 @@ func TestServiceNeverReceivesAdmin(t *testing.T) {
 	}
 
 	for _, operation := range authorize.Operations() {
-		if len(operation.Requires.ServiceRoles) != 0 {
+		if operation.Requires.AnyEnabledService || len(operation.Requires.ServiceRoles) != 0 {
 			continue
 		}
 		scope := scopeFor(operation)
@@ -225,7 +249,10 @@ func TestAdminAndReviewerRemainDistinct(t *testing.T) {
 		{"task.edit", tenancy.RoleReviewer, false},
 		{"task.edit", tenancy.RoleEngineer, true},
 		{"task.inbox", tenancy.RoleReviewer, true},
-		{"task.inbox", tenancy.RoleAdmin, false},
+		{"task.inbox", tenancy.RoleAdmin, true},
+		{"execution.inspect", tenancy.RoleReviewer, true},
+		{"execution.logs.read", tenancy.RoleReviewer, true},
+		{"task.read", tenancy.RoleOperator, true},
 		{"actor.verify", tenancy.RoleAdmin, false},
 		{"actor.verify", tenancy.RoleReviewer, false},
 	}
@@ -270,6 +297,13 @@ func TestGrantStageAdmitsEveryRoleForAssignedOperations(t *testing.T) {
 			if decision != authorize.DecisionAllow {
 				t.Errorf("%s denied service role %s at the grant stage", name, role)
 			}
+		}
+		decision, err := matrix.Authorize(ctx, servicePrincipal(nil, scope), name, scope)
+		if err != nil {
+			t.Fatalf("%s for roleless service: unexpected error: %v", name, err)
+		}
+		if decision != authorize.DecisionAllow {
+			t.Errorf("%s denied roleless enabled service at the grant stage", name)
 		}
 	}
 }
@@ -347,6 +381,9 @@ func TestScopeContainment(t *testing.T) {
 		{"same project", humanPrincipal(tenancy.RoleEngineer, projectScope()), "task.read", projectScope(), authorize.DecisionAllow},
 		{"other project in same tenant", humanPrincipal(tenancy.RoleEngineer, projectScope()), "task.read", otherProjectScope(), authorize.DecisionDeny},
 		{"other tenant", humanPrincipal(tenancy.RoleEngineer, projectScope()), "task.read", otherTenantScope(), authorize.DecisionDeny},
+		{"roleless service same project", servicePrincipal(nil, projectScope()), "task.read", projectScope(), authorize.DecisionAllow},
+		{"roleless service other project", servicePrincipal(nil, projectScope()), "task.read", otherProjectScope(), authorize.DecisionDeny},
+		{"roleless service other tenant", servicePrincipal(nil, projectScope()), "task.read", otherTenantScope(), authorize.DecisionDeny},
 		{"tenant admin in own tenant", humanPrincipal(tenancy.RoleAdmin, tenantScope()), "project.create", tenantScope(), authorize.DecisionAllow},
 		{"tenant admin in another tenant", humanPrincipal(tenancy.RoleAdmin, tenantScope()), "project.create", otherTenantScope(), authorize.DecisionDeny},
 		{"tenant admin inside a project of its tenant", humanPrincipal(tenancy.RoleAdmin, tenantScope()), "resource.binding.read", projectScope(), authorize.DecisionAllow},

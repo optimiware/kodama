@@ -15,7 +15,6 @@ package secret
 import (
 	"context"
 	"encoding/json"
-	"slices"
 	"time"
 
 	"github.com/optimiware/kodema/internal/fault"
@@ -685,22 +684,17 @@ func rowAllowsOperation(values map[string]any, operation string, kind identity.P
 	if err != nil {
 		return err
 	}
-	var declared []tenancy.Role
 	switch kind {
 	case identity.KindHuman:
-		declared = registered.Requires.HumanRoles
-	case identity.KindService:
-		// A service row can never grant Admin or an unknown role, so the
-		// registry's service roles are matched against the filtered set.
-		roles = tenancy.AssignableServiceRoles(roles)
-		declared = registered.Requires.ServiceRoles
-	default:
-		return fault.New(fault.InternalFailure, "secret operation actor kind is not frozen")
-	}
-	for _, role := range roles {
-		if slices.Contains(declared, role) {
+		if registered.Requires.AllowsRoles(false, roles) {
 			return nil
 		}
+	case identity.KindService:
+		if registered.Requires.AllowsRoles(true, roles) {
+			return nil
+		}
+	default:
+		return fault.New(fault.InternalFailure, "secret operation actor kind is not frozen")
 	}
 	return fault.New(fault.Forbidden, "acting principal's current roles do not grant the secret operation")
 }

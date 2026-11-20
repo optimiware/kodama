@@ -227,7 +227,7 @@ func TestRouterCallOrderAndPropagation(t *testing.T) {
 	}
 
 	call := h.probeFor(operation.Name).handler.lastCall()
-	wantPrincipal := humanPrincipal(projectScope(), tenancy.RoleEngineer)
+	wantPrincipal := humanPrincipal(projectScope(), operation.Requires.HumanRoles[0])
 	if !reflect.DeepEqual(call.Principal, wantPrincipal) {
 		t.Fatalf("handler principal = %#v; want %#v", call.Principal, wantPrincipal)
 	}

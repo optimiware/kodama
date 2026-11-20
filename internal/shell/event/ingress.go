@@ -208,7 +208,7 @@ func ingressAuthorityChecks(operation authorize.Operation, kind SourceKind) []au
 
 // sameRequires compares two operation grant sets.
 func sameRequires(left, right authorize.Requires) bool {
-	if left.Execution != right.Execution {
+	if left.Execution != right.Execution || left.AnyEnabledService != right.AnyEnabledService {
 		return false
 	}
 	if len(left.HumanRoles) != len(right.HumanRoles) || len(left.ServiceRoles) != len(right.ServiceRoles) {

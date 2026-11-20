@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"maps"
-	"slices"
 	"time"
 
 	"github.com/optimiware/kodema/internal/fault"
@@ -1003,7 +1002,7 @@ func (service *Service) confirmActor(ctx context.Context, actor authorize.Princi
 		}
 		return principal, nil
 	}
-	if !grantHeld(principal, requires) {
+	if !requires.Allows(principal) {
 		return identity.Principal{}, fault.New(fault.Forbidden, fmt.Sprintf("principal does not currently hold the grant for %q", operation))
 	}
 	return principal, nil
@@ -1049,7 +1048,7 @@ func (service *Service) initiatorStartRead(ctx context.Context, scope tenancy.Sc
 	if err != nil {
 		return authorize.AuthorityRead{}, err
 	}
-	if principal.Scope != scope || !principal.Enabled || !grantHeld(principal, requires) {
+	if principal.Scope != scope || !principal.Enabled || !requires.Allows(principal) {
 		return authorize.AuthorityRead{}, fault.New(fault.Forbidden, "task initiator no longer holds start authority")
 	}
 	if len(authorize.ConditionalGrantChecks(registered, principal)) > 0 {
@@ -1170,22 +1169,6 @@ func nonVersionedReads(reads []authorize.AuthorityRead) []authorize.AuthorityRea
 		}
 	}
 	return filtered
-}
-
-func grantHeld(principal identity.Principal, requires authorize.Requires) bool {
-	switch principal.Kind {
-	case identity.KindHuman:
-		if slices.ContainsFunc(requires.HumanRoles, principal.HasRole) {
-			return true
-		}
-	case identity.KindService:
-		if slices.ContainsFunc(requires.ServiceRoles, principal.HasRole) {
-			return true
-		}
-	}
-	// Execution authority is not a membership grant. confirmActor evaluates
-	// the registry's execution permission and the own-task binding explicitly.
-	return false
 }
 
 func enforceAssignment(actor identity.Principal, assignment request.Assignment) error {

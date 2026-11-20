@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"slices"
 	"strings"
 
 	"github.com/optimiware/kodema/internal/fault"
@@ -271,7 +270,7 @@ func (s *Store) membershipLocks(ctx context.Context, read authorize.AuthorityRea
 		if err != nil {
 			return nil, err
 		}
-		if state != serviceStateEnabled || !hasAnyRole(tenancy.AssignableServiceRoles(roles), read.Required.ServiceRoles) {
+		if state != serviceStateEnabled || !read.Required.AllowsRoles(true, roles) {
 			return nil, fault.New(fault.Forbidden, "the acting service does not hold the required role")
 		}
 		return []store.Lock{{
@@ -674,21 +673,6 @@ func decodeRolesFromRow(values map[string]any) ([]tenancy.Role, error) {
 		return nil, fault.Wrap(fault.InternalFailure, "membership or service roles are malformed", err)
 	}
 	return roles, nil
-}
-
-// hasAnyRole reports whether roles contains at least one required role.
-func hasAnyRole(roles, required []tenancy.Role) bool {
-	for _, wanted := range required {
-		if hasRole(roles, wanted) {
-			return true
-		}
-	}
-	return false
-}
-
-// hasRole reports whether roles contains one role.
-func hasRole(roles []tenancy.Role, wanted tenancy.Role) bool {
-	return slices.Contains(roles, wanted)
 }
 
 // mustRowID returns the stored identity of one row. A row read through the

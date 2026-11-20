@@ -90,10 +90,11 @@ func TestProtectedFactoryFailedExecutionRetry(t *testing.T) {
 		t.Fatalf("first task history = %v; want exactly [%s]", firstTask.ExecutionHistory, first.executionID)
 	}
 
-	// The operator discovers the failed task through its own inbox item and
-	// retries at exactly that lifecycle version.
+	// The operator discovers the failed task through its own inbox item, reads
+	// the task directly via task.read (project read boundary), and retries at
+	// exactly that lifecycle version.
 	failedItem := protectedRetryFailedTask(t, fixture, taskID)
-	failedTask := readProtectedGoldenTask(t, fixture, fixture.engineerToken, taskID)
+	failedTask := readProtectedGoldenTask(t, fixture, fixture.OperatorToken, taskID)
 	if failedItem.Version != failedTask.LifecycleVersion {
 		t.Fatalf("failed_task Version = %d; want the task lifecycle version %d",
 			failedItem.Version, failedTask.LifecycleVersion)

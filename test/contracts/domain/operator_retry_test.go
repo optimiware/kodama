@@ -145,6 +145,15 @@ func TestTaskStartGrantMatrix(t *testing.T) {
 	if !startGrantAllows([]tenancy.Role{tenancy.RoleEngineer}, task.StateOpen, executionCase{state: kernel.ExecutionFailed, present: true}) {
 		t.Error("engineer lost the unchanged failed-open-task start")
 	}
+
+	// Pure operator can read the task (project-scoped read visibility) before
+	// retrying a failed open task, while still being denied non-failed starts.
+	if !humanGranted(t, operator, "task.read", projectScope()) {
+		t.Error("pure operator was denied task.read")
+	}
+	if !humanGranted(t, operator, "task.inbox", projectScope()) {
+		t.Error("pure operator was denied task.inbox")
+	}
 }
 
 type executionCase struct {

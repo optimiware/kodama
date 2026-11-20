@@ -66,6 +66,21 @@ func invokeErrors() []fault.Class {
 	return withClasses(readErrors(), fault.DeadlineExpired, fault.UncertainExternalEffect)
 }
 
+func allHumanRoles() []tenancy.Role {
+	return []tenancy.Role{
+		tenancy.RoleAdmin,
+		tenancy.RoleEngineer,
+		tenancy.RoleReviewer,
+		tenancy.RoleOperator,
+		tenancy.RoleViewer,
+	}
+}
+
+func withAnyEnabledService(op Operation) Operation {
+	op.Requires.AnyEnabledService = true
+	return op
+}
+
 // operation builds one registry row and derives its schema names.
 func operation(
 	name string,
@@ -139,23 +154,23 @@ var registry = []Operation{
 	operation("resource.binding.delete", FamilyResource, ScopeProject,
 		[]tenancy.Role{tenancy.RoleAdmin}, nil, ExecNone,
 		[]AuthorityCheck{CheckMembership, CheckBindingVersion}, ReceiptRequired, receiptErrors()),
-	operation("resource.binding.read", FamilyResource, ScopeProject,
-		[]tenancy.Role{tenancy.RoleAdmin, tenancy.RoleViewer}, []tenancy.Role{tenancy.RoleViewer}, ExecNone,
-		[]AuthorityCheck{CheckMembership}, ReceiptNone, readErrors()),
-	operation("resource.binding.list", FamilyResource, ScopeProject,
-		[]tenancy.Role{tenancy.RoleAdmin, tenancy.RoleViewer}, []tenancy.Role{tenancy.RoleViewer}, ExecNone,
-		[]AuthorityCheck{CheckMembership}, ReceiptNone, readErrors()),
+	withAnyEnabledService(operation("resource.binding.read", FamilyResource, ScopeProject,
+		allHumanRoles(), nil, ExecNone,
+		[]AuthorityCheck{CheckMembership}, ReceiptNone, readErrors())),
+	withAnyEnabledService(operation("resource.binding.list", FamilyResource, ScopeProject,
+		allHumanRoles(), nil, ExecNone,
+		[]AuthorityCheck{CheckMembership}, ReceiptNone, readErrors())),
 
 	// API-posted pipelines and immutable execution start.
 	operation("pipeline.apply", FamilyPipeline, ScopeProject,
 		[]tenancy.Role{tenancy.RoleEngineer}, []tenancy.Role{tenancy.RoleEngineer}, ExecNone,
 		[]AuthorityCheck{CheckMembership, CheckPipelineVersion, CheckPushServiceAdmin}, ReceiptRequired, receiptErrors()),
-	operation("pipeline.read", FamilyPipeline, ScopeProject,
-		[]tenancy.Role{tenancy.RoleEngineer, tenancy.RoleViewer}, []tenancy.Role{tenancy.RoleEngineer, tenancy.RoleViewer}, ExecNone,
-		[]AuthorityCheck{CheckMembership}, ReceiptNone, readErrors()),
-	operation("pipeline.list", FamilyPipeline, ScopeProject,
-		[]tenancy.Role{tenancy.RoleEngineer, tenancy.RoleViewer}, []tenancy.Role{tenancy.RoleEngineer, tenancy.RoleViewer}, ExecNone,
-		[]AuthorityCheck{CheckMembership}, ReceiptNone, readErrors()),
+	withAnyEnabledService(operation("pipeline.read", FamilyPipeline, ScopeProject,
+		allHumanRoles(), nil, ExecNone,
+		[]AuthorityCheck{CheckMembership}, ReceiptNone, readErrors())),
+	withAnyEnabledService(operation("pipeline.list", FamilyPipeline, ScopeProject,
+		allHumanRoles(), nil, ExecNone,
+		[]AuthorityCheck{CheckMembership}, ReceiptNone, readErrors())),
 	operation("pipeline.update", FamilyPipeline, ScopeProject,
 		[]tenancy.Role{tenancy.RoleEngineer}, []tenancy.Role{tenancy.RoleEngineer}, ExecNone,
 		[]AuthorityCheck{CheckMembership, CheckPipelineVersion, CheckPushServiceAdmin}, ReceiptRequired, receiptErrors()),
@@ -167,14 +182,12 @@ var registry = []Operation{
 		[]AuthorityCheck{CheckMembership, CheckPipelineVersion}, ReceiptRequired, admissionErrors()),
 
 	// Secret metadata and writes.
-	operation("secret.metadata.read", FamilySecret, ScopeProject,
-		[]tenancy.Role{tenancy.RoleAdmin, tenancy.RoleEngineer, tenancy.RoleViewer},
-		[]tenancy.Role{tenancy.RoleEngineer, tenancy.RoleViewer}, ExecNone,
-		[]AuthorityCheck{CheckMembership}, ReceiptNone, readErrors()),
-	operation("secret.metadata.list", FamilySecret, ScopeProject,
-		[]tenancy.Role{tenancy.RoleAdmin, tenancy.RoleEngineer, tenancy.RoleViewer},
-		[]tenancy.Role{tenancy.RoleEngineer, tenancy.RoleViewer}, ExecNone,
-		[]AuthorityCheck{CheckMembership}, ReceiptNone, readErrors()),
+	withAnyEnabledService(operation("secret.metadata.read", FamilySecret, ScopeProject,
+		allHumanRoles(), nil, ExecNone,
+		[]AuthorityCheck{CheckMembership}, ReceiptNone, readErrors())),
+	withAnyEnabledService(operation("secret.metadata.list", FamilySecret, ScopeProject,
+		allHumanRoles(), nil, ExecNone,
+		[]AuthorityCheck{CheckMembership}, ReceiptNone, readErrors())),
 	operation("secret.write", FamilySecret, ScopeProject,
 		[]tenancy.Role{tenancy.RoleAdmin, tenancy.RoleEngineer}, []tenancy.Role{tenancy.RoleEngineer}, ExecNone,
 		[]AuthorityCheck{CheckMembership}, ReceiptRequired, receiptErrors()),
@@ -186,9 +199,9 @@ var registry = []Operation{
 	operation("service.create", FamilyService, ScopeProject,
 		[]tenancy.Role{tenancy.RoleAdmin}, nil, ExecNone,
 		[]AuthorityCheck{CheckMembership}, ReceiptRequired, receiptErrors()),
-	operation("service.list", FamilyService, ScopeProject,
-		[]tenancy.Role{tenancy.RoleAdmin, tenancy.RoleViewer}, []tenancy.Role{tenancy.RoleViewer}, ExecNone,
-		[]AuthorityCheck{CheckMembership}, ReceiptNone, readErrors()),
+	withAnyEnabledService(operation("service.list", FamilyService, ScopeProject,
+		allHumanRoles(), nil, ExecNone,
+		[]AuthorityCheck{CheckMembership}, ReceiptNone, readErrors())),
 	operation("service.update", FamilyService, ScopeProject,
 		[]tenancy.Role{tenancy.RoleAdmin}, nil, ExecNone,
 		[]AuthorityCheck{CheckMembership, CheckServiceEnabled}, ReceiptRequired, receiptErrors()),
@@ -212,13 +225,12 @@ var registry = []Operation{
 	operation("task.create", FamilyTask, ScopeProject,
 		[]tenancy.Role{tenancy.RoleEngineer}, []tenancy.Role{tenancy.RoleEngineer}, ExecProjectTaskCreate,
 		[]AuthorityCheck{CheckMembership}, ReceiptRequired, receiptErrors()),
-	operation("task.read", FamilyTask, ScopeProject,
-		[]tenancy.Role{tenancy.RoleEngineer, tenancy.RoleViewer}, []tenancy.Role{tenancy.RoleEngineer, tenancy.RoleViewer}, ExecOwnTaskContent,
-		[]AuthorityCheck{CheckMembership}, ReceiptNone, readErrors()),
-	operation("task.list", FamilyTask, ScopeProject,
-		[]tenancy.Role{tenancy.RoleEngineer, tenancy.RoleOperator, tenancy.RoleReviewer, tenancy.RoleViewer},
-		[]tenancy.Role{tenancy.RoleEngineer, tenancy.RoleOperator, tenancy.RoleReviewer, tenancy.RoleViewer}, ExecNone,
-		[]AuthorityCheck{CheckMembership}, ReceiptNone, readErrors()),
+	withAnyEnabledService(operation("task.read", FamilyTask, ScopeProject,
+		allHumanRoles(), nil, ExecOwnTaskContent,
+		[]AuthorityCheck{CheckMembership}, ReceiptNone, readErrors())),
+	withAnyEnabledService(operation("task.list", FamilyTask, ScopeProject,
+		allHumanRoles(), nil, ExecNone,
+		[]AuthorityCheck{CheckMembership}, ReceiptNone, readErrors())),
 	operation("task.edit", FamilyTask, ScopeProject,
 		[]tenancy.Role{tenancy.RoleEngineer}, []tenancy.Role{tenancy.RoleEngineer}, ExecOwnTaskContent,
 		[]AuthorityCheck{CheckMembership, CheckTaskVersion}, ReceiptRequired, receiptErrors()),
@@ -247,33 +259,28 @@ var registry = []Operation{
 	// admits every human membership role and every enabled service. The
 	// in-commit assignment check is the authority: a human must currently hold
 	// the assigned role and a service must match the exact assigned service ID.
-	operation("task.reply", FamilyTask, ScopeProject,
-		[]tenancy.Role{tenancy.RoleAdmin, tenancy.RoleEngineer, tenancy.RoleReviewer, tenancy.RoleOperator, tenancy.RoleViewer},
-		[]tenancy.Role{tenancy.RoleEngineer, tenancy.RoleReviewer, tenancy.RoleOperator, tenancy.RoleViewer}, ExecNone,
-		[]AuthorityCheck{CheckMembership, CheckTaskVersion, CheckPipelineVersion, CheckExecutionVersion}, ReceiptRequired, admissionErrors()),
+	withAnyEnabledService(operation("task.reply", FamilyTask, ScopeProject,
+		allHumanRoles(), nil, ExecNone,
+		[]AuthorityCheck{CheckMembership, CheckTaskVersion, CheckPipelineVersion, CheckExecutionVersion}, ReceiptRequired, admissionErrors())),
 	operation("task.cancel", FamilyTask, ScopeProject,
 		[]tenancy.Role{tenancy.RoleEngineer, tenancy.RoleOperator}, []tenancy.Role{tenancy.RoleEngineer, tenancy.RoleOperator}, ExecNone,
 		[]AuthorityCheck{CheckMembership, CheckTaskVersion, CheckExecutionVersion}, ReceiptRequired, receiptErrors()),
-	operation("task.history", FamilyTask, ScopeProject,
-		[]tenancy.Role{tenancy.RoleEngineer, tenancy.RoleOperator, tenancy.RoleViewer},
-		[]tenancy.Role{tenancy.RoleEngineer, tenancy.RoleOperator, tenancy.RoleViewer}, ExecOwnTaskContent,
-		[]AuthorityCheck{CheckMembership}, ReceiptNone, readErrors()),
+	withAnyEnabledService(operation("task.history", FamilyTask, ScopeProject,
+		allHumanRoles(), nil, ExecOwnTaskContent,
+		[]AuthorityCheck{CheckMembership}, ReceiptNone, readErrors())),
 
 	// Inbox is a scoped query, not a mutable request entity.
-	operation("task.inbox", FamilyInbox, ScopeProject,
-		[]tenancy.Role{tenancy.RoleEngineer, tenancy.RoleOperator, tenancy.RoleReviewer, tenancy.RoleViewer},
-		[]tenancy.Role{tenancy.RoleEngineer, tenancy.RoleOperator, tenancy.RoleReviewer, tenancy.RoleViewer}, ExecNone,
-		[]AuthorityCheck{CheckMembership, CheckPrincipalEnabled}, ReceiptNone, readErrors()),
+	withAnyEnabledService(operation("task.inbox", FamilyInbox, ScopeProject,
+		allHumanRoles(), nil, ExecNone,
+		[]AuthorityCheck{CheckMembership, CheckPrincipalEnabled}, ReceiptNone, readErrors())),
 
 	// Executions, outputs, request resolution and retained logs.
-	operation("execution.inspect", FamilyExecution, ScopeProject,
-		[]tenancy.Role{tenancy.RoleEngineer, tenancy.RoleOperator, tenancy.RoleViewer},
-		[]tenancy.Role{tenancy.RoleEngineer, tenancy.RoleOperator, tenancy.RoleViewer}, ExecOwnTaskContent,
-		[]AuthorityCheck{CheckMembership}, ReceiptNone, readErrors()),
-	operation("execution.list", FamilyExecution, ScopeProject,
-		[]tenancy.Role{tenancy.RoleEngineer, tenancy.RoleOperator, tenancy.RoleViewer},
-		[]tenancy.Role{tenancy.RoleEngineer, tenancy.RoleOperator, tenancy.RoleViewer}, ExecNone,
-		[]AuthorityCheck{CheckMembership}, ReceiptNone, readErrors()),
+	withAnyEnabledService(operation("execution.inspect", FamilyExecution, ScopeProject,
+		allHumanRoles(), nil, ExecOwnTaskContent,
+		[]AuthorityCheck{CheckMembership}, ReceiptNone, readErrors())),
+	withAnyEnabledService(operation("execution.list", FamilyExecution, ScopeProject,
+		allHumanRoles(), nil, ExecNone,
+		[]AuthorityCheck{CheckMembership}, ReceiptNone, readErrors())),
 	operation("execution.cancel", FamilyExecution, ScopeProject,
 		[]tenancy.Role{tenancy.RoleEngineer, tenancy.RoleOperator}, []tenancy.Role{tenancy.RoleEngineer, tenancy.RoleOperator}, ExecNone,
 		[]AuthorityCheck{CheckMembership, CheckExecutionVersion}, ReceiptRequired, receiptErrors()),
@@ -284,14 +291,12 @@ var registry = []Operation{
 	// stage admits every human membership role and every enabled service. The
 	// in-commit assignment check is the authority: a human must currently hold
 	// the assigned role and a service must match the exact assigned service ID.
-	operation("execution.request.resolve", FamilyExecution, ScopeProject,
-		[]tenancy.Role{tenancy.RoleAdmin, tenancy.RoleEngineer, tenancy.RoleReviewer, tenancy.RoleOperator, tenancy.RoleViewer},
-		[]tenancy.Role{tenancy.RoleEngineer, tenancy.RoleReviewer, tenancy.RoleOperator, tenancy.RoleViewer}, ExecNone,
-		[]AuthorityCheck{CheckMembership, CheckExecutionVersion, CheckActionDeadline}, ReceiptRequestScoped, resolveErrors()),
-	operation("execution.logs.read", FamilyExecution, ScopeProject,
-		[]tenancy.Role{tenancy.RoleEngineer, tenancy.RoleOperator, tenancy.RoleViewer},
-		[]tenancy.Role{tenancy.RoleEngineer, tenancy.RoleOperator, tenancy.RoleViewer}, ExecOwnTaskContent,
-		[]AuthorityCheck{CheckMembership}, ReceiptNone, readErrors()),
+	withAnyEnabledService(operation("execution.request.resolve", FamilyExecution, ScopeProject,
+		allHumanRoles(), nil, ExecNone,
+		[]AuthorityCheck{CheckMembership, CheckExecutionVersion, CheckActionDeadline}, ReceiptRequestScoped, resolveErrors())),
+	withAnyEnabledService(operation("execution.logs.read", FamilyExecution, ScopeProject,
+		allHumanRoles(), nil, ExecOwnTaskContent,
+		[]AuthorityCheck{CheckMembership}, ReceiptNone, readErrors())),
 
 	// Verification and verified resource reports.
 	operation("actor.verify", FamilyVerify, ScopeProject,
@@ -309,14 +314,12 @@ var registry = []Operation{
 	operation("event.publish", FamilyEvent, ScopeProject,
 		[]tenancy.Role{tenancy.RoleEngineer}, []tenancy.Role{tenancy.RoleEngineer}, ExecOwnEvents,
 		[]AuthorityCheck{CheckMembership, CheckExecutionRunning}, ReceiptRequired, receiptErrors()),
-	operation("event.read", FamilyEvent, ScopeProject,
-		[]tenancy.Role{tenancy.RoleEngineer, tenancy.RoleOperator, tenancy.RoleViewer},
-		[]tenancy.Role{tenancy.RoleEngineer, tenancy.RoleOperator, tenancy.RoleViewer}, ExecNone,
-		[]AuthorityCheck{CheckMembership}, ReceiptNone, readErrors()),
-	operation("event.subscribe", FamilyEvent, ScopeProject,
-		[]tenancy.Role{tenancy.RoleEngineer, tenancy.RoleOperator, tenancy.RoleViewer},
-		[]tenancy.Role{tenancy.RoleEngineer, tenancy.RoleOperator, tenancy.RoleViewer}, ExecNone,
-		[]AuthorityCheck{CheckMembership, CheckPrincipalEnabled}, ReceiptNone, readErrors()),
+	withAnyEnabledService(operation("event.read", FamilyEvent, ScopeProject,
+		allHumanRoles(), nil, ExecNone,
+		[]AuthorityCheck{CheckMembership}, ReceiptNone, readErrors())),
+	withAnyEnabledService(operation("event.subscribe", FamilyEvent, ScopeProject,
+		allHumanRoles(), nil, ExecNone,
+		[]AuthorityCheck{CheckMembership, CheckPrincipalEnabled}, ReceiptNone, readErrors())),
 
 	// Optional model/tool surfaces use the same authorizer.
 	operation("model.invoke", FamilyModel, ScopeProject,

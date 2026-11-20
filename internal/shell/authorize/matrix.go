@@ -3,7 +3,6 @@ package authorize
 import (
 	"context"
 	"fmt"
-	"slices"
 
 	"github.com/optimiware/kodema/internal/fault"
 	"github.com/optimiware/kodema/internal/shell/identity"
@@ -56,12 +55,8 @@ func (matrix) Authorize(_ context.Context, principal Principal, name OperationNa
 		return DecisionDeny, nil
 	}
 	switch principal.Kind {
-	case identity.KindHuman:
-		if operation.Name == "principal.whoami" || anyRoleGranted(principal.Roles, operation.Requires.HumanRoles) {
-			return DecisionAllow, nil
-		}
-	case identity.KindService:
-		if operation.Name == "principal.whoami" || anyRoleGranted(principal.Roles, operation.Requires.ServiceRoles) {
+	case identity.KindHuman, identity.KindService:
+		if operation.Name == "principal.whoami" || operation.Requires.Allows(principal) {
 			return DecisionAllow, nil
 		}
 	}
@@ -145,15 +140,4 @@ func operationScopeMatches(operation Operation, scope tenancy.Scope) error {
 		return fault.New(fault.InternalFailure, fmt.Sprintf("operation %q has an unknown scope kind %q", operation.Name, operation.Scope))
 	}
 	return nil
-}
-
-// anyRoleGranted reports whether the principal holds at least one of the
-// operation's declared roles for its kind.
-func anyRoleGranted(current, declared []tenancy.Role) bool {
-	for _, role := range current {
-		if slices.Contains(declared, role) {
-			return true
-		}
-	}
-	return false
 }

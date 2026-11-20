@@ -450,3 +450,77 @@ func TestPushServiceAdminRefusesAnExecutionPrincipal(t *testing.T) {
 		t.Fatalf("membership read for an execution principal = %v, %v; want no locks and no error", locks, err)
 	}
 }
+
+// TestPlatformAnyEnabledServiceForRolelessService proves the platform
+// membership and principal_enabled commit boundaries admit an enabled roleless
+// service when Required.AnyEnabledService is true, while refusing disabled
+// services and role-gated operations.
+func TestPlatformAnyEnabledServiceForRolelessService(t *testing.T) {
+	eventSubOp, ok := authorize.LookupOperation("event.subscribe")
+	if !ok {
+		t.Fatal("event.subscribe missing")
+	}
+	eventPubOp, ok := authorize.LookupOperation("event.publish")
+	if !ok {
+		t.Fatal("event.publish missing")
+	}
+	scope := unionScope()
+	now, err := time.Parse(time.RFC3339, unionNow)
+	if err != nil {
+		t.Fatalf("parse fixed clock: %v", err)
+	}
+
+	t.Run("enabled roleless service passes membership and principal_enabled", func(t *testing.T) {
+		s := unionStore(t)
+		unionInsert(t, s, scope, "services", "service-roleless", map[string]any{
+			"name":       "service-roleless",
+			"state":      "enabled",
+			"roles":      []byte(`[]`),
+			"version":    uint64(1),
+			"created_at": now,
+		})
+		reads := []authorize.AuthorityRead{
+			{Operation: eventSubOp.Name, Required: eventSubOp.Requires, Check: authorize.CheckMembership, Scope: scope, PrincipalID: "service-roleless"},
+			{Operation: eventSubOp.Name, Required: eventSubOp.Requires, Check: authorize.CheckPrincipalEnabled, Scope: scope, PrincipalID: "service-roleless"},
+		}
+		locks, err := authorityLocks(context.Background(), s, s, scope, reads, authorityFacts{ActorKind: identity.KindService})
+		if err != nil {
+			t.Fatalf("authorityLocks enabled roleless service: %v", err)
+		}
+		if len(locks) != 2 {
+			t.Fatalf("locks = %+v; want two enabled services locks (membership + principal_enabled)", locks)
+		}
+		for _, lock := range locks {
+			if lock.Table != servicesTable || lock.Expect[stateColumn] != enabledServiceState {
+				t.Fatalf("lock = %+v; want enabled services lock", lock)
+			}
+		}
+
+		// Role-gated event.publish still refuses the roleless service.
+		_, err = authorityLocks(context.Background(), s, s, scope, []authorize.AuthorityRead{
+			{Operation: eventPubOp.Name, Required: eventPubOp.Requires, Check: authorize.CheckMembership, Scope: scope, PrincipalID: "service-roleless"},
+		}, authorityFacts{ActorKind: identity.KindService})
+		if class, ok := fault.ClassOf(err); !ok || class != fault.Forbidden {
+			t.Fatalf("event.publish for roleless service = %v; want forbidden", err)
+		}
+	})
+
+	t.Run("disabled roleless service is refused", func(t *testing.T) {
+		s := unionStore(t)
+		unionInsert(t, s, scope, "services", "service-disabled", map[string]any{
+			"name":       "service-disabled",
+			"state":      "disabled",
+			"roles":      []byte(`[]`),
+			"version":    uint64(1),
+			"created_at": now,
+		})
+		reads := []authorize.AuthorityRead{
+			{Operation: eventSubOp.Name, Required: eventSubOp.Requires, Check: authorize.CheckMembership, Scope: scope, PrincipalID: "service-disabled"},
+			{Operation: eventSubOp.Name, Required: eventSubOp.Requires, Check: authorize.CheckPrincipalEnabled, Scope: scope, PrincipalID: "service-disabled"},
+		}
+		_, err := authorityLocks(context.Background(), s, s, scope, reads, authorityFacts{ActorKind: identity.KindService})
+		if class, ok := fault.ClassOf(err); !ok || class != fault.Forbidden {
+			t.Fatalf("authorityLocks disabled roleless service = %v; want forbidden", err)
+		}
+	})
+}

@@ -49,22 +49,25 @@ func TestE2E_InstallationAccess(t *testing.T) {
 		seen[view.PrincipalID] = true
 	}
 
-	// Positive authority for each persona, and a negative control that proves
-	// the token is not silently an administrator.
+	// Positive read authority for each persona (project read boundary), plus
+	// role-gated mutation negative controls proving each non-admin persona is
+	// not silently an administrator or engineer.
 	instance.requireAllowed(t, harness.PersonaAdmin, api.MethodGet, "execution.list",
 		api.ExecutionListRequest{ProjectID: instance.projectID})
 	instance.requireAllowed(t, harness.PersonaEngineer, api.MethodGet, "execution.list",
 		api.ExecutionListRequest{ProjectID: instance.projectID})
 	instance.requireAllowed(t, harness.PersonaReviewer, api.MethodGet, "task.inbox",
 		api.TaskInboxRequest{ProjectID: instance.projectID})
+	instance.requireAllowed(t, harness.PersonaReviewer, api.MethodGet, "execution.list",
+		api.ExecutionListRequest{ProjectID: instance.projectID})
 	instance.requireAllowed(t, harness.PersonaOperator, api.MethodGet, "execution.list",
 		api.ExecutionListRequest{ProjectID: instance.projectID})
-	instance.requireForbidden(t, harness.PersonaEngineer, api.MethodGet, "resource.binding.read",
-		api.ResourceBindingReadRequest{BindingID: "w49-preflight-binding"})
-	instance.requireForbidden(t, harness.PersonaReviewer, api.MethodGet, "execution.list",
-		api.ExecutionListRequest{ProjectID: instance.projectID})
-	instance.requireForbidden(t, harness.PersonaOperator, api.MethodGet, "pipeline.read",
-		api.PipelineReadRequest{ProjectID: instance.projectID, PipelineID: "w49-preflight-missing"})
+	instance.requireForbidden(t, harness.PersonaEngineer, api.MethodPost, "service.create",
+		api.ServiceCreateRequest{ProjectID: instance.projectID, ServiceID: "w49-preflight-refused-svc", Roles: []string{"viewer"}})
+	instance.requireForbidden(t, harness.PersonaReviewer, api.MethodPost, "task.create",
+		api.TaskCreateRequest{ProjectID: instance.projectID, Title: "w49-preflight-refused-task"})
+	instance.requireForbidden(t, harness.PersonaOperator, api.MethodPut, "secret.write",
+		api.SecretWriteRequest{ProjectID: instance.projectID, SecretID: "W49_PREFLIGHT_REFUSED", Value: "refused"})
 
 	// Authenticated host Git read of the served repository.
 	repository, ok := instance.config.Repository()
@@ -147,7 +150,11 @@ func (instance *live) requireForbidden(t *testing.T, persona harness.Persona, me
 	if !ok {
 		t.Fatalf("%s persona credential is not configured", persona)
 	}
-	_, err := instance.invoke(instance.ctx, token, method, operation, input, "", nil)
+	idempotencyKey := ""
+	if method != api.MethodGet {
+		idempotencyKey = instance.key("forbidden-" + string(persona) + "-" + operation)
+	}
+	_, err := instance.invoke(instance.ctx, token, method, operation, input, idempotencyKey, nil)
 	var refusal *harness.APIError
 	if !errors.As(err, &refusal) || refusal.Code != api.CodeForbidden {
 		t.Fatalf("%s %s = %v; want the public forbidden refusal", persona, operation, err)
