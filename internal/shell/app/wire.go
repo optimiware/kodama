@@ -661,7 +661,8 @@ func wireApp(ctx context.Context, builder *builder, environment *environment) (*
 	}
 	mcpEdge, err := mcp.NewEdge(mcp.Config{
 		Router:     router,
-		ServerInfo: api.MCPImplementation{Name: "kodema", Version: "1.0.0"},
+		Principals: principals,
+		ServerInfo: api.MCPImplementation{Name: "kodema", Version: cfg.ServerVersion},
 	})
 	if err != nil {
 		return nil, err

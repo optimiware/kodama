@@ -812,6 +812,45 @@ func TestMCPHandshakeAndResult(t *testing.T) {
 	if decodedError.Code != api.CodeForbidden {
 		t.Fatalf("error data code = %q; want %q", decodedError.Code, api.CodeForbidden)
 	}
+
+	// Tool-execution error encoding/decoding via CallToolResult{isError:true}.
+	if !api.IsMCPToolErrorCode(api.CodeForbidden) || !api.IsMCPToolErrorCode(api.CodeNotFound) ||
+		!api.IsMCPToolErrorCode(api.CodeInvalidInput) || !api.IsMCPToolErrorCode(api.CodeVersionConflict) {
+		t.Fatal("expected domain/RBAC codes to classify as MCP tool errors")
+	}
+	if api.IsMCPToolErrorCode(api.CodeUnauthenticated) || api.IsMCPToolErrorCode(api.CodeInternalFailure) {
+		t.Fatal("unauthenticated and internal_failure must remain JSON-RPC protocol errors")
+	}
+	encodedToolErr, err := api.EncodeMCPToolError(publicError)
+	if err != nil {
+		t.Fatalf("EncodeMCPToolError: %v", err)
+	}
+	decodedToolErr, isToolErr, err := api.DecodeMCPToolError(encodedToolErr)
+	if err != nil || !isToolErr {
+		t.Fatalf("DecodeMCPToolError = (%+v, %t, %v); want tool error", decodedToolErr, isToolErr, err)
+	}
+	if !reflect.DeepEqual(decodedToolErr, publicError) {
+		t.Fatalf("tool error round trip = %+v; want %+v", decodedToolErr, publicError)
+	}
+	if _, isErr, err := api.DecodeMCPToolError(encodedResult); err != nil || isErr {
+		t.Fatalf("DecodeMCPToolError(success) = (%t, %v); want (false, nil)", isErr, err)
+	}
+
+	// Flat top-level arguments decode into the canonical Request envelope.
+	flatReq, err := api.DecodeMCPOperationArguments("task_read", []byte(`{"task_id":"task-1"}`))
+	if err != nil {
+		t.Fatalf("DecodeMCPOperationArguments(flat): %v", err)
+	}
+	var flatInput api.TaskReadRequest
+	if err := json.Unmarshal(flatReq.Input, &flatInput); err != nil || flatInput.TaskID != "task-1" {
+		t.Fatalf("flat input = %s (%v); want task_id=task-1", string(flatReq.Input), err)
+	}
+	if _, err := api.DecodeMCPOperationArguments("task_read", []byte(`{"task_id":"task-1","unknown":true}`)); err == nil {
+		t.Fatal("DecodeMCPOperationArguments accepted unknown flat field")
+	}
+	if _, err := api.DecodeMCPOperationArguments("task_read", []byte(`{"input":{"task_id":"task-1"},"task_id":"task-2"}`)); err == nil {
+		t.Fatal("DecodeMCPOperationArguments accepted mixed wrapped and flat fields")
+	}
 }
 
 // TestMCPResponseRequiresExactlyOneOutcome pins the response envelope: exactly

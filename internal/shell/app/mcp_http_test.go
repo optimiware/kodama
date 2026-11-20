@@ -80,16 +80,107 @@ func TestMCPStreamableHTTPCompliance(t *testing.T) {
 			}
 		}
 
-		// Unauthenticated tools/call -> 401 Unauthorized with WWW-Authenticate: Bearer.
-		unauthReq := httptest.NewRequest(http.MethodPost, "/mcp", bytes.NewReader([]byte(`{"jsonrpc":"2.0","id":8,"method":"tools/call","params":{"name":"principal_whoami","arguments":{"input":{}}}}`)))
-		unauthReq.Header.Set("Content-Type", api.MediaType)
-		unauthRec := httptest.NewRecorder()
-		handler.ServeHTTP(unauthRec, unauthReq)
-		if unauthRec.Code != http.StatusUnauthorized {
-			t.Fatalf("unauthenticated MCP status = %d; want 401 (body %s)", unauthRec.Code, unauthRec.Body.String())
+		// Unauthenticated initialize, tools/list, and tools/call -> 401 Unauthorized with WWW-Authenticate: Bearer.
+		for name, body := range map[string]string{
+			"initialize": `{"jsonrpc":"2.0","id":6,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"test","version":"1"}}}`,
+			"tools/list": `{"jsonrpc":"2.0","id":7,"method":"tools/list","params":{}}`,
+			"tools/call": `{"jsonrpc":"2.0","id":8,"method":"tools/call","params":{"name":"principal_whoami","arguments":{"input":{}}}}`,
+		} {
+			unauthReq := httptest.NewRequest(http.MethodPost, "/mcp", bytes.NewReader([]byte(body)))
+			unauthReq.Header.Set("Content-Type", api.MediaType)
+			unauthRec := httptest.NewRecorder()
+			handler.ServeHTTP(unauthRec, unauthReq)
+			if unauthRec.Code != http.StatusUnauthorized {
+				t.Fatalf("unauthenticated MCP %s status = %d; want 401 (body %s)", name, unauthRec.Code, unauthRec.Body.String())
+			}
+			if got := unauthRec.Header().Get("WWW-Authenticate"); got != "Bearer" {
+				t.Fatalf("%s WWW-Authenticate = %q; want Bearer", name, got)
+			}
 		}
-		if got := unauthRec.Header().Get("WWW-Authenticate"); got != "Bearer" {
-			t.Fatalf("WWW-Authenticate = %q; want Bearer", got)
+
+		// Authenticated initialize reports DefaultServerVersion ("dev", not "1.0.0"),
+		// and authenticated tools/list returns all 58 tools.
+		initReq := httptest.NewRequest(http.MethodPost, "/mcp", bytes.NewReader([]byte(`{"jsonrpc":"2.0","id":9,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"test","version":"1"}}}`)))
+		initReq.Header.Set("Content-Type", api.MediaType)
+		initReq.Header.Set("Authorization", "Bearer dev-admin-token")
+		initRec := httptest.NewRecorder()
+		handler.ServeHTTP(initRec, initReq)
+		if initRec.Code != http.StatusOK {
+			t.Fatalf("authenticated initialize status = %d; want 200 (body %s)", initRec.Code, initRec.Body.String())
+		}
+		var initResp api.MCPResponse
+		if err := json.Unmarshal(initRec.Body.Bytes(), &initResp); err != nil {
+			t.Fatalf("decode initialize response: %v", err)
+		}
+		var initResult api.MCPInitializeResult
+		if err := json.Unmarshal(initResp.Result, &initResult); err != nil {
+			t.Fatalf("decode initialize result: %v", err)
+		}
+		if initResult.ServerInfo.Version != DefaultServerVersion {
+			t.Fatalf("default serverInfo.version = %q; want %q", initResult.ServerInfo.Version, DefaultServerVersion)
+		}
+
+		listReq := httptest.NewRequest(http.MethodPost, "/mcp", bytes.NewReader([]byte(`{"jsonrpc":"2.0","id":10,"method":"tools/list","params":{}}`)))
+		listReq.Header.Set("Content-Type", api.MediaType)
+		listReq.Header.Set("Authorization", "Bearer dev-admin-token")
+		listRec := httptest.NewRecorder()
+		handler.ServeHTTP(listRec, listReq)
+		if listRec.Code != http.StatusOK {
+			t.Fatalf("authenticated tools/list status = %d; want 200 (body %s)", listRec.Code, listRec.Body.String())
+		}
+		var listResp api.MCPResponse
+		if err := json.Unmarshal(listRec.Body.Bytes(), &listResp); err != nil {
+			t.Fatalf("decode tools/list response: %v", err)
+		}
+		var listed api.MCPToolsListResult
+		if err := json.Unmarshal(listResp.Result, &listed); err != nil {
+			t.Fatalf("decode tools/list result: %v", err)
+		}
+		if len(listed.Tools) != 58 {
+			t.Fatalf("authenticated tools/list count = %d; want 58", len(listed.Tools))
+		}
+
+		// Authenticated tools/call accepts flat top-level arguments and encodes
+		// domain/RBAC refusals as CallToolResult with isError=true.
+		flatReq := httptest.NewRequest(http.MethodPost, "/mcp", bytes.NewReader([]byte(`{"jsonrpc":"2.0","id":11,"method":"tools/call","params":{"name":"project_list","arguments":{"tenant_id":"tenant-1"}}}`)))
+		flatReq.Header.Set("Content-Type", api.MediaType)
+		flatReq.Header.Set("Authorization", "Bearer dev-admin-token")
+		flatRec := httptest.NewRecorder()
+		handler.ServeHTTP(flatRec, flatReq)
+		if flatRec.Code != http.StatusOK {
+			t.Fatalf("flat tools/call status = %d; want 200 (body %s)", flatRec.Code, flatRec.Body.String())
+		}
+		var flatResp api.MCPResponse
+		if err := json.Unmarshal(flatRec.Body.Bytes(), &flatResp); err != nil {
+			t.Fatalf("decode flat tools/call response: %v", err)
+		}
+		if flatResp.Error != nil {
+			t.Fatalf("flat tools/call error: %+v", flatResp.Error)
+		}
+		flatDecoded, err := api.DecodeMCPResult(flatResp.Result)
+		if err != nil || flatDecoded.Operation != "project.list" {
+			t.Fatalf("flat DecodeMCPResult = (%+v, %v); want project.list", flatDecoded, err)
+		}
+
+		// Forbidden call (project-scoped token calling tenant-scoped project.create) returns CallToolResult isError=true.
+		forbiddenReq := httptest.NewRequest(http.MethodPost, "/mcp", bytes.NewReader([]byte(`{"jsonrpc":"2.0","id":12,"method":"tools/call","params":{"name":"project_create","arguments":{"tenant_id":"tenant-1","project_id":"p2","name":"P2","idempotency_key":"k-forbid-1"}}}`)))
+		forbiddenReq.Header.Set("Content-Type", api.MediaType)
+		forbiddenReq.Header.Set("Authorization", "Bearer dev-project-token")
+		forbiddenRec := httptest.NewRecorder()
+		handler.ServeHTTP(forbiddenRec, forbiddenReq)
+		if forbiddenRec.Code != http.StatusOK {
+			t.Fatalf("forbidden tools/call status = %d; want 200 (body %s)", forbiddenRec.Code, forbiddenRec.Body.String())
+		}
+		var forbiddenResp api.MCPResponse
+		if err := json.Unmarshal(forbiddenRec.Body.Bytes(), &forbiddenResp); err != nil {
+			t.Fatalf("decode forbidden response: %v", err)
+		}
+		if forbiddenResp.Error != nil {
+			t.Fatalf("forbidden tools/call returned JSON-RPC error %+v; want CallToolResult isError=true", forbiddenResp.Error)
+		}
+		toolErr, isToolErr, err := api.DecodeMCPToolError(forbiddenResp.Result)
+		if err != nil || !isToolErr || toolErr.Code != api.CodeForbidden {
+			t.Fatalf("forbidden DecodeMCPToolError = (%+v, %t, %v); want forbidden tool error", toolErr, isToolErr, err)
 		}
 
 		// /.well-known/oauth-protected-resource is 404 when discovery is not configured.
@@ -123,20 +214,48 @@ func TestMCPStreamableHTTPCompliance(t *testing.T) {
 		disc := discoveryTestConfig(discoveryTestIssuer)
 		disc.APIURL = "https://api.kodema.example:8443"
 		environment.config.Discovery = disc
+		environment.config.ServerVersion = "0.4.0"
 		app := environment.startApp(t)
 		handler := app.Handler()
 
-		// Unauthenticated MCP call advertises resource_metadata in WWW-Authenticate.
-		unauthReq := httptest.NewRequest(http.MethodPost, "/mcp", bytes.NewReader([]byte(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"principal_whoami","arguments":{"input":{}}}}`)))
-		unauthReq.Header.Set("Content-Type", api.MediaType)
-		unauthRec := httptest.NewRecorder()
-		handler.ServeHTTP(unauthRec, unauthReq)
-		if unauthRec.Code != http.StatusUnauthorized {
-			t.Fatalf("unauthenticated MCP status = %d; want 401", unauthRec.Code)
-		}
+		// Unauthenticated initialize, tools/list, and tools/call advertise resource_metadata in WWW-Authenticate.
 		wantHeader := `Bearer resource_metadata="https://api.kodema.example:8443/.well-known/oauth-protected-resource"`
-		if got := unauthRec.Header().Get("WWW-Authenticate"); got != wantHeader {
-			t.Fatalf("WWW-Authenticate = %q; want %q", got, wantHeader)
+		for name, body := range map[string]string{
+			"initialize": `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"test","version":"1"}}}`,
+			"tools/list": `{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}`,
+			"tools/call": `{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"principal_whoami","arguments":{"input":{}}}}`,
+		} {
+			unauthReq := httptest.NewRequest(http.MethodPost, "/mcp", bytes.NewReader([]byte(body)))
+			unauthReq.Header.Set("Content-Type", api.MediaType)
+			unauthRec := httptest.NewRecorder()
+			handler.ServeHTTP(unauthRec, unauthReq)
+			if unauthRec.Code != http.StatusUnauthorized {
+				t.Fatalf("unauthenticated MCP %s status = %d; want 401", name, unauthRec.Code)
+			}
+			if got := unauthRec.Header().Get("WWW-Authenticate"); got != wantHeader {
+				t.Fatalf("%s WWW-Authenticate = %q; want %q", name, got, wantHeader)
+			}
+		}
+
+		// Authenticated initialize advertises the configured Kodema binary version (0.4.0).
+		initReq := httptest.NewRequest(http.MethodPost, "/mcp", bytes.NewReader([]byte(`{"jsonrpc":"2.0","id":4,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"test","version":"1"}}}`)))
+		initReq.Header.Set("Content-Type", api.MediaType)
+		initReq.Header.Set("Authorization", "Bearer dev-admin-token")
+		initRec := httptest.NewRecorder()
+		handler.ServeHTTP(initRec, initReq)
+		if initRec.Code != http.StatusOK {
+			t.Fatalf("authenticated initialize status = %d; want 200", initRec.Code)
+		}
+		var initResp api.MCPResponse
+		if err := json.Unmarshal(initRec.Body.Bytes(), &initResp); err != nil {
+			t.Fatalf("decode initialize response: %v", err)
+		}
+		var initResult api.MCPInitializeResult
+		if err := json.Unmarshal(initResp.Result, &initResult); err != nil {
+			t.Fatalf("decode initialize result: %v", err)
+		}
+		if initResult.ServerInfo.Version != "0.4.0" {
+			t.Fatalf("serverInfo.version = %q; want 0.4.0", initResult.ServerInfo.Version)
 		}
 
 		// The configured public API origin is the server's own; the request

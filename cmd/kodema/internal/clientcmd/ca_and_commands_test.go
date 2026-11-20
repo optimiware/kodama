@@ -261,3 +261,130 @@ func TestKodactlHelpFlagsAndZeroArgSummary(t *testing.T) {
 		t.Fatalf("zero-arg stderr = %q; want command summary", stderr)
 	}
 }
+
+// TestMCPInstallEntrypointSessionAndAdminTokenWarning pins the exact CLI
+// entrypoint behavior for issue #21: explicit --session is preserved in the
+// generated MCP client config, explicit --session wins over ambient
+// KODEMA_CREDENTIAL_FILE, and embedding a local admin-token warns on stderr.
+func TestMCPInstallEntrypointSessionAndAdminTokenWarning(t *testing.T) {
+	isolateUserConfig(t)
+	customSession := filepath.Join(t.TempDir(), "engineer.session.json")
+	adminTokenPath := filepath.Join(t.TempDir(), "admin-token")
+	if err := os.WriteFile(adminTokenPath, []byte("dummy-token\n"), 0o600); err != nil {
+		t.Fatalf("write admin-token: %v", err)
+	}
+
+	// 1. Explicit --session /custom/path.json with KODEMA_CREDENTIAL_FILE unset.
+	code, stdout, stderr := runEntry(t, []string{
+		"--server", "https://127.0.0.1:8443",
+		"--session", customSession,
+		"mcp", "install", "claude", "--print",
+	}, defaultCLIDeps())
+	if code != cli.ExitSuccess {
+		t.Fatalf("mcp install --session exit = %d; stderr=%q", code, stderr)
+	}
+	var snippet struct {
+		MCPServers map[string]struct {
+			Command string   `json:"command"`
+			Args    []string `json:"args"`
+		} `json:"mcpServers"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &snippet); err != nil {
+		t.Fatalf("unmarshal claude snippet: %v\n%s", err, stdout)
+	}
+	args := snippet.MCPServers["kodema"].Args
+	foundSession := false
+	for i := 0; i+1 < len(args); i++ {
+		if args[i] == "--session" && args[i+1] == customSession {
+			foundSession = true
+		}
+		if args[i] == "--credential-file" {
+			t.Fatalf("unexpected --credential-file in args: %v", args)
+		}
+	}
+	if !foundSession {
+		t.Fatalf("args = %v; want --session %s", args, customSession)
+	}
+
+	// 2. Ambient KODEMA_CREDENTIAL_FILE=.../admin-token (like sourced env.sh) with no human session warns on stderr.
+	t.Setenv("KODEMA_CREDENTIAL_FILE", adminTokenPath)
+	code, stdout, stderr = runEntry(t, []string{
+		"--server", "https://127.0.0.1:8443",
+		"mcp", "install", "claude", "--print",
+	}, defaultCLIDeps())
+	if code != cli.ExitSuccess {
+		t.Fatalf("mcp install with env admin-token exit = %d; stderr=%q", code, stderr)
+	}
+	if !strings.Contains(stderr, "warning:") || !strings.Contains(stderr, "admin-token") || !strings.Contains(stderr, "24h") {
+		t.Fatalf("stderr = %q; want admin-token 24h expiry warning", stderr)
+	}
+	if !strings.Contains(stdout, adminTokenPath) {
+		t.Fatalf("stdout = %q; want embedded --credential-file %s", stdout, adminTokenPath)
+	}
+
+	// 3. Explicit --session overrides ambient KODEMA_CREDENTIAL_FILE.
+	code, stdout, stderr = runEntry(t, []string{
+		"--server", "https://127.0.0.1:8443",
+		"--session", customSession,
+		"mcp", "install", "claude", "--print",
+	}, defaultCLIDeps())
+	if code != cli.ExitSuccess {
+		t.Fatalf("mcp install --session with env cred exit = %d; stderr=%q", code, stderr)
+	}
+	if !strings.Contains(stdout, customSession) || strings.Contains(stdout, "--credential-file") {
+		t.Fatalf("stdout = %q; want --session %s without --credential-file", stdout, customSession)
+	}
+
+	// 4. Blank --session flag is a usage refusal rather than silently dropped.
+	code, _, stderr = runEntry(t, []string{
+		"--server", "https://127.0.0.1:8443",
+		"--session", "",
+		"mcp", "install", "claude", "--print",
+	}, defaultCLIDeps())
+	if code != cli.ExitUsage || !strings.Contains(stderr, "--session requires a path") {
+		t.Fatalf("blank --session exit=%d stderr=%q; want usage error", code, stderr)
+	}
+
+	// 5. Existing default human session is preferred over ambient KODEMA_CREDENTIAL_FILE,
+	// while an explicit --credential-file flag still embeds it and warns.
+	defaultSess := defaultSessionFile()
+	if err := os.MkdirAll(filepath.Dir(defaultSess), 0o700); err != nil {
+		t.Fatalf("mkdir default session dir: %v", err)
+	}
+	doc := api.DiscoveryDocument{
+		Issuer:                "https://auth.example.com",
+		ClientID:              "kodema-cli",
+		Audience:              "kodema-api",
+		AuthorizationEndpoint: "https://auth.example.com/authorize",
+		TokenEndpoint:         "https://auth.example.com/token",
+		RevocationEndpoint:    "https://auth.example.com/revoke",
+		APIURL:                "https://127.0.0.1:8443",
+	}
+	seedRecord(t, defaultSess, recordFor(doc, time.Now().Add(time.Hour)))
+
+	code, stdout, stderr = runEntry(t, []string{
+		"--server", "https://127.0.0.1:8443",
+		"mcp", "install", "claude", "--print",
+	}, defaultCLIDeps())
+	if code != cli.ExitSuccess {
+		t.Fatalf("mcp install with existing default session exit = %d; stderr=%q", code, stderr)
+	}
+	if strings.Contains(stdout, "--credential-file") {
+		t.Fatalf("expected existing human session to win over ambient KODEMA_CREDENTIAL_FILE:\n%s", stdout)
+	}
+	if !strings.Contains(stderr, "using existing human session") {
+		t.Fatalf("stderr = %q; want note about existing human session", stderr)
+	}
+
+	code, stdout, stderr = runEntry(t, []string{
+		"--server", "https://127.0.0.1:8443",
+		"--credential-file", adminTokenPath,
+		"mcp", "install", "claude", "--print",
+	}, defaultCLIDeps())
+	if code != cli.ExitSuccess {
+		t.Fatalf("mcp install explicit --credential-file exit = %d; stderr=%q", code, stderr)
+	}
+	if !strings.Contains(stdout, adminTokenPath) || !strings.Contains(stderr, "warning:") {
+		t.Fatalf("explicit --credential-file stdout=%q stderr=%q; want embedded cred + warning", stdout, stderr)
+	}
+}

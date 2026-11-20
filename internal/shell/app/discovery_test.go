@@ -489,6 +489,7 @@ func TestDiscoveryWiringLeavesOperationsAndMCPUnchanged(t *testing.T) {
 	}
 	body := []byte(`{"jsonrpc":"2.0","id":1,"method":"tools/list"}`)
 	request := httptest.NewRequest(http.MethodPost, "/mcp", bytes.NewReader(body))
+	request.Header.Set("Authorization", "Bearer dev-admin-token")
 	recorder := httptest.NewRecorder()
 	app.Handler().ServeHTTP(recorder, request)
 	if recorder.Code != api.HTTPStatusSuccess {

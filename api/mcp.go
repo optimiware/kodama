@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"encoding/json"
+	"reflect"
 	"strconv"
 	"strings"
 )
@@ -363,18 +364,14 @@ func (request MCPRequest) Validate() error {
 		if !optionalJSONObject(params.Meta) {
 			return invalid("tools/call _meta must be a JSON object")
 		}
-		if _, ok := MCPToolOperationName(params.Name); !ok {
+		canonical, ok := MCPToolOperationName(params.Name)
+		if !ok {
 			return invalid("tools/call names unknown operation %q", params.Name)
 		}
-		trimmedArgs := strings.TrimSpace(string(params.Arguments))
-		if trimmedArgs == "" || trimmedArgs == "null" {
-			return nil
-		}
-		var arguments Request
-		if err := decodeStrict(params.Arguments, &arguments); err != nil {
+		if _, err := DecodeMCPOperationArguments(canonical, params.Arguments); err != nil {
 			return invalid("tools/call arguments are invalid")
 		}
-		return arguments.Validate()
+		return nil
 	default:
 		return invalid("unsupported MCP method %q", request.Method)
 	}
@@ -404,6 +401,102 @@ func (response MCPResponse) Validate() error {
 	return nil
 }
 
+// DecodeMCPOperationArguments decodes one bounded MCP tools/call arguments
+// object for a named operation. It accepts both the canonical api.Request
+// envelope ({"input": {...}, "expected_version": ..., "idempotency_key": ...})
+// and flat top-level operation fields (optionally accompanied by
+// expected_version and idempotency_key). Unknown fields and mixed wrapped+flat
+// objects are refused with invalid_input.
+func DecodeMCPOperationArguments(operation string, data []byte) (Request, error) {
+	if canonical, ok := MCPToolOperationName(operation); ok {
+		operation = canonical
+	}
+	if _, ok := LookupRoute(operation); !ok {
+		return Request{}, invalid("unknown operation %q", operation)
+	}
+	bound := MaxEnvelopeBytes(operation)
+	if len(data) > bound {
+		return Request{}, invalid("request body is %d bytes; at most %d are allowed", len(data), bound)
+	}
+	trimmed := bytes.TrimSpace(data)
+	if len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null")) {
+		return Request{}, nil
+	}
+	if trimmed[0] != '{' {
+		return Request{}, invalid("tools/call arguments must be a JSON object")
+	}
+	var fields map[string]json.RawMessage
+	if err := decodeStrict(trimmed, &fields); err != nil {
+		return Request{}, err
+	}
+	if _, wrapped := fields["input"]; wrapped {
+		return DecodeOperationRequest(operation, trimmed)
+	}
+
+	var expectedVersion *uint64
+	if rawVersion, ok := fields["expected_version"]; ok {
+		if err := json.Unmarshal(rawVersion, &expectedVersion); err != nil {
+			return Request{}, invalid("expected_version is invalid")
+		}
+		delete(fields, "expected_version")
+	}
+	var idempotencyKey string
+	if rawKey, ok := fields["idempotency_key"]; ok {
+		if err := json.Unmarshal(rawKey, &idempotencyKey); err != nil {
+			return Request{}, invalid("idempotency_key is invalid")
+		}
+		delete(fields, "idempotency_key")
+	}
+
+	var rawInput json.RawMessage
+	if len(fields) > 0 {
+		allowed := operationInputFieldNames(operation)
+		for name := range fields {
+			if !allowed[name] {
+				return Request{}, invalid("tools/call arguments contain unknown field %q", name)
+			}
+		}
+		encoded, err := json.Marshal(fields)
+		if err != nil {
+			return Request{}, invalid("tools/call arguments are invalid")
+		}
+		rawInput = encoded
+	}
+	request := Request{
+		Input:           rawInput,
+		ExpectedVersion: expectedVersion,
+		IdempotencyKey:  idempotencyKey,
+	}
+	if err := request.Validate(); err != nil {
+		return Request{}, err
+	}
+	return request, nil
+}
+
+// operationInputFieldNames returns the declared top-level JSON wire field names
+// of one registered operation's request DTO.
+func operationInputFieldNames(operation string) map[string]bool {
+	spec, ok := operationCodecSpecs[operation]
+	if !ok {
+		return nil
+	}
+	typ := indirectSchemaType(spec.inputType)
+	if typ == nil || typ.Kind() != reflect.Struct {
+		return nil
+	}
+	names := make(map[string]bool, typ.NumField())
+	for index := 0; index < typ.NumField(); index++ {
+		field := typ.Field(index)
+		if !field.IsExported() {
+			continue
+		}
+		if name, _, ok := schemaJSONName(field); ok {
+			names[name] = true
+		}
+	}
+	return names
+}
+
 // EncodeMCPResult encodes one successful tools/call result as a standard MCP
 // CallToolResult carrying both text content and structuredContent.
 func EncodeMCPResult(result Result) (json.RawMessage, error) {
@@ -422,6 +515,75 @@ func EncodeMCPResult(result Result) (json.RawMessage, error) {
 		StructuredContent: rawResult,
 		IsError:           false,
 	})
+}
+
+// EncodeMCPToolError encodes one public domain or authorization refusal from
+// tools/call as a standard MCP CallToolResult with isError=true, carrying the
+// stable api.Error JSON in both text content and structuredContent.
+func EncodeMCPToolError(publicError Error) (json.RawMessage, error) {
+	if err := publicError.Validate(); err != nil {
+		return nil, err
+	}
+	rawError, err := json.Marshal(publicError)
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(MCPCallToolResult{
+		Content: []MCPContentBlock{{
+			Type: "text",
+			Text: string(rawError),
+		}},
+		StructuredContent: rawError,
+		IsError:           true,
+	})
+}
+
+// DecodeMCPToolError decodes one MCP CallToolResult carrying isError=true into
+// its stable api.Error. When data is a non-error CallToolResult or a direct
+// api.Result object, it returns (Error{}, false, nil).
+func DecodeMCPToolError(data []byte) (Error, bool, error) {
+	if len(data) > maxMCPCallToolResultBytes {
+		return Error{}, false, invalid("MCP result is %d bytes; at most %d are allowed", len(data), maxMCPCallToolResultBytes)
+	}
+	trimmed := bytes.TrimSpace(data)
+	if len(trimmed) == 0 || trimmed[0] != '{' {
+		return Error{}, false, invalid("MCP result must be a JSON object")
+	}
+	var probe map[string]json.RawMessage
+	if err := json.Unmarshal(trimmed, &probe); err != nil {
+		return Error{}, false, invalid("invalid MCP result JSON: %v", err)
+	}
+	if _, direct := probe["operation"]; direct {
+		return Error{}, false, nil
+	}
+	var callResult MCPCallToolResult
+	if err := decodeStrict(trimmed, &callResult); err != nil {
+		return Error{}, false, err
+	}
+	if !callResult.IsError {
+		return Error{}, false, nil
+	}
+	if len(callResult.Content) == 0 {
+		return Error{}, true, invalid("MCP CallToolResult content is empty")
+	}
+	for _, block := range callResult.Content {
+		if block.Type != "text" {
+			return Error{}, true, invalid("unsupported MCP content block type %q", block.Type)
+		}
+	}
+	structured := bytes.TrimSpace(callResult.StructuredContent)
+	if len(structured) > 0 && !bytes.Equal(structured, []byte("null")) {
+		publicError, err := DecodeMCPErrorData(callResult.StructuredContent)
+		if err != nil {
+			return Error{}, true, err
+		}
+		return publicError, true, nil
+	}
+	publicError, err := DecodeMCPErrorData([]byte(callResult.Content[0].Text))
+	if err != nil {
+		return Error{}, true, err
+	}
+	return publicError, true, nil
 }
 
 // DecodeMCPResult decodes one bounded tools/call result from either the
@@ -552,4 +714,26 @@ func MCPErrorCode(code string) (int, bool) {
 		}
 	}
 	return 0, false
+}
+
+// IsMCPToolErrorCode reports whether code represents a domain, authorization,
+// or operational refusal from tools/call that should be returned as an MCP
+// CallToolResult with isError=true rather than a JSON-RPC protocol error.
+// Unauthenticated (HTTP 401 / OAuth transport challenge) and internal_failure
+// (server/protocol error) remain JSON-RPC errors.
+func IsMCPToolErrorCode(code string) bool {
+	switch code {
+	case CodeInvalidInput,
+		CodeForbidden,
+		CodeNotFound,
+		CodeVersionConflict,
+		CodeChangedIdempotencyContent,
+		CodeDeadlineExpired,
+		CodeUnsupportedCapability,
+		CodeDependencyUnavailable,
+		CodeUncertainExternalEffect:
+		return true
+	default:
+		return false
+	}
 }

@@ -9,6 +9,9 @@ import (
 
 	"github.com/optimiware/kodema/api"
 	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/shell/authorize"
+	"github.com/optimiware/kodema/internal/shell/identity"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
 	"github.com/optimiware/kodema/internal/shell/transport/mcp"
 	"github.com/optimiware/kodema/internal/shell/transport/ops"
 )
@@ -331,8 +334,11 @@ func TestMCPUnsupportedMethodRefused(t *testing.T) {
 	}
 }
 
-// TestMCPErrorParityAllPublicCodes pins the declared public-code to MCP error
-// mapping and the api.Error data body for every code.
+// TestMCPErrorParityAllPublicCodes pins error encoding across all 11 public
+// codes on tools/call: domain, authorization and operational refusals return
+// standard MCP CallToolResult objects with isError=true carrying the structured
+// api.Error, while unauthenticated and internal_failure remain JSON-RPC errors
+// carrying the declared api.MCPErrorCode and api.Error data body.
 func TestMCPErrorParityAllPublicCodes(t *testing.T) {
 	for _, code := range api.ErrorCodes() {
 		t.Run(code, func(t *testing.T) {
@@ -345,8 +351,38 @@ func TestMCPErrorParityAllPublicCodes(t *testing.T) {
 			if err := response.Validate(); err != nil {
 				t.Fatalf("error response is invalid: %v", err)
 			}
+			if api.IsMCPToolErrorCode(code) {
+				if response.Error != nil {
+					t.Fatalf("domain/RBAC refusal %q returned JSON-RPC error %+v; want CallToolResult isError=true", code, response.Error)
+				}
+				var callResult api.MCPCallToolResult
+				if err := json.Unmarshal(response.Result, &callResult); err != nil {
+					t.Fatalf("decode CallToolResult: %v", err)
+				}
+				if !callResult.IsError || len(callResult.Content) != 1 || callResult.Content[0].Type != "text" {
+					t.Fatalf("CallToolResult = %+v; want isError=true with one text block", callResult)
+				}
+				publicError, isToolErr, err := api.DecodeMCPToolError(response.Result)
+				if err != nil || !isToolErr {
+					t.Fatalf("DecodeMCPToolError = (%+v, %t, %v); want tool error", publicError, isToolErr, err)
+				}
+				if publicError.Code != code || publicError.Message != "public message" {
+					t.Fatalf("tool error = %+v; want code=%q message=%q", publicError, code, "public message")
+				}
+				var textError api.Error
+				if err := json.Unmarshal([]byte(callResult.Content[0].Text), &textError); err != nil {
+					t.Fatalf("decode content[0].text: %v", err)
+				}
+				if textError.Code != code || textError.Message != "public message" {
+					t.Fatalf("content[0].text error = %+v; want code=%q message=%q", textError, code, "public message")
+				}
+				if _, err := api.DecodeMCPResult(response.Result); err == nil {
+					t.Fatalf("DecodeMCPResult accepted isError=true result for %q", code)
+				}
+				return
+			}
 			if response.Error == nil {
-				t.Fatal("refusal produced no MCP error")
+				t.Fatalf("protocol/auth refusal %q produced no JSON-RPC error", code)
 			}
 			wantCode, ok := api.MCPErrorCode(code)
 			if !ok {
@@ -460,6 +496,30 @@ func TestMCPSanitizesPrivateCauses(t *testing.T) {
 		}
 	})
 
+	t.Run("tool error fault cause", func(t *testing.T) {
+		router := &fakeRouter{fn: func(context.Context, ops.Invocation) (api.Result, error) {
+			return api.Result{}, fault.Wrap(fault.Forbidden, "not authorized",
+				errors.New("SECRET-SENTINEL"))
+		}}
+		edge := newEdge(t, router)
+		responseBytes := edge.Handle(context.Background(), "token-1",
+			toolsCallRequest(t, 1, "task.read", json.RawMessage(`{}`)))
+		if strings.Contains(string(responseBytes), "SECRET-SENTINEL") {
+			t.Fatalf("response rendered the private cause: %s", string(responseBytes))
+		}
+		response := decodeResponse(t, responseBytes)
+		if response.Error != nil {
+			t.Fatalf("forbidden returned JSON-RPC error %+v; want CallToolResult isError=true", response.Error)
+		}
+		publicError, isToolErr, err := api.DecodeMCPToolError(response.Result)
+		if err != nil || !isToolErr {
+			t.Fatalf("DecodeMCPToolError = (%+v, %t, %v)", publicError, isToolErr, err)
+		}
+		if publicError.Code != api.CodeForbidden || publicError.Message != "not authorized" {
+			t.Fatalf("public error = %+v; want forbidden/not authorized", publicError)
+		}
+	})
+
 	t.Run("non-fault error", func(t *testing.T) {
 		router := &fakeRouter{fn: func(context.Context, ops.Invocation) (api.Result, error) {
 			return api.Result{}, errors.New("SECRET-SENTINEL")
@@ -569,5 +629,156 @@ func TestMCPNewEdgeRejectsInvalidConfig(t *testing.T) {
 				t.Fatalf("NewEdge accepted %s", testCase.name)
 			}
 		})
+	}
+}
+
+func TestMCPToolsCallAcceptsFlatAndWrappedArguments(t *testing.T) {
+	t.Run("flat arguments only", func(t *testing.T) {
+		router := &fakeRouter{}
+		edge := newEdge(t, router)
+		response := decodeResponse(t, edge.Handle(context.Background(), "token-1",
+			toolsCallRequest(t, 1, "task_read", json.RawMessage(`{"task_id":"task-42"}`))))
+		if response.Error != nil {
+			t.Fatalf("flat tools/call refused: %+v", response.Error)
+		}
+		invocation := router.lastInvocation()
+		if string(invocation.Operation) != "task.read" {
+			t.Fatalf("operation = %q; want task.read", invocation.Operation)
+		}
+		var input api.TaskReadRequest
+		if err := json.Unmarshal(invocation.Request.Input, &input); err != nil {
+			t.Fatalf("decode routed input: %v", err)
+		}
+		if input.TaskID != "task-42" {
+			t.Fatalf("task_id = %q; want task-42", input.TaskID)
+		}
+	})
+
+	t.Run("flat arguments with expected_version and idempotency_key", func(t *testing.T) {
+		router := &fakeRouter{}
+		edge := newEdge(t, router)
+		response := decodeResponse(t, edge.Handle(context.Background(), "token-1",
+			toolsCallRequest(t, 2, "service_update",
+				json.RawMessage(`{"service_id":"bot-1","roles":["viewer"],"expected_version":3,"idempotency_key":"idem-flat-1"}`))))
+		if response.Error != nil {
+			t.Fatalf("flat tools/call with envelope fields refused: %+v", response.Error)
+		}
+		invocation := router.lastInvocation()
+		if invocation.Request.ExpectedVersion == nil || *invocation.Request.ExpectedVersion != 3 {
+			t.Fatalf("expected_version = %v; want 3", invocation.Request.ExpectedVersion)
+		}
+		if invocation.Request.IdempotencyKey != "idem-flat-1" {
+			t.Fatalf("idempotency_key = %q; want idem-flat-1", invocation.Request.IdempotencyKey)
+		}
+		var input api.ServiceUpdateRequest
+		if err := json.Unmarshal(invocation.Request.Input, &input); err != nil {
+			t.Fatalf("decode routed input: %v", err)
+		}
+		if input.ServiceID != "bot-1" || len(input.Roles) != 1 || input.Roles[0] != "viewer" {
+			t.Fatalf("input = %+v; want bot-1/[viewer]", input)
+		}
+	})
+
+	t.Run("mixed wrapped and flat fields refused", func(t *testing.T) {
+		router := &fakeRouter{}
+		edge := newEdge(t, router)
+		response := decodeResponse(t, edge.Handle(context.Background(), "token-1",
+			toolsCallRequest(t, 3, "task_read", json.RawMessage(`{"input":{"task_id":"task-1"},"task_id":"task-2"}`))))
+		if response.Error == nil || response.Error.Code != -32602 {
+			t.Fatalf("mixed arguments response = %+v; want -32602", response)
+		}
+		if got := router.callCount(); got != 0 {
+			t.Fatalf("router calls = %d; want 0", got)
+		}
+	})
+
+	t.Run("unknown flat field refused", func(t *testing.T) {
+		router := &fakeRouter{}
+		edge := newEdge(t, router)
+		response := decodeResponse(t, edge.Handle(context.Background(), "token-1",
+			toolsCallRequest(t, 4, "task_read", json.RawMessage(`{"task_id":"task-1","bogus":true}`))))
+		if response.Error == nil || response.Error.Code != -32602 {
+			t.Fatalf("unknown flat field response = %+v; want -32602", response)
+		}
+		if got := router.callCount(); got != 0 {
+			t.Fatalf("router calls = %d; want 0", got)
+		}
+	})
+}
+
+func TestMCPInitializeAndToolsListRequireAuthenticationWhenPrincipalsConfigured(t *testing.T) {
+	const secretToken = "bad-token-SECRET-99"
+	var sawUnassigned bool
+	principals := &fakePrincipals{
+		fn: func(ctx context.Context, credential string) (authorize.Principal, error) {
+			sawUnassigned = authorize.AllowsUnassignedPrincipal(ctx)
+			if credential != "valid-token" {
+				return authorize.Principal{}, fault.Wrap(fault.Unauthenticated,
+					"presented credential is invalid", errors.New(secretToken))
+			}
+			return authorize.Principal{
+				ID:      "human-1",
+				Kind:    identity.KindHuman,
+				Scope:   tenancy.Scope{TenantID: "tenant-1"},
+				Enabled: true,
+				Version: 1,
+			}, nil
+		},
+	}
+	router := &fakeRouter{}
+	edge := newAuthenticatedEdge(t, router, principals)
+
+	// Unauthenticated initialize and tools/list refuse with -32001 without leaking causes.
+	for name, body := range map[string][]byte{
+		"initialize": initializeRequest(api.MCPProtocolVersion),
+		"tools/list": toolsListRequest(),
+	} {
+		t.Run("unauthenticated_"+name, func(t *testing.T) {
+			raw := edge.Handle(context.Background(), "", body)
+			if strings.Contains(string(raw), secretToken) {
+				t.Fatalf("%s leaked private cause", name)
+			}
+			response := decodeResponse(t, raw)
+			if response.Error == nil || response.Error.Code != -32001 {
+				t.Fatalf("%s unauthenticated = %+v; want -32001", name, response.Error)
+			}
+			if got := decodeErrorData(t, response); got.Code != api.CodeUnauthenticated {
+				t.Fatalf("%s error code = %q; want unauthenticated", name, got.Code)
+			}
+			if !sawUnassigned {
+				t.Fatalf("%s did not pass WithUnassignedPrincipal context", name)
+			}
+		})
+	}
+
+	// Authenticated initialize returns the configured version (0.4.0) and tools/list succeeds.
+	initResp := decodeResponse(t, edge.Handle(context.Background(), "valid-token", initializeRequest(api.MCPProtocolVersion)))
+	if initResp.Error != nil {
+		t.Fatalf("authenticated initialize refused: %+v", initResp.Error)
+	}
+	var initResult api.MCPInitializeResult
+	if err := json.Unmarshal(initResp.Result, &initResult); err != nil {
+		t.Fatalf("decode initialize result: %v", err)
+	}
+	if initResult.ServerInfo.Version != "0.4.0" {
+		t.Fatalf("serverInfo.version = %q; want 0.4.0", initResult.ServerInfo.Version)
+	}
+
+	listResp := decodeResponse(t, edge.Handle(context.Background(), "valid-token", toolsListRequest()))
+	if listResp.Error != nil {
+		t.Fatalf("authenticated tools/list refused: %+v", listResp.Error)
+	}
+	var listResult api.MCPToolsListResult
+	if err := json.Unmarshal(listResp.Result, &listResult); err != nil {
+		t.Fatalf("decode tools/list result: %v", err)
+	}
+	if len(listResult.Tools) != 58 {
+		t.Fatalf("tools/list count = %d; want 58", len(listResult.Tools))
+	}
+	if got := router.callCount(); got != 0 {
+		t.Fatalf("router calls = %d; want 0 for initialize and tools/list", got)
+	}
+	if principals.callCount() != 4 {
+		t.Fatalf("principal resolver calls = %d; want 4", principals.callCount())
 	}
 }

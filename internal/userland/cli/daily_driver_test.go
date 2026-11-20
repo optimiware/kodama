@@ -1495,6 +1495,149 @@ func TestMCPStdioAndInstall(t *testing.T) {
 		}
 	})
 
+	t.Run("mcp install preserves --session and warns on expiring credential files", func(t *testing.T) {
+		// 1. Custom --session is preserved in generated args for claude, cursor, and codex.
+		sessCfg := cli.Config{
+			ServerURL:   "https://127.0.0.1:8443",
+			CAFile:      "/etc/kodema/ca.crt",
+			SessionFile: "/custom/path.json",
+			Output:      cli.OutputTable,
+		}
+		for _, target := range []string{"claude", "cursor", "codex"} {
+			ports, out, errOut := testPorts(nil)
+			if code := cli.RunWithDeps(context.Background(), sessCfg, []string{"mcp", "install", target, "--print"}, ports, cli.CommandDeps{}); code != cli.ExitSuccess {
+				t.Fatalf("mcp install %s --print exit = %d; stderr=%q", target, code, errOut.String())
+			}
+			if !strings.Contains(out.String(), `"--session"`) || !strings.Contains(out.String(), `"/custom/path.json"`) {
+				t.Fatalf("%s output omitted --session:\n%s", target, out.String())
+			}
+			if errOut.Len() != 0 {
+				t.Fatalf("%s unexpected stderr: %q", target, errOut.String())
+			}
+		}
+
+		// Relative --session path is resolved to an absolute path.
+		relSessCfg := sessCfg
+		relSessCfg.SessionFile = "relative.session.json"
+		absSess, _ := filepath.Abs("relative.session.json")
+		ports, out, errOut := testPorts(nil)
+		if code := cli.RunWithDeps(context.Background(), relSessCfg, []string{"mcp", "install", "claude", "--print"}, ports, cli.CommandDeps{}); code != cli.ExitSuccess {
+			t.Fatalf("relative session exit = %d; stderr=%q", code, errOut.String())
+		}
+		if !strings.Contains(out.String(), absSess) {
+			t.Fatalf("relative session was not resolved to %q:\n%s", absSess, out.String())
+		}
+
+		// 2. Embedding local admin-token warns on stderr while keeping stdout valid JSON.
+		adminCfg := cli.Config{
+			ServerURL:      "https://127.0.0.1:8443",
+			CAFile:         "/etc/kodema/ca.crt",
+			CredentialFile: "/home/dev/.kodema/instances/default/admin-token",
+			Output:         cli.OutputTable,
+		}
+		ports, out, errOut = testPorts(nil)
+		if code := cli.RunWithDeps(context.Background(), adminCfg, []string{"mcp", "install", "claude", "--print"}, ports, cli.CommandDeps{}); code != cli.ExitSuccess {
+			t.Fatalf("admin-token exit = %d; stderr=%q", code, errOut.String())
+		}
+		var doc map[string]any
+		if err := json.Unmarshal(out.Bytes(), &doc); err != nil {
+			t.Fatalf("stdout is not valid JSON: %v\n%s", err, out.String())
+		}
+		if !strings.Contains(out.String(), `"/home/dev/.kodema/instances/default/admin-token"`) {
+			t.Fatalf("stdout missing --credential-file:\n%s", out.String())
+		}
+		if !strings.Contains(errOut.String(), "warning:") || !strings.Contains(errOut.String(), "24h") {
+			t.Fatalf("stderr = %q; want 24h expiry warning for admin-token", errOut.String())
+		}
+
+		// 3. Explicit --session takes precedence over ambient KODEMA_CREDENTIAL_FILE.
+		bothCfg := adminCfg
+		bothCfg.SessionFile = "/custom/engineer.session.json"
+		ports, out, errOut = testPorts(nil)
+		if code := cli.RunWithDeps(context.Background(), bothCfg, []string{"mcp", "install", "claude", "--print"}, ports, cli.CommandDeps{
+			ExplicitSessionFile:    true,
+			ExplicitCredentialFile: false,
+		}); code != cli.ExitSuccess {
+			t.Fatalf("both session+env cred exit = %d; stderr=%q", code, errOut.String())
+		}
+		if !strings.Contains(out.String(), `"/custom/engineer.session.json"`) || strings.Contains(out.String(), "--credential-file") {
+			t.Fatalf("expected --session without --credential-file:\n%s", out.String())
+		}
+
+		// 4. Existing human session is preferred over ambient KODEMA_CREDENTIAL_FILE unless --credential-file is explicit.
+		fs := newFakeFS()
+		fs.dirs["/home"] = 0o700
+		fs.dirs["/home/dev"] = 0o700
+		store := cli.FileSessionStore{Path: "/home/dev/session.json", Files: fs, Now: testNow}
+		if err := store.SaveRecord(context.Background(), cli.SessionRecord{
+			Version:            2,
+			Kind:               string(client.KindSession),
+			Issuer:             "https://auth.example.com",
+			ClientID:           "kodema-cli",
+			Audience:           "kodema-api",
+			APIURL:             "https://127.0.0.1:8443",
+			TokenEndpoint:      "https://auth.example.com/token",
+			RevocationEndpoint: "https://auth.example.com/revoke",
+			Token:              "human-access-token",
+			RefreshToken:       "human-refresh-token",
+			ExpiresAt:          testNow().Add(time.Hour),
+		}); err != nil {
+			t.Fatalf("SaveRecord: %v", err)
+		}
+		ports, out, errOut = testPorts(nil)
+		ports.Files = fs
+		if code := cli.RunWithDeps(context.Background(), adminCfg, []string{"mcp", "install", "claude", "--print"}, ports, cli.CommandDeps{
+			Login:                  cli.LoginRuntime{Store: store},
+			ExplicitCredentialFile: false,
+		}); code != cli.ExitSuccess {
+			t.Fatalf("prefer human session exit = %d; stderr=%q", code, errOut.String())
+		}
+		if strings.Contains(out.String(), "--credential-file") {
+			t.Fatalf("expected human session to be preferred over ambient KODEMA_CREDENTIAL_FILE:\n%s", out.String())
+		}
+		if !strings.Contains(errOut.String(), "using existing human session") {
+			t.Fatalf("stderr = %q; want note about preferring existing human session", errOut.String())
+		}
+
+		// 5. Expiring JWT in a custom credential file warns without leaking token bytes; kodsvc.* does not warn.
+		header := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"RS256","typ":"JWT"}`))
+		payload := base64.RawURLEncoding.EncodeToString([]byte(`{"sub":"admin","exp":1800000000}`))
+		jwtToken := header + "." + payload + ".SENTINEL-SIGNATURE-BYTES"
+		fs.files["/home/dev/custom-jwt"] = []byte(jwtToken + "\n")
+		fs.files["/home/dev/service-bot"] = []byte("kodsvc.bot.secretvalue\n")
+
+		jwtCfg := cli.Config{
+			ServerURL:      "https://127.0.0.1:8443",
+			CredentialFile: "/home/dev/custom-jwt",
+			Output:         cli.OutputTable,
+		}
+		ports, out, errOut = testPorts(nil)
+		ports.Files = fs
+		if code := cli.RunWithDeps(context.Background(), jwtCfg, []string{"mcp", "install", "claude", "--print"}, ports, cli.CommandDeps{ExplicitCredentialFile: true}); code != cli.ExitSuccess {
+			t.Fatalf("jwt cred exit = %d; stderr=%q", code, errOut.String())
+		}
+		if !strings.Contains(errOut.String(), "warning:") || !strings.Contains(errOut.String(), "expiring token") {
+			t.Fatalf("stderr = %q; want expiring token warning", errOut.String())
+		}
+		if strings.Contains(errOut.String(), "SENTINEL-SIGNATURE-BYTES") || strings.Contains(out.String(), "SENTINEL-SIGNATURE-BYTES") {
+			t.Fatal("credential bytes leaked in mcp install output")
+		}
+
+		svcCfg := cli.Config{
+			ServerURL:      "https://127.0.0.1:8443",
+			CredentialFile: "/home/dev/service-bot",
+			Output:         cli.OutputTable,
+		}
+		ports, out, errOut = testPorts(nil)
+		ports.Files = fs
+		if code := cli.RunWithDeps(context.Background(), svcCfg, []string{"mcp", "install", "claude", "--print"}, ports, cli.CommandDeps{ExplicitCredentialFile: true}); code != cli.ExitSuccess {
+			t.Fatalf("service cred exit = %d; stderr=%q", code, errOut.String())
+		}
+		if errOut.Len() != 0 {
+			t.Fatalf("service token emitted unexpected warning: %q", errOut.String())
+		}
+	})
+
 	t.Run("reject retries without undeclared reason output and member list renders table", func(t *testing.T) {
 		resolveAttempts := 0
 		transport := &scriptedTransport{respond: func(_ context.Context, _ int, inv api.Invocation) (api.Result, error) {

@@ -18,7 +18,7 @@ func TestMCPToolsListAdvertisesFieldLevelSchemas(t *testing.T) {
 	harness := newHarness(t)
 	environment := harness.start(newFakeRuntime(modeComplete))
 
-	response, err := environment.mcpRaw(api.MCPMethodToolsList, nil, "")
+	response, err := environment.mcpRaw(api.MCPMethodToolsList, nil, projectToken)
 	if err != nil {
 		t.Fatalf("tools/list: %v", err)
 	}

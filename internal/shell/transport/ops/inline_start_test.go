@@ -231,8 +231,12 @@ func TestInlineStartExclusiveSelectionRefusedAtBothEdges(t *testing.T) {
 				t.Fatalf("marshal MCP tools/call: %v", err)
 			}
 			mcpResponse := decodeMCPResponse(t, mcpEdge.Handle(context.Background(), testToken, mcpMessage))
-			if mcpResponse.Error == nil || mcpResponse.Error.Code != -32602 {
-				t.Fatalf("MCP error = %+v; want invalid_input -32602", mcpResponse.Error)
+			if mcpResponse.Error != nil {
+				t.Fatalf("MCP returned JSON-RPC error %+v; want CallToolResult isError=true", mcpResponse.Error)
+			}
+			mcpError, isToolErr, err := api.DecodeMCPToolError(mcpResponse.Result)
+			if err != nil || !isToolErr || mcpError.Code != api.CodeInvalidInput {
+				t.Fatalf("MCP tool error = (%+v, %t, %v); want invalid_input tool error", mcpError, isToolErr, err)
 			}
 
 			if got := probe.handler.callCount(); got != 0 {

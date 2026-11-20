@@ -133,9 +133,12 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer, deps cliD
 		homeDir = os.UserHomeDir
 	}
 
-	config, rootCAs, serverExplicit, code := loadConfig(flags, *configFile, serverURL, *caFile, *credentialFile, *output, *project, trustedOrigins, homeDir, stderr)
+	config, rootCAs, serverExplicit, code := loadConfig(flags, *configFile, serverURL, *caFile, *credentialFile, sessionFile, *output, *project, trustedOrigins, homeDir, stderr)
 	if code != 0 {
 		return code
+	}
+	if strings.TrimSpace(config.SessionFile) != "" {
+		sessionFile = config.SessionFile
 	}
 	if deps.lockTimeout > 0 {
 		lockTimeout = deps.lockTimeout
@@ -215,10 +218,12 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer, deps cliD
 	// Empty when unknown: `mcp install` then falls back to the bare name.
 	commandPath, _ := os.Executable()
 	return deps.runCLI(ctx, config, flags.Args(), ports, cli.CommandDeps{
-		Login:       runtimeDeps,
-		HTTP:        apiTransport,
-		HomeDir:     homeDir,
-		CommandPath: commandPath,
+		Login:                  runtimeDeps,
+		HTTP:                   apiTransport,
+		HomeDir:                homeDir,
+		CommandPath:            commandPath,
+		ExplicitCredentialFile: flagSet(flags, "credential-file"),
+		ExplicitSessionFile:    flagSet(flags, "session") || flagSet(flags, "session-file"),
 	})
 }
 
@@ -541,7 +546,7 @@ func validateBrowserTarget(raw string) error {
 // variables. A missing default file is not an error; an explicitly requested
 // unreadable file, an unreadable/invalid --ca-file and an invalid configuration
 // are usage refusals.
-func loadConfig(flags *flag.FlagSet, configFile, serverURL, caFile, credentialFile, output, project string, trustedOrigins stringList, homeDir func() (string, error), stderr io.Writer) (cli.Config, *x509.CertPool, bool, int) {
+func loadConfig(flags *flag.FlagSet, configFile, serverURL, caFile, credentialFile, sessionFile, output, project string, trustedOrigins stringList, homeDir func() (string, error), stderr io.Writer) (cli.Config, *x509.CertPool, bool, int) {
 	explicitConfig := flagSet(flags, "config") || envSet("KODEMA_CONFIG")
 	config := cli.Config{}
 	if configPath := strings.TrimSpace(configFile); configPath != "" {
@@ -573,6 +578,13 @@ func loadConfig(flags *flag.FlagSet, configFile, serverURL, caFile, credentialFi
 	}
 	if flagSet(flags, "credential-file") || envSet("KODEMA_CREDENTIAL_FILE") {
 		config.CredentialFile = credentialFile
+	}
+	if flagSet(flags, "session") || flagSet(flags, "session-file") || envSet("KODEMA_SESSION") || envSet("KODEMA_SESSION_FILE") {
+		trimmedSession := strings.TrimSpace(sessionFile)
+		if trimmedSession == "" && (flagSet(flags, "session") || flagSet(flags, "session-file")) {
+			return cli.Config{}, nil, false, usage(stderr, "--session requires a path")
+		}
+		config.SessionFile = trimmedSession
 	}
 	mounted := mountedCredentialPresent()
 	if mounted {

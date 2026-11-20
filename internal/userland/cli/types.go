@@ -42,6 +42,7 @@ func (format OutputFormat) Valid() bool {
 type Config struct {
 	ServerURL      string       `json:"server_url"`
 	CredentialFile string       `json:"credential_file,omitempty"`
+	SessionFile    string       `json:"session_file,omitempty"`
 	CAFile         string       `json:"ca_file,omitempty"`
 	Output         OutputFormat `json:"output,omitempty"`
 	TrustedOrigins []string     `json:"trusted_origins,omitempty"`

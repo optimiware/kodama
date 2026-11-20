@@ -220,6 +220,7 @@ func examplePublishedTools(t *testing.T, harness *factory.Harness) map[string]ap
 		t.Fatalf("build tools/list request: %v", err)
 	}
 	request.Header.Set("Content-Type", api.MediaType)
+	request.Header.Set("Authorization", "Bearer "+harness.AdminToken)
 	response, err := http.DefaultClient.Do(request)
 	if err != nil {
 		t.Fatalf("tools/list request: %v", err)

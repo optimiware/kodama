@@ -249,6 +249,11 @@ func mcpCallTool(t *testing.T, handler http.Handler, token, project, alias strin
 		}
 		return api.Result{}, publicError
 	}
+	if publicError, isToolErr, err := api.DecodeMCPToolError(response.Result); err != nil {
+		t.Fatalf("decode MCP tool error: %v; result=%s", err, string(response.Result))
+	} else if isToolErr {
+		return api.Result{}, publicError
+	}
 	result, err := api.DecodeMCPResult(response.Result)
 	if err != nil {
 		t.Fatalf("decode MCP result: %v; result=%s", err, string(response.Result))
