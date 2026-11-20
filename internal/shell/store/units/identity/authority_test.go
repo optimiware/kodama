@@ -503,6 +503,56 @@ func TestServiceEnabledActorCommits(t *testing.T) {
 	}
 }
 
+// TestServiceMembershipFactAnyEnabledService proves an enabled service with
+// empty roles satisfies an AnyEnabledService membership read, while a disabled
+// roleless service and a role-gated mutation still fail closed.
+func TestServiceMembershipFactAnyEnabledService(t *testing.T) {
+	h := newHarness(t)
+	scope := projectScope("tenant-a", "project-a")
+	h.seed(scope, "services", "service-roleless", map[string]any{
+		"name":       "service-roleless",
+		"state":      string(service.StateEnabled),
+		"roles":      rolesJSON(t),
+		"version":    int64(1),
+		"created_at": testNow,
+	})
+	h.seed(scope, "services", "service-disabled", map[string]any{
+		"name":       "service-disabled",
+		"state":      string(service.StateDisabled),
+		"roles":      rolesJSON(t),
+		"version":    int64(1),
+		"created_at": testNow,
+	})
+
+	taskRead, ok := authorize.LookupOperation("task.read")
+	if !ok {
+		t.Fatal("task.read missing")
+	}
+	pipelineApply, ok := authorize.LookupOperation("pipeline.apply")
+	if !ok {
+		t.Fatal("pipeline.apply missing")
+	}
+
+	reads := []authorize.AuthorityRead{
+		{Operation: taskRead.Name, Required: taskRead.Requires, Check: authorize.CheckMembership, Scope: scope, PrincipalID: "service-roleless"},
+		{Operation: taskRead.Name, Required: taskRead.Requires, Check: authorize.CheckMembership, Scope: scope, PrincipalID: "service-disabled"},
+		{Operation: pipelineApply.Name, Required: pipelineApply.Requires, Check: authorize.CheckMembership, Scope: scope, PrincipalID: "service-roleless"},
+	}
+	facts, err := h.adapter.Read(context.Background(), reads)
+	if err != nil {
+		t.Fatalf("Read: %v", err)
+	}
+	if !facts[0].Allowed {
+		t.Fatalf("enabled roleless service task.read fact = %+v; want allowed", facts[0])
+	}
+	if facts[1].Allowed {
+		t.Fatalf("disabled roleless service task.read fact = %+v; want denied", facts[1])
+	}
+	if facts[2].Allowed {
+		t.Fatalf("roleless service pipeline.apply fact = %+v; want denied", facts[2])
+	}
+}
+
 // TestServiceAdminUnitsCommitWithHumanActor proves the capability-emitted
 // [membership, service_enabled] reads with a human Admin actor commit the
 // service administration and credential units in the real composition.

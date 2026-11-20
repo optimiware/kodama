@@ -96,12 +96,8 @@ func registryDecision(principal authorize.Principal, operation authorize.Operati
 		return authorize.DecisionDeny
 	}
 	switch principal.Kind {
-	case identity.KindHuman:
-		if slices.ContainsFunc(registered.Requires.HumanRoles, principal.HasRole) {
-			return authorize.DecisionAllow
-		}
-	case identity.KindService:
-		if slices.ContainsFunc(registered.Requires.ServiceRoles, principal.HasRole) {
+	case identity.KindHuman, identity.KindService:
+		if registered.Requires.Allows(principal) {
 			return authorize.DecisionAllow
 		}
 	case identity.KindExecution:

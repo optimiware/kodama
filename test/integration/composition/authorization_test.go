@@ -256,6 +256,23 @@ func TestRoleRefusalIsForbiddenOnBothEdges(t *testing.T) {
 	environment.mustInvoke(viewerToken, "task.inbox", api.TaskInboxRequest{ProjectID: projectID}, nil, "")
 	environment.mustInvoke(viewerToken, "execution.list", api.ExecutionListRequest{ProjectID: projectID}, nil, "")
 
+	// Pure operator and service principals in the same project also hold
+	// project-scoped read visibility while their mutations above were refused.
+	for _, readToken := range []string{operatorToken, serviceToken} {
+		environment.mustInvoke(readToken, "task.read", api.TaskReadRequest{TaskID: task.TaskID}, nil, "")
+		environment.mustInvoke(readToken, "secret.metadata.read", api.SecretMetadataReadRequest{
+			ProjectID: projectID,
+			SecretID:  seededSecret.SecretID,
+		}, nil, "")
+		environment.mustInvoke(readToken, "pipeline.read", api.PipelineReadRequest{
+			ProjectID:  projectID,
+			PipelineID: pipelineID,
+		}, nil, "")
+		environment.mustInvoke(readToken, "task.inbox", api.TaskInboxRequest{ProjectID: projectID}, nil, "")
+		environment.mustInvoke(readToken, "execution.list", api.ExecutionListRequest{ProjectID: projectID}, nil, "")
+		environment.mustInvoke(readToken, "service.list", api.ServiceListRequest{ProjectID: projectID}, nil, "")
+	}
+
 	// The service role is admitted to the service-only verification surface;
 	// the human principal was refused those same operations above.
 	environment.mustInvoke(projectToken, "resource.binding.register", api.ResourceBindingRegisterRequest{

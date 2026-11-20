@@ -38,27 +38,32 @@ func principalFor(actor authorize.Principal) identity.Principal {
 }
 
 // TestReadAllowsRegistryRoles proves task.read is a pure authorized read for
-// every human and service role the declared registry grants.
+// every human member role and every enabled service (including roles: []).
 func TestReadAllowsRegistryRoles(t *testing.T) {
 	cases := []struct {
-		name string
-		role tenancy.Role
-		kind identity.PrincipalKind
-		id   id.PrincipalID
+		name  string
+		roles []tenancy.Role
+		kind  identity.PrincipalKind
+		id    id.PrincipalID
 	}{
-		{name: "human engineer", role: tenancy.RoleEngineer, kind: identity.KindHuman, id: engineerPrincipal},
-		{name: "human viewer", role: tenancy.RoleViewer, kind: identity.KindHuman, id: viewerPrincipal},
-		{name: "service engineer", role: tenancy.RoleEngineer, kind: identity.KindService, id: serviceAPrincipal},
-		{name: "service viewer", role: tenancy.RoleViewer, kind: identity.KindService, id: serviceBPrincipal},
+		{name: "human admin", roles: []tenancy.Role{tenancy.RoleAdmin}, kind: identity.KindHuman, id: id.PrincipalID("principal-admin")},
+		{name: "human engineer", roles: []tenancy.Role{tenancy.RoleEngineer}, kind: identity.KindHuman, id: engineerPrincipal},
+		{name: "human reviewer", roles: []tenancy.Role{tenancy.RoleReviewer}, kind: identity.KindHuman, id: reviewerPrincipal},
+		{name: "human operator", roles: []tenancy.Role{tenancy.RoleOperator}, kind: identity.KindHuman, id: operatorPrincipal},
+		{name: "human viewer", roles: []tenancy.Role{tenancy.RoleViewer}, kind: identity.KindHuman, id: viewerPrincipal},
+		{name: "service engineer", roles: []tenancy.Role{tenancy.RoleEngineer}, kind: identity.KindService, id: serviceAPrincipal},
+		{name: "service reviewer", roles: []tenancy.Role{tenancy.RoleReviewer}, kind: identity.KindService, id: serviceAPrincipal},
+		{name: "service viewer", roles: []tenancy.Role{tenancy.RoleViewer}, kind: identity.KindService, id: serviceBPrincipal},
+		{name: "service roleless", roles: nil, kind: identity.KindService, id: serviceBPrincipal},
 	}
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
 			env := newTestEnv(t)
 			var actor authorize.Principal
 			if testCase.kind == identity.KindHuman {
-				actor = humanActor(testCase.id, testCase.role)
+				actor = humanActor(testCase.id, testCase.roles...)
 			} else {
-				actor = serviceActor(testCase.id, testCase.role)
+				actor = serviceActor(testCase.id, testCase.roles...)
 			}
 			env.principals.put(principalFor(actor))
 			env.reader.put(baseTask())
@@ -81,45 +86,33 @@ func TestReadAllowsRegistryRoles(t *testing.T) {
 	}
 }
 
-// TestReadRefusesUngrantedOrStalePrincipals proves a denied role, a disabled
+// TestReadRefusesUngrantedOrStalePrincipals proves a roleless human, a disabled
 // principal, a missing current membership and a mismatched actor scope all
 // refuse Forbidden before the task reader is called.
 func TestReadRefusesUngrantedOrStalePrincipals(t *testing.T) {
-	t.Run("human reviewer", func(t *testing.T) {
+	t.Run("human without roles", func(t *testing.T) {
 		env := newTestEnv(t)
-		actor := humanActor(reviewerPrincipal, tenancy.RoleReviewer)
+		actor := humanActor(reviewerPrincipal)
 		env.reader.put(baseTask())
 
 		_, err := env.service.Read(t.Context(), readCommand(actor))
 		requireFaultClass(t, err, fault.Forbidden)
 		if env.reader.getCallCount() != 0 {
-			t.Fatalf("task reads = %d; want none for a denied role", env.reader.getCallCount())
+			t.Fatalf("task reads = %d; want none for a roleless human", env.reader.getCallCount())
 		}
 		requireNoPortCalls(t, env.ports)
 	})
 
-	t.Run("human operator", func(t *testing.T) {
+	t.Run("disabled roleless service", func(t *testing.T) {
 		env := newTestEnv(t)
-		actor := humanActor(operatorPrincipal, tenancy.RoleOperator)
+		actor := serviceActor(serviceAPrincipal)
+		actor.Enabled = false
 		env.reader.put(baseTask())
 
 		_, err := env.service.Read(t.Context(), readCommand(actor))
 		requireFaultClass(t, err, fault.Forbidden)
 		if env.reader.getCallCount() != 0 {
-			t.Fatalf("task reads = %d; want none for a denied role", env.reader.getCallCount())
-		}
-		requireNoPortCalls(t, env.ports)
-	})
-
-	t.Run("service reviewer", func(t *testing.T) {
-		env := newTestEnv(t)
-		actor := serviceActor(serviceAPrincipal, tenancy.RoleReviewer)
-		env.reader.put(baseTask())
-
-		_, err := env.service.Read(t.Context(), readCommand(actor))
-		requireFaultClass(t, err, fault.Forbidden)
-		if env.reader.getCallCount() != 0 {
-			t.Fatalf("task reads = %d; want none for a denied role", env.reader.getCallCount())
+			t.Fatalf("task reads = %d; want none for a disabled service", env.reader.getCallCount())
 		}
 		requireNoPortCalls(t, env.ports)
 	})
@@ -308,7 +301,7 @@ func TestReadResultCarriesNoCredentials(t *testing.T) {
 	assertNoCredentialMaterial(t, string(encoded))
 
 	denied := newTestEnv(t)
-	_, err = denied.service.Read(t.Context(), readCommand(humanActor(reviewerPrincipal, tenancy.RoleReviewer)))
+	_, err = denied.service.Read(t.Context(), readCommand(humanActor(reviewerPrincipal)))
 	requireFaultClass(t, err, fault.Forbidden)
 	assertNoCredentialMaterial(t, err.Error())
 }

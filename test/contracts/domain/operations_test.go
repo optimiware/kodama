@@ -26,15 +26,16 @@ import (
 // <operation>.result.v1.
 
 type expectedOperation struct {
-	name      authorize.OperationName
-	family    authorize.Family
-	scope     authorize.ScopeKind
-	human     []tenancy.Role
-	service   []tenancy.Role
-	execution authorize.ExecutionPermission
-	authority []authorize.AuthorityCheck
-	receipt   authorize.ReceiptPolicy
-	errors    []fault.Class
+	name              authorize.OperationName
+	family            authorize.Family
+	scope             authorize.ScopeKind
+	human             []tenancy.Role
+	service           []tenancy.Role
+	anyEnabledService bool
+	execution         authorize.ExecutionPermission
+	authority         []authorize.AuthorityCheck
+	receipt           authorize.ReceiptPolicy
+	errors            []fault.Class
 }
 
 func roles(rs ...tenancy.Role) []tenancy.Role { return rs }
@@ -102,12 +103,18 @@ func eop(
 	}
 }
 
+func anySvc(op expectedOperation) expectedOperation {
+	op.anyEnabledService = true
+	return op
+}
+
 func expectedOperations() []expectedOperation {
 	engineer := tenancy.RoleEngineer
 	reviewer := tenancy.RoleReviewer
 	operator := tenancy.RoleOperator
 	viewer := tenancy.RoleViewer
 	admin := tenancy.RoleAdmin
+	allHumans := roles(admin, engineer, reviewer, operator, viewer)
 
 	return []expectedOperation{
 		// Tenant/project/membership administration.
@@ -151,23 +158,23 @@ func expectedOperations() []expectedOperation {
 		eop("resource.binding.delete", authorize.FamilyResource, authorize.ScopeProject,
 			roles(admin), roles(), authorize.ExecNone,
 			checks(authorize.CheckMembership, authorize.CheckBindingVersion), authorize.ReceiptRequired, receiptErrors()),
-		eop("resource.binding.read", authorize.FamilyResource, authorize.ScopeProject,
-			roles(admin, viewer), roles(viewer), authorize.ExecNone,
-			checks(authorize.CheckMembership), authorize.ReceiptNone, readErrors()),
-		eop("resource.binding.list", authorize.FamilyResource, authorize.ScopeProject,
-			roles(admin, viewer), roles(viewer), authorize.ExecNone,
-			checks(authorize.CheckMembership), authorize.ReceiptNone, readErrors()),
+		anySvc(eop("resource.binding.read", authorize.FamilyResource, authorize.ScopeProject,
+			allHumans, roles(), authorize.ExecNone,
+			checks(authorize.CheckMembership), authorize.ReceiptNone, readErrors())),
+		anySvc(eop("resource.binding.list", authorize.FamilyResource, authorize.ScopeProject,
+			allHumans, roles(), authorize.ExecNone,
+			checks(authorize.CheckMembership), authorize.ReceiptNone, readErrors())),
 
 		// API-posted pipelines and immutable execution start.
 		eop("pipeline.apply", authorize.FamilyPipeline, authorize.ScopeProject,
 			roles(engineer), roles(engineer), authorize.ExecNone,
 			checks(authorize.CheckMembership, authorize.CheckPipelineVersion, authorize.CheckPushServiceAdmin), authorize.ReceiptRequired, receiptErrors()),
-		eop("pipeline.read", authorize.FamilyPipeline, authorize.ScopeProject,
-			roles(engineer, viewer), roles(engineer, viewer), authorize.ExecNone,
-			checks(authorize.CheckMembership), authorize.ReceiptNone, readErrors()),
-		eop("pipeline.list", authorize.FamilyPipeline, authorize.ScopeProject,
-			roles(engineer, viewer), roles(engineer, viewer), authorize.ExecNone,
-			checks(authorize.CheckMembership), authorize.ReceiptNone, readErrors()),
+		anySvc(eop("pipeline.read", authorize.FamilyPipeline, authorize.ScopeProject,
+			allHumans, roles(), authorize.ExecNone,
+			checks(authorize.CheckMembership), authorize.ReceiptNone, readErrors())),
+		anySvc(eop("pipeline.list", authorize.FamilyPipeline, authorize.ScopeProject,
+			allHumans, roles(), authorize.ExecNone,
+			checks(authorize.CheckMembership), authorize.ReceiptNone, readErrors())),
 		eop("pipeline.update", authorize.FamilyPipeline, authorize.ScopeProject,
 			roles(engineer), roles(engineer), authorize.ExecNone,
 			checks(authorize.CheckMembership, authorize.CheckPipelineVersion, authorize.CheckPushServiceAdmin), authorize.ReceiptRequired, receiptErrors()),
@@ -179,12 +186,12 @@ func expectedOperations() []expectedOperation {
 			checks(authorize.CheckMembership, authorize.CheckPipelineVersion), authorize.ReceiptRequired, admissionErrors()),
 
 		// Secret metadata and writes.
-		eop("secret.metadata.read", authorize.FamilySecret, authorize.ScopeProject,
-			roles(admin, engineer, viewer), roles(engineer, viewer), authorize.ExecNone,
-			checks(authorize.CheckMembership), authorize.ReceiptNone, readErrors()),
-		eop("secret.metadata.list", authorize.FamilySecret, authorize.ScopeProject,
-			roles(admin, engineer, viewer), roles(engineer, viewer), authorize.ExecNone,
-			checks(authorize.CheckMembership), authorize.ReceiptNone, readErrors()),
+		anySvc(eop("secret.metadata.read", authorize.FamilySecret, authorize.ScopeProject,
+			allHumans, roles(), authorize.ExecNone,
+			checks(authorize.CheckMembership), authorize.ReceiptNone, readErrors())),
+		anySvc(eop("secret.metadata.list", authorize.FamilySecret, authorize.ScopeProject,
+			allHumans, roles(), authorize.ExecNone,
+			checks(authorize.CheckMembership), authorize.ReceiptNone, readErrors())),
 		eop("secret.write", authorize.FamilySecret, authorize.ScopeProject,
 			roles(admin, engineer), roles(engineer), authorize.ExecNone,
 			checks(authorize.CheckMembership), authorize.ReceiptRequired, receiptErrors()),
@@ -196,9 +203,9 @@ func expectedOperations() []expectedOperation {
 		eop("service.create", authorize.FamilyService, authorize.ScopeProject,
 			roles(admin), roles(), authorize.ExecNone,
 			checks(authorize.CheckMembership), authorize.ReceiptRequired, receiptErrors()),
-		eop("service.list", authorize.FamilyService, authorize.ScopeProject,
-			roles(admin, viewer), roles(viewer), authorize.ExecNone,
-			checks(authorize.CheckMembership), authorize.ReceiptNone, readErrors()),
+		anySvc(eop("service.list", authorize.FamilyService, authorize.ScopeProject,
+			allHumans, roles(), authorize.ExecNone,
+			checks(authorize.CheckMembership), authorize.ReceiptNone, readErrors())),
 		eop("service.update", authorize.FamilyService, authorize.ScopeProject,
 			roles(admin), roles(), authorize.ExecNone,
 			checks(authorize.CheckMembership, authorize.CheckServiceEnabled), authorize.ReceiptRequired, receiptErrors()),
@@ -222,13 +229,12 @@ func expectedOperations() []expectedOperation {
 		eop("task.create", authorize.FamilyTask, authorize.ScopeProject,
 			roles(engineer), roles(engineer), authorize.ExecProjectTaskCreate,
 			checks(authorize.CheckMembership), authorize.ReceiptRequired, receiptErrors()),
-		eop("task.read", authorize.FamilyTask, authorize.ScopeProject,
-			roles(engineer, viewer), roles(engineer, viewer), authorize.ExecOwnTaskContent,
-			checks(authorize.CheckMembership), authorize.ReceiptNone, readErrors()),
-		eop("task.list", authorize.FamilyTask, authorize.ScopeProject,
-			roles(engineer, operator, reviewer, viewer),
-			roles(engineer, operator, reviewer, viewer), authorize.ExecNone,
-			checks(authorize.CheckMembership), authorize.ReceiptNone, readErrors()),
+		anySvc(eop("task.read", authorize.FamilyTask, authorize.ScopeProject,
+			allHumans, roles(), authorize.ExecOwnTaskContent,
+			checks(authorize.CheckMembership), authorize.ReceiptNone, readErrors())),
+		anySvc(eop("task.list", authorize.FamilyTask, authorize.ScopeProject,
+			allHumans, roles(), authorize.ExecNone,
+			checks(authorize.CheckMembership), authorize.ReceiptNone, readErrors())),
 		eop("task.edit", authorize.FamilyTask, authorize.ScopeProject,
 			roles(engineer), roles(engineer), authorize.ExecOwnTaskContent,
 			checks(authorize.CheckMembership, authorize.CheckTaskVersion), authorize.ReceiptRequired, receiptErrors()),
@@ -247,42 +253,40 @@ func expectedOperations() []expectedOperation {
 		eop("task.ask", authorize.FamilyTask, authorize.ScopeProject,
 			roles(engineer), roles(engineer), authorize.ExecOwnTaskAsk,
 			checks(authorize.CheckMembership, authorize.CheckTaskVersion, authorize.CheckExecutionVersion), authorize.ReceiptRequired, receiptErrors()),
-		eop("task.reply", authorize.FamilyTask, authorize.ScopeProject,
-			roles(admin, engineer, reviewer, operator, viewer),
-			roles(engineer, reviewer, operator, viewer), authorize.ExecNone,
-			checks(authorize.CheckMembership, authorize.CheckTaskVersion, authorize.CheckPipelineVersion, authorize.CheckExecutionVersion), authorize.ReceiptRequired, admissionErrors()),
+		anySvc(eop("task.reply", authorize.FamilyTask, authorize.ScopeProject,
+			allHumans, roles(), authorize.ExecNone,
+			checks(authorize.CheckMembership, authorize.CheckTaskVersion, authorize.CheckPipelineVersion, authorize.CheckExecutionVersion), authorize.ReceiptRequired, admissionErrors())),
 		eop("task.cancel", authorize.FamilyTask, authorize.ScopeProject,
 			roles(engineer, operator), roles(engineer, operator), authorize.ExecNone,
 			checks(authorize.CheckMembership, authorize.CheckTaskVersion, authorize.CheckExecutionVersion), authorize.ReceiptRequired, receiptErrors()),
-		eop("task.history", authorize.FamilyTask, authorize.ScopeProject,
-			roles(engineer, operator, viewer), roles(engineer, operator, viewer), authorize.ExecOwnTaskContent,
-			checks(authorize.CheckMembership), authorize.ReceiptNone, readErrors()),
+		anySvc(eop("task.history", authorize.FamilyTask, authorize.ScopeProject,
+			allHumans, roles(), authorize.ExecOwnTaskContent,
+			checks(authorize.CheckMembership), authorize.ReceiptNone, readErrors())),
 
 		// Inbox is a scoped query, not a mutable request entity.
-		eop("task.inbox", authorize.FamilyInbox, authorize.ScopeProject,
-			roles(engineer, operator, reviewer, viewer), roles(engineer, operator, reviewer, viewer), authorize.ExecNone,
-			checks(authorize.CheckMembership, authorize.CheckPrincipalEnabled), authorize.ReceiptNone, readErrors()),
+		anySvc(eop("task.inbox", authorize.FamilyInbox, authorize.ScopeProject,
+			allHumans, roles(), authorize.ExecNone,
+			checks(authorize.CheckMembership, authorize.CheckPrincipalEnabled), authorize.ReceiptNone, readErrors())),
 
 		// Executions, outputs, request resolution and retained logs.
-		eop("execution.inspect", authorize.FamilyExecution, authorize.ScopeProject,
-			roles(engineer, operator, viewer), roles(engineer, operator, viewer), authorize.ExecOwnTaskContent,
-			checks(authorize.CheckMembership), authorize.ReceiptNone, readErrors()),
-		eop("execution.list", authorize.FamilyExecution, authorize.ScopeProject,
-			roles(engineer, operator, viewer), roles(engineer, operator, viewer), authorize.ExecNone,
-			checks(authorize.CheckMembership), authorize.ReceiptNone, readErrors()),
+		anySvc(eop("execution.inspect", authorize.FamilyExecution, authorize.ScopeProject,
+			allHumans, roles(), authorize.ExecOwnTaskContent,
+			checks(authorize.CheckMembership), authorize.ReceiptNone, readErrors())),
+		anySvc(eop("execution.list", authorize.FamilyExecution, authorize.ScopeProject,
+			allHumans, roles(), authorize.ExecNone,
+			checks(authorize.CheckMembership), authorize.ReceiptNone, readErrors())),
 		eop("execution.cancel", authorize.FamilyExecution, authorize.ScopeProject,
 			roles(engineer, operator), roles(engineer, operator), authorize.ExecNone,
 			checks(authorize.CheckMembership, authorize.CheckExecutionVersion), authorize.ReceiptRequired, receiptErrors()),
 		eop("execution.action.outputs", authorize.FamilyExecution, authorize.ScopeProject,
 			roles(), roles(), authorize.ExecOwnOutputs,
 			checks(authorize.CheckExecutionRunning, authorize.CheckActionDeadline, authorize.CheckExecutionVersion), authorize.ReceiptRequired, receiptErrors()),
-		eop("execution.request.resolve", authorize.FamilyExecution, authorize.ScopeProject,
-			roles(admin, engineer, reviewer, operator, viewer),
-			roles(engineer, reviewer, operator, viewer), authorize.ExecNone,
-			checks(authorize.CheckMembership, authorize.CheckExecutionVersion, authorize.CheckActionDeadline), authorize.ReceiptRequestScoped, resolveErrors()),
-		eop("execution.logs.read", authorize.FamilyExecution, authorize.ScopeProject,
-			roles(engineer, operator, viewer), roles(engineer, operator, viewer), authorize.ExecOwnTaskContent,
-			checks(authorize.CheckMembership), authorize.ReceiptNone, readErrors()),
+		anySvc(eop("execution.request.resolve", authorize.FamilyExecution, authorize.ScopeProject,
+			allHumans, roles(), authorize.ExecNone,
+			checks(authorize.CheckMembership, authorize.CheckExecutionVersion, authorize.CheckActionDeadline), authorize.ReceiptRequestScoped, resolveErrors())),
+		anySvc(eop("execution.logs.read", authorize.FamilyExecution, authorize.ScopeProject,
+			allHumans, roles(), authorize.ExecOwnTaskContent,
+			checks(authorize.CheckMembership), authorize.ReceiptNone, readErrors())),
 
 		// Verification and verified resource reports.
 		eop("actor.verify", authorize.FamilyVerify, authorize.ScopeProject,
@@ -296,12 +300,12 @@ func expectedOperations() []expectedOperation {
 		eop("event.publish", authorize.FamilyEvent, authorize.ScopeProject,
 			roles(engineer), roles(engineer), authorize.ExecOwnEvents,
 			checks(authorize.CheckMembership, authorize.CheckExecutionRunning), authorize.ReceiptRequired, receiptErrors()),
-		eop("event.read", authorize.FamilyEvent, authorize.ScopeProject,
-			roles(engineer, operator, viewer), roles(engineer, operator, viewer), authorize.ExecNone,
-			checks(authorize.CheckMembership), authorize.ReceiptNone, readErrors()),
-		eop("event.subscribe", authorize.FamilyEvent, authorize.ScopeProject,
-			roles(engineer, operator, viewer), roles(engineer, operator, viewer), authorize.ExecNone,
-			checks(authorize.CheckMembership, authorize.CheckPrincipalEnabled), authorize.ReceiptNone, readErrors()),
+		anySvc(eop("event.read", authorize.FamilyEvent, authorize.ScopeProject,
+			allHumans, roles(), authorize.ExecNone,
+			checks(authorize.CheckMembership), authorize.ReceiptNone, readErrors())),
+		anySvc(eop("event.subscribe", authorize.FamilyEvent, authorize.ScopeProject,
+			allHumans, roles(), authorize.ExecNone,
+			checks(authorize.CheckMembership, authorize.CheckPrincipalEnabled), authorize.ReceiptNone, readErrors())),
 
 		// Optional model/tool surfaces use the same authorizer.
 		eop("model.invoke", authorize.FamilyModel, authorize.ScopeProject,
@@ -356,6 +360,9 @@ func TestOperationRegistryMatrix(t *testing.T) {
 		}
 		if !sameRoles(op.Requires.ServiceRoles, want.service) {
 			t.Errorf("%s service roles = %v; want %v", op.Name, op.Requires.ServiceRoles, want.service)
+		}
+		if op.Requires.AnyEnabledService != want.anyEnabledService {
+			t.Errorf("%s any_enabled_service = %v; want %v", op.Name, op.Requires.AnyEnabledService, want.anyEnabledService)
 		}
 		if op.Requires.Execution != want.execution {
 			t.Errorf("%s execution permission = %q; want %q", op.Name, op.Requires.Execution, want.execution)
@@ -464,9 +471,9 @@ func TestOperationRegistryInvariants(t *testing.T) {
 			}
 		}
 
-		// A grant must exist: human role, service role, or an explicit
-		// execution permission. An operation with none of them is unreachable.
-		if len(op.Requires.HumanRoles) == 0 && len(op.Requires.ServiceRoles) == 0 && op.Requires.Execution == authorize.ExecNone {
+		// A grant must exist: human role, service role, any enabled service,
+		// or an explicit execution permission. An operation with none is unreachable.
+		if len(op.Requires.HumanRoles) == 0 && len(op.Requires.ServiceRoles) == 0 && !op.Requires.AnyEnabledService && op.Requires.Execution == authorize.ExecNone {
 			t.Errorf("%s has no principal grant", op.Name)
 		}
 	}
@@ -780,10 +787,8 @@ func TestAdminReviewerDistinct(t *testing.T) {
 				t.Errorf("%s does not admit human role %q at the grant stage", name, role)
 			}
 		}
-		for _, role := range tenancy.ServiceRoles() {
-			if !hasRole(op.Requires.ServiceRoles, role) {
-				t.Errorf("%s does not admit service role %q at the grant stage", name, role)
-			}
+		if !op.Requires.AnyEnabledService {
+			t.Errorf("%s does not admit any enabled service at the grant stage", name)
 		}
 		if hasRole(op.Requires.ServiceRoles, tenancy.RoleAdmin) {
 			t.Errorf("%s grants Admin to services", name)
@@ -843,6 +848,9 @@ func TestAssignedRespondentAuthority(t *testing.T) {
 				t.Errorf("%s service role %q grant = %s; want allow", name, role, got)
 			}
 		}
+		if got := decide(op, identity.KindService, nil, authorize.ExecNone); got != authorize.DecisionAllow {
+			t.Errorf("%s roleless service grant = %s; want allow", name, got)
+		}
 
 		if got := decide(op, identity.KindExecution, nil, authorize.ExecOwnOutputs); got != authorize.DecisionDeny {
 			t.Errorf("%s execution grant = %s; want deny", name, got)
@@ -876,11 +884,14 @@ func TestAssignedRespondentAuthority(t *testing.T) {
 		svc := identity.Principal{
 			ID:      "service-1",
 			Kind:    identity.KindService,
-			Roles:   []tenancy.Role{tenancy.RoleViewer},
+			Roles:   nil,
 			Enabled: true,
 		}
 		if !assignmentAllows(mustAssignment(t, "service/service-1"), svc) {
-			t.Errorf("%s refused the exact assigned service", name)
+			t.Errorf("%s refused the exact assigned roleless service", name)
+		}
+		if assignmentAllows(mustAssignment(t, "role/reviewer"), svc) {
+			t.Errorf("%s admitted a roleless service to a human role assignment", name)
 		}
 		if assignmentAllows(mustAssignment(t, "service/service-2"), svc) {
 			t.Errorf("%s admitted a different service to an assignment", name)
@@ -935,6 +946,7 @@ func TestRoleDecisionVectors(t *testing.T) {
 		{"execution.request.resolve", identity.KindHuman, roles(tenancy.RoleViewer), authorize.ExecNone, authorize.DecisionAllow},
 		{"execution.request.resolve", identity.KindService, roles(tenancy.RoleReviewer), authorize.ExecNone, authorize.DecisionAllow},
 		{"execution.request.resolve", identity.KindService, roles(tenancy.RoleViewer), authorize.ExecNone, authorize.DecisionAllow},
+		{"execution.request.resolve", identity.KindService, roles(), authorize.ExecNone, authorize.DecisionAllow},
 		{"execution.request.resolve", identity.KindService, roles(tenancy.RoleAdmin), authorize.ExecNone, authorize.DecisionDeny},
 		{"task.reply", identity.KindHuman, roles(tenancy.RoleAdmin), authorize.ExecNone, authorize.DecisionAllow},
 		{"task.reply", identity.KindHuman, roles(tenancy.RoleReviewer), authorize.ExecNone, authorize.DecisionAllow},
@@ -942,7 +954,18 @@ func TestRoleDecisionVectors(t *testing.T) {
 		{"task.reply", identity.KindHuman, roles(tenancy.RoleOperator), authorize.ExecNone, authorize.DecisionAllow},
 		{"task.reply", identity.KindHuman, roles(tenancy.RoleViewer), authorize.ExecNone, authorize.DecisionAllow},
 		{"task.reply", identity.KindService, roles(tenancy.RoleOperator), authorize.ExecNone, authorize.DecisionAllow},
+		{"task.reply", identity.KindService, roles(), authorize.ExecNone, authorize.DecisionAllow},
 		{"task.reply", identity.KindService, roles(tenancy.RoleAdmin), authorize.ExecNone, authorize.DecisionDeny},
+		// Project-scoped operational reads admit every human member role and any
+		// enabled service (including roles: []), while mutations stay role-gated.
+		{"execution.inspect", identity.KindHuman, roles(tenancy.RoleReviewer), authorize.ExecNone, authorize.DecisionAllow},
+		{"execution.logs.read", identity.KindHuman, roles(tenancy.RoleReviewer), authorize.ExecNone, authorize.DecisionAllow},
+		{"task.read", identity.KindHuman, roles(tenancy.RoleOperator), authorize.ExecNone, authorize.DecisionAllow},
+		{"task.inbox", identity.KindHuman, roles(tenancy.RoleAdmin), authorize.ExecNone, authorize.DecisionAllow},
+		{"task.inbox", identity.KindService, roles(), authorize.ExecNone, authorize.DecisionAllow},
+		{"execution.inspect", identity.KindService, roles(), authorize.ExecNone, authorize.DecisionAllow},
+		{"task.create", identity.KindService, roles(), authorize.ExecNone, authorize.DecisionDeny},
+		{"pipeline.apply", identity.KindService, roles(), authorize.ExecNone, authorize.DecisionDeny},
 		{"task.create", identity.KindHuman, roles(tenancy.RoleEngineer), authorize.ExecNone, authorize.DecisionAllow},
 		{"task.create", identity.KindHuman, roles(tenancy.RoleViewer), authorize.ExecNone, authorize.DecisionDeny},
 		{"pipeline.apply", identity.KindService, roles(tenancy.RoleEngineer), authorize.ExecNone, authorize.DecisionAllow},
@@ -982,6 +1005,12 @@ func decide(op authorize.Operation, kind identity.PrincipalKind, userRoles []ten
 			}
 		}
 	case identity.KindService:
+		if hasRole(userRoles, tenancy.RoleAdmin) {
+			return authorize.DecisionDeny
+		}
+		if op.Requires.AnyEnabledService {
+			return authorize.DecisionAllow
+		}
 		for _, role := range userRoles {
 			if hasRole(op.Requires.ServiceRoles, role) {
 				return authorize.DecisionAllow

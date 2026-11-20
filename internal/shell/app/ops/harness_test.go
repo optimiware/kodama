@@ -139,7 +139,7 @@ type staticPrincipals struct {
 func (resolver staticPrincipals) Resolve(_ context.Context, credential string) (identity.Principal, error) {
 	principal, ok := resolver.principals[credential]
 	if !ok {
-		return identity.Principal{}, fmt.Errorf("unknown credential")
+		return identity.Principal{}, fault.New(fault.Unauthenticated, "unknown credential")
 	}
 	return principal, nil
 }

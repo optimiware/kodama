@@ -33,7 +33,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"slices"
 	"time"
 
 	"github.com/optimiware/kodema/internal/fault"
@@ -454,8 +453,10 @@ func principalEnabledLock(
 		}
 		return executionLockFromRow(rowID(row), row, read.ExpectedVersion), nil
 	case principalService:
-		if err := requireRequiredRoles(row, read.Required.ServiceRoles); err != nil {
-			return store.Lock{}, err
+		if !read.Required.AnyEnabledService && len(read.Required.ServiceRoles) > 0 {
+			if err := requireRequiredRoles(row, true, read.Required); err != nil {
+				return store.Lock{}, err
+			}
 		}
 		if err := requireRowState(row, enabledServiceState); err != nil {
 			return store.Lock{}, err
@@ -472,8 +473,10 @@ func principalEnabledLock(
 			TenantWide:    tenantWide,
 		}, nil
 	case principalHuman:
-		if err := requireRequiredRoles(row, read.Required.HumanRoles); err != nil {
-			return store.Lock{}, err
+		if len(read.Required.HumanRoles) > 0 {
+			if err := requireRequiredRoles(row, false, read.Required); err != nil {
+				return store.Lock{}, err
+			}
 		}
 		version, err := pinnedVersion(row, read.ExpectedVersion)
 		if err != nil {
@@ -553,18 +556,14 @@ func actionDeadlineLock(
 }
 
 // requireRequiredRoles refuses forbidden when the read records required roles
-// and the row holds none of them. An empty required set is not a role
-// constraint. The any-of semantics and the roles JSON source match the identity
-// AuthorityReader.
-func requireRequiredRoles(row store.Row, required []tenancy.Role) error {
-	if len(required) == 0 {
-		return nil
-	}
+// and the row does not satisfy them. The semantics and roles JSON source match
+// authorize.Requires.AllowsRoles and the identity AuthorityReader.
+func requireRequiredRoles(row store.Row, service bool, required authorize.Requires) error {
 	roles, err := decodeRowRoles(row)
 	if err != nil {
 		return err
 	}
-	if !hasAnyRole(roles, required) {
+	if !required.AllowsRoles(service, roles) {
 		return fault.New(fault.Forbidden, fmt.Sprintf("%s row does not currently hold a required role", row.Table))
 	}
 	return nil
@@ -598,16 +597,6 @@ func decodeRowRoles(row store.Row) ([]tenancy.Role, error) {
 			fmt.Sprintf("%s row column %q does not decode as roles", row.Table, rolesColumn), err)
 	}
 	return roles, nil
-}
-
-// hasAnyRole reports whether roles contains at least one required role.
-func hasAnyRole(roles, required []tenancy.Role) bool {
-	for _, wanted := range required {
-		if slices.Contains(roles, wanted) {
-			return true
-		}
-	}
-	return false
 }
 
 // resolvePrincipalRow finds the durable row that represents one principal for

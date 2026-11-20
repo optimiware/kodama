@@ -185,13 +185,14 @@ func (a *Adapter) serviceMembershipFact(read authorize.AuthorityRead, fact autho
 	if err != nil {
 		return fact, nil, err
 	}
-	required := authorize.MembershipRead(read).Required.ServiceRoles
+	required := authorize.MembershipRead(read).Required
+	allowedRoles := required.AllowsRoles(true, roles)
 	fact.Version = version
-	fact.Allowed = state == serviceStateEnabled && hasAnyRole(roles, required)
+	fact.Allowed = state == serviceStateEnabled && allowedRoles
 	switch {
 	case state != serviceStateEnabled:
 		fact.Detail = "the service is not enabled"
-	case !hasAnyRole(roles, required):
+	case !allowedRoles:
 		fact.Detail = "the service does not hold the required role"
 	case read.Check == authorize.CheckPushServiceAdmin:
 		// A service never holds Admin, so this branch is unreachable for a

@@ -3,7 +3,6 @@ package event
 import (
 	"context"
 	"fmt"
-	"slices"
 
 	"github.com/optimiware/kodema/internal/fault"
 	"github.com/optimiware/kodema/internal/id"
@@ -86,7 +85,7 @@ func confirmCurrentPrincipal(ctx context.Context, principals identity.PrincipalR
 	if !scopeCovers(principal.Scope, scope) {
 		return identity.Principal{}, fault.New(fault.Forbidden, "principal scope does not cover the requested scope")
 	}
-	if !grantHeld(principal, operation.Requires) {
+	if !operation.Requires.Allows(principal) {
 		return identity.Principal{}, fault.New(fault.Forbidden, fmt.Sprintf("principal does not currently hold the grant for %q", operation.Name))
 	}
 	return principal, nil
@@ -103,22 +102,6 @@ func scopeCovers(owner, target tenancy.Scope) bool {
 		return true
 	}
 	return owner.ProjectID == target.ProjectID
-}
-
-// grantHeld reports whether a human/service principal currently holds one of
-// the operation's declared roles for its kind.
-func grantHeld(principal identity.Principal, requires authorize.Requires) bool {
-	switch principal.Kind {
-	case identity.KindHuman:
-		if slices.ContainsFunc(requires.HumanRoles, principal.HasRole) {
-			return true
-		}
-	case identity.KindService:
-		if slices.ContainsFunc(requires.ServiceRoles, principal.HasRole) {
-			return true
-		}
-	}
-	return false
 }
 
 // operationAuthorityReads builds the registry's current-authority reads in

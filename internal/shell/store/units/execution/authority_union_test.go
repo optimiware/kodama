@@ -858,3 +858,55 @@ func TestPushServiceAdminUnionPassesAndLocksBothRows(t *testing.T) {
 		requireClass(t, err, fault.Forbidden)
 	})
 }
+
+// TestMembershipAnyEnabledServiceForRolelessService proves execution authority
+// locks admit an enabled roleless service for AnyEnabledService operations
+// (such as execution.request.resolve) while still refusing disabled services
+// and role-gated mutations.
+func TestMembershipAnyEnabledServiceForRolelessService(t *testing.T) {
+	ctx := context.Background()
+	scope := projectScope()
+	adapter, backend := newStore(t)
+	seedServiceWithRoles(t, backend, scope, "service-roleless", "enabled", 1, nil)
+	seedServiceWithRoles(t, backend, scope, "service-disabled", "disabled", 1, nil)
+
+	resolveOp, ok := authorize.LookupOperation("execution.request.resolve")
+	if !ok {
+		t.Fatal("execution.request.resolve missing")
+	}
+	locks, err := adapter.authorityLocks(ctx, []authorize.AuthorityRead{{
+		Operation:   resolveOp.Name,
+		Required:    resolveOp.Requires,
+		Check:       authorize.CheckMembership,
+		Scope:       scope,
+		PrincipalID: "service-roleless",
+	}})
+	if err != nil {
+		t.Fatalf("authorityLocks enabled roleless service: %v", err)
+	}
+	if len(locks) != 1 || locks[0].Table != tableServices || locks[0].Expect["state"] != serviceStateEnabled {
+		t.Fatalf("locks = %+v; want one enabled services lock", locks)
+	}
+
+	_, err = adapter.authorityLocks(ctx, []authorize.AuthorityRead{{
+		Operation:   resolveOp.Name,
+		Required:    resolveOp.Requires,
+		Check:       authorize.CheckMembership,
+		Scope:       scope,
+		PrincipalID: "service-disabled",
+	}})
+	requireClass(t, err, fault.Forbidden)
+
+	startOp, ok := authorize.LookupOperation("pipeline.start")
+	if !ok {
+		t.Fatal("pipeline.start missing")
+	}
+	_, err = adapter.authorityLocks(ctx, []authorize.AuthorityRead{{
+		Operation:   startOp.Name,
+		Required:    startOp.Requires,
+		Check:       authorize.CheckMembership,
+		Scope:       scope,
+		PrincipalID: "service-roleless",
+	}})
+	requireClass(t, err, fault.Forbidden)
+}

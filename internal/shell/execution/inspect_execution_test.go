@@ -260,13 +260,18 @@ func TestInspectRefusesNonExecutionAndMalformedPrincipals(t *testing.T) {
 		want  fault.Class
 	}{
 		{
-			name:  "human without inspect role",
-			actor: humanActor("tenant-1", "project-1", "principal-human", tenancy.RoleReviewer),
+			name:  "human without any project role",
+			actor: humanActor("tenant-1", "project-1", "principal-human"),
 			want:  fault.Forbidden,
 		},
 		{
-			name:  "service without inspect role",
-			actor: serviceActor("tenant-1", "project-1", "service-1", tenancy.RoleReviewer),
+			name:  "disabled roleless service",
+			actor: disabled(serviceActor("tenant-1", "project-1", "service-1")),
+			want:  fault.Forbidden,
+		},
+		{
+			name:  "cross-project human reviewer",
+			actor: humanActor("tenant-1", "project-2", "principal-foreign", tenancy.RoleReviewer),
 			want:  fault.Forbidden,
 		},
 		{
@@ -317,9 +322,10 @@ func TestInspectRefusesNonExecutionAndMalformedPrincipals(t *testing.T) {
 	}
 }
 
-// TestInspectHumanAndServiceBehaviorUnchanged pins the registry rows: a human
-// viewer/operator and a service engineer still inspect, and a reviewer-only
-// human/service or a disabled human still does not.
+// TestInspectHumanAndServiceBehaviorUnchanged pins the project-scoped read
+// boundary: every human member role (including reviewer and admin) and every
+// enabled service (including roleless services) can inspect executions in scope,
+// while roleless humans, disabled principals and cross-project callers cannot.
 func TestInspectHumanAndServiceBehaviorUnchanged(t *testing.T) {
 	cases := []struct {
 		name  string
@@ -328,10 +334,16 @@ func TestInspectHumanAndServiceBehaviorUnchanged(t *testing.T) {
 	}{
 		{"human viewer", humanActor("tenant-1", "project-1", "principal-human", tenancy.RoleViewer), true},
 		{"human operator", humanActor("tenant-1", "project-1", "principal-operator", tenancy.RoleOperator), true},
+		{"human reviewer", humanActor("tenant-1", "project-1", "principal-reviewer", tenancy.RoleReviewer), true},
+		{"human admin", humanActor("tenant-1", "project-1", "principal-admin", tenancy.RoleAdmin), true},
 		{"service engineer", serviceActor("tenant-1", "project-1", "service-1", tenancy.RoleEngineer), true},
-		{"human reviewer is not an inspect role", humanActor("tenant-1", "project-1", "principal-reviewer", tenancy.RoleReviewer), false},
-		{"service reviewer is not an inspect role", serviceActor("tenant-1", "project-1", "service-2", tenancy.RoleReviewer), false},
+		{"service reviewer", serviceActor("tenant-1", "project-1", "service-2", tenancy.RoleReviewer), true},
+		{"roleless enabled service", serviceActor("tenant-1", "project-1", "service-roleless"), true},
+		{"human without roles", humanActor("tenant-1", "project-1", "principal-none"), false},
 		{"disabled human viewer", disabled(humanActor("tenant-1", "project-1", "principal-disabled", tenancy.RoleViewer)), false},
+		{"disabled roleless service", disabled(serviceActor("tenant-1", "project-1", "service-disabled")), false},
+		{"cross-project human reviewer", humanActor("tenant-1", "project-2", "principal-other", tenancy.RoleReviewer), false},
+		{"cross-project roleless service", serviceActor("tenant-1", "project-2", "service-other"), false},
 	}
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {

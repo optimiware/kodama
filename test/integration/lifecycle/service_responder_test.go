@@ -136,12 +136,13 @@ func TestServiceResponderServedInbox(t *testing.T) {
 	harness := factory.Start(t)
 	ctx := t.Context()
 
-	// One service account with the operator role: it may read its inbox,
-	// inspect the execution and answer its own request.
+	// One roleless enabled service account (roles: []): it can poll its inbox,
+	// inspect the execution and answer its own explicitly assigned request
+	// without needing any mutation or viewer role bolted on.
 	created := harness.MustREST(harness.ProjectToken, "service.create", api.ServiceCreateRequest{
 		ProjectID: factory.ProjectID,
 		ServiceID: responderServiceID,
-		Roles:     []string{"operator"},
+		Roles:     []string{},
 	}, nil, "create-"+responderServiceID)
 	var createdService api.ServiceCreateResult
 	harness.Decode(created, &createdService)

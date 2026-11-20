@@ -3,7 +3,6 @@ package authorize
 import (
 	"context"
 	"fmt"
-	"slices"
 
 	"github.com/optimiware/kodema/internal/fault"
 	"github.com/optimiware/kodema/internal/id"
@@ -205,10 +204,6 @@ func evaluateMembership(read AuthorityRead, service bool, rows MembershipRows) (
 	} else {
 		roles, ok = tenancy.EffectiveRoles(read.Scope, tenantWide, project)
 	}
-	required := read.Required.HumanRoles
-	if service {
-		required = read.Required.ServiceRoles
-	}
 
 	fact := MembershipFact{
 		Check:       CheckMembership,
@@ -223,7 +218,7 @@ func evaluateMembership(read AuthorityRead, service bool, rows MembershipRows) (
 	switch {
 	case !ok:
 		fact.Detail = "no applicable membership row exists in scope"
-	case !anyRequiredRole(roles, required):
+	case !read.Required.AllowsRoles(service, roles):
 		fact.Detail = "the effective membership does not grant the required role"
 	default:
 		fact.Allowed = true
@@ -256,17 +251,6 @@ func observedMembershipRow(scope tenancy.Scope, principal id.PrincipalID, row Me
 		return MembershipRow{}, fault.New(fault.InternalFailure, "an applicable membership row carries no observed identity")
 	}
 	return row, nil
-}
-
-// anyRequiredRole reports whether the effective union holds at least one of the
-// operation's required roles.
-func anyRequiredRole(current, required []tenancy.Role) bool {
-	for _, wanted := range required {
-		if slices.Contains(current, wanted) {
-			return true
-		}
-	}
-	return false
 }
 
 // compareMembershipTargets refuses any difference between the pins a fact

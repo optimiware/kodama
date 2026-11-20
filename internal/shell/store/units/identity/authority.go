@@ -3,7 +3,6 @@ package identity
 import (
 	"context"
 	"fmt"
-	"slices"
 
 	"github.com/optimiware/kodema/internal/fault"
 	"github.com/optimiware/kodema/internal/id"
@@ -666,21 +665,6 @@ func decodeRolesFromRow(row store.Row) ([]tenancy.Role, error) {
 		return nil, err
 	}
 	return decodeRoles(data)
-}
-
-// hasAnyRole reports whether roles contains at least one required role.
-func hasAnyRole(roles, required []tenancy.Role) bool {
-	for _, wanted := range required {
-		if hasRole(roles, wanted) {
-			return true
-		}
-	}
-	return false
-}
-
-// hasRole reports whether roles contains one role.
-func hasRole(roles []tenancy.Role, wanted tenancy.Role) bool {
-	return slices.Contains(roles, wanted)
 }
 
 // taskStateOpen and executionStateFailed are the declared state strings the

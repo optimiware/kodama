@@ -352,10 +352,10 @@ func (resolver authorityResolver) membershipFactWithLocks(ctx context.Context, r
 		version := versionValue(row, "version")
 		state := textValue(row, "state")
 		fact.Version = version
-		// A service never gains Admin: tenancy.AssignableServiceRoles drops it
-		// (and every unknown value) before matching the required service roles,
-		// so even a corrupt services row cannot administer.
-		fact.Allowed = state == serviceStateEnabled && hasAnyAuthorityRole(tenancy.AssignableServiceRoles(roles), evaluated.Required.ServiceRoles)
+		// A service never gains Admin: AllowsRoles filters service roles
+		// through tenancy.AssignableServiceRoles before matching role-gated
+		// grants, so even a corrupt services row cannot administer.
+		fact.Allowed = state == serviceStateEnabled && evaluated.Required.AllowsRoles(true, roles)
 		lock := store.Lock{
 			Table:         "services",
 			IDs:           []string{string(evaluated.PrincipalID)},
@@ -727,16 +727,6 @@ func decodeAuthorityRoles(raw []byte) ([]tenancy.Role, error) {
 		return nil, fault.Wrap(fault.InternalFailure, "membership or service roles are malformed", err)
 	}
 	return roles, nil
-}
-
-// hasAnyAuthorityRole reports whether roles contains at least one required role.
-func hasAnyAuthorityRole(roles, required []tenancy.Role) bool {
-	for _, wanted := range required {
-		if hasAuthorityRole(roles, wanted) {
-			return true
-		}
-	}
-	return false
 }
 
 // hasAuthorityRole reports whether roles contains one role.

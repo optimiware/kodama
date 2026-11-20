@@ -276,8 +276,13 @@ func TestManagementReadAndList(t *testing.T) {
 	requireDefinition(t, list[0], current)
 
 	admin := humanActor("tenant-a", "project-a", "principal-admin", tenancy.RoleAdmin)
+	got, err = management.Read(t.Context(), pipeline.ReadCommand{Actor: admin, Scope: admin.Scope, PipelineID: "pipeline-1"})
+	requireNoError(t, err, "Read as admin")
+	requireDefinition(t, got, current)
+
+	roleless := humanActor("tenant-a", "project-a", "principal-none")
 	before := reader.getCalls
-	_, err = management.Read(t.Context(), pipeline.ReadCommand{Actor: admin, Scope: admin.Scope, PipelineID: "pipeline-1"})
+	_, err = management.Read(t.Context(), pipeline.ReadCommand{Actor: roleless, Scope: roleless.Scope, PipelineID: "pipeline-1"})
 	requireFaultClass(t, err, fault.Forbidden)
 	if reader.getCalls != before {
 		t.Fatalf("Reader.Get called for a denied principal")
@@ -320,9 +325,13 @@ func TestManagementAuthorizationMatrix(t *testing.T) {
 		{"delete reviewer", "pipeline.delete", identity.KindHuman, []tenancy.Role{tenancy.RoleReviewer}, false},
 		{"read engineer", "pipeline.read", identity.KindHuman, []tenancy.Role{tenancy.RoleEngineer}, true},
 		{"read viewer", "pipeline.read", identity.KindHuman, []tenancy.Role{tenancy.RoleViewer}, true},
-		{"read admin", "pipeline.read", identity.KindHuman, []tenancy.Role{tenancy.RoleAdmin}, false},
-		{"read reviewer", "pipeline.read", identity.KindHuman, []tenancy.Role{tenancy.RoleReviewer}, false},
+		{"read admin", "pipeline.read", identity.KindHuman, []tenancy.Role{tenancy.RoleAdmin}, true},
+		{"read reviewer", "pipeline.read", identity.KindHuman, []tenancy.Role{tenancy.RoleReviewer}, true},
+		{"read operator", "pipeline.read", identity.KindHuman, []tenancy.Role{tenancy.RoleOperator}, true},
+		{"read human without roles", "pipeline.read", identity.KindHuman, nil, false},
 		{"read service viewer", "pipeline.read", identity.KindService, []tenancy.Role{tenancy.RoleViewer}, true},
+		{"read roleless service", "pipeline.read", identity.KindService, nil, true},
+		{"apply roleless service", "pipeline.apply", identity.KindService, nil, false},
 	}
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {

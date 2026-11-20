@@ -14,16 +14,6 @@ import (
 	"github.com/optimiware/kodema/internal/shell/tenancy"
 )
 
-// deniedRoles lists valid principals of the supplied kind that hold no
-// event.read/event.subscribe grant. A service can never hold Admin, so its
-// denial case is Reviewer.
-func deniedRoles(kind string) []tenancy.Role {
-	if kind == "service" {
-		return []tenancy.Role{tenancy.RoleReviewer}
-	}
-	return []tenancy.Role{tenancy.RoleAdmin, tenancy.RoleReviewer}
-}
-
 // humanWithRole is one current human principal holding exactly the supplied
 // membership role in the test project.
 func humanWithRole(role tenancy.Role) identity.Principal {
@@ -45,6 +35,29 @@ func serviceWithRole(role tenancy.Role) identity.Principal {
 		Kind:    identity.KindService,
 		Scope:   testScope(),
 		Roles:   []tenancy.Role{role},
+		Enabled: true,
+		Version: 1,
+	}
+}
+
+// rolelessService is an enabled service principal in the test project with no
+// mutation/approval roles (roles: []).
+func rolelessService() identity.Principal {
+	return identity.Principal{
+		ID:      id.PrincipalID("svc-roleless"),
+		Kind:    identity.KindService,
+		Scope:   testScope(),
+		Enabled: true,
+		Version: 1,
+	}
+}
+
+// rolelessHuman is a human principal with an empty role set.
+func rolelessHuman() identity.Principal {
+	return identity.Principal{
+		ID:      id.PrincipalID("principal-none"),
+		Kind:    identity.KindHuman,
+		Scope:   testScope(),
 		Enabled: true,
 		Version: 1,
 	}
@@ -159,44 +172,66 @@ func readCommand(actor identity.Principal, scope tenancy.Scope, limit int) event
 	}
 }
 
-// TestReaderAllowsEveryRegistryRole asserts the event.read handler admits
-// exactly the declared human/service roles and refuses every other role.
+// TestReaderAllowsEveryRegistryRole asserts event.read admits every human
+// project member role and every enabled service in scope (including roles: []),
+// and refuses roleless humans and disabled services.
 func TestReaderAllowsEveryRegistryRole(t *testing.T) {
-	kinds := []struct {
-		name      string
-		principal func(tenancy.Role) identity.Principal
-	}{
-		{"human", humanWithRole},
-		{"service", serviceWithRole},
+	for _, role := range tenancy.HumanRoles() {
+		t.Run("human/"+string(role)+"/allowed", func(t *testing.T) {
+			actor := humanWithRole(role)
+			harness := newReadHarness(t, actor)
+			if _, err := harness.reader.Read(context.Background(), readCommand(actor, testScope(), 10)); err != nil {
+				t.Fatalf("Read: %v", err)
+			}
+			if harness.port.callCount() != 1 {
+				t.Errorf("read port calls = %d, want 1", harness.port.callCount())
+			}
+			if got := harness.port.lastQuery().Scope; got != testScope() {
+				t.Errorf("read query scope = %#v, want the authorized %#v", got, testScope())
+			}
+		})
 	}
-	for _, kind := range kinds {
-		for _, role := range []tenancy.Role{tenancy.RoleEngineer, tenancy.RoleOperator, tenancy.RoleViewer} {
-			t.Run(kind.name+"/"+string(role)+"/allowed", func(t *testing.T) {
-				actor := kind.principal(role)
-				harness := newReadHarness(t, actor)
-				if _, err := harness.reader.Read(context.Background(), readCommand(actor, testScope(), 10)); err != nil {
-					t.Fatalf("Read: %v", err)
-				}
-				if harness.port.callCount() != 1 {
-					t.Errorf("read port calls = %d, want 1", harness.port.callCount())
-				}
-				if got := harness.port.lastQuery().Scope; got != testScope() {
-					t.Errorf("read query scope = %#v, want the authorized %#v", got, testScope())
-				}
-			})
-		}
-		for _, role := range deniedRoles(kind.name) {
-			t.Run(kind.name+"/"+string(role)+"/refused", func(t *testing.T) {
-				actor := kind.principal(role)
-				harness := newReadHarness(t, actor)
-				_, err := harness.reader.Read(context.Background(), readCommand(actor, testScope(), 10))
-				assertFaultClass(t, err, fault.Forbidden)
-				if harness.port.callCount() != 0 {
-					t.Errorf("read port calls = %d, want 0 for an ungranted role", harness.port.callCount())
-				}
-			})
-		}
+	for _, role := range tenancy.ServiceRoles() {
+		t.Run("service/"+string(role)+"/allowed", func(t *testing.T) {
+			actor := serviceWithRole(role)
+			harness := newReadHarness(t, actor)
+			if _, err := harness.reader.Read(context.Background(), readCommand(actor, testScope(), 10)); err != nil {
+				t.Fatalf("Read: %v", err)
+			}
+			if harness.port.callCount() != 1 {
+				t.Errorf("read port calls = %d, want 1", harness.port.callCount())
+			}
+		})
 	}
+	t.Run("service/roleless/allowed", func(t *testing.T) {
+		actor := rolelessService()
+		harness := newReadHarness(t, actor)
+		if _, err := harness.reader.Read(context.Background(), readCommand(actor, testScope(), 10)); err != nil {
+			t.Fatalf("Read roleless service: %v", err)
+		}
+		if harness.port.callCount() != 1 {
+			t.Errorf("read port calls = %d, want 1", harness.port.callCount())
+		}
+	})
+	t.Run("human/no_roles/refused", func(t *testing.T) {
+		actor := rolelessHuman()
+		harness := newReadHarness(t, actor)
+		_, err := harness.reader.Read(context.Background(), readCommand(actor, testScope(), 10))
+		assertFaultClass(t, err, fault.Forbidden)
+		if harness.port.callCount() != 0 {
+			t.Errorf("read port calls = %d, want 0 for an ungranted human", harness.port.callCount())
+		}
+	})
+	t.Run("service/disabled_roleless/refused", func(t *testing.T) {
+		actor := rolelessService()
+		actor.Enabled = false
+		harness := newReadHarness(t, actor)
+		_, err := harness.reader.Read(context.Background(), readCommand(actor, testScope(), 10))
+		assertFaultClass(t, err, fault.Forbidden)
+		if harness.port.callCount() != 0 {
+			t.Errorf("read port calls = %d, want 0 for a disabled service", harness.port.callCount())
+		}
+	})
 }
 
 // TestReaderRefusesExecutionPrincipal asserts event.read declares no execution

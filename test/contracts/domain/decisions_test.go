@@ -146,3 +146,48 @@ func TestProjectOnlyMembershipHasNoTenantRights(t *testing.T) {
 		t.Error("a project-only Admin was denied a project-scoped administration operation")
 	}
 }
+
+// TestProjectMemberReadVisibilityAndMutationBoundary pins that any project
+// membership role grants project-scoped operational read visibility while
+// mutation and approval separation stays strictly enforced by role.
+func TestProjectMemberReadVisibilityAndMutationBoundary(t *testing.T) {
+	project := projectScope()
+	projectReads := []authorize.OperationName{
+		"resource.binding.read", "resource.binding.list",
+		"pipeline.read", "pipeline.list",
+		"secret.metadata.read", "secret.metadata.list",
+		"service.list",
+		"task.read", "task.list", "task.history", "task.inbox",
+		"execution.inspect", "execution.list", "execution.logs.read",
+		"event.read", "event.subscribe",
+	}
+	for _, role := range tenancy.HumanRoles() {
+		roles := effectiveRolesFor(t, project, nil, member(project, "principal-member", 1, role))
+		for _, op := range projectReads {
+			if !humanGranted(t, roles, op, project) {
+				t.Errorf("project member with role %q was denied project read %s", role, op)
+			}
+		}
+	}
+	// Pure reviewer cannot mutate pipelines, tasks, secrets or memberships.
+	reviewerRoles := effectiveRolesFor(t, project, nil, member(project, "principal-rev", 1, tenancy.RoleReviewer))
+	for _, denied := range []authorize.OperationName{"pipeline.apply", "pipeline.start", "task.create", "secret.write", "service.create"} {
+		if humanGranted(t, reviewerRoles, denied, project) {
+			t.Errorf("pure reviewer was allowed mutation %s", denied)
+		}
+	}
+	// Pure operator cannot create tasks, apply pipelines, or write secrets.
+	operatorRoles := effectiveRolesFor(t, project, nil, member(project, "principal-op", 1, tenancy.RoleOperator))
+	for _, denied := range []authorize.OperationName{"pipeline.apply", "pipeline.start", "task.create", "secret.write", "service.create"} {
+		if humanGranted(t, operatorRoles, denied, project) {
+			t.Errorf("pure operator was allowed mutation %s", denied)
+		}
+	}
+	// Non-member (no applicable rows) is denied every project read.
+	nonMember := effectiveRolesFor(t, project, nil, nil)
+	for _, op := range projectReads {
+		if humanGranted(t, nonMember, op, project) {
+			t.Errorf("non-member was allowed project read %s", op)
+		}
+	}
+}

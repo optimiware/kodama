@@ -478,3 +478,69 @@ func TestMembershipReadPushAdminRequiresOnlyAdmin(t *testing.T) {
 		t.Errorf("a plain membership read lost its own grant: %+v", kept.Required)
 	}
 }
+
+// TestEvaluateMembershipAnyEnabledServiceAllowsRolelessService pins that a
+// service row in scope with empty roles satisfies an AnyEnabledService grant
+// (while missing/out-of-scope rows and role-gated mutations still fail closed).
+func TestEvaluateMembershipAnyEnabledServiceAllowsRolelessService(t *testing.T) {
+	read := authorize.AuthorityRead{
+		Operation: "task.read",
+		Required: authorize.Requires{
+			HumanRoles:        tenancy.HumanRoles(),
+			AnyEnabledService: true,
+		},
+		Check:       authorize.CheckMembership,
+		Scope:       projectScope(),
+		PrincipalID: membershipPrincipal,
+	}
+
+	// Present service row in scope with empty roles is allowed and pinned.
+	rows := authorize.MembershipRows{
+		Project: membershipRow(projectScope(), "row-svc-project", 3),
+	}
+	fact, err := authorize.EvaluateMembership(read, true, rows)
+	requireNoError(t, err)
+	if !fact.Allowed {
+		t.Fatalf("roleless service with AnyEnabledService was denied: %+v", fact)
+	}
+	if err := authorize.ConfirmMembership(fact.PinnedRead(), true, rows); err != nil {
+		t.Fatalf("ConfirmMembership for unchanged roleless service failed: %v", err)
+	}
+
+	// Missing service row is still refused even with AnyEnabledService.
+	missing, err := authorize.EvaluateMembership(read, true, authorize.MembershipRows{})
+	wantFaultClass(t, err, fault.Forbidden)
+	if missing.Allowed {
+		t.Fatal("missing service row was allowed under AnyEnabledService")
+	}
+
+	// Out-of-scope service row is still refused even with AnyEnabledService.
+	otherProject := authorize.MembershipRows{
+		Project: membershipRow(otherProjectScope(), "row-svc-other", 1),
+	}
+	foreign, err := authorize.EvaluateMembership(read, true, otherProject)
+	wantFaultClass(t, err, fault.Forbidden)
+	if foreign.Allowed {
+		t.Fatal("foreign project service row was allowed under AnyEnabledService")
+	}
+
+	// Role-gated service mutation refuses empty roles.
+	mutation := read
+	mutation.Operation = "pipeline.apply"
+	mutation.Required = authorize.Requires{
+		HumanRoles:   []tenancy.Role{tenancy.RoleEngineer},
+		ServiceRoles: []tenancy.Role{tenancy.RoleEngineer},
+	}
+	denied, err := authorize.EvaluateMembership(mutation, true, rows)
+	wantFaultClass(t, err, fault.Forbidden)
+	if denied.Allowed {
+		t.Fatal("roleless service was allowed a role-gated mutation")
+	}
+
+	// AnyEnabledService never admits a human with empty roles.
+	humanDenied, err := authorize.EvaluateMembership(read, false, rows)
+	wantFaultClass(t, err, fault.Forbidden)
+	if humanDenied.Allowed {
+		t.Fatal("human with empty roles was allowed via AnyEnabledService")
+	}
+}

@@ -8,6 +8,7 @@ import (
 
 	"github.com/optimiware/kodema/internal/fault"
 	"github.com/optimiware/kodema/internal/shell/authorize"
+	"github.com/optimiware/kodema/internal/shell/identity"
 	"github.com/optimiware/kodema/internal/shell/receipt"
 	"github.com/optimiware/kodema/internal/shell/resource"
 	"github.com/optimiware/kodema/internal/shell/service"
@@ -233,4 +234,75 @@ func TestBindingRegistrationDefensiveCopies(t *testing.T) {
 
 func containsRole(roles []tenancy.Role, want tenancy.Role) bool {
 	return slices.Contains(roles, want)
+}
+
+// TestBindingReadAdmitsRolelessServiceAndAllHumanRoles proves ReadBinding and
+// QueryBindings admit enabled roleless services (AnyEnabledService: true) and
+// every human project role while still refusing execution principals and
+// service writes.
+func TestBindingReadAdmitsRolelessServiceAndAllHumanRoles(t *testing.T) {
+	scope := projectScope("tenant-a", "project-a")
+	stored := resource.Binding{
+		ID:               "binding-a",
+		ResourceID:       "resource-a",
+		Scope:            scope,
+		EnforcingService: service.ServiceID("git-service"),
+		TrustedOrigins:   []string{"https://git.example.com/shop"},
+		Operations:       []resource.Operation{resource.OperationGitRefUpdate},
+		ReportableEvents: []string{"git.ref.updated"},
+		Version:          1,
+	}
+	ports := &fakeBindingPorts{
+		read: func(_ context.Context, _ resource.BindingReadRequest) (resource.Binding, error) {
+			return stored, nil
+		},
+		query: func(_ context.Context, _ resource.BindingQuery) (resource.BindingPage, error) {
+			return resource.BindingPage{Bindings: []resource.Binding{stored}}, nil
+		},
+	}
+	svc := newBindingService(t, ports)
+
+	rolelessService := authorize.Principal{
+		ID:      "svc-roleless",
+		Kind:    identity.KindService,
+		Scope:   scope,
+		Enabled: true,
+		Version: 1,
+	}
+	if _, err := svc.ReadBinding(context.Background(), resource.ReadBindingCommand{
+		Actor:     rolelessService,
+		Scope:     scope,
+		BindingID: stored.ID,
+	}); err != nil {
+		t.Fatalf("ReadBinding for roleless service: %v", err)
+	}
+	if _, err := svc.QueryBindings(context.Background(), resource.QueryBindingsCommand{
+		Actor: rolelessService,
+		Scope: scope,
+		Limit: 10,
+	}); err != nil {
+		t.Fatalf("QueryBindings for roleless service: %v", err)
+	}
+
+	// Mutations remain Admin-only and refuse services.
+	register := validRegisterCommand()
+	register.Actor = rolelessService
+	_, err := svc.RegisterBinding(context.Background(), register)
+	requireFaultClass(t, err, fault.Forbidden)
+
+	// Execution principals still cannot read bindings.
+	execActor := authorize.Principal{
+		ID:          "exec-principal",
+		Kind:        identity.KindExecution,
+		Scope:       scope,
+		Enabled:     true,
+		Version:     1,
+		ExecutionID: "exec-1",
+	}
+	_, err = svc.ReadBinding(context.Background(), resource.ReadBindingCommand{
+		Actor:     execActor,
+		Scope:     scope,
+		BindingID: stored.ID,
+	})
+	requireFaultClass(t, err, fault.Forbidden)
 }
