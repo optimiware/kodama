@@ -323,14 +323,14 @@ func expandRoute(route api.Route, input json.RawMessage) (string, error) {
 		}
 		raw, ok := jsonField(parameters, field)
 		if !ok {
-			return "", fmt.Errorf("route parameter %q is missing", name)
+			return "", fmt.Errorf("input field %q (route parameter %q) is missing", field, name)
 		}
 		var value string
 		if err := json.Unmarshal(raw, &value); err != nil {
-			return "", fmt.Errorf("route parameter %q must be a string", name)
+			return "", fmt.Errorf("input field %q (route parameter %q) must be a string", field, name)
 		}
 		if !validPathParameter(value) {
-			return "", fmt.Errorf("route parameter %q is unsafe", name)
+			return "", fmt.Errorf("input field %q (route parameter %q) is unsafe", field, name)
 		}
 		expanded = append(expanded, value)
 	}

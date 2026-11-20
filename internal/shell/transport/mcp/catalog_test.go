@@ -104,9 +104,21 @@ func TestMCPToolCatalogAdvertisesFieldLevelSchemas(t *testing.T) {
 					t.Errorf("%s inputSchema has no %q envelope member", tool.Name, name)
 				}
 			}
+			codec, ok := codecs[route.Operation]
+			if !ok {
+				t.Fatalf("%s has no registry codec", route.Operation)
+			}
+			wantRequired := []string{"input"}
+			if codec.RequiresIdempotencyKey {
+				wantRequired = append(wantRequired, "idempotency_key")
+			}
+			if codec.RequiresExpectedVersion {
+				wantRequired = append(wantRequired, "expected_version")
+			}
+			sort.Strings(wantRequired)
 			required := schemaStringSet(t, schema["required"], tool.Name+" inputSchema required")
-			if !reflect.DeepEqual(required, []string{"input"}) {
-				t.Errorf("%s inputSchema required = %v; want [input]", tool.Name, required)
+			if !reflect.DeepEqual(required, wantRequired) {
+				t.Errorf("%s inputSchema required = %v; want %v", tool.Name, required, wantRequired)
 			}
 
 			input := objectMember(t, properties, "input", tool.Name+" envelope properties")
@@ -117,11 +129,6 @@ func TestMCPToolCatalogAdvertisesFieldLevelSchemas(t *testing.T) {
 				t.Errorf("%s input schema does not refuse unknown input members", tool.Name)
 			}
 			inputProperties := objectMember(t, input, "properties", tool.Name+" input")
-
-			codec, ok := codecs[route.Operation]
-			if !ok {
-				t.Fatalf("%s has no registry codec", route.Operation)
-			}
 			declared := make([]string, 0, len(inputProperties))
 			for name := range inputProperties {
 				declared = append(declared, name)

@@ -19,11 +19,13 @@ func runInbox(ctx context.Context, config Config, args []string, ports Ports, de
 		projectFlag string
 		outputFlag  string
 		kindFlags   []string
+		wideFlag    bool
 	)
 	spec := newArgSpec()
 	spec.stringFlag(&projectFlag, "--project", "-p")
 	spec.stringFlag(&outputFlag, "--output")
 	spec.listFlag(&kindFlags, "--kind")
+	spec.boolFlag(&wideFlag, "--wide", "-w")
 	positionals, _, err := spec.parse(args)
 	if err != nil {
 		return usage(ports.Err, err.Error())
@@ -122,15 +124,51 @@ func runInbox(ctx context.Context, config Config, args []string, ports Ports, de
 		return ExitSuccess
 	}
 
-	tw := tabwriter.NewWriter(ports.Out, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "KIND\tTASK\tEXECUTION\tACTION\tPROMPT/SUMMARY")
+	// Best-effort enrichment for request items in table mode: inspect unique
+	// executions to display human-readable action names and task IDs when the
+	// caller has execution.inspect permission. Pure reviewers without
+	// execution.inspect fall back silently to the inbox item's own fields.
+	execCache := make(map[string]inspectedExecution)
 	for _, item := range allItems {
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
+		if item.Kind != "request" || item.ExecutionID == "" {
+			continue
+		}
+		if _, cached := execCache[item.ExecutionID]; cached {
+			continue
+		}
+		inspected, inspectErr := fetchExecutionInspect(ctx, ports, item.ExecutionID)
+		if inspectErr == nil {
+			execCache[item.ExecutionID] = inspected
+		} else {
+			execCache[item.ExecutionID] = inspectedExecution{}
+		}
+	}
+
+	tw := tabwriter.NewWriter(ports.Out, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(tw, "KIND\tTASK\tEXECUTION\tACTION\tVERSION\tPROMPT/SUMMARY")
+	for _, item := range allItems {
+		taskID := item.TaskID
+		actionCell := item.ActionID
+		if item.Kind == "request" && item.ExecutionID != "" {
+			if inspected, ok := execCache[item.ExecutionID]; ok {
+				if taskID == "" && inspected.TaskID != "" {
+					taskID = inspected.TaskID
+				}
+				for _, act := range inspected.Actions {
+					if act.ActionID == item.ActionID && act.Name != "" && act.Name != item.ActionID {
+						actionCell = fmt.Sprintf("%s (%s)", act.Name, item.ActionID)
+						break
+					}
+				}
+			}
+		}
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n",
 			orDash(item.Kind),
-			orDash(item.TaskID),
+			orDash(taskID),
 			orDash(item.ExecutionID),
-			orDash(item.ActionID),
-			summarizeInboxItem(item),
+			orDash(actionCell),
+			formatInboxVersion(item),
+			summarizeInboxItem(item, wideFlag),
 		)
 	}
 	if err := tw.Flush(); err != nil {
@@ -139,10 +177,26 @@ func runInbox(ctx context.Context, config Config, args []string, ports Ports, de
 	return ExitSuccess
 }
 
-func summarizeInboxItem(item api.InboxItem) string {
+func formatInboxVersion(item api.InboxItem) string {
+	if item.Kind == "waiting_task" && item.LifecycleVersion > 0 {
+		return fmt.Sprintf("%d (task:%d)", item.Version, item.LifecycleVersion)
+	}
+	if item.Version == 0 {
+		return "-"
+	}
+	return fmt.Sprintf("%d", item.Version)
+}
+
+func summarizeInboxItem(item api.InboxItem, wide bool) string {
+	questionMax := 120
+	fieldMax := 80
+	if wide {
+		questionMax = 0
+		fieldMax = 0
+	}
 	switch item.Kind {
 	case "waiting_task":
-		summary := singleLine(item.Question, 96)
+		summary := singleLine(item.Question, questionMax)
 		if refs := formatReferences(item.References); refs != "" {
 			summary = fmt.Sprintf("%s (refs: %s)", summary, refs)
 		}
@@ -154,7 +208,7 @@ func summarizeInboxItem(item api.InboxItem) string {
 		var parts []string
 		if item.Subject != nil {
 			for _, field := range item.Subject.Fields {
-				parts = append(parts, field.Name+"="+singleLine(field.Value, 40))
+				parts = append(parts, field.Name+"="+singleLine(field.Value, fieldMax))
 			}
 		}
 		summary := strings.Join(parts, " ")
@@ -172,7 +226,7 @@ func summarizeInboxItem(item api.InboxItem) string {
 		return "task failed"
 	default:
 		if item.Question != "" {
-			return singleLine(item.Question, 96)
+			return singleLine(item.Question, questionMax)
 		}
 		return "-"
 	}

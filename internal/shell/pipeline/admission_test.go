@@ -1263,3 +1263,24 @@ func TestAdmissionRefusesContainerActionWithoutValidCommands(t *testing.T) {
 		})
 	}
 }
+
+func TestAdmissionInvalidActionNameReportsValueAndPattern(t *testing.T) {
+	scope := projectScope("tenant-a", "project-a")
+	yamlDoc := []byte(`actions:
+  - name: build_image
+    image: registry.example.com/build:latest
+    commands:
+      - echo hi
+`)
+	admission := newAdmission(t, &fakeResolver{}, nil)
+	_, err := admission.Admit(t.Context(), pipeline.AdmitRequest{
+		Scope:          scope,
+		Definition:     pipeline.Definition{Name: "change", YAML: yamlDoc},
+		DefaultTimeout: 5 * time.Minute,
+	})
+	requireFaultClass(t, err, fault.InvalidInput)
+	msg, _ := fault.MessageOf(err)
+	if !strings.Contains(msg, `"build_image"`) || !strings.Contains(msg, id.ActionNamePattern) {
+		t.Fatalf("authoring invalid action name message = %q; want value %q and pattern %q", msg, "build_image", id.ActionNamePattern)
+	}
+}

@@ -158,7 +158,11 @@ func (adapter *Inbox) requestItems(ctx context.Context, scope tenancy.Scope, pri
 	if err != nil {
 		return nil, err
 	}
-	admitted := make(map[id.ExecutionID]snapshotdoc.Admitted)
+	type cachedExecution struct {
+		snapshot snapshotdoc.Admitted
+		taskID   id.TaskID
+	}
+	admitted := make(map[id.ExecutionID]cachedExecution)
 	entries := make([]inboxEntry, 0, len(rows))
 	for _, row := range rows {
 		assignment, err := decodeJSON[request.Assignment](bytesValue(row, "request_assignment"))
@@ -174,7 +178,7 @@ func (adapter *Inbox) requestItems(ctx context.Context, scope tenancy.Scope, pri
 		// fail-closed by design; a corruption must be loud, never an invisible
 		// item. This loop only reads.
 		executionID := id.ExecutionID(textValue(row, "execution_id"))
-		snapshot, ok := admitted[executionID]
+		exec, ok := admitted[executionID]
 		if !ok {
 			executionRow, err := adapter.executor.Read(ctx, scope, "executions", string(executionID))
 			if err != nil {
@@ -183,17 +187,21 @@ func (adapter *Inbox) requestItems(ctx context.Context, scope tenancy.Scope, pri
 				}
 				return nil, err
 			}
-			snapshot, err = snapshotdoc.Decode(bytesValue(executionRow, "snapshot"))
+			snapshot, err := snapshotdoc.Decode(bytesValue(executionRow, "snapshot"))
 			if err != nil {
 				return nil, err
 			}
-			admitted[executionID] = snapshot
+			exec = cachedExecution{
+				snapshot: snapshot,
+				taskID:   id.TaskID(textValue(executionRow, "task_id")),
+			}
+			admitted[executionID] = exec
 		}
 		subject, err := resolvedRequestSubject(row)
 		if err != nil {
 			return nil, err
 		}
-		outputs, err := requestOutputNames(snapshot, row)
+		outputs, err := requestOutputNames(exec.snapshot, row)
 		if err != nil {
 			return nil, err
 		}
@@ -202,6 +210,7 @@ func (adapter *Inbox) requestItems(ctx context.Context, scope tenancy.Scope, pri
 		}
 		item := inbox.Item{
 			Kind:        inbox.KindRequest,
+			TaskID:      exec.taskID,
 			ExecutionID: executionID,
 			ActionID:    id.ActionID(textValue(row, "id")),
 			Assignment:  assignment,

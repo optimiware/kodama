@@ -3,17 +3,20 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"text/tabwriter"
 
 	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/fault"
 )
 
 // runTask dispatches the ergonomic `kodema task` subcommands.
 func runTask(ctx context.Context, config Config, args []string, ports Ports, deps CommandDeps) int {
 	if len(args) == 0 {
-		return usage(ports.Err, "task requires a subcommand (create|run|list|show|start|reply|cancel)")
+		return usage(ports.Err, "task requires a subcommand (create|run|list|show|start|ask|reply|cancel)")
 	}
 	if args[0] == "-h" || args[0] == "--help" || args[0] == "help" {
 		return runHelp(ports.Out, ports.Err, append([]string{"task"}, args[1:]...))
@@ -27,6 +30,8 @@ func runTask(ctx context.Context, config Config, args []string, ports Ports, dep
 		return runTaskShow(ctx, config, args[1:], ports)
 	case "start":
 		return runTaskStart(ctx, config, args[1:], ports, deps)
+	case "ask":
+		return runTaskAsk(ctx, config, args[1:], ports, deps)
 	case "reply":
 		return runTaskReply(ctx, config, args[1:], ports, deps)
 	case "cancel":
@@ -86,8 +91,9 @@ func runTaskCreate(ctx context.Context, config Config, args []string, ports Port
 	if strings.TrimSpace(titleFlag) == "" {
 		return usage(ports.Err, fmt.Sprintf("task %s requires --title <text>", subcmd))
 	}
-	if start && strings.TrimSpace(pipelineFlag) == "" {
-		return usage(ports.Err, "task run requires --pipeline <id>")
+	pipelineTarget := strings.TrimSpace(pipelineFlag)
+	if start && pipelineTarget == "" {
+		return usage(ports.Err, "task run requires --pipeline <name|id>")
 	}
 	inputs, err := parseKeyValues(inputPairs, "input")
 	if err != nil {
@@ -97,65 +103,97 @@ func runTaskCreate(ctx context.Context, config Config, args []string, ports Port
 	if err != nil {
 		return usage(ports.Err, err.Error())
 	}
-
-	var (
-		operation string
-		rawInput  []byte
-	)
-	if start {
-		operation = "task.create_and_start"
-		req := api.TaskCreateAndStartRequest{
-			ProjectID:   projectID,
-			Title:       titleFlag,
-			Description: descFlag,
-			PipelineID:  strings.TrimSpace(pipelineFlag),
-			Inputs:      inputs,
-			Metadata:    metadata,
-		}
-		if err := req.Validate(); err != nil {
-			return usage(ports.Err, publicMessage(err))
-		}
-		rawInput, err = json.Marshal(req)
-		if err != nil {
-			return failure(ports.Err, err)
-		}
-	} else {
-		operation = "task.create"
-		req := api.TaskCreateRequest{
-			ProjectID:   projectID,
-			Title:       titleFlag,
-			Description: descFlag,
-			PipelineID:  strings.TrimSpace(pipelineFlag),
-			Inputs:      inputs,
-			Metadata:    metadata,
-		}
-		if err := req.Validate(); err != nil {
-			return usage(ports.Err, publicMessage(err))
-		}
-		rawInput, err = json.Marshal(req)
-		if err != nil {
-			return failure(ports.Err, err)
-		}
-	}
-
-	key, err := makeIdempotencyKey(idempotencyKeyFlag, operation, deps.Login.Random)
-	if err != nil {
-		return failure(ports.Err, err)
-	}
-	invocation := api.Invocation{
-		Operation: operation,
-		Request: api.Request{
-			Input:          rawInput,
-			IdempotencyKey: key,
-		},
-	}
-	if err := invocation.Validate(); err != nil {
-		return usage(ports.Err, publicMessage(err))
-	}
 	if ports.Client == nil {
 		return failure(ports.Err, fmt.Errorf("no public client is configured"))
 	}
+
+	// Pipeline names may contain dots (e.g. "release.v1"), which are valid
+	// pipeline names but not valid opaque IDs. Resolve those upfront.
+	resolvedByName := false
+	if pipelineTarget != "" && strings.Contains(pipelineTarget, ".") {
+		resolved, found, lookupErr := resolvePipelineIDByName(ctx, ports, projectID, pipelineTarget)
+		if lookupErr != nil {
+			return failure(ports.Err, lookupErr)
+		}
+		if !found {
+			return failure(ports.Err, fmt.Errorf("pipeline %q not found in project %q", pipelineTarget, projectID))
+		}
+		pipelineTarget = resolved
+		resolvedByName = true
+	}
+
+	buildInvocation := func(pipelineID, explicitKey string) (api.Invocation, int) {
+		var (
+			operation string
+			rawInput  []byte
+			err       error
+		)
+		if start {
+			operation = "task.create_and_start"
+			req := api.TaskCreateAndStartRequest{
+				ProjectID:   projectID,
+				Title:       titleFlag,
+				Description: descFlag,
+				PipelineID:  pipelineID,
+				Inputs:      inputs,
+				Metadata:    metadata,
+			}
+			if err := req.Validate(); err != nil {
+				return api.Invocation{}, usage(ports.Err, publicMessage(err))
+			}
+			rawInput, err = json.Marshal(req)
+			if err != nil {
+				return api.Invocation{}, failure(ports.Err, err)
+			}
+		} else {
+			operation = "task.create"
+			req := api.TaskCreateRequest{
+				ProjectID:   projectID,
+				Title:       titleFlag,
+				Description: descFlag,
+				PipelineID:  pipelineID,
+				Inputs:      inputs,
+				Metadata:    metadata,
+			}
+			if err := req.Validate(); err != nil {
+				return api.Invocation{}, usage(ports.Err, publicMessage(err))
+			}
+			rawInput, err = json.Marshal(req)
+			if err != nil {
+				return api.Invocation{}, failure(ports.Err, err)
+			}
+		}
+		key, err := makeIdempotencyKey(explicitKey, operation, deps.Login.Random)
+		if err != nil {
+			return api.Invocation{}, failure(ports.Err, err)
+		}
+		invocation := api.Invocation{
+			Operation: operation,
+			Request: api.Request{
+				Input:          rawInput,
+				IdempotencyKey: key,
+			},
+		}
+		if err := invocation.Validate(); err != nil {
+			return api.Invocation{}, usage(ports.Err, publicMessage(err))
+		}
+		return invocation, ExitSuccess
+	}
+
+	invocation, status := buildInvocation(pipelineTarget, idempotencyKeyFlag)
+	if status != ExitSuccess {
+		return status
+	}
 	result, err := ports.Client.Invoke(ctx, invocation)
+	if err != nil && pipelineTarget != "" && !resolvedByName && isNotFoundError(err) {
+		if resolved, found, lookupErr := resolvePipelineIDByName(ctx, ports, projectID, pipelineTarget); lookupErr == nil && found && resolved != pipelineTarget {
+			retryInv, retryStatus := buildInvocation(resolved, idempotencyKeyFlag)
+			if retryStatus != ExitSuccess {
+				return retryStatus
+			}
+			result, err = ports.Client.Invoke(ctx, retryInv)
+		}
+	}
 	if err != nil {
 		return failure(ports.Err, err)
 	}
@@ -334,6 +372,143 @@ func runTaskStart(ctx context.Context, config Config, args []string, ports Ports
 	}
 	fmt.Fprintf(ports.Out, "task_id\t%s\nexecution_id\t%s\nlifecycle_version\t%d\n",
 		taskID, started.ExecutionID, started.LifecycleVersion)
+	return ExitSuccess
+}
+
+func isNotFoundError(err error) bool {
+	if public, ok := errors.AsType[*api.Error](err); ok && public.Code == api.CodeNotFound {
+		return true
+	}
+	if class, ok := fault.ClassOf(err); ok && class == fault.NotFound {
+		return true
+	}
+	return false
+}
+
+// runTaskAsk pauses a running task with an assigned question and optional
+// durable restoration references via task.ask. When <task-id> is omitted,
+// $KODEMA_TASK is used; when --expected-version is omitted, task.read is
+// queried automatically.
+func runTaskAsk(ctx context.Context, config Config, args []string, ports Ports, deps CommandDeps) int {
+	if hasHelpFlag(args) {
+		return runHelp(ports.Out, ports.Err, []string{"task", "ask"})
+	}
+	var (
+		questionFlag       string
+		assignmentFlag     string
+		refFlags           []string
+		expectedVerRaw     string
+		outputFlag         string
+		idempotencyKeyFlag string
+	)
+	spec := newArgSpec()
+	spec.stringFlag(&questionFlag, "--question", "-q")
+	spec.stringFlag(&assignmentFlag, "--to", "--assignment")
+	spec.listFlag(&refFlags, "--ref", "--reference")
+	spec.stringFlag(&expectedVerRaw, "--expected-version")
+	spec.stringFlag(&outputFlag, "--output")
+	spec.stringFlag(&idempotencyKeyFlag, "--idempotency-key")
+	positionals, _, err := spec.parse(args)
+	if err != nil {
+		return usage(ports.Err, err.Error())
+	}
+	if len(positionals) > 1 {
+		return usage(ports.Err, fmt.Sprintf("unexpected argument %q", positionals[1]))
+	}
+	taskID := ""
+	if len(positionals) == 1 {
+		taskID = strings.TrimSpace(positionals[0])
+	}
+	if taskID == "" {
+		getenv := deps.Login.Environment
+		if getenv == nil {
+			getenv = os.Getenv
+		}
+		taskID = strings.TrimSpace(getenv("KODEMA_TASK"))
+	}
+	if taskID == "" {
+		return usage(ports.Err, "task ask requires <task-id> or KODEMA_TASK")
+	}
+	if strings.TrimSpace(questionFlag) == "" {
+		return usage(ports.Err, "task ask requires --question <text>")
+	}
+	if strings.TrimSpace(assignmentFlag) == "" {
+		return usage(ports.Err, "task ask requires --to <role/<role>|service/<id>>")
+	}
+	expectedVer, err := parsePositiveVersion(expectedVerRaw, "--expected-version")
+	if err != nil {
+		return usage(ports.Err, err.Error())
+	}
+	format, err := resolveOutputFormat(outputFlag, config)
+	if err != nil {
+		return usage(ports.Err, err.Error())
+	}
+	if err := config.Validate(); err != nil {
+		return usage(ports.Err, err.Error())
+	}
+	req := api.TaskAskRequest{
+		TaskID:     taskID,
+		Question:   questionFlag,
+		Assignment: strings.TrimSpace(assignmentFlag),
+		References: refFlags,
+	}
+	if err := req.Validate(); err != nil {
+		return usage(ports.Err, publicMessage(err))
+	}
+	if ports.Client == nil {
+		return failure(ports.Err, fmt.Errorf("no public client is configured"))
+	}
+
+	if expectedVer == nil {
+		_, readView, readErr := fetchTaskRead(ctx, ports, taskID)
+		if readErr != nil {
+			return failure(ports.Err, readErr)
+		}
+		if readView.LifecycleVersion > 0 {
+			v := readView.LifecycleVersion
+			expectedVer = &v
+		}
+	}
+
+	input, err := json.Marshal(req)
+	if err != nil {
+		return failure(ports.Err, err)
+	}
+	key, err := makeIdempotencyKey(idempotencyKeyFlag, "task.ask", deps.Login.Random)
+	if err != nil {
+		return failure(ports.Err, err)
+	}
+	invocation := api.Invocation{
+		Operation: "task.ask",
+		Request: api.Request{
+			Input:           input,
+			ExpectedVersion: expectedVer,
+			IdempotencyKey:  key,
+		},
+	}
+	if err := invocation.Validate(); err != nil {
+		return usage(ports.Err, publicMessage(err))
+	}
+	result, err := ports.Client.Invoke(ctx, invocation)
+	if err != nil {
+		return failure(ports.Err, err)
+	}
+	if format == OutputJSON {
+		if err := renderResult(ports.Out, OutputJSON, result); err != nil {
+			return failure(ports.Err, err)
+		}
+		return ExitSuccess
+	}
+	var asked api.TaskAskResult
+	if err := json.Unmarshal(result.Body, &asked); err != nil || asked.LifecycleVersion == 0 {
+		fmt.Fprintf(ports.Out, "asked question on task %s\n", taskID)
+		return ExitSuccess
+	}
+	fmt.Fprintf(ports.Out, "task_id\t%s\n", taskID)
+	if asked.QuestionID != "" {
+		fmt.Fprintf(ports.Out, "question_id\t%s\n", asked.QuestionID)
+	}
+	fmt.Fprintf(ports.Out, "lifecycle_version\t%d\nquestion_version\t%d\n", asked.LifecycleVersion, asked.QuestionVersion)
 	return ExitSuccess
 }
 

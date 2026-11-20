@@ -662,6 +662,15 @@ func TestValidateDoesNotMutateDeclaration(t *testing.T) {
 	}
 }
 
+func TestValidateInvalidActionNameReportsValueAndPattern(t *testing.T) {
+	err := Validate(Pipeline{Actions: []Action{k01ContainerAction("build_image")}})
+	assertInvalidInput(t, err, "underscore action name")
+	msg, _ := fault.MessageOf(err)
+	if !strings.Contains(msg, `"build_image"`) || !strings.Contains(msg, id.ActionNamePattern) {
+		t.Fatalf("invalid action name message = %q; want offending name %q and pattern %q", msg, "build_image", id.ActionNamePattern)
+	}
+}
+
 // FuzzValidateActionName asserts the action-name grammar has no bypass: a
 // declaration is accepted exactly when id.ParseActionName accepts the name.
 func FuzzValidateActionName(f *testing.F) {

@@ -142,8 +142,17 @@ func TestOperationInputSchemaIsFieldLevel(t *testing.T) {
 			if got, ok := schemaMember(t, idempotencyKey, "maxLength", route.Operation+" idempotency_key").(float64); !ok || int(got) != api.MaxIdempotencyKeyBytes {
 				t.Errorf("%s idempotency_key maxLength = %v; want %d", route.Operation, idempotencyKey["maxLength"], api.MaxIdempotencyKeyBytes)
 			}
+			codec := codecFor(t, route.Operation)
+			wantEnvelopeRequired := []string{"input"}
+			if codec.RequiresIdempotencyKey {
+				wantEnvelopeRequired = append(wantEnvelopeRequired, "idempotency_key")
+			}
+			if codec.RequiresExpectedVersion {
+				wantEnvelopeRequired = append(wantEnvelopeRequired, "expected_version")
+			}
+			sort.Strings(wantEnvelopeRequired)
 			required := schemaStringSet(t, schemaMember(t, schema, "required", route.Operation+" schema"), route.Operation+" required")
-			requireSameSet(t, required, []string{"input"}, route.Operation+" envelope required")
+			requireSameSet(t, required, wantEnvelopeRequired, route.Operation+" envelope required")
 
 			input := schemaObject(t, schemaMember(t, properties, "input", route.Operation+" properties"), route.Operation+" input property")
 			if got := schemaString(t, input, "type", route.Operation+" input"); got != "object" {
@@ -186,8 +195,10 @@ func TestOperationInputSchemaMatchesFrozenDTOs(t *testing.T) {
 			schema := schemaObject(t, decoded, testCase.operation+" input schema")
 			properties := schemaObject(t, schemaMember(t, schema, "properties", testCase.operation+" schema"), testCase.operation+" properties")
 			input := schemaObject(t, schemaMember(t, properties, "input", testCase.operation+" properties"), testCase.operation+" input")
+			codec := codecFor(t, testCase.operation)
+			wantInputRequired := expectedMCPRequiredInputFields(requestType, codec.MCPRouteParams)
 			required := optionalSchemaStringSet(t, input, "required", testCase.operation+" input required")
-			requireSameSet(t, required, requiredFieldNames(requestType), testCase.operation+" input required")
+			requireSameSet(t, required, wantInputRequired, testCase.operation+" input required")
 
 			for _, name := range testCase.identifiers {
 				property := schemaObject(t, schemaMember(t, inputProperties, name, testCase.operation+" input properties"), testCase.operation+" "+name)
@@ -454,4 +465,44 @@ func mustSchema(t *testing.T, operation string) json.RawMessage {
 		t.Fatalf("OperationInputSchema(%q): %v", operation, err)
 	}
 	return raw
+}
+
+// expectedMCPRequiredInputFields computes the union of non-omitempty DTO fields
+// and MCP-required route parameter fields.
+func expectedMCPRequiredInputFields(typ reflect.Type, params []api.RouteParam) []string {
+	seen := make(map[string]bool)
+	var names []string
+	for _, name := range requiredFieldNames(typ) {
+		if !seen[name] {
+			seen[name] = true
+			names = append(names, name)
+		}
+	}
+	for _, param := range params {
+		topLevel, _, _ := strings.Cut(param.Field, ".")
+		if topLevel != "" && !seen[topLevel] {
+			seen[topLevel] = true
+			names = append(names, topLevel)
+		}
+	}
+	sort.Strings(names)
+	return names
+}
+
+// TestOperationInputSchemaServiceRequiredFieldsMatchRuntime pins that
+// service.create and service.credential.issue mark all runtime-required
+// envelope and route-derived input fields as required.
+func TestOperationInputSchemaServiceRequiredFieldsMatchRuntime(t *testing.T) {
+	check := func(op string, wantEnvelope, wantInput []string) {
+		t.Helper()
+		schema, _ := inputSchemaFor(t, op)
+		gotEnv := schemaStringSet(t, schemaMember(t, schema, "required", op+" required"), op+" envelope required")
+		requireSameSet(t, gotEnv, wantEnvelope, op+" envelope required")
+		props := schemaObject(t, schemaMember(t, schema, "properties", op+" schema"), op+" properties")
+		input := schemaObject(t, schemaMember(t, props, "input", op+" properties"), op+" input")
+		gotInput := optionalSchemaStringSet(t, input, "required", op+" input required")
+		requireSameSet(t, gotInput, wantInput, op+" input required")
+	}
+	check("service.create", []string{"idempotency_key", "input"}, []string{"project_id", "roles", "service_id"})
+	check("service.credential.issue", []string{"expected_version", "idempotency_key", "input"}, []string{"service_id", "ttl_seconds"})
 }

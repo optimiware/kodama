@@ -155,3 +155,49 @@ func TestMountedExecutionCredentialIsTheDefaultInsideAnAction(t *testing.T) {
 		t.Fatalf("credential file = %q; want none on a workstation", got)
 	}
 }
+
+// TestGlobalFlagsAcceptedAfterSubcommand pins that global client flags such as
+// --output, --project, and --session work both before and after the subcommand,
+// while approve/reject `--output k=v` pairs stay with the subcommand.
+func TestGlobalFlagsAcceptedAfterSubcommand(t *testing.T) {
+	isolateUserConfig(t)
+	var gotConfig cli.Config
+	var gotArgs []string
+	deps := cliDeps{runCLI: func(_ context.Context, config cli.Config, args []string, _ cli.Ports, _ cli.CommandDeps) int {
+		gotConfig = config
+		gotArgs = append([]string(nil), args...)
+		return 0
+	}}
+
+	var stdout, stderr bytes.Buffer
+	code := run(context.Background(), []string{
+		"call", "pipeline.list", "--input", "{}", "--output", "json", "--project", "proj-after", "--server", "https://factory.example",
+	}, &stdout, &stderr, deps)
+	if code != 0 {
+		t.Fatalf("exit = %d; stderr=%s", code, stderr.String())
+	}
+	if gotConfig.Output != cli.OutputJSON || gotConfig.Project != "proj-after" || gotConfig.ServerURL != "https://factory.example" {
+		t.Fatalf("config = %+v; want output=json project=proj-after server=https://factory.example", gotConfig)
+	}
+	wantArgs := []string{"call", "pipeline.list", "--input", "{}"}
+	if strings.Join(gotArgs, "|") != strings.Join(wantArgs, "|") {
+		t.Fatalf("args = %v; want %v", gotArgs, wantArgs)
+	}
+
+	// On approve, `--output k=v` stays with approve while `--output json` is hoisted.
+	stdout.Reset()
+	stderr.Reset()
+	code = run(context.Background(), []string{
+		"approve", "exec-1", "--output", "approved=yes", "--output", "json",
+	}, &stdout, &stderr, deps)
+	if code != 0 {
+		t.Fatalf("approve exit = %d; stderr=%s", code, stderr.String())
+	}
+	if gotConfig.Output != cli.OutputJSON {
+		t.Fatalf("approve config.Output = %q; want json", gotConfig.Output)
+	}
+	wantApproveArgs := []string{"approve", "exec-1", "--output", "approved=yes"}
+	if strings.Join(gotArgs, "|") != strings.Join(wantApproveArgs, "|") {
+		t.Fatalf("approve args = %v; want %v", gotArgs, wantApproveArgs)
+	}
+}

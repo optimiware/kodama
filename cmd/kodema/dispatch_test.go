@@ -244,14 +244,48 @@ func TestHelpWritesUsageToStdout(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit code = %d", code)
 	}
+	rendered := stdout.String()
 	// One help lists both halves: the client commands and the installation's.
-	for _, want := range []string{"kodema [global flags] <command>", "  run ", "installation commands:", "  serve ", "  git serve "} {
-		if !strings.Contains(stdout.String(), want) {
-			t.Fatalf("stdout = %q; want it to contain %q", stdout.String(), want)
+	for _, want := range []string{
+		"kodema [global flags] <command>",
+		"  run ",
+		"  cancel ",
+		"  execution ",
+		"  service ",
+		"  secret ",
+		"--trusted-origin",
+		"installation commands:",
+		"  serve ",
+	} {
+		if !strings.Contains(rendered, want) {
+			t.Fatalf("stdout = %q; want it to contain %q", rendered, want)
 		}
+	}
+	// No duplicate version entry and no split git entries across sections.
+	if count := strings.Count(rendered, "\n  version "); count != 1 {
+		t.Fatalf("version listed %d times in kodema help; want 1:\n%s", count, rendered)
+	}
+	if count := strings.Count(rendered, "\n  git "); count != 1 {
+		t.Fatalf("git listed %d times in kodema help; want 1:\n%s", count, rendered)
+	}
+	if strings.Contains(rendered, "\n  git serve ") {
+		t.Fatalf("git serve split out of git help section:\n%s", rendered)
 	}
 	if stderr.Len() != 0 {
 		t.Fatalf("stderr = %q", stderr.String())
+	}
+
+	// `kodema help git` lists both client and server git subcommands cleanly.
+	stdout.Reset()
+	stderr.Reset()
+	code = run(context.Background(), []string{"help", "git"}, &stdout, &stderr, deps{client: runClientEntry})
+	if code != 0 {
+		t.Fatalf("help git exit code = %d; stderr=%q", code, stderr.String())
+	}
+	for _, want := range []string{"configure", "credential", "serve", "hook", "provision-tenant", "provision-repository"} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("help git missing %q:\n%s", want, stdout.String())
+		}
 	}
 }
 

@@ -45,7 +45,9 @@ func (action AdmittedAction) Validate() error {
 		return fault.New(fault.InvalidInput, "admitted action index is negative")
 	}
 	if _, err := id.ParseActionName(string(action.Name)); err != nil {
-		return fault.Wrap(fault.InvalidInput, "admitted action name is invalid", err)
+		return fault.Wrap(fault.InvalidInput,
+			fmt.Sprintf("admitted action name %q is invalid (must match %s, lowercase kebab-case without consecutive or trailing hyphens, max %d bytes)",
+				action.Name, id.ActionNamePattern, id.MaxNameLength), err)
 	}
 	if !action.Kind.Valid() {
 		return fault.New(fault.InvalidInput, fmt.Sprintf("admitted action kind %q is unknown", action.Kind))

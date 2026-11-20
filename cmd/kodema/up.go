@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -12,6 +13,36 @@ import (
 	"github.com/optimiware/kodema/internal/kernel/definition"
 	"github.com/optimiware/kodema/internal/userland/up"
 )
+
+// configureDoubleDashUsage replaces Go flag.FlagSet's single-dash usage output
+// with double-dash (--flag) help consistent with client subcommands.
+func configureDoubleDashUsage(flags *flag.FlagSet, args []string, stdout, stderr io.Writer, usageLine, summary string) {
+	out := stderr
+	for _, arg := range args {
+		if arg == "--" {
+			break
+		}
+		if arg == "-h" || arg == "--help" {
+			out = stdout
+			break
+		}
+	}
+	flags.Usage = func() {
+		fmt.Fprintf(out, "%s\n\nUsage:\n  %s\n\nFlags:\n", summary, usageLine)
+		flags.VisitAll(func(f *flag.Flag) {
+			name, usageDesc := flag.UnquoteUsage(f)
+			header := "--" + f.Name
+			if name != "" {
+				header += " <" + name + ">"
+			}
+			if f.DefValue != "" && f.DefValue != "false" && f.DefValue != "0" && !strings.Contains(usageDesc, "(default") {
+				fmt.Fprintf(out, "  %-32s %s (default: %s)\n", header, usageDesc, f.DefValue)
+			} else {
+				fmt.Fprintf(out, "  %-32s %s\n", header, usageDesc)
+			}
+		})
+	}
+}
 
 // runUpStack, runDownStack and runStatusStack are small injectable seams so CLI
 // command flag and dispatch tests can exercise `kodema up/down/status` without
@@ -45,7 +76,11 @@ func runUpEntry(ctx context.Context, args []string, stdout, stderr io.Writer) in
 	allowProjectSecrets := flags.Bool("allow-project-secrets", defaultAllowProjectSecrets, "allow project-stored workload secrets in the local stack (env KODEMA_UP_ALLOW_PROJECT_SECRETS)")
 	var allowSecrets stringList
 	flags.Var(&allowSecrets, "allow-secret", "allow only this exact workload secret name in the local project (repeatable; overrides allow-all)")
+	configureDoubleDashUsage(flags, args, stdout, stderr, "kodema up [flags]", "Start a local Kodema installation on Podman")
 	if err := flags.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return 0
+		}
 		return 2
 	}
 	if flags.NArg() != 0 {
@@ -171,7 +206,11 @@ func runDownEntry(ctx context.Context, args []string, stdout, stderr io.Writer) 
 	socket := flags.String("socket", envOr("KODEMA_SOCKET", ""), "Podman API Unix socket (default: found; env KODEMA_SOCKET)")
 	purge := flags.Bool("purge", false, "remove volumes and the instance state directory")
 	allowUnshared := flags.Bool("allow-unshared-state-dir", false, "allow --state-dir outside $HOME on macOS")
+	configureDoubleDashUsage(flags, args, stdout, stderr, "kodema down [flags]", "Stop the local Kodema installation")
 	if err := flags.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return 0
+		}
 		return 2
 	}
 	if flags.NArg() != 0 {
@@ -205,7 +244,11 @@ func runStatusEntry(ctx context.Context, args []string, stdout, stderr io.Writer
 	socket := flags.String("socket", envOr("KODEMA_SOCKET", ""), "Podman API Unix socket (default: found; env KODEMA_SOCKET)")
 	asJSON := flags.Bool("json", false, "print status report as JSON")
 	allowUnshared := flags.Bool("allow-unshared-state-dir", false, "allow --state-dir outside $HOME on macOS")
+	configureDoubleDashUsage(flags, args, stdout, stderr, "kodema status [flags]", "Inspect the local Kodema installation")
 	if err := flags.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return 0
+		}
 		return 2
 	}
 	if flags.NArg() != 0 {

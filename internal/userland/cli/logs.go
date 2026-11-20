@@ -15,17 +15,21 @@ import (
 // inspection helpers so both full server responses and concise test fixtures
 // decode cleanly.
 type inspectedAction struct {
-	ActionID    string       `json:"action_id"`
-	Index       int          `json:"index"`
-	Name        string       `json:"name"`
-	Kind        string       `json:"kind"`
-	State       string       `json:"state"`
-	Status      string       `json:"status"`
-	Version     uint64       `json:"version"`
-	ActivatedAt *time.Time   `json:"activated_at,omitempty"`
-	Subject     *api.Subject `json:"subject,omitempty"`
-	Assignment  string       `json:"assignment,omitempty"`
-	Decision    string       `json:"decision,omitempty"`
+	ActionID    string                     `json:"action_id"`
+	Index       int                        `json:"index"`
+	Name        string                     `json:"name"`
+	Kind        string                     `json:"kind"`
+	State       string                     `json:"state"`
+	Status      string                     `json:"status"`
+	Version     uint64                     `json:"version"`
+	ActivatedAt *time.Time                 `json:"activated_at,omitempty"`
+	Outputs     map[string]string          `json:"outputs,omitempty"`
+	Subject     *api.Subject               `json:"subject,omitempty"`
+	Assignment  string                     `json:"assignment,omitempty"`
+	Stop        *api.ExecutionStopEvidence `json:"stop,omitempty"`
+	Decision    string                     `json:"decision,omitempty"`
+	Actor       string                     `json:"actor,omitempty"`
+	AnsweredAt  *time.Time                 `json:"answered_at,omitempty"`
 }
 
 func (action inspectedAction) effectiveState() string {

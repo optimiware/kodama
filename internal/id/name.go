@@ -126,10 +126,15 @@ func invalidName(kind, value string) error {
 	return fmt.Errorf("%w: %s %q", ErrInvalidName, kind, value)
 }
 
+// ActionNamePattern describes the lowercase kebab-case grammar accepted by
+// ParseActionName.
+const ActionNamePattern = "^[a-z][a-z0-9-]*$"
+
 // ParseActionName validates an action slug.
 func ParseActionName(value string) (ActionName, error) {
 	if !validActionName(value) {
-		return "", invalidName("action name", value)
+		return "", fmt.Errorf("%w: action name %q (must match %s, lowercase kebab-case without consecutive or trailing hyphens, max %d bytes)",
+			ErrInvalidName, value, ActionNamePattern, MaxNameLength)
 	}
 	return ActionName(value), nil
 }
