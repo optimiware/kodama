@@ -3,16 +3,18 @@
 # and cancels this execution (cancel reason requested), so nothing here may
 # rely on the workspace, staged outputs or this container outliving the ask.
 #
-# This pipeline requires a task-associated execution. Only then are KODEMA_TASK
-# and the read-only /kodema/task.json snapshot present; a task-free run has
-# neither and cannot ask.
+# This pipeline requires a task-associated execution. Only then are KODEMA_TASK,
+# /kodema/task/ (title, description, metadata.json, spec.json), and the
+# read-only /kodema/task.json snapshot present; a task-free run has none of them
+# and cannot ask.
 #
 # /kodema/task.json carries only the admitted conversation (a JSON array of
-# messages with their references), not task metadata and not the task
-# lifecycle version, so this example first reads the current
-# task with `kodema call task.read` and passes its lifecycle_version as the
-# ask's expected version. The read pins KODEMA_OUTPUT=json because kodema
-# defaults to a table rendering that never spells the version as JSON.
+# messages with their references) and /kodema/task/ carries the admitted title,
+# description, and metadata. Neither carries the live task lifecycle version,
+# so this example first reads the current task with `kodema call task.read` and
+# passes its lifecycle_version as the ask's expected version. The read pins
+# KODEMA_OUTPUT=json because kodema defaults to a table rendering that never
+# spells the version as JSON.
 # kodema exposes served operations as `kodema call <operation> --input=<json>
 # --expected-version=<n> --idempotency-key=<key>`; there is no `kodema task ask`
 # subcommand.

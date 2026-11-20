@@ -412,3 +412,92 @@ func TestBuildMaterializationOnlyProvidedOutputs(t *testing.T) {
 		}
 	}
 }
+
+func TestBuildTaskFilesAndMaterialization(t *testing.T) {
+	t.Run("task-free returns nil", func(t *testing.T) {
+		files, err := workspace.BuildTaskFiles("", "ignored", "ignored", map[string]string{"a": "b"})
+		if err != nil {
+			t.Fatalf("BuildTaskFiles task-free: %v", err)
+		}
+		if files != nil {
+			t.Fatalf("BuildTaskFiles task-free = %v; want nil", files)
+		}
+	})
+
+	t.Run("task-bound materializes read-only task spec files", func(t *testing.T) {
+		taskFiles, err := workspace.BuildTaskFiles(
+			"task-1",
+			"Ship feature",
+			"Details with UTF-8 ✓ and A -> B",
+			map[string]string{"b": "2", "a": "1"},
+		)
+		if err != nil {
+			t.Fatalf("BuildTaskFiles: %v", err)
+		}
+
+		request := testPrepareRequest()
+		request.Task = []byte("[]")
+		request.TaskFiles = taskFiles
+		scope := projectScope("tenant-a", "project-a")
+		resolver := &fakeSecretResolver{values: map[id.SecretName]string{"DB_PASSWORD": "value"}}
+
+		materialization, err := workspace.BuildMaterialization(context.Background(), request, buildConfig(scope, resolver))
+		if err != nil {
+			t.Fatalf("BuildMaterialization: %v", err)
+		}
+
+		// Mutate caller-held slices after building; materialized snapshot must stay fixed.
+		taskFiles[workspace.TaskTitleFile][0] = 'X'
+
+		if got := string(fileByPath(t, materialization, workspace.TaskPath).Data); got != "[]" {
+			t.Fatalf("task.json = %q; want []", got)
+		}
+		if got := string(fileByPath(t, materialization, workspace.TaskTitlePath).Data); got != "Ship feature" {
+			t.Fatalf("title = %q; want %q", got, "Ship feature")
+		}
+		if got := string(fileByPath(t, materialization, workspace.TaskDescriptionPath).Data); got != "Details with UTF-8 ✓ and A -> B" {
+			t.Fatalf("description = %q", got)
+		}
+		if got := string(fileByPath(t, materialization, workspace.TaskMetadataPath).Data); got != `{"a":"1","b":"2"}` {
+			t.Fatalf("metadata.json = %q; want deterministic JSON", got)
+		}
+		wantSpec := `{"id":"task-1","title":"Ship feature","description":"Details with UTF-8 ✓ and A -> B","metadata":{"a":"1","b":"2"}}`
+		if got := string(fileByPath(t, materialization, workspace.TaskSpecPath).Data); got != wantSpec {
+			t.Fatalf("spec.json = %q; want %q", got, wantSpec)
+		}
+		for _, path := range []string{
+			workspace.TaskTitlePath,
+			workspace.TaskDescriptionPath,
+			workspace.TaskMetadataPath,
+			workspace.TaskSpecPath,
+		} {
+			file := fileByPath(t, materialization, path)
+			if file.Mode != 0o444 {
+				t.Fatalf("%s mode = %#o; want 0444", path, file.Mode)
+			}
+		}
+	})
+
+	t.Run("task-free rejects stray task files", func(t *testing.T) {
+		request := testPrepareRequest()
+		request.TaskID = ""
+		request.Task = nil
+		request.TaskFiles = map[string][]byte{workspace.TaskTitleFile: []byte("stray")}
+		scope := projectScope("tenant-a", "project-a")
+		resolver := &fakeSecretResolver{values: map[id.SecretName]string{"DB_PASSWORD": "value"}}
+
+		_, err := workspace.BuildMaterialization(context.Background(), request, buildConfig(scope, resolver))
+		requireClass(t, err, fault.InvalidInput)
+	})
+
+	t.Run("rejects unsafe task file names", func(t *testing.T) {
+		for _, bad := range []string{"", ".", "..", "../escape", "nested/file", "bad\x00name"} {
+			request := testPrepareRequest()
+			request.TaskFiles = map[string][]byte{bad: []byte("x")}
+			scope := projectScope("tenant-a", "project-a")
+			resolver := &fakeSecretResolver{values: map[id.SecretName]string{"DB_PASSWORD": "value"}}
+			_, err := workspace.BuildMaterialization(context.Background(), request, buildConfig(scope, resolver))
+			requireClass(t, err, fault.InvalidInput)
+		}
+	})
+}

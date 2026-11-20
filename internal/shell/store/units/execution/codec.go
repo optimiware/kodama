@@ -16,6 +16,7 @@ import (
 	"github.com/optimiware/kodema/internal/shell/store"
 	"github.com/optimiware/kodema/internal/shell/store/units/execution/snapshotdoc"
 	"github.com/optimiware/kodema/internal/shell/tenancy"
+	"github.com/optimiware/kodema/internal/shell/workspace"
 )
 
 // Table names come only from the declared schema design.
@@ -86,13 +87,13 @@ func decodeSnapshot(data []byte) (*definition.Snapshot, error) {
 	if err != nil {
 		return nil, err
 	}
-	return definitionSnapshot(admitted), nil
+	return definitionSnapshot(admitted)
 }
 
 // definitionSnapshot maps the shared admitted snapshot into the Kernel's
 // immutable definition snapshot. The admitted action definitions come from the
 // document because the schema has no action-definition columns.
-func definitionSnapshot(admitted snapshotdoc.Admitted) *definition.Snapshot {
+func definitionSnapshot(admitted snapshotdoc.Admitted) (*definition.Snapshot, error) {
 	snapshot := admitted.Snapshot
 	inputs := make(map[string]string, len(snapshot.Inputs))
 	keys := make([]id.InputKey, 0, len(snapshot.Inputs))
@@ -110,6 +111,14 @@ func definitionSnapshot(admitted snapshotdoc.Admitted) *definition.Snapshot {
 			Request:   action.Request,
 		}
 	}
+	var taskFiles map[string][]byte
+	if snapshot.TaskID != "" && snapshot.HasConversation() {
+		var err error
+		taskFiles, err = workspace.BuildTaskFiles(snapshot.TaskID, snapshot.Title, snapshot.Description, snapshot.Metadata)
+		if err != nil {
+			return nil, err
+		}
+	}
 	return definition.NewSnapshot(definition.SnapshotInput{
 		Pipeline: definition.Pipeline{
 			Inputs:  keys,
@@ -122,7 +131,8 @@ func definitionSnapshot(admitted snapshotdoc.Admitted) *definition.Snapshot {
 		Runtime:    definition.RuntimeRequirements{Capabilities: append([]string(nil), snapshot.Requirements...)},
 		Task:       snapshot.ConversationBytes(),
 		TaskID:     snapshot.TaskID,
-	})
+		TaskFiles:  taskFiles,
+	}), nil
 }
 
 // cleanupID derives the one durable cleanup row identity of an execution.

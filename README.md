@@ -60,7 +60,7 @@ container action is given the same things:
 | A harness needs | Kodema provides |
 |---|---|
 | The code | `/workspace`, shared by the actions of one execution and kept across approval waits. |
-| The task | `/kodema/task.json`, the task's conversation, with the inputs and the outputs of earlier actions as files. |
+| The task | `/kodema/task/` (`title`, `description`, `metadata.json`, `spec.json`) and `/kodema/task.json` (the task's conversation), with the inputs and the outputs of earlier actions as files. |
 | An identity | `/kodema/secrets/KODEMA_TOKEN`, an execution credential that is revoked while the execution waits for a decision and when it ends. |
 | Tools | `/kodema/bin/kodema`, on `PATH` on both Kubernetes and Podman. Git authenticates as the execution when the workload Git endpoint is configured; write declared outputs as files to `/kodema/outputs/<action>`. |
 | A model | The optional model proxy. The harness points `ANTHROPIC_BASE_URL` or `OPENAI_BASE_URL` at Kodema and sends the execution credential as its API key; the provider key stays in the control plane. |

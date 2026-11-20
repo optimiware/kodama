@@ -141,5 +141,6 @@ func cloneSnapshot(in *definition.Snapshot) *definition.Snapshot {
 		Runtime:    in.Runtime(),
 		Task:       task,
 		TaskID:     in.TaskID(),
+		TaskFiles:  in.TaskFiles(),
 	})
 }

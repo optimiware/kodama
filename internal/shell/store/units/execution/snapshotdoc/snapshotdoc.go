@@ -107,6 +107,8 @@ func Decode(data []byte) (Admitted, error) {
 		SecretNames:  document.Snapshot.SecretNames,
 		Requirements: document.Snapshot.Requirements,
 		TaskID:       document.Snapshot.TaskID,
+		Title:        document.Snapshot.Title,
+		Description:  document.Snapshot.Description,
 		Conversation: document.Snapshot.Conversation,
 		References:   document.Snapshot.References,
 		Metadata:     document.Snapshot.Metadata,

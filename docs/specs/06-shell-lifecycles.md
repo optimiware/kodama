@@ -54,7 +54,7 @@ Ask refuses a `done` or `cancelled` task with `version_conflict` before it reads
 
 Reply checks current assignment and the initiating principal's current start authority; response authority grants no execution permissions or pipeline choice. Failure to authorize/admit rolls back the reply and state change. One receipt returns the same new execution ID on duplicate retry.
 
-The new execution starts at the first action with new workspace/credential/deadlines and its own decisions. `/kodema/task.json` contains the updated conversation at admission: a JSON array of messages, each with author, time, body, and optional references; task metadata is recorded in the execution snapshot, not in this file. The Userland restoring action loads referenced context; a missing reference fails **that action**, rather than silently starting from incomplete context. Kernel does not understand agent checkpoints.
+The new execution starts at the first action with new workspace/credential/deadlines and its own decisions. `/kodema/task.json` contains the updated conversation at admission: a JSON array of messages, each with author, time, body, and optional references; admitted task title, description, and metadata are materialized read-only under `/kodema/task/` (`title`, `description`, `metadata.json`, `spec.json`), not in `/kodema/task.json`. The Userland restoring action loads referenced context; a missing reference fails **that action**, rather than silently starting from incomplete context. Kernel does not understand agent checkpoints.
 
 ## 5. Progress and inbox
 

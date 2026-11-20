@@ -171,8 +171,8 @@ func buildPreparationWithCA(request engine.PrepareRequest, workloadCAPEM []byte)
 		return nil, nil, err
 	}
 
-	files := make([]preparedFile, 0, len(request.Inputs)+len(request.Outputs)+len(request.Secrets)+2)
-	workspaceFiles := make([]workspace.File, 0, len(request.Inputs)+len(request.Outputs)+1)
+	files := make([]preparedFile, 0, len(request.Inputs)+len(request.Outputs)+len(request.TaskFiles)+len(request.Secrets)+2)
+	workspaceFiles := make([]workspace.File, 0, len(request.Inputs)+len(request.Outputs)+len(request.TaskFiles)+1)
 
 	inputKeys := make([]string, 0, len(request.Inputs))
 	for key := range request.Inputs {
@@ -217,6 +217,14 @@ func buildPreparationWithCA(request engine.PrepareRequest, workloadCAPEM []byte)
 		data := append([]byte(nil), request.Task...)
 		workspaceFiles = append(workspaceFiles, workspace.File{Path: workspace.TaskPath, Data: data, Mode: readOnlyMode})
 		files = append(files, preparedFile{logical: workspace.TaskPath, data: data})
+	}
+	taskFiles, err := workspace.TaskMaterializationFiles(request.TaskFiles, readOnlyMode)
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, file := range taskFiles {
+		workspaceFiles = append(workspaceFiles, file)
+		files = append(files, preparedFile{logical: file.Path, data: file.Data})
 	}
 
 	secrets := make([]engine.SecretValue, 0, len(request.Secrets))

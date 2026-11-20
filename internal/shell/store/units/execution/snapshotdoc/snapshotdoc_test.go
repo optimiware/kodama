@@ -26,6 +26,8 @@ func fullSnapshot(t *testing.T, conversation []byte) pipeline.Snapshot {
 		SecretNames:  []id.SecretName{"DEPLOY_KEY"},
 		Requirements: []string{"process", "container"},
 		TaskID:       "task-1",
+		Title:        "Materialize task spec",
+		Description:  "Provide read-only title, description, metadata, and spec.json.",
 		Conversation: conversation,
 		References:   []string{"ref-1"},
 		Metadata:     map[string]string{"origin": "task"},
@@ -275,4 +277,48 @@ func mustJSON(t *testing.T, value any) []byte {
 		t.Fatalf("json.Marshal: %v", err)
 	}
 	return encoded
+}
+
+// TestDecodeLegacyDocumentWithoutTitleOrDescription proves snapshots persisted
+// before Title and Description were added still decode cleanly with empty
+// strings while preserving TaskID, Conversation, and Metadata.
+func TestDecodeLegacyDocumentWithoutTitleOrDescription(t *testing.T) {
+	snapshot := fullSnapshot(t, []byte("[]"))
+	encoded, err := snapshotdoc.Encode(snapshotdoc.Admitted{
+		PipelineID:      "pipe-legacy",
+		PipelineVersion: 2,
+		Snapshot:        snapshot,
+		Actions:         admittedActions()[:1],
+	})
+	if err != nil {
+		t.Fatalf("Encode: %v", err)
+	}
+	var doc map[string]any
+	if err := json.Unmarshal(encoded, &doc); err != nil {
+		t.Fatalf("unmarshal encoded document: %v", err)
+	}
+	snapObj, ok := doc["snapshot"].(map[string]any)
+	if !ok {
+		t.Fatalf("snapshot field is not an object: %T", doc["snapshot"])
+	}
+	delete(snapObj, "title")
+	delete(snapObj, "description")
+	legacyBytes := mustJSON(t, doc)
+
+	decoded, err := snapshotdoc.Decode(legacyBytes)
+	if err != nil {
+		t.Fatalf("Decode legacy document without title/description: %v", err)
+	}
+	if decoded.Snapshot.TaskID != "task-1" {
+		t.Fatalf("task id = %q; want task-1", decoded.Snapshot.TaskID)
+	}
+	if decoded.Snapshot.Title != "" || decoded.Snapshot.Description != "" {
+		t.Fatalf("legacy title/description = %q/%q; want empty", decoded.Snapshot.Title, decoded.Snapshot.Description)
+	}
+	if string(decoded.Snapshot.ConversationBytes()) != "[]" {
+		t.Fatalf("conversation = %q; want []", decoded.Snapshot.ConversationBytes())
+	}
+	if decoded.Snapshot.Metadata["origin"] != "task" {
+		t.Fatalf("metadata = %+v; want origin=task", decoded.Snapshot.Metadata)
+	}
 }

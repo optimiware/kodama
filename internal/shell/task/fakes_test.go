@@ -2,6 +2,7 @@ package task_test
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"maps"
 	"slices"
@@ -86,12 +87,21 @@ func defaultAdmission(request pipeline.AdmitRequest) (pipeline.AdmissionResult, 
 	if selected == "" {
 		selected = pipelineID
 	}
+	var metadata map[string]string
+	if len(request.Task.Metadata) > 0 {
+		if err := json.Unmarshal(request.Task.Metadata, &metadata); err != nil {
+			return pipeline.AdmissionResult{}, err
+		}
+	}
 	snapshot, err := pipeline.NewSnapshot(pipeline.SnapshotInput{
 		YAML:         testPipelineYAML,
 		Inputs:       request.Inputs,
 		TaskID:       request.Task.TaskID,
+		Title:        request.Task.Title,
+		Description:  request.Task.Description,
 		Conversation: request.Task.Conversation,
 		References:   request.Task.References,
+		Metadata:     metadata,
 	})
 	if err != nil {
 		return pipeline.AdmissionResult{}, err

@@ -371,6 +371,7 @@ func (e *Engine) prepareRequest(execution kernel.Execution, index int) PrepareRe
 		Inputs:      inputs,
 		Outputs:     outputs,
 		Task:        task,
+		TaskFiles:   execution.Snapshot.TaskFiles(),
 	}
 }
 

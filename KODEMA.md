@@ -131,7 +131,11 @@ At container action activation, one `Prepare(action)` call materializes database
 |---|---|
 | `/kodema/inputs/<key>` | Declared inputs from the execution's admission snapshot |
 | `/kodema/outputs/<action>/<key>` | Settled outputs of earlier succeeded actions |
-| `/kodema/task.json` | Task conversation at admission: a JSON array of messages, each with author, time, body, and optional references; task metadata is recorded in the execution snapshot, not in this file; absent for a task-free execution |
+| `/kodema/task.json` | Task conversation at admission: a JSON array of messages, each with author, time, body, and optional references; absent for a task-free execution |
+| `/kodema/task/title` | Task title at admission (UTF-8 text); absent for a task-free execution |
+| `/kodema/task/description` | Task description at admission (UTF-8 text); absent for a task-free execution |
+| `/kodema/task/metadata.json` | Task metadata at admission (deterministic JSON object, `{}` when empty); absent for a task-free execution |
+| `/kodema/task/spec.json` | Task specification at admission (`{"id","title","description","metadata"}`); absent for a task-free execution |
 | `/kodema/secrets/<NAME>` | Declared secrets resolved after the resolver's policy check |
 | `/kodema/bin/kodema` | The toolbox: the control plane's own `kodema` binary |
 

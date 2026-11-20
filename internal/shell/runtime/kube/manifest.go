@@ -86,7 +86,7 @@ func buildMaterialization(request engine.PrepareRequest) (workspace.Materializat
 	if _, err := id.ParseWorkspaceID(string(request.WorkspaceID)); err != nil {
 		return workspace.Materialization{}, fault.Wrap(fault.InvalidInput, "preparation workspace id is invalid", err)
 	}
-	files := make([]workspace.File, 0, len(request.Inputs)+len(request.Task))
+	files := make([]workspace.File, 0, len(request.Inputs)+len(request.Outputs)+len(request.TaskFiles)+1)
 
 	inputKeys := make([]string, 0, len(request.Inputs))
 	for key := range request.Inputs {
@@ -126,6 +126,11 @@ func buildMaterialization(request engine.PrepareRequest) (workspace.Materializat
 	if request.Task != nil {
 		files = append(files, workspace.File{Path: workspace.TaskPath, Data: append([]byte(nil), request.Task...), Mode: readOnlyMode})
 	}
+	taskFiles, err := workspace.TaskMaterializationFiles(request.TaskFiles, readOnlyMode)
+	if err != nil {
+		return workspace.Materialization{}, err
+	}
+	files = append(files, taskFiles...)
 
 	secrets := make([]engine.SecretValue, len(request.Secrets))
 	for index, secret := range request.Secrets {

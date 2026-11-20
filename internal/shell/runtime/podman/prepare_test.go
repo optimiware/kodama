@@ -459,6 +459,9 @@ func TestStartOmitsTaskContextWhenTaskFree(t *testing.T) {
 	if hostFileExists(t, fx.hostPath(workspace.TaskPath)) {
 		t.Fatal("task-free preparation wrote a task snapshot")
 	}
+	if hostFileExists(t, fx.hostPath(workspace.TaskRoot)) {
+		t.Fatal("task-free preparation wrote a /kodema/task directory")
+	}
 
 	fx.start(t)
 	specs := fx.libpod.createSpecs()
@@ -472,6 +475,62 @@ func TestStartOmitsTaskContextWhenTaskFree(t *testing.T) {
 	}
 	if specs[0].Env[len(specs[0].Env)-1] != joinEnv("KODEMA_ACTION", string(fx.request.ActionName)) {
 		t.Fatalf("reserved env does not end with KODEMA_ACTION: %v", specs[0].Env)
+	}
+}
+
+func TestPrepareMaterializesTaskSpecFiles(t *testing.T) {
+	taskFiles, err := workspace.BuildTaskFiles(
+		"task-1",
+		"Podman task title",
+		"Podman description",
+		map[string]string{"b": "2", "a": "1"},
+	)
+	if err != nil {
+		t.Fatalf("BuildTaskFiles: %v", err)
+	}
+
+	fx := newFixture(t)
+	fx.request.Task = []byte("[]")
+	fx.request.TaskFiles = taskFiles
+	fx.prepare(t)
+
+	want := map[string]string{
+		workspace.TaskPath:            "[]",
+		workspace.TaskTitlePath:       "Podman task title",
+		workspace.TaskDescriptionPath: "Podman description",
+		workspace.TaskMetadataPath:    `{"a":"1","b":"2"}`,
+		workspace.TaskSpecPath:        `{"id":"task-1","title":"Podman task title","description":"Podman description","metadata":{"a":"1","b":"2"}}`,
+	}
+	for logical, expected := range want {
+		host := fx.hostPath(logical)
+		if got := string(readHostFile(t, host)); got != expected {
+			t.Fatalf("%s = %q; want %q", logical, got, expected)
+		}
+		if mode := hostFileMode(t, host); mode != 0o444 {
+			t.Fatalf("%s mode = %o; want 0444", logical, mode)
+		}
+	}
+
+	// Re-preparing with changed task-spec bytes is refused.
+	changed := fx.request
+	changed.TaskFiles = map[string][]byte{
+		workspace.TaskTitleFile:       []byte("Changed title"),
+		workspace.TaskDescriptionFile: taskFiles[workspace.TaskDescriptionFile],
+		workspace.TaskMetadataFile:    taskFiles[workspace.TaskMetadataFile],
+		workspace.TaskSpecFile:        taskFiles[workspace.TaskSpecFile],
+	}
+	_, err = fx.adapter.Prepare(context.Background(), changed)
+	assertFaultClass(t, err, fault.ChangedIdempotencyContent)
+
+	// Task-free request with stray task files is refused before writing.
+	fxFree := newFixture(t)
+	fxFree.request.TaskID = ""
+	fxFree.request.Task = nil
+	fxFree.request.TaskFiles = taskFiles
+	_, err = fxFree.adapter.Prepare(context.Background(), fxFree.request)
+	assertFaultClass(t, err, fault.InvalidInput)
+	if hostFileExists(t, fxFree.hostPath(workspace.TaskRoot)) {
+		t.Fatal("refused task-free preparation created /kodema/task")
 	}
 }
 

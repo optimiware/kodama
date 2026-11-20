@@ -332,7 +332,8 @@ func (r RuntimeRequirements) clone() RuntimeRequirements {
 // SnapshotInput is the complete admission data for one execution snapshot.
 // Task is nil for a task-free execution; a present task may still carry zero
 // bytes, and that distinction is preserved. TaskID is empty when task-free.
-// Secrets carry names only.
+// TaskFiles carries optional opaque per-file task bytes keyed by relative name
+// and is nil when task-free. Secrets carry names only.
 type SnapshotInput struct {
 	Pipeline   Pipeline
 	YAML       []byte
@@ -341,6 +342,7 @@ type SnapshotInput struct {
 	Runtime    RuntimeRequirements
 	Task       []byte
 	TaskID     id.TaskID
+	TaskFiles  map[string][]byte
 }
 
 // Snapshot is the immutable admitted definition/input data of one execution.
@@ -353,6 +355,7 @@ type Snapshot struct {
 	runtime    RuntimeRequirements
 	task       []byte
 	taskID     id.TaskID
+	taskFiles  map[string][]byte
 }
 
 // NewSnapshot copies input into an immutable snapshot.
@@ -365,6 +368,7 @@ func NewSnapshot(input SnapshotInput) *Snapshot {
 		runtime:    input.Runtime.clone(),
 		task:       cloneOptionalBytes(input.Task),
 		taskID:     input.TaskID,
+		taskFiles:  cloneBytesMap(input.TaskFiles),
 	}
 }
 
@@ -386,6 +390,17 @@ func cloneStringMap(values map[string]string) map[string]string {
 	out := make(map[string]string, len(values))
 	for key, value := range values {
 		out[key] = value
+	}
+	return out
+}
+
+func cloneBytesMap(values map[string][]byte) map[string][]byte {
+	if values == nil {
+		return nil
+	}
+	out := make(map[string][]byte, len(values))
+	for key, value := range values {
+		out[key] = cloneOptionalBytes(value)
 	}
 	return out
 }
@@ -447,4 +462,14 @@ func (s *Snapshot) TaskID() id.TaskID {
 		return ""
 	}
 	return s.taskID
+}
+
+// TaskFiles returns a defensive copy of the opaque admitted task files keyed
+// by relative filename. The Kernel never interprets these names or bytes. It
+// returns nil when the execution is task-free or has no additional task files.
+func (s *Snapshot) TaskFiles() map[string][]byte {
+	if s == nil {
+		return nil
+	}
+	return cloneBytesMap(s.taskFiles)
 }

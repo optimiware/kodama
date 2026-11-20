@@ -10,7 +10,11 @@ One `Prepare(action)` materializes an activation snapshot and attaches the execu
 |---|---|
 | `/kodema/inputs/<key>` | Admitted input string bytes |
 | `/kodema/outputs/<action>/<key>` | Earlier succeeded outputs only |
-| `/kodema/task.json` | Admitted task conversation (JSON array of messages); no task metadata; absent when task-free |
+| `/kodema/task.json` | Admitted task conversation (JSON array of messages); absent when task-free |
+| `/kodema/task/title` | Admitted task title (UTF-8 text); absent when task-free |
+| `/kodema/task/description` | Admitted task description (UTF-8 text); absent when task-free |
+| `/kodema/task/metadata.json` | Admitted task metadata (deterministic JSON object, `{}` when empty); absent when task-free |
+| `/kodema/task/spec.json` | Admitted task specification JSON (`{"id","title","description","metadata"}`); absent when task-free |
 | `/kodema/secrets/<NAME>` | Declared activation-time values after policy check |
 | `/kodema/secrets/KODEMA_TOKEN` | Current execution credential; only mutable mounted file |
 | `/kodema/bin/kodema` | The toolbox: the control plane's own static `kodema` binary, read-only and executable (Podman and Kubernetes) |

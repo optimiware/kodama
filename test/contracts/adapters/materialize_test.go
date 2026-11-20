@@ -23,6 +23,10 @@ func TestWorkspacePathRules(t *testing.T) {
 		"/kodema/inputs/source",
 		"/kodema/outputs/build/artifact",
 		"/kodema/task.json",
+		"/kodema/task/title",
+		"/kodema/task/description",
+		"/kodema/task/metadata.json",
+		"/kodema/task/spec.json",
 		"/kodema/secrets/DB_PASSWORD",
 	}
 	for _, path := range valid {
@@ -134,6 +138,12 @@ func TestWorkspaceMaterializationValidation(t *testing.T) {
 		}},
 		{"task file without task", func(m *workspace.Materialization) {
 			m.Task = nil
+		}},
+		{"task spec file without task", func(m *workspace.Materialization) {
+			m.Task = nil
+			m.Files = []workspace.File{
+				{Path: "/kodema/task/title", Data: []byte("title"), Mode: 0o444},
+			}
 		}},
 	}
 	for _, tc := range cases {

@@ -64,6 +64,8 @@ package pipeline_test
 //
 //	type TaskContext struct {
 //	    TaskID       id.TaskID
+//	    Title        string
+//	    Description  string
 //	    Conversation []byte
 //	    References   []string
 //	    Metadata     []byte
@@ -252,7 +254,7 @@ var (
 		Container: (*definition.Container)(nil),
 		Request:   (*definition.Request)(nil),
 	}
-	_ = pipeline.TaskContext{TaskID: id.TaskID(""), Conversation: nil, References: nil, Metadata: nil}
+	_ = pipeline.TaskContext{TaskID: id.TaskID(""), Title: "", Description: "", Conversation: nil, References: nil, Metadata: nil}
 	_ = pipeline.AdmitRequest{
 		Scope:          tenancy.Scope{},
 		Definition:     pipeline.Definition{},
