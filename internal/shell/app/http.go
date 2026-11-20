@@ -21,20 +21,22 @@ import (
 // Streamable HTTP JSON-RPC edge at the composition path, and the RFC 9728 OAuth
 // Protected Resource Metadata endpoint when login discovery is configured.
 type publicHandler struct {
-	rest      http.Handler
-	mcp       *mcp.Edge
-	mcpPath   string
-	discovery httpapi.DiscoveryProvider
-	llmProxy  http.Handler
+	rest        http.Handler
+	mcp         *mcp.Edge
+	mcpPath     string
+	discovery   httpapi.DiscoveryProvider
+	llmProxy    http.Handler
+	eventStream *projectEventStreamHandler
 }
 
-func newPublicHandler(rest http.Handler, edge *mcp.Edge, mcpPath string, discovery httpapi.DiscoveryProvider, llmProxy http.Handler) http.Handler {
+func newPublicHandler(rest http.Handler, edge *mcp.Edge, mcpPath string, discovery httpapi.DiscoveryProvider, llmProxy http.Handler, eventStream *projectEventStreamHandler) http.Handler {
 	return &publicHandler{
-		rest:      rest,
-		mcp:       edge,
-		mcpPath:   mcpPath,
-		discovery: discovery,
-		llmProxy:  llmProxy,
+		rest:        rest,
+		mcp:         edge,
+		mcpPath:     mcpPath,
+		discovery:   discovery,
+		llmProxy:    llmProxy,
+		eventStream: eventStream,
 	}
 }
 
@@ -51,6 +53,12 @@ func (handler *publicHandler) ServeHTTP(writer http.ResponseWriter, request *htt
 		if handler.llmProxy != nil && strings.HasPrefix(request.URL.Path, "/llm/") {
 			handler.llmProxy.ServeHTTP(writer, request)
 			return
+		}
+		if handler.eventStream != nil {
+			if projectID, ok := api.ParseProjectEventStreamPath(request.URL.Path); ok {
+				handler.eventStream.ServeProjectStream(writer, request, projectID)
+				return
+			}
 		}
 	}
 	handler.rest.ServeHTTP(writer, request)

@@ -53,12 +53,31 @@ type projectScopeHintTransport struct {
 	deps   CommandDeps
 }
 
+var _ client.EventStreamer = projectScopeHintTransport{}
+
 func (t projectScopeHintTransport) Invoke(ctx context.Context, invocation api.Invocation) (api.Result, error) {
 	result, err := t.inner.Invoke(ctx, invocation)
 	if err == nil {
 		return result, nil
 	}
 	return result, annotateProjectScopeHint(ctx, err, invocation, t.config, t.ports, t.deps)
+}
+
+func (t projectScopeHintTransport) StreamEvents(ctx context.Context, request client.EventStreamRequest) (client.EventStream, error) {
+	streamer, ok := t.inner.(client.EventStreamer)
+	if !ok {
+		return nil, fmt.Errorf("the configured client does not support live event streaming")
+	}
+	stream, err := streamer.StreamEvents(ctx, request)
+	if err == nil {
+		return stream, nil
+	}
+	input, _ := json.Marshal(map[string]string{"project_id": request.ProjectID})
+	synthetic := api.Invocation{
+		Operation: "event.subscribe",
+		Request:   api.Request{Input: input},
+	}
+	return nil, annotateProjectScopeHint(ctx, err, synthetic, t.config, t.ports, t.deps)
 }
 
 func annotateProjectScopeHint(ctx context.Context, err error, invocation api.Invocation, config Config, ports Ports, deps CommandDeps) error {

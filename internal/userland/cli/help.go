@@ -49,28 +49,48 @@ Flags:
   --offline   Derive principal identity locally from session/JWT without calling the server`,
 	},
 	"logs": {
-		usage:   "kodema logs <execution-id> [--action <id>] [--stream stdout|stderr] [-f|--follow]",
+		usage:   "kodema logs <execution-id> [--action <id>] [--stream stdout|stderr] [-f|--follow] [--output <table|json>]",
 		summary: "Read or stream decoded execution action logs",
 		description: `Reads retained container logs for an execution action, automatically decoding
-base64 log chunks into raw bytes in text mode (or structured JSON with --output json).
-When --action is omitted, selects the currently running action or the last started action.
+base64 log chunks into raw bytes in text mode (or structured JSON/NDJSON with --output json).
+When --action is omitted in --follow mode, follows all sequential container actions in order
+with action transition headers (skipping non-container request actions) and stops cleanly on
+terminal states or when paused at a waiting request action.
 
 Flags:
-  --action <id>             Action ID (or action name) to read logs from
+  --action <id>             Action ID (or action name) to read/follow logs from
   --stream stdout|stderr    Log stream to read (default: stdout)
-  -f, --follow              Poll until the action/execution reaches a terminal state`,
+  -f, --follow              Follow logs until terminal state (or paused request action)
+  --output <table|json>     Output format (NDJSON when used with --follow)`,
+	},
+	"events": {
+		usage:   "kodema events [--project <id>] [--type <type>...] [--since <cursor>] [--limit <n>] [-f|--follow] [--output <table|json>]",
+		summary: "Read or live-stream decoded project events",
+		description: `Reads committed project events via event.read or live-streams events in real time
+over the authorized HTTP Server-Sent Events endpoint (GET /api/v1/projects/{project}/events/stream).
+Automatically decodes base64 event data JSON into readable summaries or raw JSON objects.
+
+Flags:
+  --project, -p <id>     Project ID (defaults to global --project or KODEMA_PROJECT)
+  --type, -t <type>      Filter by lifecycle event type (repeatable or comma-separated)
+  --since, --after <cur> Opaque event cursor to resume after
+  --limit, -n <n>        Maximum events to read (or emit before stopping in --follow)
+  -f, --follow           Stream live project events with cursor-resuming reconnect
+  --output <table|json>  Output format (NDJSON when used with --follow)`,
 	},
 	"inbox": {
-		usage:   "kodema inbox [--project <id>] [--kind <kind>] [--wide] [--output <table|json>]",
-		summary: "List pending request approvals, waiting tasks, and failed tasks",
+		usage:   "kodema inbox [--project <id>] [--kind <kind>] [--wide] [--wait] [--output <table|json>]",
+		summary: "List or wait for pending request approvals, waiting tasks, and failed tasks",
 		description: `Queries task.inbox for the project (defaulting to --project or KODEMA_PROJECT)
 and renders a table of actionable items (KIND, TASK, EXECUTION, ACTION, VERSION, PROMPT/SUMMARY).
 Stale git.ref.update requests whose target ref has moved are marked with a STALE badge.
+With --wait, blocks on the project live event stream until at least one actionable item appears.
 
 Flags:
   --project <id>         Project ID (defaults to global --project or KODEMA_PROJECT)
   --kind <kind>          Filter by inbox kind (request, waiting_task, failed_task; repeatable)
   -w, --wide             Do not truncate long subject values or question text
+  --wait                 Block until an actionable inbox item is present or arrives
   --output <table|json>  Output format`,
 	},
 	"approve": {
@@ -617,9 +637,21 @@ Flags:
 		description: `Invokes execution.inspect once for <execution-id> and renders a human-readable summary and action table (or raw JSON with --output json).`,
 	},
 	"watch": {
-		usage:       "kodema watch <execution-id> [--output <table|json>]",
-		summary:     "Poll execution.inspect until the execution reaches a terminal status",
-		description: `Polls execution.inspect until succeeded (exit 0) or failed/cancelled (exit 1), emitting a snapshot only when version or action state changes.`,
+		usage:   "kodema watch <execution-id> [--output <table|json>]\n  kodema watch --project <id> [--until request] [--output <table|json>]",
+		summary: "Watch one execution to completion or live-watch project events",
+		description: `With <execution-id>: polls execution.inspect until succeeded (exit 0) or failed/cancelled
+(exit 1), emitting snapshots only when version or action state changes and printing any
+failing container's stderr tail in table mode.
+
+With --project <id>: prints an initial snapshot of active tasks, active executions, and
+pending inbox items, then streams live project transitions via the HTTP SSE event stream.
+Pass --until request to exit 0 as soon as a pending assigned request or waiting task question
+needs human attention.
+
+Flags:
+  --project, -p <id>     Watch all tasks, executions, and inbox events in <id>
+  --until request        Exit 0 when a pending assigned request or waiting question appears
+  --output <table|json>  Output format (NDJSON for project-wide watch)`,
 	},
 	"call": {
 		usage:   "kodema call <operation> [--input <json>] [--expected-version <n>] [--idempotency-key <k>] [--project <id>] [--output <table|json>]\n  kodema call --list [--output <table|json>]\n  kodema call --schema <operation>",
@@ -738,8 +770,9 @@ Commands:
   reject      Reject a waiting execution request action
   cancel      Cancel a running or queued execution
   logs        Read or stream decoded execution action logs
+  events      Read or live-stream decoded project events
   inspect     Inspect an execution
-  watch       Poll an execution until it reaches a terminal state
+  watch       Watch an execution or live-stream project activity
   execution   List, inspect, watch, and cancel executions
   task        Create, run, list, show, start, ask, reply to, and cancel tasks
   pipeline    Apply, list, show, and delete stored pipelines

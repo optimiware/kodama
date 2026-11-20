@@ -27,6 +27,7 @@ type CommandDeps struct {
 	CommandPath            string
 	ExplicitCredentialFile bool
 	ExplicitSessionFile    bool
+	ExplicitProject        bool
 	GitConfig              func(ctx context.Context, args []string) error
 	GitRun                 func(ctx context.Context, dir string, args []string) (string, error)
 	Env                    func(string) string

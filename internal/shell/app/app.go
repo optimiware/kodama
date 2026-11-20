@@ -36,6 +36,7 @@ type App struct {
 	gate          *dispatchGate
 	metrics       *operationsMetrics
 	metricsSource *metricsSource
+	eventStream   *projectEventStreamHandler
 
 	stops []namedStop
 
@@ -113,12 +114,18 @@ func (app *App) Serve(ctx context.Context, listener net.Listener) error {
 	}()
 	select {
 	case <-ctx.Done():
+		if app.eventStream != nil {
+			_ = app.eventStream.Close(context.Background())
+		}
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 		defer cancel()
 		_ = server.Shutdown(shutdownCtx)
 		<-served
 		return app.Close(shutdownCtx)
 	case <-app.done:
+		if app.eventStream != nil {
+			_ = app.eventStream.Close(context.Background())
+		}
 		// Close was called from outside Serve. Stop accepting and drain
 		// in-flight requests so the server never keeps serving against the
 		// dependencies Close already stopped.

@@ -39,7 +39,29 @@ A versioned envelope contains stable event ID, type, authenticated/verified sour
 
 State mutation, audit, and event publication intent commit together in PostgreSQL. The event table is the durable stream; publishing retries retain the same event IDs. Lifecycle events follow durable state, not speculative workload observations. Custom observations are authenticated and recorded before routing, and cannot impersonate lifecycle or decision facts.
 
-NATS subject scope/source derives from identity. Separate Shell-owned facts and Userland observations. JetStream supplies durable at-least-once event delivery/replay; Core NATS supplies live logs/progress. Consumers deduplicate by event ID and tolerate reordering. Browsers get read-only WebSocket subscriptions.
+NATS subject scope/source derives from identity. Separate Shell-owned facts and Userland observations. JetStream supplies durable at-least-once event delivery/replay; Core NATS supplies live logs/progress. Consumers deduplicate by event ID and tolerate reordering.
+
+### Project HTTP Server-Sent Events stream (CLI, TUI, Web UI)
+
+Alongside the 61 JSON RPC routes and `/mcp`, the public HTTP edge exposes an authorized, read-only Server-Sent Events (`text/event-stream`) stream for one project at:
+
+`GET /api/v1/projects/{project}/events/stream`
+
+- **Authentication, scope visibility, and authorization:** Uses the exact same Bearer authentication, project visibility boundary (`not_found` for foreign tenants/projects), `event.subscribe` grant and current-membership confirmation, and credential expiry (`ExpiresAt`, including human OIDC verified `exp` and service store `token_expires_at`) as `event.subscribe` and `event.read`. Execution credentials are refused (`forbidden`).
+- **Query parameters and resume headers:**
+  - `since` or `after` (optional opaque public event cursor matching `event.read`/`event.subscribe`) — backfills committed events strictly after that sequence (pass the encoded cursor for `0` to backfill from the beginning). When omitted, starts live at the current committed cursor.
+  - `Last-Event-ID` HTTP header (standard `EventSource` reconnect header) — takes precedence over `since`/`after` when present.
+  - `type` (repeatable query parameter) — optional canonical lifecycle event type filter; unknown types or query parameters are refused with `400 invalid_input`.
+- **Zero-gap, zero-duplicate delivery:** The server subscribes to live per-scope wakeups (in-process post-commit/post-publish hub plus best-effort NATS wakeup subscription on `kodema.v1.<tenant>.<project>.events` when NATS is composed) **before** backfilling committed rows from the durable `events` table through `event.read`. Events are emitted strictly in monotonic `publish_sequence` order and deduplicated across the backfill-to-live boundary and reconnects. A bounded safety poll keeps streams responsive even when NATS is temporarily unavailable.
+- **Credential expiry and revocation:** Active streams re-check credential expiry (`ExpiresAt`), principal enablement, and current membership on every drain and keepalive; the stream terminates cleanly at or before `ExpiresAt` (emitting no events past expiry) or when revoked/disabled/disconnected.
+- **SSE frame schema:** Each event is flushed immediately as:
+  ```text
+  id: <opaque-cursor>
+  event: <canonical-event-type>
+  data: {"id":"...","cursor":"...","sequence":42,"type":"...","report_type":"...","source":{"kind":"...","principal_id":"..."},"at":"...","scope":{"tenant_id":"...","project_id":"..."},"subject_id":"...","subject_version":1,"correlation_id":"...","causation_id":"...","data":{...}}
+
+  ```
+  where `data` is the event's decoded JSON payload (rather than base64 bytes; non-JSON UTF-8 text is encoded as a JSON string). Periodic SSE comment frames (`: keepalive\n\n`) keep idle connections open across proxies.
 
 ## 3. Verified resource reports
 

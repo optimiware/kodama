@@ -114,6 +114,24 @@ func validateReadPage(query ReadQuery, page ReadPage) error {
 			allowed[eventType] = true
 		}
 	}
+	if len(page.Sequences) > 0 {
+		if len(page.Sequences) != len(page.Events) {
+			return fault.New(fault.InternalFailure, "event read page sequences do not match event count")
+		}
+		var prev uint64
+		for index, seq := range page.Sequences {
+			if seq <= query.AfterSequence {
+				return fault.New(fault.InternalFailure, "event read page returned a sequence at or behind the cursor")
+			}
+			if index > 0 && seq <= prev {
+				return fault.New(fault.InternalFailure, "event read page sequences are not strictly increasing")
+			}
+			if seq > page.Next {
+				return fault.New(fault.InternalFailure, "event read page sequence exceeds page next cursor")
+			}
+			prev = seq
+		}
+	}
 	for _, envelope := range page.Events {
 		if envelope.Scope != query.Scope {
 			return fault.New(fault.InternalFailure, "event read page returned a foreign scope")

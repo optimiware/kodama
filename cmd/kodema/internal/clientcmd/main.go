@@ -242,6 +242,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer, deps cliD
 		CommandPath:            commandPath,
 		ExplicitCredentialFile: flagSet(flags, "credential-file"),
 		ExplicitSessionFile:    flagSet(flags, "session") || flagSet(flags, "session-file"),
+		ExplicitProject:        flagSet(flags, "project"),
 		GitConfig:              runSystemGitConfig,
 		GitRun:                 runSystemGit,
 		Env:                    environment,

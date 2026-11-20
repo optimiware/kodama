@@ -319,11 +319,14 @@ func (query ReadQuery) Validate() error {
 
 // ReadPage is one committed-only, sequence-ordered event page. Next is the
 // cursor to pass as the next query's AfterSequence and HasMore reports whether
-// another committed page exists.
+// another committed page exists. Sequences, when populated by the store port,
+// carries each returned event's durable publish_sequence in 1:1 correspondence
+// with Events.
 type ReadPage struct {
-	Events  []Envelope `json:"events"`
-	Next    uint64     `json:"next"`
-	HasMore bool       `json:"has_more"`
+	Events    []Envelope `json:"events"`
+	Sequences []uint64   `json:"sequences,omitempty"`
+	Next      uint64     `json:"next"`
+	HasMore   bool       `json:"has_more"`
 }
 
 // SubscribeSetup is the authorized event.subscribe setup request. Subjects are
