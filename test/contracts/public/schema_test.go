@@ -506,3 +506,28 @@ func TestOperationInputSchemaServiceRequiredFieldsMatchRuntime(t *testing.T) {
 	check("service.create", []string{"idempotency_key", "input"}, []string{"project_id", "roles", "service_id"})
 	check("service.credential.issue", []string{"expected_version", "idempotency_key", "input"}, []string{"service_id", "ttl_seconds"})
 }
+
+// TestOperationInputSchemaAdvertisesStringMapValues pins that typed map fields
+// such as task and resource binding metadata (map[string]string) advertise
+// additionalProperties of type string instead of an untyped object.
+func TestOperationInputSchemaAdvertisesStringMapValues(t *testing.T) {
+	for _, operation := range []string{
+		"task.create",
+		"task.create_and_start",
+		"task.edit",
+		"resource.binding.register",
+		"resource.binding.update",
+	} {
+		t.Run(operation, func(t *testing.T) {
+			_, inputProperties := inputSchemaFor(t, operation)
+			metadata := schemaObject(t, schemaMember(t, inputProperties, "metadata", operation+" input properties"), operation+" metadata")
+			if got := schemaString(t, metadata, "type", operation+" metadata"); got != "object" {
+				t.Errorf("%s metadata type = %q; want object", operation, got)
+			}
+			additional := schemaObject(t, schemaMember(t, metadata, "additionalProperties", operation+" metadata"), operation+" metadata additionalProperties")
+			if got := schemaString(t, additional, "type", operation+" metadata additionalProperties"); got != "string" {
+				t.Errorf("%s metadata additionalProperties type = %q; want string", operation, got)
+			}
+		})
+	}
+}

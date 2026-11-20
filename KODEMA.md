@@ -206,7 +206,7 @@ Every fresh attempt starts at the first action with a new identity, workspace, a
 
 ### Tasks and role inbox
 
-A task holds a title, Markdown description and messages, metadata, selected pipeline and inputs, initiating principal, execution history, and waiting assignee. `metadata` is one bounded JSON object for userland state such as labels, priority, or workflow stage; Kodema stores, versions, snapshots, and publishes it without interpreting it. Authorized pipeline selection records the principal whose current start authority is checked on replies. Messages retain author, time, and durable references. There is no task `kind`, prerequisite `parent_id`, or continuation definition.
+A task holds a title, Markdown description and messages, metadata, selected pipeline and inputs, initiating principal, execution history, and waiting assignee. `metadata` is one bounded JSON object of string values (`map[string]string`, matching resource binding metadata) for userland state such as labels, priority, or workflow stage; Kodema stores, versions, snapshots, and publishes it without interpreting it. Authorized pipeline selection records the principal whose current start authority is checked on replies. Messages retain author, time, and durable references. There is no task `kind`, prerequisite `parent_id`, or continuation definition.
 
 | State | Meaning |
 |---|---|

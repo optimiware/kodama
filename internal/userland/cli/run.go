@@ -45,6 +45,16 @@ func RunWithDeps(ctx context.Context, config Config, args []string, ports Ports,
 	if ports.Sleep == nil {
 		ports.Sleep = time.Sleep
 	}
+	if ports.Client != nil {
+		if _, wrapped := ports.Client.(projectScopeHintTransport); !wrapped {
+			ports.Client = projectScopeHintTransport{
+				inner:  ports.Client,
+				config: config,
+				ports:  ports,
+				deps:   deps,
+			}
+		}
+	}
 	if len(args) == 0 {
 		code := usage(ports.Err, "a command is required")
 		fmt.Fprintln(ports.Err)
@@ -595,9 +605,13 @@ func usage(errOut io.Writer, message string) int {
 	return ExitUsage
 }
 
-// failure writes a public diagnostic and returns the failure exit code.
+// failure writes a public diagnostic and optional client-side hint to errOut
+// and returns the failure exit code.
 func failure(errOut io.Writer, err error) int {
 	fmt.Fprintf(errOut, "error: %v\n", err)
+	if hint := errorHint(err); hint != "" {
+		fmt.Fprintf(errOut, "hint: %s\n", hint)
+	}
 	return ExitFailure
 }
 

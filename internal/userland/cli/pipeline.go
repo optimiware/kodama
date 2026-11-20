@@ -113,6 +113,7 @@ func runPipelineApply(ctx context.Context, config Config, args []string, ports P
 		counts[file.base]++
 	}
 	failed := false
+	scopeHint := ""
 	records := make([]pipelineApplyRecord, 0, len(files))
 	for _, file := range files {
 		if counts[file.base] > 1 {
@@ -156,6 +157,9 @@ func runPipelineApply(ctx context.Context, config Config, args []string, ports P
 		result, err := ports.Client.Invoke(ctx, invocation)
 		if err != nil {
 			fmt.Fprintf(ports.Err, "failed %s: %v\n", file.name, err)
+			if scopeHint == "" {
+				scopeHint = errorHint(err)
+			}
 			failed = true
 			continue
 		}
@@ -189,6 +193,9 @@ func runPipelineApply(ctx context.Context, config Config, args []string, ports P
 				return failure(ports.Err, err)
 			}
 		}
+	}
+	if scopeHint != "" {
+		fmt.Fprintf(ports.Err, "hint: %s\n", scopeHint)
 	}
 	if failed {
 		return ExitFailure

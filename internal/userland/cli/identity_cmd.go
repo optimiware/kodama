@@ -27,6 +27,7 @@ func DeriveOIDCPrincipalID(issuer, subject string) (string, error) {
 }
 
 type whoamiView struct {
+	Server      string   `json:"server,omitempty"`
 	PrincipalID string   `json:"principal_id"`
 	Kind        string   `json:"kind,omitempty"`
 	TenantID    string   `json:"tenant_id,omitempty"`
@@ -94,6 +95,7 @@ func runWhoami(ctx context.Context, config Config, args []string, ports Ports, d
 		if err != nil {
 			return failure(ports.Err, err)
 		}
+		offlineView.Server = strings.TrimSpace(config.ServerURL)
 		if err := renderWhoamiServerResult(ports.Out, format, result, offlineView); err != nil {
 			return failure(ports.Err, err)
 		}
@@ -139,6 +141,7 @@ func renderWhoamiServerResult(out interface{ Write([]byte) (int, error) }, forma
 		}
 	}
 	view := whoamiView{
+		Server:      strings.TrimSpace(fallback.Server),
 		PrincipalID: raw.PrincipalID,
 		Kind:        raw.Kind,
 		TenantID:    raw.TenantID,
@@ -192,6 +195,9 @@ func renderWhoamiServerResult(out interface{ Write([]byte) (int, error) }, forma
 }
 
 func writeWhoamiTable(out interface{ Write([]byte) (int, error) }, view whoamiView) {
+	if view.Server != "" {
+		fmt.Fprintf(out, "server\t%s\n", view.Server)
+	}
 	fmt.Fprintf(out, "principal_id\t%s\n", view.PrincipalID)
 	if view.Kind != "" {
 		fmt.Fprintf(out, "kind\t%s\n", view.Kind)
@@ -280,6 +286,10 @@ func deriveOfflineWhoami(ctx context.Context, config Config, ports Ports, deps C
 	if deps.Login.Store != nil {
 		if record, err := deps.Login.Store.LoadRecord(ctx); err == nil {
 			if view, ok := fromToken(record.Token, record.Issuer); ok {
+				view.Server = strings.TrimSpace(config.ServerURL)
+				if view.Server == "" {
+					view.Server = strings.TrimSpace(record.APIURL)
+				}
 				return view, true
 			}
 		}
@@ -287,6 +297,7 @@ func deriveOfflineWhoami(ctx context.Context, config Config, ports Ports, deps C
 	if ports.Session != nil {
 		if cred, err := ports.Session.Load(ctx); err == nil {
 			if view, ok := fromToken(cred.Token, ""); ok {
+				view.Server = strings.TrimSpace(config.ServerURL)
 				return view, true
 			}
 		}
@@ -294,6 +305,7 @@ func deriveOfflineWhoami(ctx context.Context, config Config, ports Ports, deps C
 	if config.CredentialFile != "" && ports.Files != nil {
 		if data, err := ports.Files.ReadFile(config.CredentialFile); err == nil {
 			if view, ok := fromToken(strings.TrimSpace(string(data)), ""); ok {
+				view.Server = strings.TrimSpace(config.ServerURL)
 				return view, true
 			}
 		}
@@ -301,6 +313,7 @@ func deriveOfflineWhoami(ctx context.Context, config Config, ports Ports, deps C
 	if !offlineOnly && ports.Credential != nil {
 		if cred, err := ports.Credential.Credential(ctx); err == nil {
 			if view, ok := fromToken(cred.Token, ""); ok {
+				view.Server = strings.TrimSpace(config.ServerURL)
 				return view, true
 			}
 		}
