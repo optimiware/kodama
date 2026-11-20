@@ -477,6 +477,217 @@ func TestRunLogsWaitsForRetainedOutput(t *testing.T) {
 	}
 }
 
+// TestRunLogsDefaultActionSelection pins default --action selection on failed,
+// timed-out, cancelled, and request-waiting pipelines (issue #13).
+func TestRunLogsDefaultActionSelection(t *testing.T) {
+	startedAt := time.Date(2026, 11, 20, 12, 0, 0, 0, time.UTC)
+
+	t.Run("failed action 0 with never-started cancelled action 1 picks action 0", func(t *testing.T) {
+		for _, withActivatedAt := range []bool{true, false} {
+			name := "with_activated_at"
+			if !withActivatedAt {
+				name = "minimal_fixture_without_activated_at"
+			}
+			t.Run(name, func(t *testing.T) {
+				action0 := map[string]any{
+					"action_id": "act-0", "index": 0, "name": "step-fail", "kind": "container", "state": "failed",
+				}
+				if withActivatedAt {
+					action0["activated_at"] = startedAt
+				}
+				action1 := map[string]any{
+					"action_id": "act-1", "index": 1, "name": "step-skipped", "kind": "container", "state": "cancelled",
+				}
+				transport := &scriptedTransport{respond: func(_ context.Context, _ int, inv api.Invocation) (api.Result, error) {
+					switch inv.Operation {
+					case "execution.inspect":
+						body, _ := json.Marshal(map[string]any{
+							"execution_id":   "exec-fail",
+							"state":          "failed",
+							"current_action": -1,
+							"actions":        []map[string]any{action0, action1},
+						})
+						return api.Result{Operation: inv.Operation, Body: body}, nil
+					case "execution.logs.read":
+						var req api.ExecutionLogsReadRequest
+						if err := json.Unmarshal(inv.Request.Input, &req); err != nil {
+							t.Fatalf("unmarshal logs req: %v", err)
+						}
+						if req.ActionID != "act-0" {
+							t.Fatalf("selected action = %q; want act-0 (not never-started cancelled act-1)", req.ActionID)
+						}
+						body, _ := json.Marshal(api.ExecutionLogsReadResult{
+							Chunks: []api.LogChunk{{ActionID: "act-0", Stream: "stdout", Offset: 0, Sequence: 1, Data: []byte("step-fail output\n")}},
+						})
+						return api.Result{Operation: inv.Operation, Body: body}, nil
+					default:
+						t.Fatalf("unexpected operation %s", inv.Operation)
+						return api.Result{}, nil
+					}
+				}}
+				ports, out, errOut := testPorts(transport)
+				cfg := testConfig()
+				cfg.Output = cli.OutputTable
+				if code := cli.Run(context.Background(), cfg, []string{"logs", "exec-fail"}, ports); code != cli.ExitSuccess {
+					t.Fatalf("exit = %d; stderr=%q", code, errOut.String())
+				}
+				if out.String() != "step-fail output\n" {
+					t.Fatalf("stdout = %q; want %q", out.String(), "step-fail output\n")
+				}
+			})
+		}
+	})
+
+	t.Run("follow mode on failed action 0 with never-started cancelled action 1 picks action 0", func(t *testing.T) {
+		transport := &scriptedTransport{respond: func(_ context.Context, _ int, inv api.Invocation) (api.Result, error) {
+			switch inv.Operation {
+			case "execution.inspect":
+				body, _ := json.Marshal(map[string]any{
+					"execution_id":   "exec-timeout",
+					"state":          "failed",
+					"current_action": -1,
+					"actions": []map[string]any{
+						{"action_id": "act-0", "index": 0, "name": "slow", "kind": "container", "state": "failed", "activated_at": startedAt},
+						{"action_id": "act-1", "index": 1, "name": "after-timeout", "kind": "container", "state": "cancelled"},
+					},
+				})
+				return api.Result{Operation: inv.Operation, Body: body}, nil
+			case "execution.logs.read":
+				var req api.ExecutionLogsReadRequest
+				_ = json.Unmarshal(inv.Request.Input, &req)
+				if req.ActionID != "act-0" {
+					t.Fatalf("follow selected action = %q; want act-0", req.ActionID)
+				}
+				body, _ := json.Marshal(api.ExecutionLogsReadResult{
+					Chunks: []api.LogChunk{{ActionID: "act-0", Stream: "stdout", Offset: 0, Sequence: 1, Data: []byte("timed out output\n")}},
+				})
+				return api.Result{Operation: inv.Operation, Body: body}, nil
+			default:
+				t.Fatalf("unexpected operation %s", inv.Operation)
+				return api.Result{}, nil
+			}
+		}}
+		ports, out, errOut := testPorts(transport)
+		cfg := testConfig()
+		cfg.Output = cli.OutputTable
+		if code := cli.Run(context.Background(), cfg, []string{"logs", "exec-timeout", "--follow"}, ports); code != cli.ExitFailure {
+			t.Fatalf("exit = %d; want %d (stderr=%q)", code, cli.ExitFailure, errOut.String())
+		}
+		if out.String() != "timed out output\n" {
+			t.Fatalf("stdout = %q; want %q", out.String(), "timed out output\n")
+		}
+	})
+
+	t.Run("cancelled while action 0 was running selects started action 0 over never-started action 1", func(t *testing.T) {
+		transport := &scriptedTransport{respond: func(_ context.Context, _ int, inv api.Invocation) (api.Result, error) {
+			switch inv.Operation {
+			case "execution.inspect":
+				body, _ := json.Marshal(map[string]any{
+					"execution_id":   "exec-cancel",
+					"state":          "cancelled",
+					"current_action": -1,
+					"actions": []map[string]any{
+						{"action_id": "act-0", "index": 0, "name": "running-when-cancelled", "kind": "container", "state": "cancelled", "activated_at": startedAt},
+						{"action_id": "act-1", "index": 1, "name": "never-ran", "kind": "container", "state": "cancelled"},
+					},
+				})
+				return api.Result{Operation: inv.Operation, Body: body}, nil
+			case "execution.logs.read":
+				var req api.ExecutionLogsReadRequest
+				_ = json.Unmarshal(inv.Request.Input, &req)
+				if req.ActionID != "act-0" {
+					t.Fatalf("selected action = %q; want started cancelled act-0", req.ActionID)
+				}
+				body, _ := json.Marshal(api.ExecutionLogsReadResult{
+					Chunks: []api.LogChunk{{ActionID: "act-0", Stream: "stdout", Offset: 0, Sequence: 1, Data: []byte("partial output\n")}},
+				})
+				return api.Result{Operation: inv.Operation, Body: body}, nil
+			default:
+				t.Fatalf("unexpected operation %s", inv.Operation)
+				return api.Result{}, nil
+			}
+		}}
+		ports, out, errOut := testPorts(transport)
+		cfg := testConfig()
+		cfg.Output = cli.OutputTable
+		if code := cli.Run(context.Background(), cfg, []string{"logs", "exec-cancel"}, ports); code != cli.ExitSuccess {
+			t.Fatalf("exit = %d; stderr=%q", code, errOut.String())
+		}
+		if out.String() != "partial output\n" {
+			t.Fatalf("stdout = %q; want %q", out.String(), "partial output\n")
+		}
+	})
+
+	t.Run("cancelled while queued with no started action refuses clearly", func(t *testing.T) {
+		transport := &scriptedTransport{respond: func(_ context.Context, _ int, inv api.Invocation) (api.Result, error) {
+			if inv.Operation != "execution.inspect" {
+				t.Fatalf("unexpected operation %s; should not read logs when no action started", inv.Operation)
+			}
+			body, _ := json.Marshal(map[string]any{
+				"execution_id":   "exec-cancel-queued",
+				"state":          "cancelled",
+				"current_action": -1,
+				"actions": []map[string]any{
+					{"action_id": "act-0", "index": 0, "name": "build", "kind": "container", "state": "cancelled"},
+					{"action_id": "act-1", "index": 1, "name": "test", "kind": "container", "state": "cancelled"},
+				},
+			})
+			return api.Result{Operation: inv.Operation, Body: body}, nil
+		}}
+		ports, _, errOut := testPorts(transport)
+		cfg := testConfig()
+		cfg.Output = cli.OutputTable
+		if code := cli.Run(context.Background(), cfg, []string{"logs", "exec-cancel-queued"}, ports); code != cli.ExitFailure {
+			t.Fatalf("exit = %d; want %d", code, cli.ExitFailure)
+		}
+		if !strings.Contains(errOut.String(), "no action has started") {
+			t.Fatalf("stderr = %q; want clear no-action-started message", errOut.String())
+		}
+	})
+
+	t.Run("running request action prefers earlier completed container action", func(t *testing.T) {
+		requestAt := startedAt.Add(10 * time.Second)
+		transport := &scriptedTransport{respond: func(_ context.Context, _ int, inv api.Invocation) (api.Result, error) {
+			switch inv.Operation {
+			case "execution.inspect":
+				body, _ := json.Marshal(map[string]any{
+					"execution_id":   "exec-wait",
+					"state":          "running",
+					"current_action": 1,
+					"actions": []map[string]any{
+						{"action_id": "act-0", "index": 0, "name": "build-and-test", "kind": "container", "state": "succeeded", "activated_at": startedAt},
+						{"action_id": "act-1", "index": 1, "name": "review", "kind": "request", "state": "running", "activated_at": requestAt},
+						{"action_id": "act-2", "index": 2, "name": "integrate", "kind": "container", "state": "pending"},
+					},
+				})
+				return api.Result{Operation: inv.Operation, Body: body}, nil
+			case "execution.logs.read":
+				var req api.ExecutionLogsReadRequest
+				_ = json.Unmarshal(inv.Request.Input, &req)
+				if req.ActionID != "act-0" {
+					t.Fatalf("selected action = %q; want completed container act-0 over running request act-1", req.ActionID)
+				}
+				body, _ := json.Marshal(api.ExecutionLogsReadResult{
+					Chunks: []api.LogChunk{{ActionID: "act-0", Stream: "stdout", Offset: 0, Sequence: 1, Data: []byte("all tests passed\n")}},
+				})
+				return api.Result{Operation: inv.Operation, Body: body}, nil
+			default:
+				t.Fatalf("unexpected operation %s", inv.Operation)
+				return api.Result{}, nil
+			}
+		}}
+		ports, out, errOut := testPorts(transport)
+		cfg := testConfig()
+		cfg.Output = cli.OutputTable
+		if code := cli.Run(context.Background(), cfg, []string{"logs", "exec-wait"}, ports); code != cli.ExitSuccess {
+			t.Fatalf("exit = %d; stderr=%q", code, errOut.String())
+		}
+		if out.String() != "all tests passed\n" {
+			t.Fatalf("stdout = %q; want %q", out.String(), "all tests passed\n")
+		}
+	})
+}
+
 // TestRunInboxApproveAndReject pins Requirement 4.
 func TestRunInboxApproveAndReject(t *testing.T) {
 	t.Run("inbox table and KODEMA_PROJECT env fallback", func(t *testing.T) {

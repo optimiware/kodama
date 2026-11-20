@@ -180,6 +180,8 @@ type logPageRuntime struct {
 	stopErr          error
 	stopEvidence     kernel.StopEvidence
 	onStop           func()
+	observeResult    *kernel.Observation
+	observeErr       error
 	sourceDestroyed  bool
 	limitPages       bool
 }
@@ -257,6 +259,20 @@ func (runtime *logPageRuntime) Start(ctx context.Context, request kernelengine.S
 	runtime.startCalls++
 	runtime.mu.Unlock()
 	return runtime.fakeRuntime.Start(ctx, request)
+}
+
+func (runtime *logPageRuntime) Observe(ctx context.Context, request kernelengine.ObserveRequest) (kernel.Observation, error) {
+	runtime.mu.Lock()
+	result := runtime.observeResult
+	err := runtime.observeErr
+	runtime.mu.Unlock()
+	if err != nil {
+		return kernel.UnknownObservation(), err
+	}
+	if result != nil {
+		return *result, nil
+	}
+	return runtime.fakeRuntime.Observe(ctx, request)
 }
 
 // Stop records the destructive stop and runs the configured controller
@@ -523,6 +539,18 @@ func (fixture *logCollectionFixture) removeRequest() kernelengine.RemoveRequest 
 
 func (fixture *logCollectionFixture) stopRequest() kernelengine.StopRequest {
 	return kernelengine.StopRequest{
+		Identity: kernelengine.EffectIdentity{
+			ExecutionID:    fixture.executionID,
+			ActionID:       fixture.actionID,
+			WorkloadID:     fixture.workloadID(),
+			IdempotencyKey: "idempotency-" + string(fixture.workloadID()),
+		},
+		WorkspaceID: fixture.workspaceID,
+	}
+}
+
+func (fixture *logCollectionFixture) observeRequest() kernelengine.ObserveRequest {
+	return kernelengine.ObserveRequest{
 		Identity: kernelengine.EffectIdentity{
 			ExecutionID:    fixture.executionID,
 			ActionID:       fixture.actionID,
@@ -2534,4 +2562,297 @@ func TestLogCollectionKubernetesStopDoesNotLeakSplitCredential(t *testing.T) {
 	if cursor, ok, err := cursors.Load(context.Background(), identity.ExecutionID, identity.ActionID, identity.WorkloadID); err != nil || !ok || cursor != logCollectionComplete {
 		t.Fatalf("cursor after Remove = (%d, %v, %v); want the completion token", cursor, ok, err)
 	}
+}
+
+func TestLogCollectionDrainsOnConfirmedExit(t *testing.T) {
+	t.Run("drains_completed_logs_before_remove_and_remove_is_idempotent", func(t *testing.T) {
+		fixture := newLogCollectionFixture(t, map[int64]kernelengine.LogBatch{
+			0: {
+				Chunks: []kernelengine.LogChunk{
+					{Stream: kernelengine.LogStdout, Offset: 0, Sequence: 1, Data: []byte("build ok\n")},
+					{Stream: kernelengine.LogStderr, Offset: 0, Sequence: 1, Data: []byte("warn: minor\n")},
+				},
+				NextOffset: 21,
+			},
+			21: {
+				Chunks: []kernelengine.LogChunk{
+					{Stream: kernelengine.LogStdout, Offset: 9, Sequence: 2, Data: []byte("tests passed\n")},
+				},
+				NextOffset: 34,
+			},
+			34: {NextOffset: 34},
+		})
+		exited := kernel.ExitedObservation(0, kernel.ConfirmedStop("container exited 0"))
+		fixture.runtime.observeResult = &exited
+
+		observation, err := fixture.collector.Observe(context.Background(), fixture.observeRequest())
+		if err != nil {
+			t.Fatalf("Observe: %v", err)
+		}
+		if !observation.StopConfirmed() {
+			t.Fatalf("Observe returned %+v; want confirmed exit", observation)
+		}
+		if got := fixture.runtime.removeCount(); got != 0 {
+			t.Fatalf("Observe removed workload %d times; want 0", got)
+		}
+
+		// Both streams must already be readable from the retained sink while
+		// the container is still present (e.g. during a downstream request wait).
+		stdout := joinLogData(readAllLogs(t, fixture.sink, fixture.scope, fixture.executionID, fixture.actionID, shelllog.StreamStdout))
+		stderr := joinLogData(readAllLogs(t, fixture.sink, fixture.scope, fixture.executionID, fixture.actionID, shelllog.StreamStderr))
+		if stdout != "build ok\ntests passed\n" {
+			t.Fatalf("retained stdout after Observe = %q; want %q", stdout, "build ok\ntests passed\n")
+		}
+		if stderr != "warn: minor\n" {
+			t.Fatalf("retained stderr after Observe = %q; want %q", stderr, "warn: minor\n")
+		}
+		if cursor, ok, err := fixture.cursors.Load(context.Background(), fixture.executionID, fixture.actionID, fixture.workloadID()); err != nil || !ok || cursor != logCollectionComplete {
+			t.Fatalf("cursor after Observe = (%d, %v, %v); want completion token", cursor, ok, err)
+		}
+
+		// A later Remove (even if the log source has vanished by terminal
+		// cleanup) must skip Logs and keep the exact retained output without
+		// duplicate chunks or an unavailable marker.
+		callsBeforeRemove := len(fixture.runtime.logCallOffsets())
+		fixture.runtime.destroyLogSource()
+		removal, err := fixture.collector.Remove(context.Background(), fixture.removeRequest())
+		if err != nil {
+			t.Fatalf("Remove after confirmed-exit drain: %v", err)
+		}
+		if !removal.Removed {
+			t.Fatalf("Remove = %+v; want Removed=true", removal)
+		}
+		if got := len(fixture.runtime.logCallOffsets()); got != callsBeforeRemove {
+			t.Fatalf("Remove issued %d extra log reads after Observe already completed collection", got-callsBeforeRemove)
+		}
+		if got := joinLogData(readAllLogs(t, fixture.sink, fixture.scope, fixture.executionID, fixture.actionID, shelllog.StreamStdout)); got != stdout {
+			t.Fatalf("retained stdout after Remove = %q; want unchanged %q", got, stdout)
+		}
+		if got := joinLogData(readAllLogs(t, fixture.sink, fixture.scope, fixture.executionID, fixture.actionID, shelllog.StreamStderr)); got != stderr {
+			t.Fatalf("retained stderr after Remove = %q; want unchanged %q", got, stderr)
+		}
+	})
+
+	t.Run("stops_live_pump_on_confirmed_exit", func(t *testing.T) {
+		fixture := newLogCollectionFixture(t, map[int64]kernelengine.LogBatch{
+			0: {
+				Chunks: []kernelengine.LogChunk{
+					{Stream: kernelengine.LogStdout, Offset: 0, Sequence: 1, Data: []byte("live line\n")},
+				},
+				NextOffset: 10,
+			},
+			10: {NextOffset: 10},
+		})
+		live := &recordingLivePublisher{}
+		fixture.collector.live = live
+		fixture.collector.liveInterval = 2 * time.Millisecond
+		t.Cleanup(func() { _ = fixture.collector.Close(context.Background()) })
+
+		identity := fixture.observeRequest().Identity
+		if _, err := fixture.collector.Start(context.Background(), kernelengine.StartRequest{
+			Identity:    identity,
+			WorkspaceID: fixture.workspaceID,
+		}); err != nil {
+			t.Fatalf("Start: %v", err)
+		}
+
+		exited := kernel.ExitedObservation(0, kernel.ConfirmedStop("container exited 0"))
+		fixture.runtime.observeResult = &exited
+		if _, err := fixture.collector.Observe(context.Background(), fixture.observeRequest()); err != nil {
+			t.Fatalf("Observe: %v", err)
+		}
+
+		fixture.collector.liveMu.Lock()
+		remainingPumps := len(fixture.collector.livePumps)
+		fixture.collector.liveMu.Unlock()
+		if remainingPumps != 0 {
+			t.Fatalf("remaining live pumps after confirmed exit = %d; want 0", remainingPumps)
+		}
+		after, _ := live.snapshot()
+		time.Sleep(20 * time.Millisecond)
+		settled, _ := live.snapshot()
+		if len(settled) != len(after) {
+			t.Fatalf("live chunks published after confirmed-exit Observe: %d -> %d", len(after), len(settled))
+		}
+	})
+
+	t.Run("skips_drain_when_stop_is_not_confirmed", func(t *testing.T) {
+		cases := []struct {
+			name        string
+			observation kernel.Observation
+		}{
+			{name: "running", observation: kernel.RunningObservation()},
+			{name: "unknown", observation: kernel.UnknownObservation()},
+			{name: "absent", observation: kernel.AbsentObservation()},
+			{name: "never_started", observation: kernel.NeverStarted("not started")},
+			{name: "exited_pending_stop", observation: kernel.ExitedObservation(0, kernel.PendingStop("processes still terminating"))},
+		}
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				fixture := newLogCollectionFixture(t, map[int64]kernelengine.LogBatch{
+					0: {
+						Chunks:     []kernelengine.LogChunk{{Stream: kernelengine.LogStdout, Offset: 0, Sequence: 1, Data: []byte("output\n")}},
+						NextOffset: 7,
+					},
+				})
+				obs := tc.observation
+				fixture.runtime.observeResult = &obs
+
+				got, err := fixture.collector.Observe(context.Background(), fixture.observeRequest())
+				if err != nil {
+					t.Fatalf("Observe: %v", err)
+				}
+				if got.Kind != tc.observation.Kind {
+					t.Fatalf("Observe kind = %q; want %q", got.Kind, tc.observation.Kind)
+				}
+				if calls := fixture.runtime.logCallOffsets(); len(calls) != 0 {
+					t.Fatalf("Observe read logs %v for non-confirmed observation %q; want none", calls, tc.name)
+				}
+				if appended := fixture.sink.appendedChunks(); len(appended) != 0 {
+					t.Fatalf("Observe appended %d chunks for %q; want 0", len(appended), tc.name)
+				}
+				if cursor, ok, err := fixture.cursors.Load(context.Background(), fixture.executionID, fixture.actionID, fixture.workloadID()); err != nil || ok {
+					t.Fatalf("cursor for %q = (%d, %v, %v); want unset", tc.name, cursor, ok, err)
+				}
+			})
+		}
+	})
+
+	t.Run("fault_during_observe_preserves_exit_and_resumes_at_remove", func(t *testing.T) {
+		fixture := newLogCollectionFixture(t, map[int64]kernelengine.LogBatch{
+			0: {
+				Chunks:     []kernelengine.LogChunk{{Stream: kernelengine.LogStdout, Offset: 0, Sequence: 1, Data: []byte("page 1\n")}},
+				NextOffset: 7,
+			},
+			7: {
+				Chunks:     []kernelengine.LogChunk{{Stream: kernelengine.LogStdout, Offset: 7, Sequence: 2, Data: []byte("page 2\n")}},
+				NextOffset: 14,
+			},
+			14: {NextOffset: 14},
+		})
+		fixture.runtime.errorsByOffset = map[int64]error{
+			7: fault.New(fault.DependencyUnavailable, "temporary log read outage"),
+		}
+		exited := kernel.ExitedObservation(0, kernel.ConfirmedStop("container exited 0"))
+		fixture.runtime.observeResult = &exited
+
+		// Observe must still return the confirmed exit without error, save the
+		// page 1 cursor, and leave completion unset.
+		observation, err := fixture.collector.Observe(context.Background(), fixture.observeRequest())
+		if err != nil {
+			t.Fatalf("Observe must not fail on log drain error: %v", err)
+		}
+		if !observation.StopConfirmed() {
+			t.Fatalf("Observe = %+v; want confirmed exit", observation)
+		}
+		if cursor, ok, err := fixture.cursors.Load(context.Background(), fixture.executionID, fixture.actionID, fixture.workloadID()); err != nil || !ok || cursor != 7 {
+			t.Fatalf("cursor after partial Observe drain = (%d, %v, %v); want 7", cursor, ok, err)
+		}
+
+		// Clear the fault: Remove resumes from offset 7 and drains page 2
+		// without re-reading offset 0.
+		fixture.runtime.mu.Lock()
+		fixture.runtime.errorsByOffset = nil
+		fixture.runtime.mu.Unlock()
+		beforeRemove := len(fixture.runtime.logCallOffsets())
+		removal, err := fixture.collector.Remove(context.Background(), fixture.removeRequest())
+		if err != nil {
+			t.Fatalf("Remove after partial Observe drain: %v", err)
+		}
+		if !removal.Removed {
+			t.Fatalf("Remove = %+v; want Removed=true", removal)
+		}
+		removeOffsets := fixture.runtime.logCallOffsets()[beforeRemove:]
+		if len(removeOffsets) == 0 || removeOffsets[0] != 7 {
+			t.Fatalf("Remove resumed at offsets %v; want first offset 7", removeOffsets)
+		}
+		stdout := joinLogData(readAllLogs(t, fixture.sink, fixture.scope, fixture.executionID, fixture.actionID, shelllog.StreamStdout))
+		if stdout != "page 1\npage 2\n" {
+			t.Fatalf("retained stdout = %q; want %q", stdout, "page 1\npage 2\n")
+		}
+		if cursor, ok, err := fixture.cursors.Load(context.Background(), fixture.executionID, fixture.actionID, fixture.workloadID()); err != nil || !ok || cursor != logCollectionComplete {
+			t.Fatalf("cursor after Remove = (%d, %v, %v); want completion token", cursor, ok, err)
+		}
+	})
+
+	t.Run("not_found_during_observe_does_not_mark_unavailable_prematurely", func(t *testing.T) {
+		fixture := newLogCollectionFixture(t, map[int64]kernelengine.LogBatch{
+			0: {
+				Chunks:     []kernelengine.LogChunk{{Stream: kernelengine.LogStdout, Offset: 0, Sequence: 1, Data: []byte("real output\n")}},
+				NextOffset: 12,
+			},
+			12: {NextOffset: 12},
+		})
+		fixture.runtime.logsErr = fault.New(fault.NotFound, "transiently absent")
+		exited := kernel.ExitedObservation(0, kernel.ConfirmedStop("container exited 0"))
+		fixture.runtime.observeResult = &exited
+
+		observation, err := fixture.collector.Observe(context.Background(), fixture.observeRequest())
+		if err != nil {
+			t.Fatalf("Observe must not fail on NotFound: %v", err)
+		}
+		if !observation.StopConfirmed() {
+			t.Fatalf("Observe = %+v; want confirmed exit", observation)
+		}
+		if appended := fixture.sink.appendedChunks(); len(appended) != 0 {
+			t.Fatalf("Observe wrote %d chunks on NotFound; want 0 (defer unavailable marker to Remove)", len(appended))
+		}
+		if cursor, ok, err := fixture.cursors.Load(context.Background(), fixture.executionID, fixture.actionID, fixture.workloadID()); err != nil || ok {
+			t.Fatalf("cursor after Observe NotFound = (%d, %v, %v); want unset", cursor, ok, err)
+		}
+
+		// When the source is readable at Remove, real output is collected.
+		fixture.runtime.mu.Lock()
+		fixture.runtime.logsErr = nil
+		fixture.runtime.mu.Unlock()
+		if _, err := fixture.collector.Remove(context.Background(), fixture.removeRequest()); err != nil {
+			t.Fatalf("Remove: %v", err)
+		}
+		stdout := joinLogData(readAllLogs(t, fixture.sink, fixture.scope, fixture.executionID, fixture.actionID, shelllog.StreamStdout))
+		if stdout != "real output\n" {
+			t.Fatalf("retained stdout = %q; want %q", stdout, "real output\n")
+		}
+	})
+
+	t.Run("concurrent_observe_and_remove_preserve_completion_without_duplication", func(t *testing.T) {
+		fixture := newLogCollectionFixture(t, map[int64]kernelengine.LogBatch{
+			0: {
+				Chunks:     []kernelengine.LogChunk{{Stream: kernelengine.LogStdout, Offset: 0, Sequence: 1, Data: []byte("part-a\n")}},
+				NextOffset: 7,
+			},
+			7: {
+				Chunks:     []kernelengine.LogChunk{{Stream: kernelengine.LogStdout, Offset: 7, Sequence: 2, Data: []byte("part-b\n")}},
+				NextOffset: 14,
+			},
+			14: {NextOffset: 14},
+		})
+		exited := kernel.ExitedObservation(0, kernel.ConfirmedStop("container exited 0"))
+		fixture.runtime.observeResult = &exited
+
+		var wg sync.WaitGroup
+		wg.Add(2)
+		var obsErr, remErr error
+		go func() {
+			defer wg.Done()
+			_, obsErr = fixture.collector.Observe(context.Background(), fixture.observeRequest())
+		}()
+		go func() {
+			defer wg.Done()
+			_, remErr = fixture.collector.Remove(context.Background(), fixture.removeRequest())
+		}()
+		wg.Wait()
+		if obsErr != nil {
+			t.Fatalf("concurrent Observe: %v", obsErr)
+		}
+		if remErr != nil {
+			t.Fatalf("concurrent Remove: %v", remErr)
+		}
+		stdout := joinLogData(readAllLogs(t, fixture.sink, fixture.scope, fixture.executionID, fixture.actionID, shelllog.StreamStdout))
+		if stdout != "part-a\npart-b\n" {
+			t.Fatalf("retained stdout = %q; want %q", stdout, "part-a\npart-b\n")
+		}
+		if cursor, ok, err := fixture.cursors.Load(context.Background(), fixture.executionID, fixture.actionID, fixture.workloadID()); err != nil || !ok || cursor != logCollectionComplete {
+			t.Fatalf("cursor = (%d, %v, %v); want completion token", cursor, ok, err)
+		}
+	})
 }

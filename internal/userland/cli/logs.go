@@ -408,8 +408,25 @@ func fetchExecutionInspect(ctx context.Context, ports Ports, executionID string)
 	return inspected, nil
 }
 
-// selectLogAction picks the currently running action (preferring container
-// actions), or else the last started/completed action.
+// actionWasStarted reports whether an action actually ran (was activated).
+// A never-started action cancelled because an earlier action failed or timed
+// out has ActivatedAt == nil and is excluded; minimal fixtures that omit
+// activated_at still treat running, succeeded, and failed actions as started.
+func actionWasStarted(action inspectedAction) bool {
+	if action.ActivatedAt != nil && !action.ActivatedAt.IsZero() {
+		return true
+	}
+	switch action.effectiveState() {
+	case "running", "succeeded", "failed":
+		return true
+	default:
+		return false
+	}
+}
+
+// selectLogAction picks the currently running container action, or else the
+// last started container action, falling back to request actions only when no
+// container action has started.
 func selectLogAction(inspected inspectedExecution) (inspectedAction, bool) {
 	if len(inspected.Actions) == 0 {
 		return inspectedAction{}, false
@@ -425,6 +442,12 @@ func selectLogAction(inspected inspectedExecution) (inspectedAction, bool) {
 			return action, true
 		}
 	}
+	for index := len(inspected.Actions) - 1; index >= 0; index-- {
+		action := inspected.Actions[index]
+		if action.Kind != "request" && actionWasStarted(action) {
+			return action, true
+		}
+	}
 	for _, action := range inspected.Actions {
 		if action.effectiveState() == "running" {
 			return action, true
@@ -432,17 +455,7 @@ func selectLogAction(inspected inspectedExecution) (inspectedAction, bool) {
 	}
 	for index := len(inspected.Actions) - 1; index >= 0; index-- {
 		action := inspected.Actions[index]
-		state := action.effectiveState()
-		if (state != "" && state != "pending") || action.ActivatedAt != nil {
-			if action.Kind != "request" {
-				return action, true
-			}
-		}
-	}
-	for index := len(inspected.Actions) - 1; index >= 0; index-- {
-		action := inspected.Actions[index]
-		state := action.effectiveState()
-		if (state != "" && state != "pending") || action.ActivatedAt != nil {
+		if actionWasStarted(action) {
 			return action, true
 		}
 	}
