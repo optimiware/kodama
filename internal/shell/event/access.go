@@ -70,6 +70,9 @@ func confirmCurrentPrincipal(ctx context.Context, principals identity.PrincipalR
 	if principal.Scope != actor.Scope {
 		return identity.Principal{}, fault.New(fault.Forbidden, "principal is not present in the actor scope")
 	}
+	if principal.Kind != actor.Kind {
+		return identity.Principal{}, fault.New(fault.Forbidden, "principal kind does not match the authenticated actor")
+	}
 	if !principal.Enabled {
 		return identity.Principal{}, fault.New(fault.Forbidden, "principal is disabled")
 	}
@@ -87,6 +90,9 @@ func confirmCurrentPrincipal(ctx context.Context, principals identity.PrincipalR
 	}
 	if !operation.Requires.Allows(principal) {
 		return identity.Principal{}, fault.New(fault.Forbidden, fmt.Sprintf("principal does not currently hold the grant for %q", operation.Name))
+	}
+	if principal.Kind == identity.KindHuman {
+		principal = principal.WithVerifiedExpiry(actor.VerifiedExpiry())
 	}
 	return principal, nil
 }

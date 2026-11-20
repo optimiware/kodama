@@ -90,7 +90,7 @@ func (verifier *Verifier) Verify(ctx context.Context, request identity.OIDCReque
 		Kind:    identity.KindHuman,
 		Scope:   scope,
 		Enabled: true,
-	}, nil
+	}.WithVerifiedExpiry(token.expiry), nil
 }
 
 // parsedToken is one structurally decoded and claim-validated access token.
@@ -101,6 +101,7 @@ type parsedToken struct {
 	subject      string
 	tenant       string
 	project      string
+	expiry       time.Time
 	signingInput []byte
 	signature    []byte
 }
@@ -183,7 +184,8 @@ func (verifier *Verifier) parseToken(request identity.OIDCRequest) (*parsedToken
 	if !valid {
 		return nil, unauthenticated("OIDC access token expiry is malformed")
 	}
-	if !request.Now.Before(time.Unix(expiry, 0).Add(verifier.config.ClockSkew)) {
+	expiresAt := time.Unix(expiry, 0).UTC()
+	if !request.Now.Before(expiresAt.Add(verifier.config.ClockSkew)) {
 		return nil, unauthenticated("OIDC access token is expired")
 	}
 
@@ -211,6 +213,7 @@ func (verifier *Verifier) parseToken(request identity.OIDCRequest) (*parsedToken
 		subject:      subject,
 		tenant:       tenant,
 		project:      project,
+		expiry:       expiresAt,
 		signingInput: []byte(parts[0] + "." + parts[1]),
 		signature:    signature,
 	}, nil

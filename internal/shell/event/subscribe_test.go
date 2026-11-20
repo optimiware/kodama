@@ -478,6 +478,32 @@ func TestEventSubjectIsInjectiveAndScopeQualified(t *testing.T) {
 	}
 }
 
+// TestSubscriberPreservesHumanVerifiedExpiryAcrossCurrentRead asserts that
+// confirming the human principal against the store (which carries no OIDC
+// token expiry) preserves the authenticated actor's verified expiry for the
+// CredentialValidity boundary.
+func TestSubscriberPreservesHumanVerifiedExpiryAcrossCurrentRead(t *testing.T) {
+	exp := fixedNow.Add(35 * time.Minute)
+	stored := humanWithRole(tenancy.RoleEngineer)
+	actor := stored.WithVerifiedExpiry(exp)
+	harness := newSubscribeHarness(t, stored)
+	harness.validity.until = exp
+
+	grant, err := harness.subscriber.Setup(context.Background(), subscribeCommand(actor, testScope()))
+	if err != nil {
+		t.Fatalf("Setup: %v", err)
+	}
+	if !grant.ExpiresAt.Equal(exp) {
+		t.Fatalf("grant ExpiresAt = %v; want %v", grant.ExpiresAt, exp)
+	}
+	if len(harness.validity.actors) != 1 {
+		t.Fatalf("validity calls = %d; want 1", len(harness.validity.actors))
+	}
+	if got := harness.validity.actors[0].VerifiedExpiry(); !got.Equal(exp) {
+		t.Fatalf("validity received principal VerifiedExpiry = %v; want %v", got, exp)
+	}
+}
+
 // TestSubscribeSurfaceCarriesNoCredential asserts the setup command and grant
 // expose no credential, token or internal field.
 func TestSubscribeSurfaceCarriesNoCredential(t *testing.T) {

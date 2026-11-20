@@ -36,6 +36,7 @@ package identity_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -433,6 +434,87 @@ func TestOIDCConfigRefusesInsecureIssuer(t *testing.T) {
 	requireClass(t, identity.OIDCConfig{Issuer: "https://issuer.example.com", Audience: "kodema", ClockSkew: -time.Second}.Validate(), fault.InvalidInput)
 	if err := (identity.OIDCConfig{Issuer: "https://issuer.example.com", Audience: "kodema", ClockSkew: time.Second}).Validate(); err != nil {
 		t.Fatalf("valid OIDC config refused: %v", err)
+	}
+}
+
+// TestPrincipalVerifiedExpiryCannotBeForgedViaJSONAndValidatesKind pins that
+// verifiedExpiry is unexported (cannot be set by JSON decoding), normalizes to
+// UTC, clears on zero time, and is refused on non-human principals.
+func TestPrincipalVerifiedExpiryCannotBeForgedViaJSONAndValidatesKind(t *testing.T) {
+	raw := []byte(`{
+		"id":"human-1",
+		"kind":"human",
+		"scope":{"tenant_id":"tenant-a","project_id":"project-1"},
+		"roles":["viewer"],
+		"enabled":true,
+		"version":1,
+		"verified_expiry":"2099-01-01T00:00:00Z",
+		"verifiedExpiry":"2099-01-01T00:00:00Z",
+		"expires_at":"2099-01-01T00:00:00Z"
+	}`)
+	var decoded identity.Principal
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		t.Fatalf("json.Unmarshal: %v", err)
+	}
+	if !decoded.VerifiedExpiry().IsZero() {
+		t.Fatalf("JSON unmarshal forged verifiedExpiry = %v; want zero", decoded.VerifiedExpiry())
+	}
+
+	loc := time.FixedZone("UTC+2", 2*3600)
+	exp := time.Date(2026, 6, 1, 12, 30, 0, 0, loc)
+	withExp := decoded.WithVerifiedExpiry(exp)
+	if !withExp.VerifiedExpiry().Equal(exp) || withExp.VerifiedExpiry().Location() != time.UTC {
+		t.Fatalf("VerifiedExpiry = %v (%v); want %v UTC", withExp.VerifiedExpiry(), withExp.VerifiedExpiry().Location(), exp.UTC())
+	}
+	if err := withExp.Validate(); err != nil {
+		t.Fatalf("human principal with verified expiry refused: %v", err)
+	}
+	if cleared := withExp.WithVerifiedExpiry(time.Time{}); !cleared.VerifiedExpiry().IsZero() {
+		t.Fatalf("clearing verified expiry left %v; want zero", cleared.VerifiedExpiry())
+	}
+
+	servicePrincipal := identity.Principal{
+		ID:      id.PrincipalID("svc-1"),
+		Kind:    identity.KindService,
+		Scope:   testScope(),
+		Enabled: true,
+	}.WithVerifiedExpiry(exp)
+	requireClass(t, servicePrincipal.Validate(), fault.InvalidInput)
+
+	execPrincipal := identity.Principal{
+		ID:          id.PrincipalID("exec-1"),
+		Kind:        identity.KindExecution,
+		Scope:       testScope(),
+		Enabled:     true,
+		ExecutionID: id.ExecutionID("exec-1"),
+	}.WithVerifiedExpiry(exp)
+	requireClass(t, execPrincipal.Validate(), fault.InvalidInput)
+}
+
+// TestAuthenticatorPropagatesVerifiedExpiryToCurrentHuman pins that the
+// verified token's expiry is carried onto the freshly read current human
+// principal without retaining stale token roles or trusting a reader-supplied
+// expiry.
+func TestAuthenticatorPropagatesVerifiedExpiryToCurrentHuman(t *testing.T) {
+	tokenExp := testNow().Add(30 * time.Minute)
+	verified := humanPrincipal(testScope(), tenancy.RoleAdmin).WithVerifiedExpiry(tokenExp)
+	current := humanPrincipal(testScope(), tenancy.RoleViewer).WithVerifiedExpiry(testNow().Add(24 * time.Hour))
+	current.Version = 11
+
+	authenticator := newAuthenticator(t, &fakeVerifier{principal: verified}, &fakePrincipalReader{principal: current})
+	principal, err := authenticator.Authenticate(context.Background(), identity.AuthenticateRequest{
+		AccessToken: "access-token-1",
+		Scope:       testScope(),
+		Now:         testNow(),
+	})
+	if err != nil {
+		t.Fatalf("Authenticate: %v", err)
+	}
+	if !principal.VerifiedExpiry().Equal(tokenExp) {
+		t.Fatalf("VerifiedExpiry = %v; want verified token expiry %v", principal.VerifiedExpiry(), tokenExp)
+	}
+	if principal.HasRole(tenancy.RoleAdmin) || !principal.HasRole(tenancy.RoleViewer) {
+		t.Fatalf("Roles = %v; want current [viewer] only", principal.Roles)
 	}
 }
 

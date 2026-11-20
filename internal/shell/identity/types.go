@@ -10,6 +10,7 @@ package identity
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/optimiware/kodema/internal/fault"
 	"github.com/optimiware/kodema/internal/id"
@@ -63,6 +64,29 @@ type Principal struct {
 	Enabled     bool           `json:"enabled"`
 	Version     uint64         `json:"version"`
 	ExecutionID id.ExecutionID `json:"execution_id,omitempty"`
+
+	// verifiedExpiry is the externally verified credential expiry (for example
+	// a human OIDC access token's exp claim) attached at authentication time.
+	// It is unexported so untrusted JSON cannot populate it and it is never
+	// persisted as durable authority.
+	verifiedExpiry time.Time
+}
+
+// VerifiedExpiry returns the externally verified credential expiry attached at
+// authentication time, or the zero time when none was attached.
+func (principal Principal) VerifiedExpiry() time.Time {
+	return principal.verifiedExpiry
+}
+
+// WithVerifiedExpiry returns a copy of principal carrying the externally
+// verified credential expiry normalized to UTC. A zero time clears it.
+func (principal Principal) WithVerifiedExpiry(expiresAt time.Time) Principal {
+	if expiresAt.IsZero() {
+		principal.verifiedExpiry = time.Time{}
+	} else {
+		principal.verifiedExpiry = expiresAt.UTC()
+	}
+	return principal
 }
 
 // Validate checks that the principal is structurally eligible for its kind.
@@ -94,6 +118,9 @@ func (principal Principal) Validate() error {
 		if principal.ExecutionID != "" {
 			return fault.New(fault.InvalidInput, "service principal carries an execution id")
 		}
+		if !principal.verifiedExpiry.IsZero() {
+			return fault.New(fault.InvalidInput, "service principal carries a verified external expiry")
+		}
 		for _, role := range principal.Roles {
 			if role == tenancy.RoleAdmin {
 				return fault.New(fault.InvalidInput, "service principal holds the Admin role")
@@ -102,6 +129,9 @@ func (principal Principal) Validate() error {
 	case KindExecution:
 		if len(principal.Roles) != 0 {
 			return fault.New(fault.InvalidInput, "execution principal carries membership roles")
+		}
+		if !principal.verifiedExpiry.IsZero() {
+			return fault.New(fault.InvalidInput, "execution principal carries a verified external expiry")
 		}
 		if _, err := id.ParseExecutionID(string(principal.ExecutionID)); err != nil {
 			return fault.Wrap(fault.InvalidInput, "execution principal execution id is invalid", err)
