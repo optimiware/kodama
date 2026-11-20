@@ -502,8 +502,15 @@ func TestE2E_AC07Identity(t *testing.T) {
 		api.TaskCreateRequest{ProjectID: instance.projectID, Title: "ac07-refused-task"})
 	instance.requireForbidden(t, harness.PersonaOperator, api.MethodPut, "secret.write",
 		api.SecretWriteRequest{ProjectID: instance.projectID, SecretID: "AC07_REFUSED_SECRET", Value: "refused"})
-	instance.requireForbidden(t, harness.PersonaAdmin, api.MethodPost, "task.create",
-		api.TaskCreateRequest{ProjectID: instance.projectID, Title: "ac07-refused-admin-task"})
+	// The installation administrator persona explicitly holds engineer, reviewer
+	// and operator project roles in addition to admin, so verify principal-kind
+	// isolation instead: no human principal may submit execution action outputs.
+	instance.requireForbidden(t, harness.PersonaAdmin, api.MethodPut, "execution.action.outputs",
+		api.ExecutionActionOutputsRequest{
+			ExecutionID: "ac07-refused-exec",
+			ActionID:    "ac07-refused-action",
+			Outputs:     map[string]string{"out": "refused"},
+		})
 
 	// A project outside the caller's scope is never readable as if it were the
 	// caller's project.
