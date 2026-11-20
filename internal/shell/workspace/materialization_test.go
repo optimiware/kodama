@@ -491,7 +491,7 @@ func TestBuildTaskFilesAndMaterialization(t *testing.T) {
 	})
 
 	t.Run("rejects unsafe task file names", func(t *testing.T) {
-		for _, bad := range []string{"", ".", "..", "..data", "..2026_01", "../escape", "nested/file", "bad\x00name", strings.Repeat("a", 254)} {
+		for _, bad := range []string{"", ".", "..", "..data", "..2026_01", "../escape", "nested/file", "bad\x00name", strings.Repeat("a", 177)} {
 			request := testPrepareRequest()
 			request.TaskFiles = map[string][]byte{bad: []byte("x")}
 			scope := projectScope("tenant-a", "project-a")

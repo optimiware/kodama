@@ -490,7 +490,7 @@ func discoveryURLOfEncodedSize(t *testing.T, document api.DiscoveryDocument, siz
 }
 
 // TestDiscoveryIsAbsentFromRegistries pins that the discovery route is not one
-// of the 58 operations: it is not in the declared route table, does not resolve
+// of the registered operations: it is not in the declared route table, does not resolve
 // through api.Match and is not advertised as an MCP tool.
 func TestDiscoveryIsAbsentFromRegistries(t *testing.T) {
 	routes := api.Routes()

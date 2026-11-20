@@ -10,9 +10,9 @@ import (
 
 // TestTaskRestartActivatesReplacementAfterPredecessorStopSettles pins that
 // task.restart cancels an actively running predecessor execution with
-// CancelSuperseded, holds the queued replacement until the predecessor stop
-// settles, and then lets the controller's Scan/Reconcile loop automatically
-// activate and complete the replacement execution.
+// CancelSuperseded and lets the controller's Scan/Reconcile loop automatically
+// stop/clean up the predecessor, activate and complete the replacement
+// execution, and settle the task to done.
 func TestTaskRestartActivatesReplacementAfterPredecessorStopSettles(t *testing.T) {
 	fixture := newActivationFixture(t, nil, "work", "retry-work")
 	fixture.runtime.pauseExits()
@@ -94,15 +94,10 @@ func TestTaskRestartActivatesReplacementAfterPredecessorStopSettles(t *testing.T
 		t.Fatalf("replacement execution = state:%q cleanup:%q; want succeeded/complete", newView.State, newView.Cleanup.State)
 	}
 
-	// Confirm the task settled to done with current_execution = replacement and both executions in history.
-	readRec, readRes, readErr := restCall(t, handler, http.MethodGet,
-		"/api/v1/tasks/"+created.TaskID, "dev-project-token",
-		api.TaskReadRequest{}, nil, "")
-	if readRec.Code != api.HTTPStatusSuccess {
-		t.Fatalf("task.read status=%d error=%+v", readRec.Code, readErr)
-	}
-	taskView := decodeBody[api.TaskReadResult](t, readRes)
-	if taskView.State != "done" || taskView.CurrentExecution != restarted.ExecutionID {
+	// Confirm the task settles asynchronously to done with current_execution =
+	// replacement and both executions in history.
+	taskView := awaitTaskState(t, handler, "dev-project-token", created.TaskID, "done", "task.restart replacement settlement")
+	if taskView.CurrentExecution != restarted.ExecutionID {
 		t.Fatalf("task view = state:%q current:%q; want done/%q", taskView.State, taskView.CurrentExecution, restarted.ExecutionID)
 	}
 	if len(taskView.ExecutionHistory) != 2 || taskView.ExecutionHistory[0] != created.ExecutionID || taskView.ExecutionHistory[1] != restarted.ExecutionID {

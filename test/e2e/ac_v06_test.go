@@ -33,9 +33,24 @@ func TestE2E_AC21V06Capabilities(t *testing.T) {
 	engineer := instance.smokeToken(t, harness.PersonaEngineer)
 	tenant, project := liveScope(t, instance)
 
-	// 1. Verify #43 first-class project.list (defaulting caller tenant) and
-	//    repository.list against the real installation.
-	projRes := instance.smokeCall(ctx, t, engineer, api.MethodGet, "project.list", api.ProjectListRequest{}, "", nil)
+	// 1. Verify #43 first-class project.list (defaulting caller tenant via
+	//    GET /api/v1/projects) and repository.list against the real installation.
+	rt, err := harness.NewVerifiedTransport(instance.config)
+	if err != nil {
+		t.Fatalf("NewVerifiedTransport: %v", err)
+	}
+	tr := &client.HTTPTransport{
+		BaseURL:      instance.config.APIURL,
+		RoundTripper: rt,
+		Source:       staticCredentialSource{token: engineer, expiry: time.Now().UTC().Add(time.Hour)},
+	}
+	projRes, err := tr.Invoke(ctx, api.Invocation{
+		Operation: "project.list",
+		Request:   api.Request{Input: []byte("{}")},
+	})
+	if err != nil {
+		t.Fatalf("project.list (tenant-defaulting route): %v", err)
+	}
 	projList := decodeResult[api.ProjectListResult](t, projRes)
 	foundProject := false
 	for _, p := range projList.Projects {
@@ -73,15 +88,6 @@ func TestE2E_AC21V06Capabilities(t *testing.T) {
 
 	// 3. Verify #46 live HTTP SSE stream with human OIDC auth and cursor resume
 	//    (zero gaps, zero duplicates).
-	rt, err := harness.NewVerifiedTransport(instance.config)
-	if err != nil {
-		t.Fatalf("NewVerifiedTransport: %v", err)
-	}
-	tr := &client.HTTPTransport{
-		BaseURL:      instance.config.APIURL,
-		RoundTripper: rt,
-		Source:       staticCredentialSource{token: engineer, expiry: time.Now().UTC().Add(time.Hour)},
-	}
 	stream1, err := tr.StreamEvents(ctx, client.EventStreamRequest{
 		ProjectID: instance.projectID,
 		Types:     []string{"observation.custom"},
@@ -198,6 +204,9 @@ func TestE2E_AC21V06Capabilities(t *testing.T) {
 		PipelineID:  p1.PipelineID,
 	}, instance.key("ac21-create"), nil)
 	created := decodeResult[api.TaskCreateAndStartResult](t, createRes)
+	t.Cleanup(func() {
+		instance.smokeCleanupExecution(t, engineer, created.ExecutionID)
+	})
 
 	stage1View := instance.smokeWaitComplete(ctx, t, engineer, created.ExecutionID, 3*time.Minute)
 	requireSucceeded(t, stage1View)
@@ -258,6 +267,9 @@ func TestE2E_AC21V06Capabilities(t *testing.T) {
 		Inputs:     map[string]string{"carried": stage1Action.Outputs["stage_token"]},
 	}, instance.key("ac21-stage3-restart"), &restartVer)
 	restarted := decodeResult[api.TaskRestartResult](t, restartRes)
+	t.Cleanup(func() {
+		instance.smokeCleanupExecution(t, engineer, restarted.ExecutionID)
+	})
 	if restarted.SupersededExecution != stage2Started.ExecutionID {
 		t.Fatalf("superseded_execution = %q; want %q", restarted.SupersededExecution, stage2Started.ExecutionID)
 	}

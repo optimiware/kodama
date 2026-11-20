@@ -231,7 +231,7 @@ func discoveryPaddedTo(t *testing.T, size int) []byte {
 }
 
 // TestDiscoveryRouteIsOutsideOperationRegistry pins the unauthenticated
-// discovery route: a fixed root path, not one of the 58 operations, not
+// discovery route: a fixed root path, not one of the registered operations, not
 // matchable by the operation router and not requiring a credential to decode.
 func TestDiscoveryRouteIsOutsideOperationRegistry(t *testing.T) {
 	if api.DiscoveryPath != "/.well-known/kodema-configuration" {
