@@ -11,7 +11,9 @@ import (
 	"github.com/optimiware/kodema/internal/id"
 	"github.com/optimiware/kodema/internal/shell/pipeline"
 	"github.com/optimiware/kodema/internal/shell/receipt"
+	"github.com/optimiware/kodema/internal/shell/request"
 	"github.com/optimiware/kodema/internal/shell/store"
+	"github.com/optimiware/kodema/internal/shell/store/units/readers"
 	"github.com/optimiware/kodema/internal/shell/tenancy"
 )
 
@@ -33,6 +35,7 @@ func NewTask(executor store.Executor, scanner store.Scanner) (*Task, error) {
 type Inbox struct {
 	executor store.Executor
 	scanner  store.Scanner
+	refHeads request.RefHeadReader
 }
 
 // NewInbox validates the neutral seams and returns the inbox adapter.
@@ -40,7 +43,11 @@ func NewInbox(executor store.Executor, scanner store.Scanner) (*Inbox, error) {
 	if executor == nil || scanner == nil {
 		return nil, fault.New(fault.InternalFailure, "inbox store adapter requires an executor and a scanner")
 	}
-	return &Inbox{executor: executor, scanner: scanner}, nil
+	refHeads, err := readers.NewRefHeadReader(scanner)
+	if err != nil {
+		return nil, err
+	}
+	return &Inbox{executor: executor, scanner: scanner, refHeads: refHeads}, nil
 }
 
 // Pipelines adapts pipeline management commits. newID allocates the identity of

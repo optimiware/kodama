@@ -137,6 +137,10 @@ type protectedSubjectOptions struct {
 	// replacement subject. The strict public schema must refuse it and the
 	// pending request must be unchanged.
 	probeReplacementSubject bool
+	// allowStale overrides the stale git.ref.update expected_base guard when a
+	// negative subject-matrix test intentionally approves a mismatched ref or
+	// expected_base to verify the managed Git hook's own enforcement.
+	allowStale bool
 }
 
 // protectedSubjectRespondentIdentity is one answering principal and the
@@ -621,6 +625,7 @@ func protectedSubjectResolve(t *testing.T, fixture *gitHarness, evidence protect
 			ActionID:              action.ActionID,
 			ExpectedActionVersion: action.Version,
 			Decision:              "pass",
+			AllowStale:            evidence.options.allowStale,
 		}, &current.Version, "resolve-subject-"+evidence.executionID)
 		if publicError.Code == api.CodeVersionConflict {
 			continue

@@ -53,6 +53,7 @@ func NewService(config Config) (*Service, error) {
 		state:       config.State,
 		activations: config.Activations,
 		resolutions: config.Resolutions,
+		refHeads:    config.RefHeads,
 	}, nil
 }
 
@@ -617,6 +618,20 @@ func (s *Service) Resolve(ctx context.Context, command ResolveCommand) (ResolveR
 	}
 	if err := s.requireCurrentAssignmentAuthority(ctx, command, assignment, op, answered); err != nil {
 		return ResolveResult{}, err
+	}
+	if !answered && command.Decision == DecisionPass && !command.AllowStale && s.refHeads != nil {
+		if target, ok := ExtractGitRefUpdateSubject(action.Request.Subject); ok {
+			head, err := s.refHeads.LatestRefHead(ctx, command.Scope, target.Resource, target.Ref)
+			if err != nil {
+				return ResolveResult{}, err
+			}
+			if stale, _, reason := EvaluateGitRefStaleness(target, head); stale {
+				return ResolveResult{}, fault.New(
+					fault.VersionConflict,
+					fmt.Sprintf("cannot approve stale git.ref.update request: %s; pass allow_stale=true (or --allow-stale) to override", reason),
+				)
+			}
+		}
 	}
 	kernelDecision, ok := command.Decision.KernelDecision()
 	if !ok {

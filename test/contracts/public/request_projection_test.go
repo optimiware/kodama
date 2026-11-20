@@ -735,3 +735,87 @@ func TestExecutionActionRefusesRequestFactsOnNonRequestKinds(t *testing.T) {
 		}
 	}
 }
+
+// TestStaleApprovalInboxAndResolveWireContract pins the backwards-compatible
+// stale fields on api.InboxItem and the allow_stale opt-in on
+// api.ExecutionRequestResolveRequest, including strict codecs and MCP schema.
+func TestStaleApprovalInboxAndResolveWireContract(t *testing.T) {
+	inboxCodec := frozenCodec(t, "task.inbox")
+	staleVector := []byte(`{
+		"items": [{
+			"kind": "request",
+			"execution_id": "exe-1",
+			"action_id": "act-1",
+			"assignment": "role/reviewer",
+			"subject": {"fields": [
+				{"name": "operation", "kind": "string", "value": "git.ref.update"},
+				{"name": "resource", "kind": "string", "value": "repo-1"},
+				{"name": "ref", "kind": "string", "value": "refs/heads/main"},
+				{"name": "expected_base", "kind": "string", "value": "1111111111111111111111111111111111111111"},
+				{"name": "candidate", "kind": "string", "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}
+			]},
+			"stale": true,
+			"current_ref_commit": "2222222222222222222222222222222222222222",
+			"stale_reason": "ref refs/heads/main on repo-1 moved",
+			"version": 2,
+			"at": "2026-01-02T03:04:05Z"
+		}]
+	}`)
+	decoded, err := inboxCodec.DecodeResult(staleVector)
+	if err != nil {
+		t.Fatalf("decode stale task.inbox result: %v", err)
+	}
+	item := decoded.(api.TaskInboxResult).Items[0]
+	if !item.Stale || item.CurrentRefCommit != "2222222222222222222222222222222222222222" || item.StaleReason == "" {
+		t.Fatalf("decoded stale inbox item = %+v", item)
+	}
+	if _, err := inboxCodec.EncodeResult(decoded); err != nil {
+		t.Fatalf("re-encode stale task.inbox result: %v", err)
+	}
+
+	// Staleness details without stale=true are refused.
+	badRequest := item
+	badRequest.Stale = false
+	requireInvalid(t, badRequest.Validate(), "request item with current_ref_commit without stale=true")
+
+	// Non-request inbox kinds refuse staleness fields.
+	at := time.Unix(1_700_000_000, 0).UTC()
+	waiting := api.InboxItem{
+		Kind:             "waiting_task",
+		TaskID:           "tsk-1",
+		Assignment:       "role/reviewer",
+		QuestionID:       "qst-1",
+		Question:         "which base?",
+		Stale:            true,
+		Version:          1,
+		LifecycleVersion: 2,
+		At:               at,
+	}
+	requireInvalid(t, waiting.Validate(), "waiting_task carrying stale=true")
+	failed := api.InboxItem{
+		Kind:    "failed_task",
+		TaskID:  "tsk-2",
+		Stale:   true,
+		Version: 4,
+		At:      at,
+	}
+	requireInvalid(t, failed.Validate(), "failed_task carrying stale=true")
+
+	// execution.request.resolve accepts allow_stale and advertises it as an
+	// optional boolean in the MCP input schema.
+	resolveCodec := frozenCodec(t, "execution.request.resolve")
+	reqVal, err := resolveCodec.DecodeRequest([]byte(`{"decision":"pass","expected_action_version":2,"allow_stale":true}`))
+	if err != nil {
+		t.Fatalf("decode allow_stale resolve request: %v", err)
+	}
+	if !reqVal.(api.ExecutionRequestResolveRequest).AllowStale {
+		t.Fatal("decoded AllowStale = false; want true")
+	}
+	schemaRaw, err := api.OperationInputSchema("execution.request.resolve")
+	if err != nil {
+		t.Fatalf("OperationInputSchema(execution.request.resolve): %v", err)
+	}
+	if !strings.Contains(string(schemaRaw), `"allow_stale":{"type":"boolean"}`) {
+		t.Fatalf("execution.request.resolve schema missing allow_stale boolean: %s", schemaRaw)
+	}
+}

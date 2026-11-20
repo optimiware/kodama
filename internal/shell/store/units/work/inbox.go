@@ -162,7 +162,12 @@ func (adapter *Inbox) requestItems(ctx context.Context, scope tenancy.Scope, pri
 		snapshot snapshotdoc.Admitted
 		taskID   id.TaskID
 	}
+	type refHeadKey struct {
+		resource string
+		ref      string
+	}
 	admitted := make(map[id.ExecutionID]cachedExecution)
+	refHeads := make(map[refHeadKey]request.RefHead)
 	entries := make([]inboxEntry, 0, len(rows))
 	for _, row := range rows {
 		assignment, err := decodeJSON[request.Assignment](bytesValue(row, "request_assignment"))
@@ -220,6 +225,25 @@ func (adapter *Inbox) requestItems(ctx context.Context, scope tenancy.Scope, pri
 			// actions has no created_at; the deadline is the one durable action
 			// timestamp and is set at activation.
 			At: timeValue(row, "deadline"),
+		}
+		if adapter.refHeads != nil {
+			if target, ok := request.ExtractGitRefUpdateSubject(subject); ok {
+				key := refHeadKey{resource: target.Resource, ref: target.Ref}
+				head, cached := refHeads[key]
+				if !cached {
+					var err error
+					head, err = adapter.refHeads.LatestRefHead(ctx, scope, target.Resource, target.Ref)
+					if err != nil {
+						return nil, err
+					}
+					refHeads[key] = head
+				}
+				if stale, currentCommit, reason := request.EvaluateGitRefStaleness(target, head); stale {
+					item.Stale = true
+					item.CurrentRefCommit = currentCommit
+					item.StaleReason = reason
+				}
+			}
 		}
 		entries = append(entries, inboxEntry{item: item, identity: string(item.ActionID)})
 	}

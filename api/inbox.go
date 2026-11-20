@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"time"
+	"unicode/utf8"
 )
 
 // Inbox query and observation wire vocabulary.
@@ -60,6 +61,9 @@ type InboxItem struct {
 	Assignment       string    `json:"assignment,omitempty"`
 	Subject          *Subject  `json:"subject,omitempty"`
 	Outputs          []string  `json:"outputs,omitempty"`
+	Stale            bool      `json:"stale,omitempty"`
+	CurrentRefCommit string    `json:"current_ref_commit,omitempty"`
+	StaleReason      string    `json:"stale_reason,omitempty"`
 	QuestionID       string    `json:"question_id,omitempty" schema:"id"`
 	Question         string    `json:"question,omitempty"`
 	References       []string  `json:"references,omitempty"`
@@ -148,6 +152,9 @@ func (item InboxItem) Validate() error {
 		if err := validateOutputNames(item.Outputs); err != nil {
 			return err
 		}
+		if err := item.validateStaleness(); err != nil {
+			return err
+		}
 		if err := item.validateNoQuestionProjection(); err != nil {
 			return err
 		}
@@ -205,14 +212,39 @@ func (item InboxItem) Validate() error {
 	return nil
 }
 
-// validateNoRequestProjection refuses the request-only subject and declared
-// output names on a kind that does not own them.
+// validateNoRequestProjection refuses the request-only subject, declared output
+// names and staleness fields on a kind that does not own them.
 func (item InboxItem) validateNoRequestProjection() error {
 	if item.Subject != nil {
 		return invalid("inbox %s carries a request subject", item.Kind)
 	}
 	if len(item.Outputs) > 0 {
 		return invalid("inbox %s carries request outputs", item.Kind)
+	}
+	if item.Stale || item.CurrentRefCommit != "" || item.StaleReason != "" {
+		return invalid("inbox %s carries request staleness fields", item.Kind)
+	}
+	return nil
+}
+
+// validateStaleness checks the optional request-only staleness projection.
+// CurrentRefCommit and StaleReason are only allowed when Stale is true, and
+// both must be bounded UTF-8 strings.
+func (item InboxItem) validateStaleness() error {
+	if !item.Stale && (item.CurrentRefCommit != "" || item.StaleReason != "") {
+		return invalid("inbox request carries staleness details without stale=true")
+	}
+	if len(item.CurrentRefCommit) > MaxSubjectValueBytes {
+		return invalid("inbox request current_ref_commit is %d bytes; at most %d are allowed", len(item.CurrentRefCommit), MaxSubjectValueBytes)
+	}
+	if !utf8.ValidString(item.CurrentRefCommit) {
+		return invalid("inbox request current_ref_commit is not valid UTF-8")
+	}
+	if len(item.StaleReason) > MaxSubjectValueBytes {
+		return invalid("inbox request stale_reason is %d bytes; at most %d are allowed", len(item.StaleReason), MaxSubjectValueBytes)
+	}
+	if !utf8.ValidString(item.StaleReason) {
+		return invalid("inbox request stale_reason is not valid UTF-8")
 	}
 	return nil
 }
