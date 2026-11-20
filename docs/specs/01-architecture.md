@@ -43,7 +43,7 @@ Paths below are exact ownership targets. A listed directory may contain a few co
 | P21 | `internal/shell/transport/ops`, `internal/shell/transport/httpapi`, `internal/shell/transport/mcp` | Single router and two thin public edges |
 | P22 | `client`, `internal/userland/cli` | REST client, the client and toolbox commands of `kodema`, login/credential helper |
 | P23 | `internal/userland/git` | Independent Git service, rules, journal, retention |
-| P24 | `internal/userland/session`, `internal/userland/skill` | Durable agent context; Markdown skill declarations and loader (`skill` is frozen by C-PUBLIC and no production package imports it yet) |
+| P24 | `internal/userland/session`, `internal/userland/skill` | Durable agent context; Markdown skill declarations and loader (`skill` is frozen by C-PUBLIC and consumed by `kodema context`) |
 | P25 | `internal/userland/agent` | Native agent runtime using public contracts |
 | P26 | `internal/userland/services` | Email/webhook/timer/responders and merge serialization |
 | P27 | `examples` | Pipelines, images, context and delivery recipes |
@@ -60,7 +60,7 @@ Paths below are exact ownership targets. A listed directory may contain a few co
 
 | Importer | Allowed | Forbidden |
 |---|---|---|
-| `api`, `id`, `fault` | Standard library | Product implementations, transport clients |
+| `api`, `id`, `fault`, `docs` | Standard library | Product implementations, transport clients |
 | Kernel | Standard library, `id`, `fault`, acyclic Kernel dependencies | Shell/Userland and infrastructure clients |
 | Shell capability | Kernel types/logic, neutral types, consumer-owned contracts | Concrete stores/runtimes/transports, Userland |
 | Shell adapter | Consumed contracts, approved technology dependency | Another capability's implementation to bypass its port |

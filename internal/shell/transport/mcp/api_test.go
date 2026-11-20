@@ -22,10 +22,13 @@
 // # Pinned behavior
 //
 // The MCP edge is a thin JSON-RPC 2.0 transport over the shared router. It
-// supports initialize, ping, tools/call and tools/list; every other method
-// refuses with the stable invalid_input mapping (-32602). When Principals is
-// configured, initialize and tools/list authenticate the presented credential
-// before returning server metadata or tool schemas, while never calling the
+// supports initialize (with embedded Kodema instructions), ping, tools/call,
+// tools/list, resources/list, resources/templates/list, resources/read,
+// prompts/list, and prompts/get; every other method refuses with the stable
+// invalid_input mapping (-32602).
+// When Principals is configured, initialize, tools/list, resources/*, and
+// prompts/* authenticate the presented credential before returning server
+// metadata, tool schemas, or embedded documentation, while never calling the
 // router. initialize echoes the negotiated MCP protocol version and the
 // configured server info. tools/call names a registry operation and passes
 // either the canonical api.Request envelope or flat top-level operation fields

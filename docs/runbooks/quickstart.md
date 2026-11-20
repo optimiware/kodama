@@ -266,7 +266,26 @@ Commands start in `/workspace`, which the actions of one execution share.
 ## Connect an MCP client
 
 ```sh
-kodema mcp install claude --print     # or cursor, codex; without --print it writes the client's config
+kodema mcp install claude --print     # or cursor, codex, opencode; without --print it writes the client's config
+```
+
+Connecting over MCP automatically provides Kodema instructions during `initialize`, plus version-locked guides via MCP resources (`kodema://docs/*`) and prompts (`kodema-docs`, `kodema-workload`, `kodema-pipelines`, ...).
+
+## Embedded docs and shared company context
+
+Read Kodema's embedded documentation offline (including inside container steps) or install it as a portable Agent Skill:
+
+```sh
+kodema docs                                 # list topics
+kodema docs workload                        # container action contract
+kodema docs install --target agents         # or claude, opencode, all
+```
+
+Pull shared tenant/project Git context repositories (`<tenant>/context`, `<tenant>/<project>/context`) inside container actions or on a workstation, validating skills and Markdown docs for symlinks and secret leaks:
+
+```sh
+kodema context pull --repo context --repo myproject/context --target agents --include-kodema-docs
+kodema context list --dir ./path/to/context
 ```
 
 ## Operate

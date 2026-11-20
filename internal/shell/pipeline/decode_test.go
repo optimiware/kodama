@@ -5,11 +5,41 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/optimiware/kodema/internal/docs"
 	"github.com/optimiware/kodema/internal/fault"
 	"github.com/optimiware/kodema/internal/id"
 	"github.com/optimiware/kodema/internal/kernel/definition"
 	"github.com/optimiware/kodema/internal/shell/pipeline"
 )
+
+func TestEmbeddedPipelineDocsYAMLExamplesDecode(t *testing.T) {
+	topic, ok := docs.Lookup("pipelines")
+	if !ok {
+		t.Fatal("missing embedded pipelines doc")
+	}
+	var blocks []string
+	rest := topic.Content
+	for {
+		_, after, found := strings.Cut(rest, "```yaml\n")
+		if !found {
+			break
+		}
+		block, tail, closed := strings.Cut(after, "\n```")
+		if !closed {
+			t.Fatal("unterminated yaml fence in embedded pipelines doc")
+		}
+		blocks = append(blocks, block)
+		rest = tail
+	}
+	if len(blocks) == 0 {
+		t.Fatal("expected at least one yaml example in embedded pipelines doc")
+	}
+	for i, block := range blocks {
+		if _, err := pipeline.Decode([]byte(block), pipeline.DefaultLimits); err != nil {
+			t.Errorf("embedded pipelines.md yaml block %d failed to decode: %v\n%s", i, err, block)
+		}
+	}
+}
 
 func TestDecodeAcceptsSupportedPipelineForms(t *testing.T) {
 	decoded, err := pipeline.Decode(validPipelineYAML(), pipeline.DefaultLimits)

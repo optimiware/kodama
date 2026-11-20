@@ -98,6 +98,10 @@ func RunWithDeps(ctx context.Context, config Config, args []string, ports Ports,
 		return runMember(ctx, config, args[1:], ports, deps)
 	case "mcp":
 		return runMCP(ctx, config, args[1:], ports, deps)
+	case "docs":
+		return runDocs(ctx, config, args[1:], ports, deps)
+	case "context":
+		return runContext(ctx, config, args[1:], ports, deps)
 	case "login":
 		if hasHelpFlag(args[1:]) {
 			return runHelp(ports.Out, ports.Err, []string{"login"})

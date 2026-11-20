@@ -23,11 +23,27 @@ const (
 	MCPMethodToolsList = "tools/list"
 	// MCPMethodToolsCall is the supported operation method.
 	MCPMethodToolsCall = "tools/call"
+	// MCPMethodResourcesList advertises the embedded documentation resources.
+	MCPMethodResourcesList = "resources/list"
+	// MCPMethodResourcesTemplatesList advertises parameterized resource templates.
+	MCPMethodResourcesTemplatesList = "resources/templates/list"
+	// MCPMethodResourcesRead reads one embedded documentation resource by URI.
+	MCPMethodResourcesRead = "resources/read"
+	// MCPMethodPromptsList advertises the embedded documentation prompts.
+	MCPMethodPromptsList = "prompts/list"
+	// MCPMethodPromptsGet renders one embedded documentation prompt.
+	MCPMethodPromptsGet = "prompts/get"
 	// MCPNotificationInitialized is the client post-handshake notification.
 	MCPNotificationInitialized = "notifications/initialized"
 	// MCPNotificationCancelled is the client cancellation notification.
 	MCPNotificationCancelled = "notifications/cancelled"
 )
+
+// MCPCodeResourceNotFound is the MCP-specified JSON-RPC error code for an
+// unknown resource URI returned by resources/read.
+const MCPCodeResourceNotFound = -32002
+
+const maxMCPResourceURILength = 512
 
 // supportedMCPProtocolVersions lists the MCP protocol revisions this server
 // explicitly speaks, newest first.
@@ -170,11 +186,13 @@ func (params MCPInitializeParams) Validate() error {
 }
 
 // MCPInitializeResult is the initialize response result. It echoes the
-// negotiated supported protocol version and identifies the server.
+// negotiated supported protocol version, identifies the server and may include
+// concise server instructions for connecting harnesses.
 type MCPInitializeResult struct {
 	ProtocolVersion string            `json:"protocolVersion"`
 	Capabilities    json.RawMessage   `json:"capabilities,omitempty"`
 	ServerInfo      MCPImplementation `json:"serverInfo"`
+	Instructions    string            `json:"instructions,omitempty"`
 }
 
 // Validate checks the supported protocol version, capabilities object and
@@ -223,6 +241,98 @@ type MCPToolsListParams struct {
 // catalog in registry declaration order.
 type MCPToolsListResult struct {
 	Tools []MCPTool `json:"tools"`
+}
+
+// MCPListParams is the shared parameter object for paginated MCP list methods
+// (resources/list, resources/templates/list, and prompts/list).
+type MCPListParams struct {
+	Cursor string          `json:"cursor,omitempty"`
+	Meta   json.RawMessage `json:"_meta,omitempty"`
+}
+
+// MCPResource is one advertised MCP resource (embedded Kodema documentation).
+type MCPResource struct {
+	URI         string `json:"uri"`
+	Name        string `json:"name"`
+	Title       string `json:"title,omitempty"`
+	Description string `json:"description,omitempty"`
+	MIMEType    string `json:"mimeType,omitempty"`
+}
+
+// MCPResourcesListResult is the resources/list result object.
+type MCPResourcesListResult struct {
+	Resources []MCPResource `json:"resources"`
+}
+
+// MCPResourceTemplate is one parameterized MCP resource template.
+type MCPResourceTemplate struct {
+	URITemplate string `json:"uriTemplate"`
+	Name        string `json:"name"`
+	Title       string `json:"title,omitempty"`
+	Description string `json:"description,omitempty"`
+	MIMEType    string `json:"mimeType,omitempty"`
+}
+
+// MCPResourcesTemplatesListResult is the resources/templates/list result object.
+type MCPResourcesTemplatesListResult struct {
+	ResourceTemplates []MCPResourceTemplate `json:"resourceTemplates"`
+}
+
+// MCPResourcesReadParams is the resources/read parameter object.
+type MCPResourcesReadParams struct {
+	URI  string          `json:"uri"`
+	Meta json.RawMessage `json:"_meta,omitempty"`
+}
+
+// MCPResourceContents is one text content entry returned by resources/read.
+type MCPResourceContents struct {
+	URI      string `json:"uri"`
+	MIMEType string `json:"mimeType,omitempty"`
+	Text     string `json:"text"`
+}
+
+// MCPResourcesReadResult is the resources/read result object.
+type MCPResourcesReadResult struct {
+	Contents []MCPResourceContents `json:"contents"`
+}
+
+// MCPPromptArgument describes one named prompt argument.
+type MCPPromptArgument struct {
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	Required    bool   `json:"required,omitempty"`
+}
+
+// MCPPrompt is one advertised MCP prompt.
+type MCPPrompt struct {
+	Name        string              `json:"name"`
+	Title       string              `json:"title,omitempty"`
+	Description string              `json:"description,omitempty"`
+	Arguments   []MCPPromptArgument `json:"arguments,omitempty"`
+}
+
+// MCPPromptsListResult is the prompts/list result object.
+type MCPPromptsListResult struct {
+	Prompts []MCPPrompt `json:"prompts"`
+}
+
+// MCPPromptsGetParams is the prompts/get parameter object.
+type MCPPromptsGetParams struct {
+	Name      string            `json:"name"`
+	Arguments map[string]string `json:"arguments,omitempty"`
+	Meta      json.RawMessage   `json:"_meta,omitempty"`
+}
+
+// MCPPromptMessage is one role/content message returned by prompts/get.
+type MCPPromptMessage struct {
+	Role    string          `json:"role"`
+	Content MCPContentBlock `json:"content"`
+}
+
+// MCPPromptsGetResult is the prompts/get result object.
+type MCPPromptsGetResult struct {
+	Description string             `json:"description,omitempty"`
+	Messages    []MCPPromptMessage `json:"messages"`
 }
 
 // MCPContentBlock is one content block inside an MCP CallToolResult.
@@ -370,6 +480,49 @@ func (request MCPRequest) Validate() error {
 		}
 		if _, err := DecodeMCPOperationArguments(canonical, params.Arguments); err != nil {
 			return err
+		}
+		return nil
+	case MCPMethodResourcesList, MCPMethodResourcesTemplatesList, MCPMethodPromptsList:
+		trimmed := strings.TrimSpace(string(request.Params))
+		if trimmed == "" || trimmed == "null" {
+			return nil
+		}
+		var params MCPListParams
+		if err := decodeStrict(request.Params, &params); err != nil {
+			return invalid("%s params are invalid", request.Method)
+		}
+		if !optionalJSONObject(params.Meta) {
+			return invalid("%s _meta must be a JSON object", request.Method)
+		}
+		return nil
+	case MCPMethodResourcesRead:
+		var params MCPResourcesReadParams
+		if err := decodeStrict(request.Params, &params); err != nil {
+			return invalid("resources/read params are invalid")
+		}
+		if !optionalJSONObject(params.Meta) {
+			return invalid("resources/read _meta must be a JSON object")
+		}
+		if strings.TrimSpace(params.URI) == "" {
+			return invalid("resources/read uri is empty")
+		}
+		if len(params.URI) > maxMCPResourceURILength {
+			return invalid("resources/read uri is too long")
+		}
+		return nil
+	case MCPMethodPromptsGet:
+		var params MCPPromptsGetParams
+		if err := decodeStrict(request.Params, &params); err != nil {
+			return invalid("prompts/get params are invalid")
+		}
+		if !optionalJSONObject(params.Meta) {
+			return invalid("prompts/get _meta must be a JSON object")
+		}
+		if strings.TrimSpace(params.Name) == "" {
+			return invalid("prompts/get name is empty")
+		}
+		if len(params.Name) > maxIDLength {
+			return invalid("prompts/get name %q is too long", params.Name)
 		}
 		return nil
 	default:

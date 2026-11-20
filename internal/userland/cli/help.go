@@ -204,10 +204,10 @@ membership version via membership.list automatically when --expected-version is 
 	},
 	"mcp": {
 		usage:   "kodema mcp <stdio|install> [arguments]",
-		summary: "Bridge MCP over stdio or configure Claude Code, Cursor, or Codex",
+		summary: "Bridge MCP over stdio or configure Claude Code, Cursor, Codex, or OpenCode",
 		description: `Subcommands:
   stdio     Bridge newline-delimited JSON-RPC 2.0 on stdin/stdout to <API_URL>/mcp
-  install   Print or write MCP server configuration for claude, cursor, or codex`,
+  install   Print or write MCP server configuration for claude, cursor, codex, or opencode`,
 	},
 	"mcp stdio": {
 		usage:   "kodema mcp stdio",
@@ -218,22 +218,108 @@ and --ca-file TLS trust, and writes non-empty JSON-RPC responses as single lines
 A request that cannot be delivered is answered with a JSON-RPC error; the bridge keeps running.`,
 	},
 	"mcp install": {
-		usage:   "kodema mcp install [claude|cursor|codex] [--name kodema] [--config-file <path>] [--local] [--print]",
+		usage:   "kodema mcp install [claude|cursor|codex|opencode] [--name kodema] [--config-file <path>] [--local] [--print]",
 		summary: "Print or install the kodema MCP server entry for an AI coding tool",
 		description: `Configures an MCP client to invoke 'kodema --url <url> [--ca-file <path>] [--session <path>] mcp stdio'.
 Preserves an explicit --session path and prefers a refreshing human session over an ambient
 KODEMA_CREDENTIAL_FILE when available. Warns on stderr if embedding a short-lived local admin token.
 
 Targets:
-  claude   ~/.claude.json (or .mcp.json with --local)
-  cursor   ~/.cursor/mcp.json
-  codex    ~/.codex/config.toml
+  claude     ~/.claude.json (or .mcp.json with --local)
+  cursor     ~/.cursor/mcp.json
+  codex      ~/.codex/config.toml
+  opencode   ~/.config/opencode/opencode.json (or opencode.json with --local)
 
 Flags:
   --name <name>          MCP server name (default: kodema)
   --config-file <path>   Explicit config file path to update
-  --local                Write .mcp.json in current directory (claude target only)
+  --local                Write project-local config (claude and opencode targets only)
   --print                Print configuration snippet to stdout without writing files`,
+	},
+	"docs": {
+		usage:   "kodema docs [<topic> | --list | --all | --instructions | install ...]",
+		summary: "Read or install embedded Kodema documentation offline",
+		description: `Reads version-locked Kodema documentation embedded in this binary (the same
+documentation served by Kodema's MCP instructions, resources, and prompts).
+
+Subcommands:
+  install   kodema docs install [--target agents|claude|opencode|all] [--dest <dir>]
+
+Flags:
+  --list           List available embedded documentation topics (default when no topic is given)
+  --all            Print every documentation topic concatenated as Markdown
+  --instructions   Print the concise MCP system instructions overview
+  --output <fmt>   Output format (table|json)`,
+	},
+	"docs install": {
+		usage:   "kodema docs install [--target agents|claude|opencode|all] [--dest <dir>] [--output <table|json>]",
+		summary: "Install embedded Kodema documentation as a portable Agent Skill",
+		description: `Materializes the embedded Kodema product docs as SKILL.md plus references/<topic>.md
+in the selected harness skill directory under --dest (default: current directory).
+
+Targets:
+  agents     <dest>/.agents/skills/kodema   (default; discovered by OpenCode, Codex, and compatible harnesses)
+  claude     <dest>/.claude/skills/kodema
+  opencode   <dest>/.opencode/skills/kodema
+  all        All three directories above
+
+Flags:
+  --target <target>   Skill directory target (default: agents)
+  --dest, --dir <p>   Destination root directory (default: .)
+  --output <fmt>      Output format (table|json)`,
+	},
+	"context": {
+		usage:   "kodema context <pull|list|show> [arguments]",
+		summary: "Pull, validate, and inspect shared Git context repositories and Markdown skills",
+		description: `Works with tenant/project Git context repositories (<tenant>/context,
+<tenant>/<project>/context) using $KODEMA_GIT_URL and Kodema's secret-free
+Markdown skill validator.
+
+Subcommands:
+  pull   kodema context pull --repo <repo>[@<ref>]... [--git-url <url>] [--dest <dir>] [--target agents|claude|opencode|all] [--agents-md <path>] [--include-kodema-docs]
+  list   kodema context list [--dir <path>] [--output <table|json>]
+  show   kodema context show <skill-name> [--dir <path>] [--output <table|json>]`,
+	},
+	"context pull": {
+		usage:   "kodema context pull --repo <repo>[@<ref>]... [--git-url <url>] [--ref <ref>] [--dest <dir>] [--target agents|claude|opencode|all] [--agents-md <path>] [--include-kodema-docs] [--output <table|json>]",
+		summary: "Pull shared Git context repos and materialize validated skills and docs",
+		description: `Clones one or more context repositories from --git-url or $KODEMA_GIT_URL
+(defaulting to <server>/git when --server is configured), validates every skill
+and Markdown document for symlink safety, size bounds, and secret leaks, and
+materializes skills into harness-discoverable directories plus non-skill docs
+into <dest>/.kodema/context/<repo>/. Later --repo entries override earlier ones
+on colliding skill names.
+
+Flags:
+  -r, --repo <repo>[@<ref>]   Context repository path or URL (repeatable; positionals also accepted)
+  --git-url <url>             Git base URL (defaults to $KODEMA_GIT_URL or <server>/git)
+  --ref <ref>                 Default branch, tag, or commit SHA for repos without @<ref>
+  --dest, --dir <path>        Destination root directory (default: .)
+  --target <target>           Skill directory target: agents (default), claude, opencode, or all
+  --agents-md <path>          Create or update a managed context summary block in <path> (e.g. AGENTS.md)
+  --include-kodema-docs       Also install Kodema's embedded product docs as the 'kodema' skill
+  --output <table|json>       Output format`,
+	},
+	"context list": {
+		usage:   "kodema context list [--dir <path>] [--output <table|json>]",
+		summary: "Validate and list skills and docs in a local context repository",
+		description: `Inspects a local context repository directory (default: .) offline, validating
+skills and Markdown docs for slug syntax, symlink safety, size bounds, and
+credential leaks.
+
+Flags:
+  -d, --dir <path>        Context repository directory (default: .)
+  --output <table|json>   Output format`,
+	},
+	"context show": {
+		usage:   "kodema context show <skill-name> [--dir <path>] [--output <table|json>]",
+		summary: "Validate and print one skill from a local context repository",
+		description: `Loads and validates one named skill from a local context repository directory
+(default: .) and prints its Markdown content (or JSON with --output json).
+
+Flags:
+  -d, --dir <path>        Context repository directory (default: .)
+  --output <table|json>   Output format`,
 	},
 	"pipeline": {
 		usage:   "kodema pipeline <apply|list> [arguments]",
@@ -525,6 +611,8 @@ Commands:
   secret      Set, list, and delete project secrets
   member      List, grant, and revoke project memberships
   mcp         Run the MCP stdio bridge or install editor configuration
+  docs        Read or install embedded Kodema documentation offline
+  context     Pull, validate, and inspect shared Git context repos and skills
   call        Invoke any registered public API operation (or --list / --schema)
   git         Configure Git credentials, credential helper, or Git service
   output      Submit the outputs of the running container action

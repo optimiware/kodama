@@ -252,12 +252,12 @@ func runMCPInstall(ctx context.Context, config Config, args []string, ports Port
 		target = strings.ToLower(strings.TrimSpace(positionals[0]))
 	}
 	switch target {
-	case "claude", "cursor", "codex":
+	case "claude", "cursor", "codex", "opencode":
 	default:
-		return usage(ports.Err, fmt.Sprintf("unknown mcp install target %q; want claude, cursor, or codex", target))
+		return usage(ports.Err, fmt.Sprintf("unknown mcp install target %q; want claude, cursor, codex, or opencode", target))
 	}
-	if localScope && target != "claude" {
-		return usage(ports.Err, "--local is only supported for the claude target")
+	if localScope && target != "claude" && target != "opencode" {
+		return usage(ports.Err, "--local is only supported for the claude and opencode targets")
 	}
 
 	serverName := strings.TrimSpace(nameFlag)
@@ -333,7 +333,7 @@ func runMCPInstall(ctx context.Context, config Config, args []string, ports Port
 	if ports.Files == nil {
 		return failure(ports.Err, fmt.Errorf("no filesystem is configured"))
 	}
-	destPath, err := resolveMCPConfigPath(target, strings.TrimSpace(configFileFlag), localScope, deps.HomeDir)
+	destPath, err := resolveMCPConfigPath(target, strings.TrimSpace(configFileFlag), localScope, deps.HomeDir, ports.Files)
 	if err != nil {
 		return failure(ports.Err, err)
 	}
@@ -349,6 +349,8 @@ func runMCPInstall(ctx context.Context, config Config, args []string, ports Port
 		updated, err = mergeMCPJSONConfig(existing, serverName, cmdName, mcpArgs)
 	case "codex":
 		updated, err = mergeMCPTOMLConfig(existing, serverName, cmdName, mcpArgs)
+	case "opencode":
+		updated, err = mergeMCPOpenCodeConfig(existing, serverName, cmdName, mcpArgs)
 	}
 	if err != nil {
 		return failure(ports.Err, fmt.Errorf("cannot update %s: %w", destPath, err))
@@ -455,12 +457,15 @@ func credentialTokenExpiry(raw string) (time.Time, bool) {
 	return time.Unix(int64(*claims.Exp), 0).UTC(), true
 }
 
-func resolveMCPConfigPath(target, explicit string, localScope bool, homeDir func() (string, error)) (string, error) {
+func resolveMCPConfigPath(target, explicit string, localScope bool, homeDir func() (string, error), files FileSystem) (string, error) {
 	if explicit != "" {
 		return explicit, nil
 	}
 	if target == "claude" && localScope {
 		return ".mcp.json", nil
+	}
+	if target == "opencode" && localScope {
+		return preferExistingJSONC("opencode.json", files), nil
 	}
 	resolveHome := homeDir
 	if resolveHome == nil {
@@ -477,49 +482,208 @@ func resolveMCPConfigPath(target, explicit string, localScope bool, homeDir func
 		return filepath.Join(home, ".cursor", "mcp.json"), nil
 	case "codex":
 		return filepath.Join(home, ".codex", "config.toml"), nil
+	case "opencode":
+		return preferExistingJSONC(filepath.Join(home, ".config", "opencode", "opencode.json"), files), nil
 	default:
 		return "", fmt.Errorf("unsupported target %q", target)
 	}
 }
 
-func renderMCPSnippet(target, serverName, cmdName string, mcpArgs []string) ([]byte, error) {
-	if target == "codex" {
-		return []byte(formatCodexTOMLSection(serverName, cmdName, mcpArgs)), nil
+// preferExistingJSONC returns jsonPath+"c" when jsonPath does not exist but a
+// sibling .jsonc config already exists, avoiding creating a conflicting file.
+func preferExistingJSONC(jsonPath string, files FileSystem) string {
+	if files == nil {
+		return jsonPath
 	}
-	return mergeMCPJSONConfig(nil, serverName, cmdName, mcpArgs)
+	if _, err := files.ReadFile(jsonPath); err == nil || !errors.Is(err, fs.ErrNotExist) {
+		return jsonPath
+	}
+	jsoncPath := jsonPath + "c"
+	if _, err := files.ReadFile(jsoncPath); err == nil {
+		return jsoncPath
+	}
+	return jsonPath
+}
+
+func renderMCPSnippet(target, serverName, cmdName string, mcpArgs []string) ([]byte, error) {
+	switch target {
+	case "codex":
+		return []byte(formatCodexTOMLSection(serverName, cmdName, mcpArgs)), nil
+	case "opencode":
+		return mergeMCPOpenCodeConfig(nil, serverName, cmdName, mcpArgs)
+	default:
+		return mergeMCPJSONConfig(nil, serverName, cmdName, mcpArgs)
+	}
+}
+
+func parseJSONObject(existing []byte, allowJSONC bool) (map[string]any, error) {
+	root := make(map[string]any)
+	trimmed := bytes.TrimSpace(existing)
+	if len(trimmed) == 0 {
+		return root, nil
+	}
+	if allowJSONC {
+		trimmed = stripJSONC(trimmed)
+	}
+	decoder := json.NewDecoder(bytes.NewReader(trimmed))
+	decoder.UseNumber()
+	if err := decoder.Decode(&root); err != nil || root == nil {
+		return nil, fmt.Errorf("existing file is not a valid JSON object")
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); err != io.EOF {
+		return nil, fmt.Errorf("existing file is not a valid JSON object")
+	}
+	return root, nil
+}
+
+func ensureJSONObjectField(parent map[string]any, key, label string) (map[string]any, error) {
+	if raw, ok := parent[key]; ok && raw != nil {
+		cast, ok := raw.(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf("existing %s field is not a JSON object", label)
+		}
+		return cast, nil
+	}
+	child := make(map[string]any)
+	parent[key] = child
+	return child, nil
+}
+
+func encodeIndentedJSON(value any) ([]byte, error) {
+	var buf bytes.Buffer
+	encoder := json.NewEncoder(&buf)
+	encoder.SetEscapeHTML(false)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(value); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+// stripJSONC removes // line comments, /* */ block comments, and trailing
+// commas before } or ] while preserving string literals intact.
+func stripJSONC(src []byte) []byte {
+	// Pass 1: strip comments outside double-quoted strings.
+	var noComments bytes.Buffer
+	noComments.Grow(len(src))
+	inString := false
+	for i := 0; i < len(src); i++ {
+		c := src[i]
+		if inString {
+			noComments.WriteByte(c)
+			if c == '\\' && i+1 < len(src) {
+				i++
+				noComments.WriteByte(src[i])
+			} else if c == '"' {
+				inString = false
+			}
+			continue
+		}
+		if c == '"' {
+			inString = true
+			noComments.WriteByte(c)
+			continue
+		}
+		if c == '/' && i+1 < len(src) && src[i+1] == '/' {
+			i += 2
+			for i < len(src) && src[i] != '\n' {
+				i++
+			}
+			if i < len(src) {
+				noComments.WriteByte('\n')
+			}
+			continue
+		}
+		if c == '/' && i+1 < len(src) && src[i+1] == '*' {
+			i += 2
+			for i+1 < len(src) && !(src[i] == '*' && src[i+1] == '/') {
+				i++
+			}
+			if i+1 < len(src) {
+				i++
+			}
+			continue
+		}
+		noComments.WriteByte(c)
+	}
+
+	// Pass 2: drop trailing commas immediately preceding } or ].
+	cleaned := noComments.Bytes()
+	var out bytes.Buffer
+	out.Grow(len(cleaned))
+	inString = false
+	for i := 0; i < len(cleaned); i++ {
+		c := cleaned[i]
+		if inString {
+			out.WriteByte(c)
+			if c == '\\' && i+1 < len(cleaned) {
+				i++
+				out.WriteByte(cleaned[i])
+			} else if c == '"' {
+				inString = false
+			}
+			continue
+		}
+		if c == '"' {
+			inString = true
+			out.WriteByte(c)
+			continue
+		}
+		if c == ',' {
+			j := i + 1
+			for j < len(cleaned) && (cleaned[j] == ' ' || cleaned[j] == '\t' || cleaned[j] == '\r' || cleaned[j] == '\n') {
+				j++
+			}
+			if j < len(cleaned) && (cleaned[j] == '}' || cleaned[j] == ']') {
+				continue
+			}
+		}
+		out.WriteByte(c)
+	}
+	return out.Bytes()
+}
+
+func mergeMCPOpenCodeConfig(existing []byte, serverName, cmdName string, mcpArgs []string) ([]byte, error) {
+	root, err := parseJSONObject(existing, true)
+	if err != nil {
+		return nil, err
+	}
+	if _, hasSchema := root["$schema"]; !hasSchema {
+		root["$schema"] = "https://opencode.ai/config.json"
+	}
+	mcpObj, err := ensureJSONObjectField(root, "mcp", "mcp")
+	if err != nil {
+		return nil, err
+	}
+	servers, err := ensureJSONObjectField(mcpObj, "servers", "mcp.servers")
+	if err != nil {
+		return nil, err
+	}
+	command := make([]string, 0, len(mcpArgs)+1)
+	command = append(command, cmdName)
+	command = append(command, mcpArgs...)
+	servers[serverName] = map[string]any{
+		"type":    "local",
+		"command": command,
+	}
+	return encodeIndentedJSON(root)
 }
 
 func mergeMCPJSONConfig(existing []byte, serverName, cmdName string, mcpArgs []string) ([]byte, error) {
-	root := make(map[string]any)
-	if trimmed := bytes.TrimSpace(existing); len(trimmed) > 0 {
-		if err := json.Unmarshal(trimmed, &root); err != nil || root == nil {
-			return nil, fmt.Errorf("existing file is not a valid JSON object")
-		}
+	root, err := parseJSONObject(existing, false)
+	if err != nil {
+		return nil, err
 	}
-	var servers map[string]any
-	if rawServers, ok := root["mcpServers"]; ok && rawServers != nil {
-		cast, ok := rawServers.(map[string]any)
-		if !ok {
-			return nil, fmt.Errorf("existing mcpServers field is not a JSON object")
-		}
-		servers = cast
-	} else {
-		servers = make(map[string]any)
+	servers, err := ensureJSONObjectField(root, "mcpServers", "mcpServers")
+	if err != nil {
+		return nil, err
 	}
 	servers[serverName] = map[string]any{
 		"command": cmdName,
 		"args":    mcpArgs,
 	}
-	root["mcpServers"] = servers
-
-	var buf bytes.Buffer
-	encoder := json.NewEncoder(&buf)
-	encoder.SetEscapeHTML(false)
-	encoder.SetIndent("", "  ")
-	if err := encoder.Encode(root); err != nil {
-		return nil, err
-	}
-	return buf.Bytes(), nil
+	return encodeIndentedJSON(root)
 }
 
 func formatCodexTOMLSection(serverName, cmdName string, mcpArgs []string) string {

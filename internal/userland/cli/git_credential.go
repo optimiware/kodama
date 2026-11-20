@@ -120,18 +120,7 @@ func runGitConfigure(ctx context.Context, config Config, args []string, ports Po
 		}
 		sessionFile = absSessionFile
 	}
-	helperParts := []string{shellQuoteGit(binary)}
-	if server := strings.TrimSpace(config.ServerURL); server != "" {
-		helperParts = append(helperParts, "--server", shellQuoteGit(server))
-	}
-	if caFile != "" {
-		helperParts = append(helperParts, "--ca-file", shellQuoteGit(caFile))
-	}
-	if sessionFile != "" {
-		helperParts = append(helperParts, "--session", shellQuoteGit(sessionFile))
-	}
-	helperParts = append(helperParts, "--trusted-origin", shellQuoteGit(origin), "git", "credential")
-	helperValue := "!" + strings.Join(helperParts, " ")
+	helperValue := buildGitCredentialHelper(binary, config.ServerURL, caFile, "", sessionFile, origin)
 
 	credentialKey := "credential." + origin + ".helper"
 	commands := [][]string{
@@ -188,6 +177,27 @@ func runGitConfigure(ctx context.Context, config Config, args []string, ports Po
 		fmt.Fprintf(ports.Out, "configured git %s sslCAInfo %s for %s\n", strings.TrimPrefix(scopeFlag, "--"), caFile, origin)
 	}
 	return ExitSuccess
+}
+
+func buildGitCredentialHelper(binary, serverURL, caFile, credentialFile, sessionFile, origin string) string {
+	bin := strings.TrimSpace(binary)
+	if bin == "" {
+		bin = "kodema"
+	}
+	helperParts := []string{shellQuoteGit(bin)}
+	if server := strings.TrimSpace(serverURL); server != "" {
+		helperParts = append(helperParts, "--server", shellQuoteGit(server))
+	}
+	if ca := strings.TrimSpace(caFile); ca != "" {
+		helperParts = append(helperParts, "--ca-file", shellQuoteGit(ca))
+	}
+	if cred := strings.TrimSpace(credentialFile); cred != "" {
+		helperParts = append(helperParts, "--credential-file", shellQuoteGit(cred))
+	} else if session := strings.TrimSpace(sessionFile); session != "" {
+		helperParts = append(helperParts, "--session", shellQuoteGit(session))
+	}
+	helperParts = append(helperParts, "--trusted-origin", shellQuoteGit(origin), "git", "credential")
+	return "!" + strings.Join(helperParts, " ")
 }
 
 func formatGitCommands(commands [][]string) []string {

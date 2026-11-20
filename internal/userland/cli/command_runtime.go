@@ -28,6 +28,8 @@ type CommandDeps struct {
 	ExplicitCredentialFile bool
 	ExplicitSessionFile    bool
 	GitConfig              func(ctx context.Context, args []string) error
+	GitRun                 func(ctx context.Context, dir string, args []string) (string, error)
+	Env                    func(string) string
 }
 
 // LoginRuntime is the injected production collaborator set for the

@@ -165,6 +165,8 @@ func classifyPath(rel string) layer {
 		return layerNeutral
 	case rel == "internal/fault" || strings.HasPrefix(rel, "internal/fault/"):
 		return layerNeutral
+	case rel == "internal/docs" || strings.HasPrefix(rel, "internal/docs/"):
+		return layerNeutral
 	case rel == "internal/kernel" || strings.HasPrefix(rel, "internal/kernel/"):
 		return layerKernel
 	case rel == "internal/shell" || strings.HasPrefix(rel, "internal/shell/"):

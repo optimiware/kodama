@@ -80,11 +80,16 @@ func TestMCPStreamableHTTPCompliance(t *testing.T) {
 			}
 		}
 
-		// Unauthenticated initialize, tools/list, and tools/call -> 401 Unauthorized with WWW-Authenticate: Bearer.
+		// Unauthenticated initialize, tools/list, tools/call, resources/*, and prompts/* -> 401 Unauthorized with WWW-Authenticate: Bearer.
 		for name, body := range map[string]string{
-			"initialize": `{"jsonrpc":"2.0","id":6,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"test","version":"1"}}}`,
-			"tools/list": `{"jsonrpc":"2.0","id":7,"method":"tools/list","params":{}}`,
-			"tools/call": `{"jsonrpc":"2.0","id":8,"method":"tools/call","params":{"name":"principal_whoami","arguments":{"input":{}}}}`,
+			"initialize":               `{"jsonrpc":"2.0","id":6,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"test","version":"1"}}}`,
+			"tools/list":               `{"jsonrpc":"2.0","id":7,"method":"tools/list","params":{}}`,
+			"tools/call":               `{"jsonrpc":"2.0","id":8,"method":"tools/call","params":{"name":"principal_whoami","arguments":{"input":{}}}}`,
+			"resources/list":           `{"jsonrpc":"2.0","id":9,"method":"resources/list","params":{}}`,
+			"resources/templates/list": `{"jsonrpc":"2.0","id":13,"method":"resources/templates/list","params":{}}`,
+			"resources/read":           `{"jsonrpc":"2.0","id":10,"method":"resources/read","params":{"uri":"kodema://docs/overview"}}`,
+			"prompts/list":             `{"jsonrpc":"2.0","id":11,"method":"prompts/list","params":{}}`,
+			"prompts/get":              `{"jsonrpc":"2.0","id":12,"method":"prompts/get","params":{"name":"kodema-docs"}}`,
 		} {
 			unauthReq := httptest.NewRequest(http.MethodPost, "/mcp", bytes.NewReader([]byte(body)))
 			unauthReq.Header.Set("Content-Type", api.MediaType)
@@ -118,6 +123,37 @@ func TestMCPStreamableHTTPCompliance(t *testing.T) {
 		}
 		if initResult.ServerInfo.Version != DefaultServerVersion {
 			t.Fatalf("default serverInfo.version = %q; want %q", initResult.ServerInfo.Version, DefaultServerVersion)
+		}
+		if initResult.Instructions == "" {
+			t.Fatal("authenticated initialize returned empty instructions")
+		}
+
+		// Authenticated resources/list, resources/read, prompts/list, prompts/get succeed over /mcp.
+		for _, tc := range []struct {
+			name string
+			body string
+		}{
+			{"resources/list", `{"jsonrpc":"2.0","id":20,"method":"resources/list"}`},
+			{"resources/templates/list", `{"jsonrpc":"2.0","id":24,"method":"resources/templates/list"}`},
+			{"resources/read", `{"jsonrpc":"2.0","id":21,"method":"resources/read","params":{"uri":"kodema://docs/workload"}}`},
+			{"prompts/list", `{"jsonrpc":"2.0","id":22,"method":"prompts/list"}`},
+			{"prompts/get", `{"jsonrpc":"2.0","id":23,"method":"prompts/get","params":{"name":"kodema-workload"}}`},
+		} {
+			req := httptest.NewRequest(http.MethodPost, "/mcp", bytes.NewReader([]byte(tc.body)))
+			req.Header.Set("Content-Type", api.MediaType)
+			req.Header.Set("Authorization", "Bearer dev-admin-token")
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, req)
+			if rec.Code != http.StatusOK {
+				t.Fatalf("authenticated %s status = %d; want 200 (body %s)", tc.name, rec.Code, rec.Body.String())
+			}
+			var resp api.MCPResponse
+			if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+				t.Fatalf("decode %s response: %v", tc.name, err)
+			}
+			if resp.Error != nil {
+				t.Fatalf("authenticated %s error: %+v", tc.name, resp.Error)
+			}
 		}
 
 		listReq := httptest.NewRequest(http.MethodPost, "/mcp", bytes.NewReader([]byte(`{"jsonrpc":"2.0","id":10,"method":"tools/list","params":{}}`)))
