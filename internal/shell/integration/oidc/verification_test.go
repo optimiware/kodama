@@ -26,6 +26,10 @@ func TestVerifierAcceptsValidTokens(t *testing.T) {
 		if principal.ID != expectedPrincipalID(testIssuer, testSubject) {
 			t.Fatalf("principal id = %q; want derived id", principal.ID)
 		}
+		wantExp := time.Unix(testClaimsMap(now)["exp"].(int64), 0).UTC()
+		if !principal.VerifiedExpiry().Equal(wantExp) || principal.VerifiedExpiry().Location() != time.UTC {
+			t.Fatalf("principal verified expiry = %v; want %v UTC", principal.VerifiedExpiry(), wantExp)
+		}
 	})
 
 	t.Run("es256", func(t *testing.T) {
@@ -38,6 +42,10 @@ func TestVerifierAcceptsValidTokens(t *testing.T) {
 		}
 		if principal.ID != expectedPrincipalID(testIssuer, testSubject) {
 			t.Fatalf("principal id = %q; want derived id", principal.ID)
+		}
+		wantExp := time.Unix(testClaimsMap(now)["exp"].(int64), 0).UTC()
+		if !principal.VerifiedExpiry().Equal(wantExp) || principal.VerifiedExpiry().Location() != time.UTC {
+			t.Fatalf("principal verified expiry = %v; want %v UTC", principal.VerifiedExpiry(), wantExp)
 		}
 	})
 
@@ -202,6 +210,25 @@ func TestVerifierEnforcesExpiryAtBoundary(t *testing.T) {
 	} else {
 		requireFaultClass(t, err, fault.Unauthenticated)
 	}
+
+	// ClockSkew allows authentication inside skew, but VerifiedExpiry must still
+	// report the raw JWT exp rather than extending it by ClockSkew.
+	t.Run("verified_expiry_is_not_extended_by_skew", func(t *testing.T) {
+		config := defaultTestConfig()
+		config.skew = 5 * time.Second
+		verifier, _ := newVerifierWithJWKS(t, config, rsaJWK("key-1", key))
+		claims := testClaimsMap(now)
+		rawExp := now.Add(-time.Second).Truncate(time.Second)
+		claims["exp"] = rawExp.Unix()
+		token := makeJWT(t, "RS256", "key-1", claims, rsaSHA256Signer(key))
+		principal, err := verifyRequest(verifier, token, now)
+		if err != nil {
+			t.Fatalf("Verify inside skew: %v", err)
+		}
+		if !principal.VerifiedExpiry().Equal(rawExp) {
+			t.Fatalf("VerifiedExpiry = %v; want exact JWT exp %v (without skew)", principal.VerifiedExpiry(), rawExp)
+		}
+	})
 }
 
 func TestVerifierEnforcesNotBeforeAndIssuedAtSkew(t *testing.T) {

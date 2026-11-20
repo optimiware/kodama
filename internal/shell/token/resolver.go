@@ -284,7 +284,7 @@ func (resolver *Resolver) resolveBearer(ctx context.Context, presented string) (
 					Kind:    identity.KindHuman,
 					Scope:   verified.Scope,
 					Enabled: true,
-				}, nil
+				}.WithVerifiedExpiry(verified.VerifiedExpiry()), nil
 			}
 			return authorize.Principal{}, resolverFailure(readErr)
 		}
@@ -294,7 +294,7 @@ func (resolver *Resolver) resolveBearer(ctx context.Context, presented string) (
 		if err := identity.CheckCurrent(verified, current); err != nil || current.Kind != identity.KindHuman {
 			return authorize.Principal{}, resolverRefusal()
 		}
-		principal := current
+		principal := current.WithVerifiedExpiry(verified.VerifiedExpiry())
 		principal.Roles = append([]tenancy.Role(nil), current.Roles...)
 		return principal, nil
 	}
@@ -311,7 +311,7 @@ func (resolver *Resolver) resolveBearer(ctx context.Context, presented string) (
 	if current.Kind != identity.KindHuman {
 		return authorize.Principal{}, resolverRefusal()
 	}
-	principal := current
+	principal := current.WithVerifiedExpiry(verified.VerifiedExpiry())
 	principal.Roles = append([]tenancy.Role(nil), current.Roles...)
 	return principal, nil
 }

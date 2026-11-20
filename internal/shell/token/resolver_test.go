@@ -24,6 +24,7 @@ import (
 
 	"github.com/optimiware/kodema/internal/fault"
 	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/shell/authorize"
 	"github.com/optimiware/kodema/internal/shell/identity"
 	"github.com/optimiware/kodema/internal/shell/service"
 	"github.com/optimiware/kodema/internal/shell/store"
@@ -824,5 +825,73 @@ func TestResolverConstructorRequiresEveryDependency(t *testing.T) {
 				t.Fatal("NewResolver succeeded with a missing dependency")
 			}
 		})
+	}
+}
+
+// TestResolverPropagatesHumanVerifiedExpiry proves that an OIDC-verified human
+// token's expiry survives the current-membership re-read in both the normal and
+// unassigned-principal paths, while derived credentials never carry an external
+// verified expiry.
+func TestResolverPropagatesHumanVerifiedExpiry(t *testing.T) {
+	env := newResolverEnv(t)
+	exp := env.clock.Now().Add(45 * time.Minute)
+	humanID := id.PrincipalID("human-exp-1")
+	env.oidc.principal = identity.Principal{
+		ID:      humanID,
+		Kind:    identity.KindHuman,
+		Scope:   env.scope,
+		Enabled: true,
+	}.WithVerifiedExpiry(exp)
+	env.principals.principal = identity.Principal{
+		ID:      humanID,
+		Kind:    identity.KindHuman,
+		Scope:   env.scope,
+		Roles:   []tenancy.Role{tenancy.RoleEngineer},
+		Enabled: true,
+		Version: 3,
+	}
+
+	principal, err := env.resolver.Resolve(context.Background(), "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJoIn0.sig")
+	if err != nil {
+		t.Fatalf("Resolve human bearer: %v", err)
+	}
+	if !principal.VerifiedExpiry().Equal(exp) {
+		t.Fatalf("human VerifiedExpiry = %v; want %v", principal.VerifiedExpiry(), exp)
+	}
+	if !principal.HasRole(tenancy.RoleEngineer) {
+		t.Fatalf("human Roles = %v; want current engineer role", principal.Roles)
+	}
+
+	unassignedFound, err := env.resolver.Resolve(authorize.WithUnassignedPrincipal(context.Background()), "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJoIn0.sig")
+	if err != nil {
+		t.Fatalf("Resolve unassigned-allowed assigned human: %v", err)
+	}
+	if !unassignedFound.VerifiedExpiry().Equal(exp) {
+		t.Fatalf("unassigned-allowed assigned human VerifiedExpiry = %v; want %v", unassignedFound.VerifiedExpiry(), exp)
+	}
+
+	otherHumanID := id.PrincipalID("human-unassigned-1")
+	env.oidc.principal = identity.Principal{
+		ID:      otherHumanID,
+		Kind:    identity.KindHuman,
+		Scope:   env.scope,
+		Enabled: true,
+	}.WithVerifiedExpiry(exp)
+	env.principals.err = fault.New(fault.NotFound, "principal has no membership")
+	unassignedMissing, err := env.resolver.Resolve(authorize.WithUnassignedPrincipal(context.Background()), "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJoIn0.sig")
+	if err != nil {
+		t.Fatalf("Resolve unassigned human: %v", err)
+	}
+	if !unassignedMissing.VerifiedExpiry().Equal(exp) {
+		t.Fatalf("unassigned human VerifiedExpiry = %v; want %v", unassignedMissing.VerifiedExpiry(), exp)
+	}
+
+	env = newResolverEnv(t)
+	execPrincipal, err := env.resolver.Resolve(context.Background(), executionToken(t, env.testEnv))
+	if err != nil {
+		t.Fatalf("Resolve execution token: %v", err)
+	}
+	if !execPrincipal.VerifiedExpiry().IsZero() {
+		t.Fatalf("execution VerifiedExpiry = %v; want zero", execPrincipal.VerifiedExpiry())
 	}
 }

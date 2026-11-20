@@ -85,6 +85,9 @@ func TestOIDCVerifierAcceptsMintedHumanTokens(t *testing.T) {
 		if string(principal.Scope.TenantID) != fixtureTenant || string(principal.Scope.ProjectID) != fixtureProject {
 			t.Fatalf("scope = %+v; want tenant/project", principal.Scope)
 		}
+		if wantExp := time.Unix(token.Claims["exp"].(int64), 0).UTC(); !principal.VerifiedExpiry().Equal(wantExp) {
+			t.Fatalf("verified expiry = %v; want %v", principal.VerifiedExpiry(), wantExp)
+		}
 	})
 
 	t.Run("es256", func(t *testing.T) {
@@ -111,6 +114,9 @@ func TestOIDCVerifierAcceptsMintedHumanTokens(t *testing.T) {
 		wantID, _ := shelloidc.PrincipalIDFor(provider.Issuer(), "auth0|human-2")
 		if principal.ID != wantID {
 			t.Fatalf("principal id = %q; want %q", principal.ID, wantID)
+		}
+		if wantExp := time.Unix(token.Claims["exp"].(int64), 0).UTC(); !principal.VerifiedExpiry().Equal(wantExp) {
+			t.Fatalf("verified expiry = %v; want %v", principal.VerifiedExpiry(), wantExp)
 		}
 	})
 }

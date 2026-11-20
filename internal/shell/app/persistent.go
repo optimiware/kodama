@@ -13,6 +13,8 @@ import (
 	pgdriver "github.com/optimiware/kodema/internal/shell/app/drivers/postgres"
 	retentiondriver "github.com/optimiware/kodema/internal/shell/app/drivers/retention"
 	"github.com/optimiware/kodema/internal/shell/authorize"
+	"github.com/optimiware/kodema/internal/shell/event"
+	"github.com/optimiware/kodema/internal/shell/identity"
 	"github.com/optimiware/kodema/internal/shell/integration/keys"
 	natsbroker "github.com/optimiware/kodema/internal/shell/integration/nats"
 	"github.com/optimiware/kodema/internal/shell/integration/oidc"
@@ -103,6 +105,54 @@ type persistentServices struct {
 	runtimeCloser func(context.Context) error
 }
 
+// persistentCredentialValidity resolves human credential validity from the
+// verified OIDC access-token expiry attached at authentication time, and
+// delegates execution and service credential validity to the authoritative
+// store-backed reader.
+type persistentCredentialValidity struct {
+	store event.CredentialValidity
+	clock Clock
+}
+
+var (
+	_ event.CredentialValidity   = (*persistentCredentialValidity)(nil)
+	_ natsbroker.CalloutValidity = (*persistentCredentialValidity)(nil)
+)
+
+func newPersistentCredentialValidity(store event.CredentialValidity, clock Clock) (*persistentCredentialValidity, error) {
+	if store == nil {
+		return nil, fault.New(fault.InvalidInput, "persistent credential validity requires a store-backed reader")
+	}
+	if clock == nil {
+		return nil, fault.New(fault.InvalidInput, "persistent credential validity requires a clock")
+	}
+	return &persistentCredentialValidity{store: store, clock: clock}, nil
+}
+
+func (validity *persistentCredentialValidity) ValidUntil(ctx context.Context, principal identity.Principal) (time.Time, error) {
+	if err := ctx.Err(); err != nil {
+		return time.Time{}, fault.Wrap(fault.DeadlineExpired, "credential validity read was canceled", err)
+	}
+	if err := principal.Validate(); err != nil {
+		return time.Time{}, err
+	}
+	if principal.Kind == identity.KindHuman {
+		expiry := principal.VerifiedExpiry()
+		if expiry.IsZero() {
+			return time.Time{}, fault.New(fault.Unauthenticated, "human credential expiry is missing")
+		}
+		now := validity.clock.Now()
+		if now.IsZero() {
+			return time.Time{}, fault.New(fault.DependencyUnavailable, "credential validity clock returned zero time")
+		}
+		if !expiry.After(now) {
+			return time.Time{}, fault.New(fault.Unauthenticated, "human credential has no remaining validity")
+		}
+		return expiry, nil
+	}
+	return validity.store.ValidUntil(ctx, principal)
+}
+
 // startNATSCallout opens the dedicated bypass connection and starts the
 // per-credential authorization service. The service connection is separate
 // from the publication client so a broker failure in one never silently moves
@@ -114,7 +164,7 @@ func startNATSCallout(
 	brokerConfig natsdriver.Config,
 	dial natsDial,
 	principal authorize.CurrentPrincipal,
-	validity *readers.CredentialValidity,
+	validity natsbroker.CalloutValidity,
 	clock bridges.SystemClock,
 ) error {
 	callout := services.natsAuth.Callout
@@ -274,7 +324,11 @@ func buildPersistentEnvironment(ctx context.Context, builder *builder, stores pe
 			Resolver:  principal,
 		})
 	}
-	validity, err := readers.NewCredentialValidity(executor)
+	storeValidity, err := readers.NewCredentialValidity(executor)
+	if err != nil {
+		return nil, err
+	}
+	validity, err := newPersistentCredentialValidity(storeValidity, clock)
 	if err != nil {
 		return nil, err
 	}

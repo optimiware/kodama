@@ -100,6 +100,9 @@ func (authenticator *Authenticator) Authenticate(ctx context.Context, request Au
 	if err := CheckCurrent(verified, current); err != nil {
 		return Principal{}, err
 	}
+	if current.Kind == KindHuman {
+		current = current.WithVerifiedExpiry(verified.VerifiedExpiry())
+	}
 	return current, nil
 }
 
