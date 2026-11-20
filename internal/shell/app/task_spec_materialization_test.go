@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/optimiware/kodema/api"
 	"github.com/optimiware/kodema/internal/id"
@@ -117,6 +118,9 @@ func TestTaskSpecMaterializationEndToEnd(t *testing.T) {
 
 		prepares := waitForActivationPrepares(t, fixture.runtime, 1)
 		assertMaterializedTaskSpec(t, prepares[0], created.TaskID, "Minimal task", "", "{}", "[]")
+		// Wait for the running observation to settle before task.ask cancels
+		// the execution so CheckExecutionVersion does not race startup.
+		waitForStableExecutionVersion(t, handler, "dev-project-token", started.ExecutionID)
 
 		// Ask a question (cancelling the first execution), then edit the task,
 		// then reply so the fresh execution snapshots the edited title,
@@ -133,8 +137,22 @@ func TestTaskSpecMaterializationEndToEnd(t *testing.T) {
 		}
 		asked := decodeBody[api.TaskAskResult](t, askResult)
 
-		// Confirm the cancelled predecessor execution is stopped so reply dispatches.
-		waitForExecutionState(t, handler, "dev-project-token", started.ExecutionID, "cancelled")
+		// Confirm the cancelled predecessor execution is stopped AND its
+		// cleanup transition has settled so task.reply's CheckExecutionVersion
+		// guard does not race background cleanup.
+		eventually(t, 5*time.Second, func() bool {
+			rec, res, _ := restCall(t, handler, http.MethodGet,
+				"/api/v1/executions/"+started.ExecutionID, "dev-project-token", nil, nil, "")
+			if rec.Code != api.HTTPStatusSuccess {
+				return false
+			}
+			var inspected api.ExecutionInspectResult
+			if err := json.Unmarshal(res.Body, &inspected); err != nil {
+				return false
+			}
+			return inspected.State == "cancelled" && inspected.Cleanup.State != "pending"
+		})
+		waitForStableExecutionVersion(t, handler, "dev-project-token", started.ExecutionID)
 
 		editVersion := uint64(1)
 		editRecorder, _, editErr := restCall(t, handler, http.MethodPatch,
