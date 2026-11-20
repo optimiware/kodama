@@ -98,8 +98,8 @@ Flags:
 		usage:   "kodema task <subcommand> [arguments]",
 		summary: "Create, run, list, inspect, ask, reply to, and manage tasks",
 		description: `Subcommands:
-  create   kodema task create --project <id> --title <t> [--description <d>] [--pipeline <name|id>] [--input <k=v>]
-  run      kodema task run --project <id> --title <t> --pipeline <name|id> [--description <d>] [--input <k=v>]
+  create   kodema task create --project <id> --title <t> [--description <d>] [--pipeline <name|id>] [--input <k=v>] [--meta|--metadata <k=v>]
+  run      kodema task run --project <id> --title <t> --pipeline <name|id> [--description <d>] [--input <k=v>] [--meta|--metadata <k=v>]
   list     kodema task list --project <id>
   show     kodema task show <task-id>
   start    kodema task start <task-id> [--expected-version <v>]
@@ -108,29 +108,31 @@ Flags:
   cancel   kodema task cancel <task-id> [--expected-version <v>]`,
 	},
 	"task create": {
-		usage:   "kodema task create [--project <id>] --title <t> [--description <d>] [--pipeline <name|id>] [--input <k=v>]",
+		usage:   "kodema task create [--project <id>] --title <t> [--description <d>] [--pipeline <name|id>] [--input <k=v>] [--meta <k=v>]",
 		summary: "Create an open task in a project",
 		description: `Invokes task.create with an auto-generated idempotency key.
 
 Flags:
-  --project <id>         Project ID (defaults to global --project or KODEMA_PROJECT)
-  --title <text>         Task title (required)
-  --description <text>   Optional task description
-  --pipeline <name|id>   Optional selected pipeline name or ID
-  --input <k=v>          Pipeline input key=value pair (repeatable)`,
+  --project <id>              Project ID (defaults to global --project or KODEMA_PROJECT)
+  --title <text>              Task title (required)
+  --description <text>        Optional task description
+  --pipeline <name|id>        Optional selected pipeline name or ID
+  --input <k=v>               Pipeline input key=value pair (repeatable)
+  --meta, --metadata <k=v>    Task metadata string key=value pair (repeatable)`,
 	},
 	"task run": {
-		usage:   "kodema task run [--project <id>] --title <t> --pipeline <name|id> [--description <d>] [--input <k=v>]",
+		usage:   "kodema task run [--project <id>] --title <t> --pipeline <name|id> [--description <d>] [--input <k=v>] [--meta <k=v>]",
 		summary: "Create and immediately start a task on a pipeline",
 		description: `Invokes task.create_and_start with an auto-generated idempotency key.
 Accepts either a stored pipeline ID (pipeline-...) or a pipeline name (resolved via pipeline.list).
 
 Flags:
-  --project <id>         Project ID (defaults to global --project or KODEMA_PROJECT)
-  --title <text>         Task title (required)
-  --pipeline <name|id>   Pipeline name or ID to run (required)
-  --description <text>   Optional task description
-  --input <k=v>          Pipeline input key=value pair (repeatable)`,
+  --project <id>              Project ID (defaults to global --project or KODEMA_PROJECT)
+  --title <text>              Task title (required)
+  --pipeline <name|id>        Pipeline name or ID to run (required)
+  --description <text>        Optional task description
+  --input <k=v>               Pipeline input key=value pair (repeatable)
+  --meta, --metadata <k=v>    Task metadata string key=value pair (repeatable)`,
 	},
 	"task list": {
 		usage:       "kodema task list [--project <id>]",

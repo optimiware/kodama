@@ -12,10 +12,11 @@ import (
 func TestRenderWhoamiServerResultAndTaskListTable(t *testing.T) {
 	whoamiBody := json.RawMessage(`{"principal_id":"oidc-00112233445566778899aabbccddeeff","kind":"human","tenant_id":"tenant-1","project_id":"proj-1","roles":["admin","engineer"]}`)
 	var out bytes.Buffer
-	if err := renderWhoamiServerResult(&out, OutputTable, api.Result{Operation: "principal.whoami", Body: whoamiBody}, whoamiView{}); err != nil {
+	if err := renderWhoamiServerResult(&out, OutputTable, api.Result{Operation: "principal.whoami", Body: whoamiBody}, whoamiView{Server: "https://kodema.example.com"}); err != nil {
 		t.Fatalf("renderWhoamiServerResult(table): %v", err)
 	}
 	for _, want := range []string{
+		"server\thttps://kodema.example.com",
 		"principal_id\toidc-00112233445566778899aabbccddeeff",
 		"kind\thuman",
 		"scope\tproject (proj-1)",

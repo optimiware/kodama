@@ -100,8 +100,9 @@ var inputSelectionBranches = map[string][]string{
 }
 
 // schemaForType projects one Go type into a JSON Schema object. Nested declared
-// structs become strict objects; opaque members (maps and raw JSON) are
-// objects without further field inspection.
+// structs become strict objects; typed maps (for example map[string]string
+// task and resource binding metadata, inputs, and outputs) advertise their
+// value schema via additionalProperties; raw JSON remains an opaque object.
 func schemaForType(typ reflect.Type, seen map[reflect.Type]bool) map[string]any {
 	if typ == nil {
 		return map[string]any{"type": "object"}
@@ -154,7 +155,13 @@ func schemaForType(typ reflect.Type, seen map[reflect.Type]bool) map[string]any 
 	case reflect.Slice:
 		return map[string]any{"type": "array", "items": schemaForType(typ.Elem(), seen)}
 	case reflect.Map:
-		return map[string]any{"type": "object"}
+		if typ.Elem().Kind() == reflect.Interface {
+			return map[string]any{"type": "object"}
+		}
+		return map[string]any{
+			"type":                 "object",
+			"additionalProperties": schemaForType(typ.Elem(), seen),
+		}
 	case reflect.String:
 		return map[string]any{"type": "string"}
 	case reflect.Bool:
