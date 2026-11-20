@@ -1,9 +1,12 @@
 package git
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
+	"crypto/subtle"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -48,6 +51,33 @@ func UnregisteredRepositoryError(repository string) error {
 // DefaultSmartHTTPMaxBodyBytes bounds one smart-HTTP request body when the
 // configuration leaves the bound unset.
 const DefaultSmartHTTPMaxBodyBytes int64 = 512 << 20
+
+// ProvisionHTTPPath is the authenticated HTTP endpoint on `kodema git serve`
+// that idempotently initializes a bare repository and appends its default
+// stanza (with `option resource = <resource-id>`) to `admin/conf/git.conf`.
+const ProvisionHTTPPath = "/_kodema/repositories"
+
+// maxProvisionHTTPBodyBytes bounds one JSON repository provisioning request.
+const maxProvisionHTTPBodyBytes int64 = 16 << 10
+
+// ProvisionHTTPRequest is the JSON payload accepted by POST /_kodema/repositories.
+type ProvisionHTTPRequest struct {
+	Repository    string `json:"repository"`
+	ResourceID    string `json:"resource_id"`
+	DefaultBranch string `json:"default_branch,omitempty"`
+}
+
+// ProvisionHTTPResponse is the JSON response returned by POST /_kodema/repositories.
+type ProvisionHTTPResponse struct {
+	Repository    string `json:"repository"`
+	ResourceID    string `json:"resource_id"`
+	DefaultBranch string `json:"default_branch"`
+	Created       bool   `json:"created"`
+}
+
+// RepositoryProvisionFunc provisions one repository and its default policy on
+// behalf of an authenticated, authorized HTTP provisioning request.
+type RepositoryProvisionFunc func(ctx context.Context, request ProvisionHTTPRequest) (ProvisionHTTPResponse, error)
 
 // GitBackendRequest is one validated smart-HTTP backend invocation. It carries
 // only the resolved service, repository, path, allow-listed environment and
@@ -111,9 +141,18 @@ type SmartHTTPConfig struct {
 	// SourceEvent mints the unique per-request push identity placed in the
 	// backend environment as KODEMA_SOURCE_EVENT. It is required: a repeated
 	// identical push must never reuse an earlier journal identity.
-	SourceEvent  func() (string, error)
-	MaxBodyBytes int64
-	Timeout      time.Duration
+	SourceEvent func() (string, error)
+	// Provisioner optionally enables POST /_kodema/repositories for HTTP
+	// repository provisioning. When nil, requests to ProvisionHTTPPath refuse
+	// with 404.
+	Provisioner RepositoryProvisionFunc
+	// ProvisionToken optionally supplies the current shared bearer token that
+	// authorizes the control plane to call POST /_kodema/repositories. Direct
+	// human admin credentials verified against the `admin` repository are also
+	// accepted whenever Provisioner is configured.
+	ProvisionToken func() (string, error)
+	MaxBodyBytes   int64
+	Timeout        time.Duration
 }
 
 // SmartHTTP is the independent Git smart-HTTP front handler. It authenticates
@@ -127,6 +166,8 @@ type SmartHTTP struct {
 	resourceID        func(string) (string, error)
 	resourceIDContext func(context.Context, string) (string, error)
 	sourceEvent       func() (string, error)
+	provisioner       RepositoryProvisionFunc
+	provisionToken    func() (string, error)
 	maxBody           int64
 	timeout           time.Duration
 }
@@ -161,6 +202,8 @@ func NewSmartHTTP(config SmartHTTPConfig) (*SmartHTTP, error) {
 		resourceID:        config.ResourceID,
 		resourceIDContext: config.ResourceIDContext,
 		sourceEvent:       config.SourceEvent,
+		provisioner:       config.Provisioner,
+		provisionToken:    config.ProvisionToken,
 		maxBody:           maxBody,
 		timeout:           config.Timeout,
 	}, nil
@@ -197,6 +240,11 @@ func (handler *SmartHTTP) ServeHTTP(writer http.ResponseWriter, request *http.Re
 	}
 	if err := ctx.Err(); err != nil {
 		writeRefusal(writer, statusForContext(err))
+		return
+	}
+
+	if request.URL != nil && request.URL.Path == ProvisionHTTPPath {
+		handler.serveProvisionHTTP(ctx, writer, request)
 		return
 	}
 
@@ -794,4 +842,173 @@ func statusForContext(err error) int {
 		return http.StatusGatewayTimeout
 	}
 	return http.StatusRequestTimeout
+}
+
+// serveProvisionHTTP handles authenticated, idempotent repository provisioning
+// over HTTP (`POST /_kodema/repositories`). It authorizes either a configured
+// control-plane provision token (constant-time compared) or a verified human
+// `@admin` actor permitted to update the tenant's `admin` policy ref.
+func (handler *SmartHTTP) serveProvisionHTTP(ctx context.Context, writer http.ResponseWriter, request *http.Request) {
+	if handler.provisioner == nil {
+		writeJSONError(writer, http.StatusNotFound, api.CodeNotFound, "repository provisioning is not enabled")
+		return
+	}
+	if request.Method != http.MethodPost {
+		writer.Header().Set("Allow", http.MethodPost)
+		writeJSONError(writer, http.StatusMethodNotAllowed, api.CodeInvalidInput, "repository provisioning requires POST")
+		return
+	}
+	if request.URL.RawQuery != "" || request.URL.ForceQuery || request.URL.Fragment != "" {
+		writeJSONError(writer, http.StatusBadRequest, api.CodeInvalidInput, "query strings and fragments are not allowed")
+		return
+	}
+	credential, ok := smartCredential(request)
+	if !ok {
+		writer.Header().Set("WWW-Authenticate", `Bearer realm="kodema"`)
+		writeJSONError(writer, http.StatusUnauthorized, api.CodeUnauthenticated, "authentication is required")
+		return
+	}
+	authorized := false
+	if handler.provisionToken != nil {
+		expected, err := handler.provisionToken()
+		if err == nil && expected != "" && subtle.ConstantTimeCompare([]byte(credential), []byte(expected)) == 1 {
+			authorized = true
+		}
+	}
+	if !authorized {
+		identity, err := handler.actors.VerifyReadActor(ctx, "admin", credential)
+		if err != nil {
+			status, retry := verificationStatus(err)
+			if retry {
+				writer.Header().Set("Retry-After", strconv.Itoa(retryAfterSeconds))
+			}
+			if status == http.StatusUnauthorized {
+				writer.Header().Set("WWW-Authenticate", `Bearer realm="kodema"`)
+				writeJSONError(writer, status, api.CodeUnauthenticated, "authentication failed")
+				return
+			}
+			code := api.CodeInternalFailure
+			if status == http.StatusForbidden {
+				code = api.CodeForbidden
+			} else if status == http.StatusServiceUnavailable {
+				code = api.CodeDependencyUnavailable
+			}
+			writeJSONError(writer, status, code, http.StatusText(status))
+			return
+		}
+		decision, err := handler.service.AuthorizeAdminProvision(ctx, identity)
+		if err != nil {
+			status, retry := refusalStatus(err)
+			if retry {
+				writer.Header().Set("Retry-After", strconv.Itoa(retryAfterSeconds))
+			}
+			writeJSONError(writer, status, api.CodeDependencyUnavailable, http.StatusText(status))
+			return
+		}
+		if decision != DecisionAllow {
+			writeJSONError(writer, http.StatusForbidden, api.CodeForbidden, "admin role is required to provision repositories")
+			return
+		}
+	}
+
+	if request.Body == nil {
+		writeJSONError(writer, http.StatusBadRequest, api.CodeInvalidInput, "request body is empty")
+		return
+	}
+	raw, err := io.ReadAll(io.LimitReader(request.Body, maxProvisionHTTPBodyBytes+1))
+	if err != nil {
+		writeJSONError(writer, http.StatusBadRequest, api.CodeInvalidInput, "request body is unreadable")
+		return
+	}
+	if int64(len(raw)) > maxProvisionHTTPBodyBytes {
+		writeJSONError(writer, http.StatusRequestEntityTooLarge, api.CodeInvalidInput, "request body is too large")
+		return
+	}
+	var payload ProvisionHTTPRequest
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&payload); err != nil {
+		writeJSONError(writer, http.StatusBadRequest, api.CodeInvalidInput, "invalid repository provisioning payload")
+		return
+	}
+	var extra any
+	if err := decoder.Decode(&extra); err != io.EOF {
+		writeJSONError(writer, http.StatusBadRequest, api.CodeInvalidInput, "trailing data in repository provisioning payload")
+		return
+	}
+	payload.Repository = strings.TrimSuffix(strings.TrimSpace(payload.Repository), ".git")
+	payload.ResourceID = strings.TrimSpace(payload.ResourceID)
+	payload.DefaultBranch = strings.TrimSpace(payload.DefaultBranch)
+	if payload.DefaultBranch == "" {
+		payload.DefaultBranch = api.DefaultRepositoryBranch
+	}
+	if !api.ValidRepositoryName(payload.Repository) || payload.Repository == "admin" || strings.HasPrefix(payload.Repository, "admin/") {
+		writeJSONError(writer, http.StatusBadRequest, api.CodeInvalidInput, "repository name is invalid or reserved")
+		return
+	}
+	if !validJournalID(payload.ResourceID) {
+		writeJSONError(writer, http.StatusBadRequest, api.CodeInvalidInput, "resource_id is invalid")
+		return
+	}
+	if !api.ValidBranchName(payload.DefaultBranch) {
+		writeJSONError(writer, http.StatusBadRequest, api.CodeInvalidInput, "default_branch is invalid")
+		return
+	}
+
+	result, err := handler.provisioner(ctx, payload)
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrResourceMismatch):
+			writeJSONError(writer, http.StatusConflict, api.CodeVersionConflict, "repository already exists with a different resource_id")
+		case errors.Is(err, ErrInvalidRepository):
+			writeJSONError(writer, http.StatusBadRequest, api.CodeInvalidInput, "repository name is invalid")
+		default:
+			if class, ok := fault.ClassOf(err); ok {
+				if code, ok := fault.CodeFor(class); ok {
+					status, statusOK := api.HTTPStatus(string(code))
+					if !statusOK {
+						status = http.StatusInternalServerError
+					}
+					msg, _ := fault.MessageOf(err)
+					if msg == "" {
+						msg = string(code)
+					}
+					writeJSONError(writer, status, string(code), msg)
+					return
+				}
+			}
+			writeJSONError(writer, http.StatusServiceUnavailable, api.CodeDependencyUnavailable, "repository provisioning failed")
+		}
+		return
+	}
+	if result.Repository == "" {
+		result.Repository = payload.Repository
+	}
+	if result.ResourceID == "" {
+		result.ResourceID = payload.ResourceID
+	}
+	if result.DefaultBranch == "" {
+		result.DefaultBranch = payload.DefaultBranch
+	}
+	encoded, err := json.Marshal(result)
+	if err != nil {
+		writeJSONError(writer, http.StatusInternalServerError, api.CodeInternalFailure, "internal failure")
+		return
+	}
+	writer.Header().Set("Content-Type", api.MediaType)
+	writer.Header().Set("Cache-Control", "no-store")
+	writer.WriteHeader(http.StatusOK)
+	_, _ = writer.Write(encoded)
+}
+
+func writeJSONError(writer http.ResponseWriter, status int, code, message string) {
+	encoded, err := json.Marshal(api.Error{Code: code, Message: message})
+	if err != nil {
+		encoded = []byte(`{"code":"internal_failure","message":"internal failure"}`)
+		status = http.StatusInternalServerError
+	}
+	writer.Header().Set("Content-Type", api.MediaType)
+	writer.Header().Set("Cache-Control", "no-store")
+	writer.WriteHeader(status)
+	_, _ = writer.Write(encoded)
 }

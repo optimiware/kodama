@@ -494,8 +494,8 @@ func discoveryURLOfEncodedSize(t *testing.T, document api.DiscoveryDocument, siz
 // through api.Match and is not advertised as an MCP tool.
 func TestDiscoveryIsAbsentFromRegistries(t *testing.T) {
 	routes := api.Routes()
-	if len(routes) != 59 {
-		t.Fatalf("routes = %d; want 59", len(routes))
+	if len(routes) != 61 {
+		t.Fatalf("routes = %d; want 61", len(routes))
 	}
 	for _, route := range routes {
 		if route.Path == api.DiscoveryPath {
@@ -513,8 +513,8 @@ func TestDiscoveryIsAbsentFromRegistries(t *testing.T) {
 	}
 
 	catalog := mcp.ToolCatalog()
-	if len(catalog) != 59 {
-		t.Fatalf("MCP catalog = %d tools; want 59", len(catalog))
+	if len(catalog) != 61 {
+		t.Fatalf("MCP catalog = %d tools; want 61", len(catalog))
 	}
 	for _, tool := range catalog {
 		if tool.Name == api.DiscoveryPath {

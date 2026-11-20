@@ -89,8 +89,9 @@ actions:
       - git -C /workspace/repo checkout --detach "$(cat /kodema/inputs/commit)"
 ```
 
-## Applying and running pipelines
+## Applying and managing pipelines
 
-- Store/update named pipelines: `kodema pipeline apply <file-or-dir>` (calls `pipeline.apply`).
+- Store/update named pipelines: `kodema pipeline apply <file-or-dir>` (calls `pipeline.apply`; each pipeline's name is derived from its filename without `.yaml`/`.yml`, for example `build.yaml` applies as `build`).
+- List, inspect, and delete stored pipelines: `kodema pipeline list`, `kodema pipeline show <name|id> [--yaml]`, and `kodema pipeline delete <name|id>`.
 - Run a local YAML file inline without storing it: `kodema run <file> [--input k=v] [--detach]` (calls `pipeline.start`).
 - Create and start a task on a stored pipeline: `kodema task run --title "..." --pipeline <name|id> [--input k=v]`.

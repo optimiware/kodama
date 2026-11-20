@@ -172,8 +172,8 @@ func TestMCPStreamableHTTPCompliance(t *testing.T) {
 		if err := json.Unmarshal(listResp.Result, &listed); err != nil {
 			t.Fatalf("decode tools/list result: %v", err)
 		}
-		if len(listed.Tools) != 59 {
-			t.Fatalf("authenticated tools/list count = %d; want 59", len(listed.Tools))
+		if len(listed.Tools) != 61 {
+			t.Fatalf("authenticated tools/list count = %d; want 61", len(listed.Tools))
 		}
 
 		// Authenticated tools/call accepts flat top-level arguments and encodes

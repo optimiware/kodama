@@ -983,6 +983,73 @@
       }
     },
     {
+      "operation": "repository.create",
+      "request": {
+        "project_id": "prj-1",
+        "name": "shop/web",
+        "default_branch": "main",
+        "resource_id": "git-shop-web",
+        "binding_id": "git-shop-web",
+        "enforcing_service": "git",
+        "trusted_origins": [
+          "https://git.example.com"
+        ],
+        "metadata": {
+          "owner": "platform"
+        }
+      },
+      "result": {
+        "name": "shop/web",
+        "resource_id": "git-shop-web",
+        "binding_id": "git-shop-web",
+        "enforcing_service": "git",
+        "default_branch": "main",
+        "clone_url": "https://git.example.com/git/shop/web.git",
+        "trusted_origins": [
+          "https://git.example.com"
+        ],
+        "version": 1,
+        "created": true,
+        "metadata": {
+          "default_branch": "main",
+          "kind": "git",
+          "owner": "platform",
+          "repository": "shop/web"
+        }
+      }
+    },
+    {
+      "operation": "repository.list",
+      "request": {
+        "project_id": "prj-1",
+        "page": {
+          "limit": 25
+        }
+      },
+      "result": {
+        "repositories": [
+          {
+            "name": "shop/web",
+            "resource_id": "git-shop-web",
+            "binding_id": "git-shop-web",
+            "enforcing_service": "git",
+            "default_branch": "main",
+            "clone_url": "https://git.example.com/git/shop/web.git",
+            "trusted_origins": [
+              "https://git.example.com"
+            ],
+            "version": 1,
+            "metadata": {
+              "default_branch": "main",
+              "kind": "git",
+              "repository": "shop/web"
+            }
+          }
+        ],
+        "next_cursor": "djEKZ2l0LXNob3Atd2Vi"
+      }
+    },
+    {
       "operation": "pipeline.list",
       "request": {
         "project_id": "prj-1",

@@ -27,7 +27,13 @@ Five roles exist per tenant/project:
 - `operator` — runtime operations, answering `role/operator` requests, retrying failed tasks.
 - `viewer` — read-only project operational visibility.
 
-Every project member and enabled project service account can read non-secret operational state (`execution.*`, `task.*`, `pipeline.*`, `resource.binding.*`, `secret.metadata.*`, `service.list`, `event.read`, `event.subscribe`). Secret values are never readable through management APIs.
+Every project member and enabled project service account can read non-secret operational state (`execution.*`, `task.*`, `pipeline.*`, `resource.binding.*`, `repository.list`, `secret.metadata.*`, `service.list`, `event.read`, `event.subscribe`). Secret values are never readable through management APIs.
+
+## Projects, repositories, and pipelines
+
+- **Projects:** `kodema project create <id> [--name <name>] [--copy-members-from <project>]` (or MCP `project_create`) creates a project in the caller's tenant and initializes creator or copied project memberships automatically; `kodema project list` (or MCP `project_list`) defaults `tenant_id` from the caller's authenticated tenant.
+- **Repositories:** `kodema repo create <name> [--project <id>]` (or MCP `repository_create`) provisions a Git repository over HTTP and registers its project resource binding in one step; `kodema repo list [--project <id>]` (or MCP `repository_list`) lists registered Git repositories.
+- **Pipelines:** `kodema pipeline apply <file-or-dir>` (deriving pipeline names from filenames without `.yaml`/`.yml`), `kodema pipeline list`, `kodema pipeline show <name|id> [--yaml]`, and `kodema pipeline delete <name|id>`.
 
 ## API and MCP conventions
 

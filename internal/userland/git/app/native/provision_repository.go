@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/optimiware/kodema/api"
 	"github.com/optimiware/kodema/internal/id"
 	"github.com/optimiware/kodema/internal/userland/git"
 )
@@ -44,6 +45,9 @@ type RepositoryProvisionConfig struct {
 	// ResourceID is the optional registered resource id written as `option
 	// resource = <id>` in the appended default policy stanza.
 	ResourceID string
+	// DefaultBranch is the initial branch name (for example "main"). Empty
+	// defaults to "main".
+	DefaultBranch string
 	// HookBinaryPath is the absolute executable the installed hooks run.
 	HookBinaryPath string
 	// Executor is the exact native git command boundary.
@@ -92,6 +96,13 @@ func defaultRepositoryPolicy(repository string) string {
 }
 
 func defaultRepositoryPolicyWithResource(repository, resourceID string) string {
+	return defaultRepositoryPolicyWithResourceAndBranch(repository, resourceID, provisioningInitialBranch)
+}
+
+func defaultRepositoryPolicyWithResourceAndBranch(repository, resourceID, branch string) string {
+	if strings.TrimSpace(branch) == "" {
+		branch = provisioningInitialBranch
+	}
 	var optionResource string
 	if strings.TrimSpace(resourceID) != "" {
 		optionResource = "    option resource = " + strings.TrimSpace(resourceID) + "\n"
@@ -100,15 +111,22 @@ func defaultRepositoryPolicyWithResource(repository, resourceID string) string {
 		optionResource +
 		"    R = @all\n" +
 		"    RW+ refs/heads/work/ = @engineer @execution\n" +
-		"    RW refs/heads/" + provisioningInitialBranch + " = @execution\n" +
-		"    option approve.refs/heads/" + provisioningInitialBranch + " = reviewer\n"
+		"    RW refs/heads/" + branch + " = @execution\n" +
+		"    option approve.refs/heads/" + branch + " = reviewer\n"
 }
 
 // requireDefaultRepositoryPolicy proves the compile-time default block parses,
 // grants exactly the documented access and never widens it, before any of it
 // can become durable state.
 func requireDefaultRepositoryPolicy(repository, resourceID string) error {
-	config, err := git.ParseConfig([]byte(defaultRepositoryPolicyWithResource(repository, resourceID)))
+	return requireDefaultRepositoryPolicyForBranch(repository, resourceID, provisioningInitialBranch)
+}
+
+func requireDefaultRepositoryPolicyForBranch(repository, resourceID, branch string) error {
+	if strings.TrimSpace(branch) == "" {
+		branch = provisioningInitialBranch
+	}
+	config, err := git.ParseConfig([]byte(defaultRepositoryPolicyWithResourceAndBranch(repository, resourceID, branch)))
 	if err != nil {
 		return fmt.Errorf("default repository policy does not parse: %w", err)
 	}
@@ -154,7 +172,7 @@ func requireDefaultRepositoryPolicy(repository, resourceID string) error {
 			name: "execution default branch",
 			request: git.AccessRequest{
 				Identity: execution,
-				Ref:      "refs/heads/" + provisioningInitialBranch,
+				Ref:      "refs/heads/" + branch,
 				Update:   git.UpdateFastForward,
 			},
 		},
@@ -169,7 +187,7 @@ func requireDefaultRepositoryPolicy(repository, resourceID string) error {
 	}
 	denied, err := policy.Authorize(git.AccessRequest{
 		Identity: engineer,
-		Ref:      "refs/heads/" + provisioningInitialBranch,
+		Ref:      "refs/heads/" + branch,
 		Update:   git.UpdateCreate,
 	})
 	if err != nil {
@@ -178,7 +196,7 @@ func requireDefaultRepositoryPolicy(repository, resourceID string) error {
 	if denied != git.DecisionDeny {
 		return fmt.Errorf("default repository policy widens the default branch to engineers")
 	}
-	role, guarded := policy.ApprovalFor("refs/heads/" + provisioningInitialBranch)
+	role, guarded := policy.ApprovalFor("refs/heads/" + branch)
 	if !guarded || role != "reviewer" {
 		return fmt.Errorf("default repository policy does not require reviewer approval on the default branch")
 	}
@@ -208,6 +226,13 @@ func ProvisionRepository(ctx context.Context, config RepositoryProvisionConfig) 
 	}
 	if strings.TrimSpace(config.HookBinaryPath) == "" {
 		return RepositoryProvisionResult{}, fmt.Errorf("repository provisioning has no hook binary path")
+	}
+	defaultBranch := strings.TrimSpace(config.DefaultBranch)
+	if defaultBranch == "" {
+		defaultBranch = provisioningInitialBranch
+	}
+	if !api.ValidBranchName(defaultBranch) {
+		return RepositoryProvisionResult{}, fmt.Errorf("repository provisioning default branch %q is invalid", defaultBranch)
 	}
 	if _, err := id.ParseTenantID(string(config.TenantID)); err != nil {
 		return RepositoryProvisionResult{}, err
@@ -254,10 +279,6 @@ func ProvisionRepository(ctx context.Context, config RepositoryProvisionConfig) 
 	if err := refuseNestedRepositoryDestination(ctx, tenantDirectory, repositoryPath, config.Executor); err != nil {
 		return RepositoryProvisionResult{}, err
 	}
-	created, err := ensureProvisionedRepository(ctx, tenantDirectory, repositoryPath, config.HookBinaryPath, config.Executor)
-	if err != nil {
-		return RepositoryProvisionResult{}, err
-	}
 	policy, err := NewCommittedPolicy(CommittedPolicyConfig{
 		RepositoryPath: adminRepositoryPath,
 		Executor:       config.Executor,
@@ -278,15 +299,25 @@ func ProvisionRepository(ctx context.Context, config RepositoryProvisionConfig) 
 	if err != nil {
 		return RepositoryProvisionResult{}, fmt.Errorf("trusted admin policy %s does not parse: %w", CommittedPolicyFile, err)
 	}
-	if _, ok := parsed.Policy(repository); ok {
+	existingPolicy, hasPolicy := parsed.Policy(repository)
+	wantResource := strings.TrimSpace(config.ResourceID)
+	if hasPolicy && wantResource != "" && existingPolicy.ResourceID != "" && existingPolicy.ResourceID != wantResource {
+		return RepositoryProvisionResult{}, fmt.Errorf("%w: repository %q is already bound to resource %q",
+			git.ErrResourceMismatch, repository, existingPolicy.ResourceID)
+	}
+	created, err := ensureProvisionedRepositoryWithBranch(ctx, tenantDirectory, repositoryPath, config.HookBinaryPath, defaultBranch, config.Executor)
+	if err != nil {
+		return RepositoryProvisionResult{}, err
+	}
+	if hasPolicy {
 		// The repository already has rules. Converge without appending a
 		// duplicate block or adding the defaults over an Admin's restriction.
 		return RepositoryProvisionResult{RepositoryPath: repositoryPath, Repository: repository, Created: created}, nil
 	}
-	if err := requireDefaultRepositoryPolicy(repository, config.ResourceID); err != nil {
+	if err := requireDefaultRepositoryPolicyForBranch(repository, config.ResourceID, defaultBranch); err != nil {
 		return RepositoryProvisionResult{}, err
 	}
-	candidate := appendRepositoryPolicyWithResource(accepted, repository, config.ResourceID)
+	candidate := appendRepositoryPolicyWithResourceAndBranch(accepted, repository, config.ResourceID, defaultBranch)
 	if _, err := policy.installCommittedPolicy(ctx, parent, candidate, repository); err != nil {
 		return RepositoryProvisionResult{RepositoryPath: repositoryPath, Repository: repository, Created: created}, err
 	}
@@ -448,10 +479,14 @@ func validateRepositoryProvisionAdmin(ctx context.Context, adminRepositoryPath s
 // and refuses every other existing destination. It returns whether this attempt
 // initialized the repository.
 func ensureProvisionedRepository(ctx context.Context, tenantDirectory, repositoryPath, hookBinary string, executor git.CommandExecutor) (bool, error) {
+	return ensureProvisionedRepositoryWithBranch(ctx, tenantDirectory, repositoryPath, hookBinary, provisioningInitialBranch, executor)
+}
+
+func ensureProvisionedRepositoryWithBranch(ctx context.Context, tenantDirectory, repositoryPath, hookBinary, defaultBranch string, executor git.CommandExecutor) (bool, error) {
 	info, err := os.Lstat(repositoryPath)
 	switch {
 	case os.IsNotExist(err):
-		if err := publishProvisionedRepository(ctx, tenantDirectory, repositoryPath, hookBinary, executor); err != nil {
+		if err := publishProvisionedRepositoryWithBranch(ctx, tenantDirectory, repositoryPath, hookBinary, defaultBranch, executor); err != nil {
 			return false, err
 		}
 		return true, nil
@@ -471,12 +506,12 @@ func ensureProvisionedRepository(ctx context.Context, tenantDirectory, repositor
 		return false, fmt.Errorf("inspect repository destination %q: %w", repositoryPath, err)
 	}
 	if len(entries) == 0 {
-		if err := publishProvisionedRepository(ctx, tenantDirectory, repositoryPath, hookBinary, executor); err != nil {
+		if err := publishProvisionedRepositoryWithBranch(ctx, tenantDirectory, repositoryPath, hookBinary, defaultBranch, executor); err != nil {
 			return false, err
 		}
 		return true, nil
 	}
-	if err := validateProvisionedRepository(ctx, repositoryPath, executor); err != nil {
+	if err := validateProvisionedRepositoryWithBranch(ctx, repositoryPath, defaultBranch, executor); err != nil {
 		return false, err
 	}
 	// An established repository is adopted as it is, but the managed hooks are
@@ -496,7 +531,11 @@ func ensureProvisionedRepository(ctx context.Context, tenantDirectory, repositor
 // publishes it with one same-filesystem rename. A concurrently running service
 // therefore either sees no repository or sees one whose hooks are already
 // installed, never a reachable hookless window.
-func publishProvisionedRepository(ctx context.Context, tenantDirectory, repositoryPath, hookBinary string, executor git.CommandExecutor) error {
+func publishProvisionedRepositoryWithBranch(ctx context.Context, tenantDirectory, repositoryPath, hookBinary, defaultBranch string, executor git.CommandExecutor) error {
+	if strings.TrimSpace(defaultBranch) == "" {
+		defaultBranch = provisioningInitialBranch
+	}
+	expectedHead := "refs/heads/" + defaultBranch
 	staging, err := os.MkdirTemp(tenantDirectory, provisioningRepositoryStagingPrefix)
 	if err != nil {
 		return fmt.Errorf("create private repository staging directory: %w", err)
@@ -510,7 +549,7 @@ func publishProvisionedRepository(ctx context.Context, tenantDirectory, reposito
 	if err := os.Chmod(staging, 0o700); err != nil {
 		return fmt.Errorf("set repository staging directory mode: %w", err)
 	}
-	if err := initializeBareRepository(ctx, staging, executor); err != nil {
+	if err := initializeBareRepositoryWithBranch(ctx, staging, defaultBranch, executor); err != nil {
 		return err
 	}
 	format, err := runRequiredCommand(ctx, executor, "--git-dir="+staging, "rev-parse", "--show-ref-format")
@@ -518,8 +557,8 @@ func publishProvisionedRepository(ctx context.Context, tenantDirectory, reposito
 		return fmt.Errorf("repository staging directory has ref storage %q; want %s", format, refStorageFiles)
 	}
 	head, err := runRequiredCommand(ctx, executor, "--git-dir="+staging, "symbolic-ref", "HEAD")
-	if err != nil || head != CommittedPolicyRef {
-		return fmt.Errorf("repository staging directory HEAD is %q; want %s", head, CommittedPolicyRef)
+	if err != nil || head != expectedHead {
+		return fmt.Errorf("repository staging directory HEAD is %q; want %s", head, expectedHead)
 	}
 	if _, err := InstallHooks(HooksConfig{RepositoryPath: staging, BinaryPath: hookBinary}); err != nil {
 		return fmt.Errorf("install managed repository hooks: %w", err)
@@ -602,18 +641,23 @@ func refuseNestedRepositoryDestination(ctx context.Context, tenantDirectory, rep
 	return nil
 }
 
-// initializeBareRepository creates the bare repository with the exact transport
-// configuration and `main` HEAD the service expects. It sets no ref policy in
-// Git configuration: access rules belong to the committed admin policy.
-func initializeBareRepository(ctx context.Context, repositoryPath string, executor git.CommandExecutor) error {
+// initializeBareRepositoryWithBranch creates the bare repository with the exact
+// transport configuration and defaultBranch HEAD the service expects. It sets
+// no ref policy in Git configuration: access rules belong to the committed
+// admin policy.
+func initializeBareRepositoryWithBranch(ctx context.Context, repositoryPath, defaultBranch string, executor git.CommandExecutor) error {
+	if strings.TrimSpace(defaultBranch) == "" {
+		defaultBranch = provisioningInitialBranch
+	}
+	headRef := "refs/heads/" + defaultBranch
 	if err := os.MkdirAll(filepath.Dir(repositoryPath), 0o750); err != nil {
 		return fmt.Errorf("create repository parent: %w", err)
 	}
 	commands := [][]string{
 		{"init", "--bare", "--quiet",
 			"--ref-format=" + refStorageFiles,
-			"--initial-branch=" + provisioningInitialBranch, repositoryPath},
-		{"--git-dir=" + repositoryPath, "symbolic-ref", "HEAD", CommittedPolicyRef},
+			"--initial-branch=" + defaultBranch, repositoryPath},
+		{"--git-dir=" + repositoryPath, "symbolic-ref", "HEAD", headRef},
 		{"--git-dir=" + repositoryPath, "config", "receive.advertiseAtomic", "true"},
 		{"--git-dir=" + repositoryPath, "config", "receive.advertisePushOptions", "true"},
 		{"--git-dir=" + repositoryPath, "config", "http.receivepack", "true"},
@@ -626,9 +670,13 @@ func initializeBareRepository(ctx context.Context, repositoryPath string, execut
 	return nil
 }
 
-// validateProvisionedRepository proves an existing destination is the bare
-// repository initializeBareRepository creates. It never writes.
-func validateProvisionedRepository(ctx context.Context, repositoryPath string, executor git.CommandExecutor) error {
+// validateProvisionedRepositoryWithBranch proves an existing destination is the
+// bare repository initializeBareRepositoryWithBranch creates. It never writes.
+func validateProvisionedRepositoryWithBranch(ctx context.Context, repositoryPath, defaultBranch string, executor git.CommandExecutor) error {
+	if strings.TrimSpace(defaultBranch) == "" {
+		defaultBranch = provisioningInitialBranch
+	}
+	expectedHead := "refs/heads/" + defaultBranch
 	if _, err := os.Lstat(filepath.Join(repositoryPath, "reftable")); err == nil {
 		return fmt.Errorf("%w: repository %q has a reftable ref store",
 			ErrRepositoryProvisionDestination, repositoryPath)
@@ -647,9 +695,9 @@ func validateProvisionedRepository(ctx context.Context, repositoryPath string, e
 			ErrRepositoryProvisionDestination, repositoryPath)
 	}
 	head, err := runRequiredCommand(ctx, executor, "--git-dir="+repositoryPath, "symbolic-ref", "HEAD")
-	if err != nil || head != CommittedPolicyRef {
+	if err != nil || head != expectedHead {
 		return fmt.Errorf("%w: repository %q HEAD is not %s",
-			ErrRepositoryProvisionDestination, repositoryPath, CommittedPolicyRef)
+			ErrRepositoryProvisionDestination, repositoryPath, expectedHead)
 	}
 	for name, key := range map[string][2]string{
 		"atomic receives":     {"receive.advertiseAtomic", "true"},
@@ -680,6 +728,10 @@ func appendRepositoryPolicy(accepted []byte, repository string) []byte {
 }
 
 func appendRepositoryPolicyWithResource(accepted []byte, repository, resourceID string) []byte {
+	return appendRepositoryPolicyWithResourceAndBranch(accepted, repository, resourceID, provisioningInitialBranch)
+}
+
+func appendRepositoryPolicyWithResourceAndBranch(accepted []byte, repository, resourceID, defaultBranch string) []byte {
 	var builder strings.Builder
 	builder.Write(accepted)
 	if len(accepted) > 0 {
@@ -688,7 +740,7 @@ func appendRepositoryPolicyWithResource(accepted []byte, repository, resourceID 
 		}
 		builder.WriteString("\n")
 	}
-	builder.WriteString(defaultRepositoryPolicyWithResource(repository, resourceID))
+	builder.WriteString(defaultRepositoryPolicyWithResourceAndBranch(repository, resourceID, defaultBranch))
 	return []byte(builder.String())
 }
 

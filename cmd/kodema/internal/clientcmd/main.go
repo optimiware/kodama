@@ -365,6 +365,7 @@ func hoistGlobalFlags(args []string) []string {
 		return args
 	}
 	isGitConfigure := subcmd == "git" && subcmdIdx+1 < len(args) && args[subcmdIdx+1] == "configure"
+	isRepoCreate := (subcmd == "repo" || subcmd == "repository") && subcmdIdx+1 < len(args) && args[subcmdIdx+1] == "create"
 	isDecisionCmd := subcmd == "approve" || subcmd == "reject"
 
 	leading := make([]string, 0, len(args))
@@ -390,6 +391,16 @@ func hoistGlobalFlags(args []string) []string {
 		// Let `git configure` own its own --ca-file and --session flags so
 		// `--print` works even before a CA file exists on disk.
 		if isGitConfigure && (name == "--ca-file" || name == "--session" || name == "--session-file") {
+			trailing = append(trailing, arg)
+			if !hasEq && i+1 < len(args) {
+				i++
+				trailing = append(trailing, args[i])
+			}
+			continue
+		}
+		// Let `repo create` own its own --trusted-origin flags so they stay
+		// separate from git-credential global trusted origins.
+		if isRepoCreate && name == "--trusted-origin" {
 			trailing = append(trailing, arg)
 			if !hasEq && i+1 < len(args) {
 				i++

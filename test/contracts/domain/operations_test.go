@@ -164,6 +164,12 @@ func expectedOperations() []expectedOperation {
 		anySvc(eop("resource.binding.list", authorize.FamilyResource, authorize.ScopeProject,
 			allHumans, roles(), authorize.ExecNone,
 			checks(authorize.CheckMembership), authorize.ReceiptNone, readErrors())),
+		eop("repository.create", authorize.FamilyResource, authorize.ScopeProject,
+			roles(admin), roles(), authorize.ExecNone,
+			checks(authorize.CheckMembership, authorize.CheckResourceOwnership), authorize.ReceiptRequired, receiptErrors()),
+		anySvc(eop("repository.list", authorize.FamilyResource, authorize.ScopeProject,
+			allHumans, roles(), authorize.ExecNone,
+			checks(authorize.CheckMembership), authorize.ReceiptNone, readErrors())),
 
 		// API-posted pipelines and immutable execution start.
 		eop("pipeline.apply", authorize.FamilyPipeline, authorize.ScopeProject,

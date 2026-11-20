@@ -179,8 +179,8 @@ func TestPipelineStartVersionOnlyAppliesToStoredSelection(t *testing.T) {
 // schema names.
 func TestPipelineStartAlternateRouteInventory(t *testing.T) {
 	canonical := api.Routes()
-	if len(canonical) != 59 {
-		t.Fatalf("api.Routes() has %d rows; want the 59 canonical operations", len(canonical))
+	if len(canonical) != 61 {
+		t.Fatalf("api.Routes() has %d rows; want the 61 canonical operations", len(canonical))
 	}
 	route, ok := api.LookupRoute("pipeline.start")
 	if !ok {
@@ -191,8 +191,8 @@ func TestPipelineStartAlternateRouteInventory(t *testing.T) {
 	}
 
 	alternates := api.AlternateRoutes()
-	if len(alternates) != 1 {
-		t.Fatalf("api.AlternateRoutes() has %d rows; want exactly one", len(alternates))
+	if len(alternates) != 3 {
+		t.Fatalf("api.AlternateRoutes() has %d rows; want 3", len(alternates))
 	}
 	alternate := alternates[0]
 	if alternate.Operation != "pipeline.start" ||

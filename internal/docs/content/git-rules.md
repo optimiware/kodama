@@ -91,6 +91,17 @@ Rules and security invariants:
   5. **Exact per-commit patch & mode equivalence**: every commit in `current_ref..pushed` matches its corresponding commit in `approved_base..approved_candidate` byte-for-byte in `git diff-tree -r --no-commit-id --no-renames --raw --no-abbrev -z`, ensuring identical file content, whitespace, binary blobs, symlinks, empty files, and file modes.
 - Any failure refuses the push with a diagnostic explaining why a fresh review is required. Accepted pushes still report `git.ref.updated` with the actual pushed commit OID and its verification ID.
 
+## Onboarding a repository
+
+Create a bare repository, commit its default `conf/git.conf` stanza (including `option resource = <resource-id>`), and register its project resource binding in one command:
+
+```sh
+kodema repo create <name> [--project <id>] [--default-branch main]
+kodema repo list [--project <id>]
+```
+
+The same operations are exposed over REST and MCP as `repository.create` (`repository_create`) and `repository.list` (`repository_list`).
+
 ## Workstation Git setup
 
 Configure a workstation to authenticate with your `kodema login` session (never storing tokens in a keychain):

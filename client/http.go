@@ -156,14 +156,36 @@ func (transport *HTTPTransport) prepare(invocation api.Invocation) (api.Route, [
 	return route, body, &target, nil
 }
 
-// selectBinding chooses the concrete REST binding of one invocation. Every
-// operation keeps its canonical route except pipeline.start: a stored pipeline
-// id keeps the canonical start route, while an inline YAML document uses the
-// additive task-free executions binding. Exactly one selection is required and
-// an inline selection never carries an expected pipeline version; every
-// violation is invalid_input before any request.
+// selectBinding chooses the concrete REST binding of one invocation. Most
+// operations keep their canonical route. pipeline.start uses its additive
+// task-free executions binding for inline YAML, and project.create/project.list
+// use their tenant-omitted /api/v1/projects binding when tenant_id is omitted.
 func selectBinding(canonical api.Route, request api.Request) (api.Route, error) {
-	if canonical.Operation != "pipeline.start" {
+	switch canonical.Operation {
+	case "project.create", "project.list":
+		var fields map[string]json.RawMessage
+		trimmed := bytes.TrimSpace(request.Input)
+		if len(trimmed) > 0 && string(trimmed) != "null" {
+			if err := json.Unmarshal(trimmed, &fields); err == nil {
+				if raw, ok := fields["tenant_id"]; ok && string(bytes.TrimSpace(raw)) != "null" {
+					var tenantID string
+					if err := json.Unmarshal(raw, &tenantID); err != nil {
+						return api.Route{}, fmt.Errorf("input field \"tenant_id\" (route parameter \"tenant\") must be a string")
+					}
+					if strings.TrimSpace(tenantID) != "" {
+						return canonical, nil
+					}
+				}
+			}
+		}
+		for _, alternate := range api.AlternateRoutes() {
+			if alternate.Operation == canonical.Operation {
+				return alternate, nil
+			}
+		}
+		return canonical, nil
+	case "pipeline.start":
+	default:
 		return canonical, nil
 	}
 	var selection api.PipelineStartRequest

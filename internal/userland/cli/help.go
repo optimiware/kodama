@@ -238,6 +238,75 @@ Automatically derives oidc-<hash> when given an OIDC subject or --github <login>
 		description: `Revokes a project membership via membership.revoke. Looks up the current
 membership version via membership.list automatically when --expected-version is omitted.`,
 	},
+	"project": {
+		usage:   "kodema project <create|list> [arguments]",
+		summary: "Create and list projects in the caller's tenant",
+		description: `Subcommands:
+  create   kodema project create <id> [--name <name>] [--copy-members-from <project>] [--output <table|json>]
+  list     kodema project list [--output <table|json>]`,
+	},
+	"project create": {
+		usage:   "kodema project create <id> [--name <name>] [--copy-members-from <project>] [--creator-role <role>...] [--output <table|json>]",
+		summary: "Create a project in the caller's tenant and initialize memberships",
+		description: `Creates a project via project.create (tenant_id defaults from the authenticated
+caller's tenant) and automatically grants the authenticated creator project roles
+so they are not locked out of the new project. Use --copy-members-from <project>
+to copy existing human memberships from another project in the same tenant.
+
+Flags:
+  --name <name>                    Display name (defaults to <id>)
+  --copy-members-from <project>    Copy human project memberships from an existing project
+  --creator-role <role>[,<role>..] Override roles granted to the creator (repeatable)
+  --tenant <id>                    Optional tenant ID (defaults to caller's tenant)
+  --idempotency-key <key>          Explicit idempotency key
+  --output <table|json>            Output format`,
+	},
+	"project list": {
+		usage:   "kodema project list [--tenant <id>] [--output <table|json>]",
+		summary: "List visible projects in the caller's tenant",
+		description: `Lists visible projects via project.list. The tenant defaults automatically from
+the authenticated caller's tenant when --tenant is omitted.
+
+Flags:
+  --tenant <id>          Optional tenant ID (defaults to caller's tenant)
+  --output <table|json>  Output format`,
+	},
+	"repo": {
+		usage:   "kodema repo <create|list> [arguments]",
+		summary: "Provision and list managed Git repositories in a project",
+		description: `Subcommands:
+  create   kodema repo create <name> [--project <id>] [--default-branch <branch>] [--resource-id <id>] [--service-id <id>] [--output <table|json>]
+  list     kodema repo list [--project <id>] [--output <table|json>]`,
+	},
+	"repo create": {
+		usage:   "kodema repo create <name> [--project <id>] [--default-branch <branch>] [--resource-id <id>] [--binding-id <id>] [--service-id <id>] [--trusted-origin <url>...] [--output <table|json>]",
+		summary: "Provision a Git repository and register its project resource binding",
+		description: `Onboards a Git repository in one step via repository.create: registers the
+project's Git resource binding (with instance-derived trusted_origins, enforcing
+service, operations and reportable_events) and provisions the bare repository
+and default admin/conf/git.conf stanza (with option resource = <resource-id>) on
+the configured Git companion over HTTP.
+
+Flags:
+  --project <id>             Project ID (defaults to global --project or KODEMA_PROJECT)
+  --default-branch <branch>  Initial default branch name (default: main)
+  --resource-id <id>         Registered resource ID (defaults to git-<normalized-name>)
+  --binding-id <id>          Resource binding ID (defaults to resource ID)
+  --service-id <id>          Enforcing Git service account ID (defaults to server config, usually "git")
+  --trusted-origin <url>     Trusted Git origin override (repeatable; defaults to instance origins)
+  --idempotency-key <key>    Explicit idempotency key
+  --output <table|json>      Output format`,
+	},
+	"repo list": {
+		usage:   "kodema repo list [--project <id>] [--output <table|json>]",
+		summary: "List registered Git repositories in a project",
+		description: `Lists registered Git repositories for --project (or KODEMA_PROJECT) via
+repository.list, including resource IDs, enforcing service, branch and clone URL.
+
+Flags:
+  --project <id>         Project ID (defaults to global --project or KODEMA_PROJECT)
+  --output <table|json>  Output format`,
+	},
 	"mcp": {
 		usage:   "kodema mcp <stdio|install> [arguments]",
 		summary: "Bridge MCP over stdio or configure Claude Code, Cursor, Codex, or OpenCode",
@@ -358,23 +427,54 @@ Flags:
   --output <table|json>   Output format`,
 	},
 	"pipeline": {
-		usage:   "kodema pipeline <apply|list> [arguments]",
-		summary: "Apply local pipeline YAML files or list stored pipelines",
+		usage:   "kodema pipeline <apply|list|show|delete> [arguments]",
+		summary: "Apply, list, inspect, and delete stored pipelines",
 		description: `Subcommands:
-  apply   kodema pipeline apply <directory|file> [--project <id>] [--output <table|json>]
-  list    kodema pipeline list [--project <id>] [--output <table|json>]`,
+  apply    kodema pipeline apply <directory|file> [--project <id>] [--output <table|json>]
+  list     kodema pipeline list [--project <id>] [--output <table|json>]
+  show     kodema pipeline show <name|id> [--project <id>] [--yaml] [--output <table|json>]
+  delete   kodema pipeline delete <name|id> [--project <id>] [--expected-version <v>] [--output <table|json>]
+
+Note:
+  'kodema pipeline apply' derives each pipeline's name from its filename without the
+  .yaml/.yml extension (for example, build.yaml applies as pipeline "build").`,
 	},
 	"pipeline apply": {
 		usage:   "kodema pipeline apply <directory|file> [--project <id>] [--output <table|json>]",
 		summary: "Apply the .yaml/.yml pipeline definitions in a directory, or one file",
 		description: `Applies every non-hidden .yaml/.yml file in <directory>, or the one .yaml/.yml <file>, to the
-configured project via pipeline.apply. With --output json, emits structured JSON containing
-pipeline_id and version.`,
+configured project via pipeline.apply. The pipeline name is derived from each filename
+without its .yaml or .yml extension (for example, ci/build.yaml is stored as pipeline
+"build"). With --output json, emits structured JSON containing pipeline_id and version.`,
 	},
 	"pipeline list": {
 		usage:       "kodema pipeline list [--project <id>] [--output <table|json>]",
 		summary:     "List stored pipelines in a project",
 		description: `Lists stored pipelines for --project (or KODEMA_PROJECT) via pipeline.list.`,
+	},
+	"pipeline show": {
+		usage:   "kodema pipeline show <name|id> [--project <id>] [--yaml] [--output <table|json>]",
+		summary: "Read a stored pipeline's metadata and YAML definition",
+		description: `Reads a stored pipeline via pipeline.read, accepting either a pipeline ID or a
+stored pipeline name (resolved via pipeline.list).
+
+Flags:
+  --project <id>         Project ID (defaults to global --project or KODEMA_PROJECT)
+  --yaml                 Print only the raw pipeline YAML bytes to stdout
+  --output <table|json>  Output format`,
+	},
+	"pipeline delete": {
+		usage:   "kodema pipeline delete <name|id> [--project <id>] [--expected-version <v>] [--output <table|json>]",
+		summary: "Delete a stored pipeline definition",
+		description: `Deletes a stored pipeline via pipeline.delete, accepting either a pipeline ID or
+a stored pipeline name. When --expected-version is omitted, looks up the current
+pipeline version via pipeline.list automatically.
+
+Flags:
+  --project <id>          Project ID (defaults to global --project or KODEMA_PROJECT)
+  --expected-version <v>  Expected pipeline version (auto-fetched when omitted)
+  --idempotency-key <k>   Explicit idempotency key
+  --output <table|json>   Output format`,
 	},
 	"execution": {
 		usage:   "kodema execution <list|inspect|watch|cancel> [arguments]",
@@ -642,7 +742,9 @@ Commands:
   watch       Poll an execution until it reaches a terminal state
   execution   List, inspect, watch, and cancel executions
   task        Create, run, list, show, start, ask, reply to, and cancel tasks
-  pipeline    Apply local pipeline YAML files or list stored pipelines
+  pipeline    Apply, list, show, and delete stored pipelines
+  project     Create and list projects in the caller's tenant
+  repo        Provision and list managed Git repositories in a project
   service     Manage project service accounts and credentials
   secret      Set, list, and delete project secrets
   member      List, grant, and revoke project memberships

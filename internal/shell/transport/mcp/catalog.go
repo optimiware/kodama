@@ -13,7 +13,7 @@ import (
 type Tool = api.MCPTool
 
 // toolCatalog is the deterministic declaration built once from the declared
-// route inventory: exactly the 59 registry operations in registry order, each
+// route inventory: exactly the 61 registry operations in registry order, each
 // with the field-level api.OperationInputSchema of its operation. A
 // construction failure is retained so the edge refuses instead of advertising a
 // placeholder.
@@ -25,20 +25,22 @@ var toolDescriptions = map[string]string{
 	// Tenant, project and membership administration.
 	"tenant.create":     "Create a new tenant and initialize its encrypted derivation key.",
 	"tenant.rotate_key": "Rotate a tenant's encrypted credential derivation key and name.",
-	"project.create":    "Create a new project inside a tenant.",
+	"project.create":    "Create a new project inside the caller's tenant and initialize creator or copied project memberships.",
 	"project.update":    "Rename an existing project at an expected version.",
-	"project.list":      "List visible projects inside a tenant with optional pagination.",
+	"project.list":      "List visible projects inside the caller's tenant (tenant_id optional) with optional pagination.",
 	"membership.grant":  "Create or replace a human principal's role set in a project.",
 	"membership.revoke": "Revoke a human principal's membership in a project.",
 	"membership.list":   "List human principal memberships and roles in a project.",
 	"principal.whoami":  "Inspect the authenticated principal ID, kind, tenant/project scope, roles and visible project memberships.",
 
-	// Resource bindings.
+	// Resource bindings and managed Git repositories.
 	"resource.binding.register": "Register an external resource binding for an enforcing service in a project.",
 	"resource.binding.update":   "Update a resource binding's origins, operations, reportable events or metadata.",
 	"resource.binding.delete":   "Delete a resource binding at an expected version.",
 	"resource.binding.read":     "Read a resource binding's configuration and version by binding ID.",
 	"resource.binding.list":     "List resource bindings in a project, optionally filtered by kind.",
+	"repository.create":         "Provision a Git repository on the configured Git service and register its project resource binding.",
+	"repository.list":           "List registered Git repositories in a project with resource IDs, clone URLs and binding metadata.",
 
 	// Pipelines and immutable execution start.
 	"pipeline.apply":  "Create or replace a named pipeline definition from YAML in a project.",

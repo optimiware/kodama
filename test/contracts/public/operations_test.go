@@ -94,6 +94,8 @@ var operationCases = []operationCase{
 	{operation: "resource.binding.delete", request: api.ResourceBindingDeleteRequest{}, result: api.ResourceBindingDeleteResult{}},
 	{operation: "resource.binding.read", request: api.ResourceBindingReadRequest{}, result: api.ResourceBindingReadResult{}},
 	{operation: "resource.binding.list", request: api.ResourceBindingListRequest{}, result: api.ResourceBindingListResult{}, identifiers: []string{"kind"}},
+	{operation: "repository.create", request: api.RepositoryCreateRequest{}, result: api.RepositoryCreateResult{}, identifiers: []string{"resource_id", "binding_id", "enforcing_service"}},
+	{operation: "repository.list", request: api.RepositoryListRequest{}, result: api.RepositoryListResult{}},
 
 	// Pipelines and immutable execution start.
 	{operation: "pipeline.apply", request: api.PipelineApplyRequest{}, result: api.PipelineApplyResult{}},
@@ -176,6 +178,8 @@ var zeroValidResultFields = map[string]bool{
 	"memberships":         true,
 	"projects":            true,
 	"bindings":            true,
+	"repositories":        true,
+	"created":             true,
 	"pipelines":           true,
 	"secrets":             true,
 	"services":            true,
@@ -1771,8 +1775,21 @@ func TestRouteParamsAreRequestFields(t *testing.T) {
 			}
 			for _, param := range codec.RouteParams {
 				stripped := removeJSONPath(t, base, param.Field)
-				if _, err := codec.DecodeMCPRequest(stripped); err == nil {
-					t.Errorf("MCP decode accepted an input without route field %q", param.Field)
+				mcpRequired := false
+				for _, mcpParam := range codec.MCPRouteParams {
+					if mcpParam.Name == param.Name {
+						mcpRequired = true
+						break
+					}
+				}
+				if mcpRequired {
+					if _, err := codec.DecodeMCPRequest(stripped); err == nil {
+						t.Errorf("MCP decode accepted an input without route field %q", param.Field)
+					}
+				} else if codec.Operation == "project.create" || codec.Operation == "project.list" {
+					if _, err := codec.DecodeMCPRequest(stripped); err != nil {
+						t.Errorf("MCP decode refused optional route field %q: %v", param.Field, err)
+					}
 				}
 				bound, err := api.DecodeRESTRequest(codec.Operation, stripped, routeValues)
 				if err != nil {

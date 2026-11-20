@@ -197,6 +197,11 @@ func buildTestProfile(options serverOptions, getenv productionEnv) (productionBu
 		return productionBuild{}, fmt.Errorf("podman runtime: %w", err)
 	}
 
+	gitCompanion, err := resolveGitCompanionConfig(getenv)
+	if err != nil {
+		return productionBuild{}, err
+	}
+
 	config := shellapp.Config{
 		Profile:              shellapp.ProfileTest,
 		Installation:         installationConfig,
@@ -207,6 +212,7 @@ func buildTestProfile(options serverOptions, getenv productionEnv) (productionBu
 		LoopInterval:         loopInterval,
 		NATSAuth:             natsAuth,
 		GitStorageRoot:       gitStorageRoot,
+		GitCompanion:         gitCompanion,
 		DefaultActionTimeout: shellapp.DefaultActionTimeout,
 		Discovery:            discovery,
 		SecretRules:          secretRules,

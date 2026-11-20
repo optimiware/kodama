@@ -5,7 +5,7 @@ import (
 	"github.com/optimiware/kodema/internal/shell/tenancy"
 )
 
-// This file is the declared operation registry: 59 operations in 12 families.
+// This file is the declared operation registry: 61 operations in 12 families.
 // Schema names follow one convention so REST/MCP parity checks can enumerate
 // the registry without a second table:
 //
@@ -144,7 +144,7 @@ var registry = []Operation{
 		[]tenancy.Role{tenancy.RoleEngineer, tenancy.RoleReviewer, tenancy.RoleOperator, tenancy.RoleViewer}, ExecOwnTaskContent,
 		nil, ReceiptNone, readErrors()),
 
-	// Resource bindings.
+	// Resource bindings and managed Git repositories.
 	operation("resource.binding.register", FamilyResource, ScopeProject,
 		[]tenancy.Role{tenancy.RoleAdmin}, nil, ExecNone,
 		[]AuthorityCheck{CheckMembership, CheckResourceOwnership}, ReceiptRequired, receiptErrors()),
@@ -158,6 +158,12 @@ var registry = []Operation{
 		allHumanRoles(), nil, ExecNone,
 		[]AuthorityCheck{CheckMembership}, ReceiptNone, readErrors())),
 	withAnyEnabledService(operation("resource.binding.list", FamilyResource, ScopeProject,
+		allHumanRoles(), nil, ExecNone,
+		[]AuthorityCheck{CheckMembership}, ReceiptNone, readErrors())),
+	operation("repository.create", FamilyResource, ScopeProject,
+		[]tenancy.Role{tenancy.RoleAdmin}, nil, ExecNone,
+		[]AuthorityCheck{CheckMembership, CheckResourceOwnership}, ReceiptRequired, receiptErrors()),
+	withAnyEnabledService(operation("repository.list", FamilyResource, ScopeProject,
 		allHumanRoles(), nil, ExecNone,
 		[]AuthorityCheck{CheckMembership}, ReceiptNone, readErrors())),
 
