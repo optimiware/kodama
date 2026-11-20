@@ -143,6 +143,9 @@ func summarizeInboxItem(item api.InboxItem) string {
 	switch item.Kind {
 	case "waiting_task":
 		summary := singleLine(item.Question, 96)
+		if refs := formatReferences(item.References); refs != "" {
+			summary = fmt.Sprintf("%s (refs: %s)", summary, refs)
+		}
 		if item.Assignment != "" {
 			return fmt.Sprintf("[%s] %s", item.Assignment, summary)
 		}
@@ -185,6 +188,20 @@ func singleLine(value string, maxRunes int) string {
 		return string(runes[:maxRunes-3]) + "..."
 	}
 	return collapsed
+}
+
+func formatReferences(references []string) string {
+	if len(references) == 0 {
+		return ""
+	}
+	parts := make([]string, 0, len(references))
+	for _, reference := range references {
+		collapsed := strings.Join(strings.Fields(reference), " ")
+		if collapsed != "" {
+			parts = append(parts, collapsed)
+		}
+	}
+	return strings.Join(parts, ", ")
 }
 
 func orDash(value string) string {

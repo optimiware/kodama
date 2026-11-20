@@ -1,6 +1,7 @@
 package task_test
 
 import (
+	"encoding/json"
 	"reflect"
 	"strings"
 	"testing"
@@ -229,6 +230,31 @@ func TestReplyQueuesOneFreshExecutionWithUpdatedConversation(t *testing.T) {
 	if !strings.Contains(conversation, "Initial investigation") {
 		t.Fatalf("admitted conversation %q does not retain prior messages", conversation)
 	}
+	var decodedConversation []task.Message
+	if err := json.Unmarshal(admitted.Task.Conversation, &decodedConversation); err != nil {
+		t.Fatalf("decode admitted conversation: %v", err)
+	}
+	wantConversation := []task.Message{
+		{
+			Author: engineerPrincipal,
+			At:     testNow.Add(-time.Hour),
+			Body:   "Initial investigation",
+		},
+		{
+			Author:     engineerPrincipal,
+			At:         testNow,
+			Body:       "Which candidate should land?",
+			References: []string{"git:abc123"},
+		},
+		{
+			Author: reviewerPrincipal,
+			At:     testNow,
+			Body:   "Use candidate B",
+		},
+	}
+	if !reflect.DeepEqual(decodedConversation, wantConversation) {
+		t.Fatalf("admitted conversation = %+v; want %+v", decodedConversation, wantConversation)
+	}
 
 	if len(env.ports.replies) != 1 {
 		t.Fatalf("reply port calls = %d; want exactly one", len(env.ports.replies))
@@ -316,6 +342,70 @@ func TestReplyQueuesOneFreshExecutionWithUpdatedConversation(t *testing.T) {
 	}
 	if env.ports.totalCalls() != 1 {
 		t.Fatalf("commit port calls = %d; reply must be one unit", env.ports.totalCalls())
+	}
+}
+
+// TestReplyPreservesQuestionAndReferencesWithoutDuplication proves that a reply
+// admits the asked question (with durable references) and the human answer in
+// chronological order, without duplicating the question when the store already
+// persisted it in Messages during task.ask (even if a comment arrived while
+// waiting).
+func TestReplyPreservesQuestionAndReferencesWithoutDuplication(t *testing.T) {
+	askAt := testNow.Add(-10 * time.Minute)
+	commentAt := testNow.Add(-5 * time.Minute)
+
+	env := newTestEnv(t)
+	actor := humanActor(reviewerPrincipal, tenancy.RoleReviewer)
+	value := waitingTask(t)
+	value.Question.Body = "Which target environment should I configure (staging or prod)?"
+	value.Question.References = []string{"commit=0123456789abcdef"}
+	value.Question.At = askAt
+	value.Messages = []task.Message{
+		{
+			Author:     engineerPrincipal,
+			At:         askAt,
+			Body:       value.Question.Body,
+			References: []string{"commit=0123456789abcdef"},
+		},
+		{
+			Author: engineerPrincipal,
+			At:     commentAt,
+			Body:   "Added staging notes while waiting",
+		},
+	}
+	env.reader.put(value)
+	env.executions.put(task.ExecutionView{
+		ID: executionOne, Version: 2, State: kernel.ExecutionCancelled, StopEvidence: confirmedStop(),
+	})
+
+	_, err := env.service.Reply(t.Context(), replyCommand(actor, 4, questionID, 1, "Use TARGET_ENV=staging"))
+	requireNoError(t, err, "Reply")
+
+	admitted := env.admission.requestsSnapshot()[0]
+	var decoded []task.Message
+	if err := json.Unmarshal(admitted.Task.Conversation, &decoded); err != nil {
+		t.Fatalf("decode admitted conversation: %v", err)
+	}
+	want := []task.Message{
+		{
+			Author:     engineerPrincipal,
+			At:         askAt,
+			Body:       "Which target environment should I configure (staging or prod)?",
+			References: []string{"commit=0123456789abcdef"},
+		},
+		{
+			Author: engineerPrincipal,
+			At:     commentAt,
+			Body:   "Added staging notes while waiting",
+		},
+		{
+			Author: reviewerPrincipal,
+			At:     testNow,
+			Body:   "Use TARGET_ENV=staging",
+		},
+	}
+	if !reflect.DeepEqual(decoded, want) {
+		t.Fatalf("admitted conversation = %+v; want %+v", decoded, want)
 	}
 }
 

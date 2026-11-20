@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"slices"
 
 	"github.com/optimiware/kodema/internal/fault"
 )
@@ -92,16 +93,20 @@ func marshalMetadata(metadata map[string]string) []byte {
 }
 
 // conversationBytes builds the admitted conversation snapshot from the stored
-// messages plus, for a reply, the new answer message. Every caller is a
-// task-bound admission, so a zero-message combined conversation is the present
-// JSON empty array (non-nil, "[]"), never nil: nil is reserved for a task-free
-// execution, and a task-bound run with nil bytes materializes no
-// /kodema/task.json while KODEMA_TASK is still set. The empty array keeps the
-// file valid JSON and consistent with the non-empty message-array encoding.
-func conversationBytes(messages []Message, answer *Message) ([]byte, error) {
+// messages plus any additional messages committed in the same operation (such
+// as a reply's answer and, if not already persisted in messages, the answered
+// question). Every caller is a task-bound admission, so a zero-message combined
+// conversation is the present JSON empty array (non-nil, "[]"), never nil: nil
+// is reserved for a task-free execution, and a task-bound run with nil bytes
+// materializes no /kodema/task.json while KODEMA_TASK is still set. The empty
+// array keeps the file valid JSON and consistent with the non-empty
+// message-array encoding.
+func conversationBytes(messages []Message, additions ...*Message) ([]byte, error) {
 	combined := append([]Message(nil), messages...)
-	if answer != nil {
-		combined = append(combined, *answer)
+	for _, addition := range additions {
+		if addition != nil {
+			combined = append(combined, *addition)
+		}
 	}
 	if len(combined) == 0 {
 		return []byte(emptyConversationJSON), nil
@@ -114,4 +119,36 @@ func conversationBytes(messages []Message, answer *Message) ([]byte, error) {
 		return nil, fault.New(fault.InvalidInput, fmt.Sprintf("task conversation is %d bytes; at most %d are allowed", len(encoded), maxConversationBytes))
 	}
 	return encoded, nil
+}
+
+// questionMessage projects an outstanding question into its durable
+// conversation message representation, preserving author, timestamp, body and
+// durable references.
+func questionMessage(question *Question) *Message {
+	if question == nil || question.Body == "" {
+		return nil
+	}
+	return &Message{
+		Author:     question.AskedBy,
+		At:         question.At,
+		Body:       question.Body,
+		References: cloneStrings(question.References),
+	}
+}
+
+// messagesContainQuestion reports whether the task's stored conversation
+// messages already contain the durable message recorded for question.
+func messagesContainQuestion(messages []Message, question *Question) bool {
+	if question == nil {
+		return false
+	}
+	for _, message := range messages {
+		if message.Author == question.AskedBy &&
+			message.At.Equal(question.At) &&
+			message.Body == question.Body &&
+			slices.Equal(message.References, question.References) {
+			return true
+		}
+	}
+	return false
 }

@@ -2,7 +2,10 @@ package work
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
+	"slices"
 	"sort"
 	"time"
 
@@ -208,6 +211,31 @@ func taskValue(identity id.TaskID, scope tenancy.Scope, columns taskColumns, mes
 		CurrentExecution: columns.currentExecution,
 		Question:         columns.question,
 	}
+}
+
+// legacyQuestionMessageID derives a deterministic, bounded task_messages row
+// identity for backfilling an unanswered question that predates Ask writing to
+// task_messages directly.
+func legacyQuestionMessageID(receiptID id.ReceiptID) string {
+	sum := sha256.Sum256([]byte("task-question-message:" + string(receiptID)))
+	return "ask-" + hex.EncodeToString(sum[:16])
+}
+
+// messagesContainQuestion reports whether the durable task_messages rows
+// already contain a message matching the outstanding question.
+func messagesContainQuestion(messages []task.Message, question *task.Question) bool {
+	if question == nil {
+		return false
+	}
+	for _, message := range messages {
+		if message.Author == question.AskedBy &&
+			message.At.Equal(question.At) &&
+			message.Body == question.Body &&
+			slices.Equal(message.References, question.References) {
+			return true
+		}
+	}
+	return false
 }
 
 // messages reads every task_messages row of one task in (at, id) order.
@@ -720,10 +748,32 @@ func (adapter *Task) Ask(ctx context.Context, unit task.AskUnit) (task.AskResult
 		"question_asked_by":   string(record.Key.PrincipalID),
 		"question_at":         record.At,
 	}
-	writes := []store.Write{taskWrite(unit.TaskID, map[string]any{
-		"state":             string(task.StateOpen),
-		"lifecycle_version": int64(unit.ExpectedLifecycleVersion),
-	}, values)}
+	var messageRefs any
+	if len(unit.References) > 0 {
+		messageRefs = references
+	}
+	writes := []store.Write{
+		taskWrite(unit.TaskID, map[string]any{
+			"state":             string(task.StateOpen),
+			"lifecycle_version": int64(unit.ExpectedLifecycleVersion),
+		}, values),
+		// The asked question and its durable references are committed as a
+		// durable conversation message with the handoff so task.read,
+		// task.history and the post-reply /kodema/task.json snapshot retain
+		// them after the waiting question slot is cleared.
+		{
+			Table:  "task_messages",
+			ID:     string(unit.Receipt.ID),
+			Insert: true,
+			Values: map[string]any{
+				"task_id":   string(unit.TaskID),
+				"author_id": string(record.Key.PrincipalID),
+				"at":        record.At,
+				"body":      unit.Question,
+				"refs":      messageRefs,
+			},
+		},
+	}
 	locks := []store.Lock{taskLock(unit.TaskID, map[string]any{
 		"state":             string(task.StateOpen),
 		"lifecycle_version": int64(unit.ExpectedLifecycleVersion),
@@ -816,10 +866,17 @@ func (adapter *Task) Reply(ctx context.Context, unit task.ReplyUnit) (task.Reply
 	if err := validateReceipt(unit.Receipt); err != nil {
 		return task.ReplyResult{}, err
 	}
-	history, err := adapter.appendedHistory(ctx, unit.Owner, unit.TaskID, unit.NewExecutionID)
+	row, err := adapter.readTaskRow(ctx, unit.Owner, unit.TaskID)
 	if err != nil {
 		return task.ReplyResult{}, err
 	}
+	columns, err := decodeTaskColumns(row)
+	if err != nil {
+		return task.ReplyResult{}, err
+	}
+	history := make([]id.ExecutionID, 0, len(columns.history)+1)
+	history = append(history, columns.history...)
+	history = append(history, unit.NewExecutionID)
 	historyValue, err := jsonColumn(history)
 	if err != nil {
 		return task.ReplyResult{}, err
@@ -865,6 +922,42 @@ func (adapter *Task) Reply(ctx context.Context, unit task.ReplyUnit) (task.Reply
 		"question_asked_by":    nil,
 		"question_at":          nil,
 	}))
+	// If the outstanding question was persisted before Ask began writing
+	// task_messages directly (e.g. a pre-upgrade waiting task), preserve it
+	// durably alongside the reply so task.read and task.history retain the
+	// asked question and its durable references.
+	if columns.question != nil &&
+		columns.question.ID == unit.QuestionID &&
+		columns.question.Body != "" &&
+		columns.question.AskedBy != "" &&
+		!columns.question.At.IsZero() {
+		existing, err := adapter.messages(ctx, unit.Owner, unit.TaskID)
+		if err != nil {
+			return task.ReplyResult{}, err
+		}
+		if !messagesContainQuestion(existing, columns.question) {
+			var questionRefs any
+			if len(columns.question.References) > 0 {
+				encoded, err := jsonColumn(columns.question.References)
+				if err != nil {
+					return task.ReplyResult{}, err
+				}
+				questionRefs = encoded
+			}
+			writes = append(writes, store.Write{
+				Table:  "task_messages",
+				ID:     legacyQuestionMessageID(unit.Receipt.ID),
+				Insert: true,
+				Values: map[string]any{
+					"task_id":   string(unit.TaskID),
+					"author_id": string(columns.question.AskedBy),
+					"at":        columns.question.At,
+					"body":      columns.question.Body,
+					"refs":      questionRefs,
+				},
+			})
+		}
+	}
 	// The answer is a durable conversation message committed with the reply:
 	// the reader and history expose it, and the next reply's admitted
 	// conversation snapshot includes it.

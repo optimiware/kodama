@@ -535,7 +535,12 @@ func TestRealTaskLifecycleOnPostgreSQL(t *testing.T) {
 	}
 	taskGolden("waiting", 3, string(started.ExecutionID), true,
 		`["`+string(started.ExecutionID)+`"]`)
-	askObserver.Finish(map[string]int{"tasks": 1, "executions": 1, "actions": 1, "cleanup": 1, "receipts": 1, "audit": 1, "events": 4})
+	env.shard.RequireGoldenRow(t, ctx, env.runtime, env.scope, "task_messages", map[string]any{"id": "receipt-4"}, map[string]any{
+		"id": "receipt-4", "task_id": string(created.TaskID), "tenant_id": "tenant-1",
+		"project_id": "project-1", "author_id": "principal-1", "at": pgtest.FixtureTime,
+		"body": "Which branch?", "refs": pgtest.NullValue,
+	})
+	askObserver.Finish(map[string]int{"tasks": 1, "task_messages": 1, "executions": 1, "actions": 1, "cleanup": 1, "receipts": 1, "audit": 1, "events": 4})
 	saved = env.ids.snapshot()
 	askReplay := env.shard.ObserveUnit(t, "task", "ask.replay")
 	askedAgain, err := env.task.Ask(ctx, task.AskCommand{
@@ -574,14 +579,16 @@ func TestRealTaskLifecycleOnPostgreSQL(t *testing.T) {
 	if !jsonEqual(repliedCurrent[1], `["`+string(started.ExecutionID)+`","`+string(replied.ExecutionID)+`"]`) {
 		t.Fatalf("execution_history after reply = %s; want both executions in order", repliedCurrent[1])
 	}
-	// The reply committed one durable task_messages row; the reader's scanner
-	// page must return that row's author and body, not merely a nil error.
+	// Ask and reply each committed one durable task_messages row; the reader's
+	// scanner page must return both the asked question and the reply in order.
 	answered, err := env.reader.Get(ctx, env.scope, created.TaskID)
 	if err != nil {
 		t.Fatalf("read answered task: %v%s", err, pgtest.CauseText(err))
 	}
-	if len(answered.Messages) != 1 || answered.Messages[0].Author != "principal-1" || answered.Messages[0].Body != "main" {
-		t.Fatalf("read answered task messages = %+v; want the principal-1 reply body", answered.Messages)
+	if len(answered.Messages) != 2 ||
+		answered.Messages[0].Author != "principal-1" || answered.Messages[0].Body != "Which branch?" ||
+		answered.Messages[1].Author != "principal-1" || answered.Messages[1].Body != "main" {
+		t.Fatalf("read answered task messages = %+v; want asked question followed by reply body", answered.Messages)
 	}
 	env.shard.RequireGoldenRow(t, ctx, env.runtime, env.scope, "executions", map[string]any{"id": string(replied.ExecutionID)},
 		serviceExecutionRow(applied.PipelineID, created.TaskID, replied.ExecutionID, "execution-principal-2", "queued", 1, pipelineYAML))
@@ -621,7 +628,7 @@ func TestRealTaskLifecycleOnPostgreSQL(t *testing.T) {
 	}
 	taskGolden("open", 4, string(replied.ExecutionID), false,
 		`["`+string(started.ExecutionID)+`","`+string(replied.ExecutionID)+`"]`)
-	env.shard.RequireGoldenRow(t, ctx, env.runtime, env.scope, "task_messages", map[string]any{"task_id": string(created.TaskID)}, map[string]any{
+	env.shard.RequireGoldenRow(t, ctx, env.runtime, env.scope, "task_messages", map[string]any{"id": "receipt-5"}, map[string]any{
 		"id": "receipt-5", "task_id": string(created.TaskID), "tenant_id": "tenant-1",
 		"project_id": "project-1", "author_id": "principal-1", "at": pgtest.FixtureTime,
 		"body": "main", "refs": pgtest.NullValue,

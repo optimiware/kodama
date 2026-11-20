@@ -13,10 +13,12 @@
 //
 //	task.CreatePort.Create   tasks insert; optional nested start rows
 //	task.StartPort.Start     executions + actions insert, tasks update
-//	task.AskPort.Ask         tasks question columns/state, executions cancel,
-//	                         action staged-output discard
-//	task.ReplyPort.Reply     tasks reopen/clear question, executions + actions
-//	                         insert (one fresh queued execution)
+//	task.AskPort.Ask         tasks question columns/state, task_messages append
+//	                         for the question, executions cancel, action
+//	                         staged-output discard
+//	task.ReplyPort.Reply     tasks reopen/clear question, task_messages append
+//	                         for the answer, executions + actions insert (one
+//	                         fresh queued execution)
 //	task.CancelPort.Cancel   tasks cancel, executions cancel + credential clear,
 //	                         action staged-output discard
 //	task.EditPort.Edit       tasks content/lifecycle columns, task_messages
@@ -58,8 +60,9 @@
 //     be true; a retried stale progress is a version_conflict.
 //   - AskUnit carries no asked-by identity or time; the adapter uses the
 //     receipt's principal and commit time for tasks.question_asked_by/at.
-//   - task_messages has an id column but task.Message has no identity; a
-//     comment edit maps the message row id to its receipt id.
+//   - task_messages has an id column but task.Message has no identity;
+//     comment edits, asks and replies map the message row id to their receipt
+//     id.
 //   - actions has no created_at, so an inbox request item's At is the action
 //     deadline (zero when unset).
 //   - A new pipeline apply carries no identity; the adapter injects one.

@@ -1,6 +1,7 @@
 package opsapp_test
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/optimiware/kodema/api"
@@ -90,6 +91,7 @@ func TestTaskFamily(t *testing.T) {
 	asked, err := h.invokeVersion(t, testToken, "task.ask", jsonBody(t, map[string]any{
 		"question":   "which branch?",
 		"assignment": "role/engineer",
+		"references": []string{"commit=deadbeef0123"},
 	}), 3, map[string]string{"task": taskID})
 	if err != nil {
 		t.Fatalf("task.ask: %v", err)
@@ -114,6 +116,19 @@ func TestTaskFamily(t *testing.T) {
 		t.Fatalf("task.reply result = %+v", reply)
 	}
 
+	afterReplyRaw, err := h.invoke(t, testToken, "task.read", `{}`, map[string]string{"task": taskID})
+	if err != nil {
+		t.Fatalf("task.read after reply: %v", err)
+	}
+	var afterReply api.TaskReadResult
+	decodeResult(t, afterReplyRaw, &afterReply)
+	if len(afterReply.Messages) != 3 ||
+		afterReply.Messages[0].Body != "a note" ||
+		afterReply.Messages[1].Body != "which branch?" || !slices.Equal(afterReply.Messages[1].References, []string{"commit=deadbeef0123"}) ||
+		afterReply.Messages[2].Body != "main" {
+		t.Fatalf("task.read messages after reply = %+v; want comment, asked question (with refs), and reply", afterReply.Messages)
+	}
+
 	cancelled, err := h.invokeVersion(t, testToken, "task.cancel", `{}`, 5, map[string]string{"task": taskID})
 	if err != nil {
 		t.Fatalf("task.cancel: %v", err)
@@ -130,8 +145,17 @@ func TestTaskFamily(t *testing.T) {
 	}
 	var page api.TaskHistoryResult
 	decodeResult(t, history, &page)
-	if len(page.Entries) == 0 {
-		t.Fatal("task.history returned no entries")
+	var historyMessages []api.TaskMessage
+	for _, entry := range page.Entries {
+		if entry.Kind == "message" && entry.Message != nil {
+			historyMessages = append(historyMessages, *entry.Message)
+		}
+	}
+	if len(historyMessages) != 3 ||
+		historyMessages[0].Body != "a note" ||
+		historyMessages[1].Body != "which branch?" || !slices.Equal(historyMessages[1].References, []string{"commit=deadbeef0123"}) ||
+		historyMessages[2].Body != "main" {
+		t.Fatalf("task.history messages = %+v; want comment, asked question (with refs), and reply", historyMessages)
 	}
 
 	inboxPage, err := h.invoke(t, testToken, "task.inbox", `{}`, map[string]string{"project": testProject})

@@ -147,26 +147,71 @@ func TestCreateAndStartAdmitsPresentEmptyConversation(t *testing.T) {
 	requireAdmittedSnapshotConversation(t, "task.create_and_start", unit.Start.Snapshot)
 }
 
-// TestReplyAdmitsConversationWithAnswer is the regression pin for the path that
-// already produced a conversation: a reply hands admission the prior messages
-// plus the new answer, in order, and the answer is never lost to a
-// presence/emptiness collapse.
+// TestReplyAdmitsConversationWithAnswer is the regression pin for reply
+// conversation admission: a reply hands admission the prior messages, the
+// answered question (with its durable references, without duplicating it when
+// already persisted in messages), and the new answer in chronological order.
 func TestReplyAdmitsConversationWithAnswer(t *testing.T) {
 	prior := task.Message{
 		Author: engineerPrincipal,
 		At:     testNow.Add(-time.Hour),
 		Body:   "Initial investigation",
 	}
-	cases := map[string][]task.Message{
-		"answer only":   nil,
-		"prior message": {prior},
+	questionAt := testNow.Add(-5 * time.Minute)
+	questionWithRefs := task.Message{
+		Author:     engineerPrincipal,
+		At:         questionAt,
+		Body:       "Which candidate should land?",
+		References: []string{"commit=abcdef123456"},
 	}
-	for name, messages := range cases {
+	cases := map[string]struct {
+		messages   []task.Message
+		references []string
+		want       []task.Message
+	}{
+		"question from waiting slot and answer": {
+			messages:   nil,
+			references: []string{"commit=abcdef123456"},
+			want: []task.Message{
+				questionWithRefs,
+				{Author: reviewerPrincipal, At: testNow, Body: "Use candidate B"},
+			},
+		},
+		"prior message plus waiting question and answer": {
+			messages:   []task.Message{prior},
+			references: []string{"commit=abcdef123456"},
+			want: []task.Message{
+				prior,
+				questionWithRefs,
+				{Author: reviewerPrincipal, At: testNow, Body: "Use candidate B"},
+			},
+		},
+		"already persisted question message is not duplicated": {
+			messages:   []task.Message{prior, questionWithRefs},
+			references: []string{"commit=abcdef123456"},
+			want: []task.Message{
+				prior,
+				questionWithRefs,
+				{Author: reviewerPrincipal, At: testNow, Body: "Use candidate B"},
+			},
+		},
+		"question without references omits references key": {
+			messages:   nil,
+			references: nil,
+			want: []task.Message{
+				{Author: engineerPrincipal, At: questionAt, Body: "Which candidate should land?"},
+				{Author: reviewerPrincipal, At: testNow, Body: "Use candidate B"},
+			},
+		},
+	}
+	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
 			env := newTestEnv(t)
 			actor := humanActor(reviewerPrincipal, tenancy.RoleReviewer)
 			value := waitingTask(t)
-			value.Messages = messages
+			value.Question.At = questionAt
+			value.Question.References = tc.references
+			value.Messages = tc.messages
 			env.reader.put(value)
 			env.executions.put(task.ExecutionView{
 				ID: executionOne, Version: 2, State: kernel.ExecutionCancelled, StopEvidence: confirmedStop(),
@@ -177,19 +222,25 @@ func TestReplyAdmitsConversationWithAnswer(t *testing.T) {
 
 			admitted := env.admission.requestsSnapshot()[0]
 			if admitted.Task.Conversation == nil {
-				t.Fatal("task.reply admitted a nil conversation; want the prior messages plus the answer")
+				t.Fatal("task.reply admitted a nil conversation; want the prior messages plus the question and answer")
 			}
 			var decoded []task.Message
 			if err := json.Unmarshal(admitted.Task.Conversation, &decoded); err != nil {
 				t.Fatalf("admitted conversation %q is not a message array: %v", admitted.Task.Conversation, err)
 			}
-			want := append(append([]task.Message(nil), messages...), task.Message{
-				Author: reviewerPrincipal,
-				At:     testNow,
-				Body:   "Use candidate B",
-			})
-			if !reflect.DeepEqual(decoded, want) {
-				t.Fatalf("admitted conversation = %+v; want prior messages plus the answer %+v", decoded, want)
+			if !reflect.DeepEqual(decoded, tc.want) {
+				t.Fatalf("admitted conversation = %+v; want %+v", decoded, tc.want)
+			}
+			if len(tc.references) == 0 {
+				var raw []map[string]any
+				if err := json.Unmarshal(admitted.Task.Conversation, &raw); err != nil {
+					t.Fatalf("decode raw conversation: %v", err)
+				}
+				for i, entry := range raw {
+					if _, present := entry["references"]; present {
+						t.Fatalf("message[%d] serialized empty references key: %s", i, admitted.Task.Conversation)
+					}
+				}
 			}
 
 			unit := env.ports.lastReply(t)
