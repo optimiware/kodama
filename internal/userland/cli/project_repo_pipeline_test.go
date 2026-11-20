@@ -66,8 +66,42 @@ func TestProjectCreateAndListCLI(t *testing.T) {
 		if req2.Name != "payments" {
 			t.Fatalf("default name = %q; want payments", req2.Name)
 		}
+		if req2.CreatorRoles != nil {
+			t.Fatalf("omitted --creator-role produced %v; want nil", req2.CreatorRoles)
+		}
 		if !strings.Contains(out.String(), `"project_id":"payments"`) {
 			t.Fatalf("json stdout = %q", out.String())
+		}
+
+		// Explicit empty --creator-roles "" opts out with "creator_roles":[].
+		out.Reset()
+		errOut.Reset()
+		code = cli.Run(context.Background(), cli.Config{ServerURL: "https://api.example.com", Output: cli.OutputTable},
+			[]string{"project", "create", "payments", "--creator-roles", ""},
+			cli.Ports{Client: transport, Out: &out, Err: &errOut})
+		if code != cli.ExitSuccess {
+			t.Fatalf("empty creator-roles exit=%d stderr=%s", code, errOut.String())
+		}
+		if !strings.Contains(string(seen[2].Request.Input), `"creator_roles":[]`) {
+			t.Fatalf("empty --creator-roles wire JSON = %s; want \"creator_roles\":[]", seen[2].Request.Input)
+		}
+		var req3 api.ProjectCreateRequest
+		_ = json.Unmarshal(seen[2].Request.Input, &req3)
+		if req3.CreatorRoles == nil || len(*req3.CreatorRoles) != 0 {
+			t.Fatalf("empty --creator-roles decoded = %v; want non-nil empty slice", req3.CreatorRoles)
+		}
+
+		// Explicit --creator-role admin,engineer sends exact role list.
+		out.Reset()
+		errOut.Reset()
+		code = cli.Run(context.Background(), cli.Config{ServerURL: "https://api.example.com", Output: cli.OutputTable},
+			[]string{"project", "create", "payments", "--creator-role", "admin,engineer"},
+			cli.Ports{Client: transport, Out: &out, Err: &errOut})
+		if code != cli.ExitSuccess {
+			t.Fatalf("creator-role exit=%d stderr=%s", code, errOut.String())
+		}
+		if !strings.Contains(string(seen[3].Request.Input), `"creator_roles":["admin","engineer"]`) {
+			t.Fatalf("--creator-role wire JSON = %s; want [admin engineer]", seen[3].Request.Input)
 		}
 	})
 

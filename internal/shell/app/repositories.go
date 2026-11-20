@@ -17,6 +17,8 @@ import (
 	"github.com/optimiware/kodema/api"
 	"github.com/optimiware/kodema/internal/fault"
 	opsapp "github.com/optimiware/kodema/internal/shell/app/ops"
+	"github.com/optimiware/kodema/internal/shell/resource"
+	"github.com/optimiware/kodema/internal/shell/service"
 )
 
 const (
@@ -66,17 +68,49 @@ func (cfg *GitCompanionConfig) validate() error {
 	if adminURL == "" {
 		return fault.New(fault.InvalidInput, "git companion configuration requires an admin URL")
 	}
-	sample := strings.ReplaceAll(adminURL, "{tenant}", "tenant-check")
-	parsed, err := url.Parse(sample)
-	if err != nil || !parsed.IsAbs() || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
-		return fault.New(fault.InvalidInput, "git companion admin URL must be an absolute http(s) URL without userinfo, query or fragment")
+	if err := validateGitCompanionHTTPURL(strings.ReplaceAll(adminURL, "{tenant}", "tenant-check"), "git companion admin URL"); err != nil {
+		return err
 	}
-	scheme := strings.ToLower(parsed.Scheme)
-	if scheme != "http" && scheme != "https" {
-		return fault.New(fault.InvalidInput, "git companion admin URL must use http or https")
+	if cfg.PublicGitURL != "" {
+		publicGitURL := strings.TrimSpace(cfg.PublicGitURL)
+		if publicGitURL == "" {
+			return fault.New(fault.InvalidInput, "git companion public git URL is empty")
+		}
+		if err := validateGitCompanionHTTPURL(publicGitURL, "git companion public git URL"); err != nil {
+			return err
+		}
+	}
+	if cfg.ServiceID != "" {
+		if _, err := service.ParseServiceID(strings.TrimSpace(cfg.ServiceID)); err != nil {
+			return fault.Wrap(fault.InvalidInput, "git companion service ID is invalid", err)
+		}
+	}
+	for _, rawOrigin := range cfg.TrustedOrigins {
+		origin := strings.TrimRight(strings.TrimSpace(rawOrigin), "/")
+		if origin == "" {
+			return fault.New(fault.InvalidInput, "git companion trusted origin is empty")
+		}
+		if err := resource.ValidateTrustedOrigins([]string{origin}); err != nil {
+			return fault.Wrap(fault.InvalidInput, "git companion trusted origin is invalid", err)
+		}
 	}
 	if strings.TrimSpace(cfg.TokenFile) == "" {
 		return fault.New(fault.InvalidInput, "git companion configuration requires a provision token file")
+	}
+	return nil
+}
+
+func validateGitCompanionHTTPURL(raw, label string) error {
+	if strings.ContainsAny(raw, " \t\r\n") {
+		return fault.New(fault.InvalidInput, label+" must be an absolute http(s) URL without userinfo, query or fragment")
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil || !parsed.IsAbs() || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "" {
+		return fault.New(fault.InvalidInput, label+" must be an absolute http(s) URL without userinfo, query or fragment")
+	}
+	scheme := strings.ToLower(parsed.Scheme)
+	if scheme != "http" && scheme != "https" {
+		return fault.New(fault.InvalidInput, label+" must use http or https")
 	}
 	return nil
 }
@@ -144,7 +178,13 @@ func newHTTPRepositoryProvisioner(cfg Config) (*httpRepositoryProvisioner, error
 		serviceID:      serviceID,
 		trustedOrigins: origins,
 		tokenFile:      strings.TrimSpace(cfg.GitCompanion.TokenFile),
-		client:         &http.Client{Transport: rt, Timeout: gitCompanionDefaultTimeout},
+		client: &http.Client{
+			Transport: rt,
+			Timeout:   gitCompanionDefaultTimeout,
+			CheckRedirect: func(*http.Request, []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		},
 	}, nil
 }
 
@@ -279,6 +319,12 @@ func (p *httpRepositoryProvisioner) ProvisionRepository(ctx context.Context, req
 }
 
 func mapGitCompanionError(status int, body []byte) error {
+	if status == http.StatusUnauthorized {
+		return fault.New(fault.DependencyUnavailable, "git companion rejected the server provision credential")
+	}
+	if status >= 300 && status < 400 {
+		return fault.New(fault.DependencyUnavailable, fmt.Sprintf("git companion returned unexpected redirect status %d", status))
+	}
 	var apiErr api.Error
 	if err := json.Unmarshal(body, &apiErr); err == nil && apiErr.Code != "" {
 		if class, ok := fault.ClassFor(fault.Code(apiErr.Code)); ok {
@@ -292,8 +338,6 @@ func mapGitCompanionError(status int, body []byte) error {
 	switch status {
 	case http.StatusBadRequest:
 		return fault.New(fault.InvalidInput, "git companion refused the repository request")
-	case http.StatusUnauthorized:
-		return fault.New(fault.DependencyUnavailable, "git companion rejected the server provision credential")
 	case http.StatusForbidden:
 		return fault.New(fault.Forbidden, "git companion refused repository provisioning")
 	case http.StatusConflict:

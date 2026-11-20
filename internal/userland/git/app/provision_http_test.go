@@ -199,6 +199,18 @@ func TestGitServeHTTPProvisioning(t *testing.T) {
 		t.Fatalf("conflicting resource_id status = %d; want 409", resp.StatusCode)
 	}
 
+	// 7b. Duplicate resource_id across a DIFFERENT repo -> 409 Conflict AND no
+	// orphan bare directory created on disk.
+	resp = post(provisionSecret, `{"repository":"other/repo","resource_id":"git-shop-web"}`)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("duplicate resource_id across different repo status = %d; want 409", resp.StatusCode)
+	}
+	orphanDir := filepath.Join(storageRoot, string(tenantID), "other", "repo")
+	if _, err := os.Lstat(orphanDir); !os.IsNotExist(err) {
+		t.Fatalf("duplicate resource_id created orphan repository path %q (err=%v); want non-existent", orphanDir, err)
+	}
+
 	// 8. Provision via verified human @admin credential with custom default branch.
 	resp = post("human-admin", `{"repository":"infra.git","resource_id":"git-infra","default_branch":"trunk"}`)
 	var adminCreated git.ProvisionHTTPResponse

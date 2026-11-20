@@ -74,7 +74,11 @@ func runProjectCreate(ctx context.Context, config Config, args []string, ports P
 		CopyMembersFrom: strings.TrimSpace(copyMembersFlag),
 	}
 	if seen["--creator-role"] || seen["--creator-roles"] {
-		req.CreatorRoles = parseRoleList(creatorRolesFlags)
+		roles := parseRoleList(creatorRolesFlags)
+		if roles == nil {
+			roles = []string{}
+		}
+		req.CreatorRoles = &roles
 	}
 	if err := req.Validate(); err != nil {
 		return usage(ports.Err, publicMessage(err))

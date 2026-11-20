@@ -186,14 +186,15 @@ func (result RepositoryListResult) Validate() error {
 	return nil
 }
 
-// ValidRepositoryName reports whether value is a tenant-relative Git repository
-// name: slash-separated lowercase [a-z0-9._-] segments without dot segments,
-// globs, whitespace or leading/trailing slashes.
+// ValidRepositoryName reports whether value is a canonical tenant-relative Git
+// repository name: slash-separated lowercase [a-z0-9._-] segments without dot
+// segments, a trailing ".git" suffix, globs, whitespace or leading/trailing
+// slashes.
 func ValidRepositoryName(value string) bool {
 	if value == "" || len(value) > maxIDLength {
 		return false
 	}
-	if strings.HasPrefix(value, "/") || strings.HasSuffix(value, "/") {
+	if strings.HasPrefix(value, "/") || strings.HasSuffix(value, "/") || strings.HasSuffix(value, ".git") {
 		return false
 	}
 	if strings.ContainsAny(value, "*?[]\\ ") || strings.Contains(value, "..") {

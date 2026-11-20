@@ -62,6 +62,10 @@ func TestRepositoryAndProjectOnboardingEndToEndRESTAndMCP(t *testing.T) {
 	if err := os.WriteFile(tokenFile, []byte(provSecret+"\n"), 0o600); err != nil {
 		t.Fatalf("write provision token: %v", err)
 	}
+	shellTokenFile := filepath.Join(tmp, "shell-git-provision-token")
+	if err := os.WriteFile(shellTokenFile, []byte(provSecret+"\n"), 0o600); err != nil {
+		t.Fatalf("write shell provision token: %v", err)
+	}
 	hookBinary := filepath.Join(tmp, "kodema-hook")
 	if err := os.WriteFile(hookBinary, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
 		t.Fatalf("write hook binary: %v", err)
@@ -166,7 +170,7 @@ func TestRepositoryAndProjectOnboardingEndToEndRESTAndMCP(t *testing.T) {
 			PublicGitURL:   "https://127.0.0.1:8443/git",
 			ServiceID:      "git",
 			TrustedOrigins: []string{"https://127.0.0.1:8443"},
-			TokenFile:      tokenFile,
+			TokenFile:      shellTokenFile,
 		},
 	})
 	if err != nil {
@@ -293,5 +297,50 @@ func TestRepositoryAndProjectOnboardingEndToEndRESTAndMCP(t *testing.T) {
 	mcpRepoListBytes, _ := json.Marshal(mcpRepoList)
 	if !strings.Contains(string(mcpRepoListBytes), "payments/api") {
 		t.Fatalf("MCP repository_list = %s", mcpRepoListBytes)
+	}
+
+	// 6. Both REST and MCP reject ".git" repository names ("admin.git" and
+	// "shop/web.git") BEFORE committing any binding.
+	for _, badName := range []string{"admin.git", "shop/web.git"} {
+		status, raw = restDo(http.MethodPost, "/api/v1/projects/"+projectID+"/repositories", adminToken,
+			`{"input":{"name":"`+badName+`"},"idempotency_key":"rest-bad-`+badName+`"}`)
+		if status != http.StatusBadRequest {
+			t.Fatalf("REST repository.create %q status=%d body=%s; want 400", badName, status, raw)
+		}
+		mcpBad := mcpCall(adminToken, "repository_create", map[string]any{
+			"project_id":      projectID,
+			"name":            badName,
+			"idempotency_key": "mcp-bad-" + badName,
+		})
+		mcpBadBytes, _ := json.Marshal(mcpBad)
+		if !strings.Contains(string(mcpBadBytes), `"isError":true`) && !strings.Contains(string(mcpBadBytes), `"error"`) {
+			t.Fatalf("MCP repository_create %q = %s; want error", badName, mcpBadBytes)
+		}
+	}
+	// Verify no orphaned bindings were committed.
+	status, raw = restDo(http.MethodGet, "/api/v1/projects/"+projectID+"/repositories", engToken, "")
+	if status != http.StatusOK {
+		t.Fatalf("GET repositories after .git rejections status=%d body=%s", status, raw)
+	}
+	listEnv = struct {
+		Operation string                   `json:"operation"`
+		Body      api.RepositoryListResult `json:"body"`
+	}{}
+	if err := json.Unmarshal(raw, &listEnv); err != nil {
+		t.Fatalf("decode repository.list: %v", err)
+	}
+	if len(listEnv.Body.Repositories) != 1 || listEnv.Body.Repositories[0].Name != "payments/api" {
+		t.Fatalf("repository.list after .git rejections = %+v; want only payments/api", listEnv.Body.Repositories)
+	}
+
+	// 7. A server-to-git provision token mismatch surfaces as HTTP 503
+	// dependency_unavailable (NEVER 401 unauthenticated to end users).
+	if err := os.WriteFile(shellTokenFile, []byte("mismatched-provision-secret\n"), 0o600); err != nil {
+		t.Fatalf("rotate shell token file to mismatched secret: %v", err)
+	}
+	status, raw = restDo(http.MethodPost, "/api/v1/projects/"+projectID+"/repositories", adminToken,
+		`{"input":{"name":"token/mismatch"},"idempotency_key":"rest-tok-mismatch"}`)
+	if status != http.StatusServiceUnavailable || !strings.Contains(string(raw), `"dependency_unavailable"`) {
+		t.Fatalf("REST repository.create with mismatched git provision token status=%d body=%s; want 503 dependency_unavailable", status, raw)
 	}
 }

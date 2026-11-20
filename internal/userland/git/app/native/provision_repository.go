@@ -305,6 +305,22 @@ func ProvisionRepository(ctx context.Context, config RepositoryProvisionConfig) 
 		return RepositoryProvisionResult{}, fmt.Errorf("%w: repository %q is already bound to resource %q",
 			git.ErrResourceMismatch, repository, existingPolicy.ResourceID)
 	}
+	if wantResource != "" {
+		for _, otherName := range parsed.PolicyNames() {
+			if otherName == repository {
+				continue
+			}
+			if otherPolicy, ok := parsed.Policy(otherName); ok && otherPolicy.ResourceID == wantResource {
+				return RepositoryProvisionResult{}, fmt.Errorf("%w: resource %q is already bound to repository %q",
+					git.ErrResourceMismatch, wantResource, otherName)
+			}
+		}
+	}
+	if !hasPolicy {
+		if err := requireDefaultRepositoryPolicyForBranch(repository, config.ResourceID, defaultBranch); err != nil {
+			return RepositoryProvisionResult{}, err
+		}
+	}
 	created, err := ensureProvisionedRepositoryWithBranch(ctx, tenantDirectory, repositoryPath, config.HookBinaryPath, defaultBranch, config.Executor)
 	if err != nil {
 		return RepositoryProvisionResult{}, err
@@ -313,9 +329,6 @@ func ProvisionRepository(ctx context.Context, config RepositoryProvisionConfig) 
 		// The repository already has rules. Converge without appending a
 		// duplicate block or adding the defaults over an Admin's restriction.
 		return RepositoryProvisionResult{RepositoryPath: repositoryPath, Repository: repository, Created: created}, nil
-	}
-	if err := requireDefaultRepositoryPolicyForBranch(repository, config.ResourceID, defaultBranch); err != nil {
-		return RepositoryProvisionResult{}, err
 	}
 	candidate := appendRepositoryPolicyWithResourceAndBranch(accepted, repository, config.ResourceID, defaultBranch)
 	if _, err := policy.installCommittedPolicy(ctx, parent, candidate, repository); err != nil {

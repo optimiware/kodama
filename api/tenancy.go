@@ -82,11 +82,11 @@ func (result TenantRotateKeyResult) Validate() error {
 // human roles when omitted and not copied; an explicit empty slice skips
 // auto-granting the creator).
 type ProjectCreateRequest struct {
-	TenantID        string   `json:"tenant_id,omitempty" schema:"id"`
-	ProjectID       string   `json:"project_id" schema:"id"`
-	Name            string   `json:"name"`
-	CopyMembersFrom string   `json:"copy_members_from,omitempty" schema:"id"`
-	CreatorRoles    []string `json:"creator_roles,omitempty"`
+	TenantID        string    `json:"tenant_id,omitempty" schema:"id"`
+	ProjectID       string    `json:"project_id" schema:"id"`
+	Name            string    `json:"name"`
+	CopyMembersFrom string    `json:"copy_members_from,omitempty" schema:"id"`
+	CreatorRoles    *[]string `json:"creator_roles,omitempty"`
 }
 
 // Validate checks the optional tenant identity, bounded project identity,
@@ -111,8 +111,8 @@ func (request ProjectCreateRequest) Validate() error {
 		}
 	}
 	if request.CreatorRoles != nil {
-		seen := make(map[string]bool, len(request.CreatorRoles))
-		for _, role := range request.CreatorRoles {
+		seen := make(map[string]bool, len(*request.CreatorRoles))
+		for _, role := range *request.CreatorRoles {
 			if !validHumanRole(role) {
 				return invalid("unknown creator role %q", role)
 			}

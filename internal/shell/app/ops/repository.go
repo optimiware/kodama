@@ -2,10 +2,14 @@ package opsapp
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"strings"
 
 	"github.com/optimiware/kodema/api"
 	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/shell/receipt"
 	"github.com/optimiware/kodema/internal/shell/resource"
 	"github.com/optimiware/kodema/internal/shell/service"
 	"github.com/optimiware/kodema/internal/shell/store"
@@ -114,6 +118,9 @@ func repositoryHandlers(deps Dependencies) map[authorizeOperation]ops.Handler {
 				DefaultBranch: defaultBranch,
 			})
 			if err != nil {
+				if !committed.Replayed && committed.Version == 1 && isPermanentRepositoryProvisionFailure(err) {
+					compensateFailedRepositoryBinding(ctx, deps.Bindings, call, resource.BindingID(bindingID), committed.Version)
+				}
 				return api.Result{}, err
 			}
 			cloneURL := strings.TrimSpace(provisioned.CloneURL)
@@ -240,4 +247,47 @@ func repositoryViewFromBinding(binding api.ResourceBindingView, provisioner Repo
 		Version:          binding.Version,
 		Metadata:         binding.Metadata,
 	}
+}
+
+func isPermanentRepositoryProvisionFailure(err error) bool {
+	class, ok := fault.ClassOf(err)
+	if !ok {
+		return false
+	}
+	switch class {
+	case fault.InvalidInput, fault.VersionConflict, fault.Forbidden, fault.NotFound:
+		return true
+	default:
+		return false
+	}
+}
+
+func compensateFailedRepositoryBinding(
+	ctx context.Context,
+	bindings BindingAdmin,
+	call ops.AuthorizedCall,
+	bindingID resource.BindingID,
+	version uint64,
+) {
+	deleteRequest := api.ResourceBindingDeleteRequest{BindingID: string(bindingID)}
+	encoded, err := json.Marshal(struct {
+		Request         api.ResourceBindingDeleteRequest `json:"request"`
+		ExpectedVersion uint64                           `json:"expected_version"`
+	}{Request: deleteRequest, ExpectedVersion: version})
+	if err != nil {
+		encoded = []byte(`{"request":null}`)
+	}
+	_, _ = bindings.DeleteBinding(ctx, resource.DeleteBindingCommand{
+		Actor:           call.Principal,
+		Scope:           call.Scope,
+		BindingID:       bindingID,
+		ExpectedVersion: version,
+		CallerKey:       repositoryRollbackKey(call.Request.IdempotencyKey, bindingID),
+		Content:         receipt.Content{MediaType: api.MediaType, Bytes: encoded},
+	})
+}
+
+func repositoryRollbackKey(callerKey string, bindingID resource.BindingID) string {
+	sum := sha256.Sum256([]byte(callerKey + "\x00" + string(bindingID)))
+	return "repo-rollback-binding-" + hex.EncodeToString(sum[:16])
 }

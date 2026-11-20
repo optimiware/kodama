@@ -362,3 +362,317 @@ func TestRepositoryCreateAndListHandlers(t *testing.T) {
 		t.Fatalf("repo[1] = %+v", listRes.Repositories[1])
 	}
 }
+
+// TestProjectCreateEmptyCreatorRolesGoClientAndIdempotencyConflict verifies
+// that a Go client marshaling CreatorRoles: &[]string{} serializes
+// "creator_roles":[], creates a project with zero memberships, and retrying the
+// same idempotency key with CreatorRoles: nil fails with idempotency_conflict
+// instead of colliding receipts and granting default roles.
+func TestProjectCreateEmptyCreatorRolesGoClientAndIdempotencyConflict(t *testing.T) {
+	h := newHarness(t)
+	if _, err := h.invokeKey(t, "token-admin", "tenant.create",
+		`{"tenant_id":"`+testTenant+`","name":"Tenant A"}`, "t-create-empty", nil); err != nil {
+		t.Fatalf("tenant.create: %v", err)
+	}
+
+	emptyRoles := []string{}
+	emptyPayload, err := json.Marshal(api.ProjectCreateRequest{
+		ProjectID:    "proj-go-empty",
+		Name:         "Go Empty",
+		CreatorRoles: &emptyRoles,
+	})
+	if err != nil {
+		t.Fatalf("marshal empty CreatorRoles request: %v", err)
+	}
+	if string(emptyPayload) != `{"project_id":"proj-go-empty","name":"Go Empty","creator_roles":[]}` {
+		t.Fatalf("empty CreatorRoles JSON = %s; want explicit creator_roles:[]", emptyPayload)
+	}
+
+	if _, err := h.invokeKey(t, "token-admin", "project.create", string(emptyPayload), "p-go-empty", nil); err != nil {
+		t.Fatalf("project.create with &[]string{}: %v", err)
+	}
+	listedRaw, err := h.invoke(t, "token-admin", "membership.list", `{"project_id":"proj-go-empty"}`, nil)
+	if err != nil {
+		t.Fatalf("membership.list proj-go-empty: %v", err)
+	}
+	var listed api.MembershipListResult
+	decodeResult(t, listedRaw, &listed)
+	if len(listed.Memberships) != 0 {
+		t.Fatalf("proj-go-empty memberships = %+v; want 0", listed.Memberships)
+	}
+
+	nilPayload, err := json.Marshal(api.ProjectCreateRequest{
+		ProjectID:    "proj-go-empty",
+		Name:         "Go Empty",
+		CreatorRoles: nil,
+	})
+	if err != nil {
+		t.Fatalf("marshal nil CreatorRoles request: %v", err)
+	}
+	if string(nilPayload) != `{"project_id":"proj-go-empty","name":"Go Empty"}` {
+		t.Fatalf("nil CreatorRoles JSON = %s; want omitted creator_roles", nilPayload)
+	}
+
+	_, err = h.invokeKey(t, "token-admin", "project.create", string(nilPayload), "p-go-empty", nil)
+	if class, ok := fault.ClassOf(err); !ok || class != fault.ChangedIdempotencyContent {
+		t.Fatalf("retry same key with CreatorRoles:nil err = %v; want idempotency_conflict", err)
+	}
+
+	listedRaw, err = h.invoke(t, "token-admin", "membership.list", `{"project_id":"proj-go-empty"}`, nil)
+	if err != nil {
+		t.Fatalf("membership.list proj-go-empty after conflict: %v", err)
+	}
+	listed = api.MembershipListResult{}
+	decodeResult(t, listedRaw, &listed)
+	if len(listed.Memberships) != 0 {
+		t.Fatalf("proj-go-empty memberships after conflict = %+v; want 0", listed.Memberships)
+	}
+}
+
+// TestProjectCreateCopyMembersFromRefusesRevokedAdminBeforeProbingSource proves
+// a revoked tenant-admin calling project.create with copy_members_from receives
+// forbidden regardless of whether the source project exists.
+func TestProjectCreateCopyMembersFromRefusesRevokedAdminBeforeProbingSource(t *testing.T) {
+	h := newHarness(t)
+	if _, err := h.invokeKey(t, "token-admin", "tenant.create",
+		`{"tenant_id":"`+testTenant+`","name":"Tenant A"}`, "t-create-revoked", nil); err != nil {
+		t.Fatalf("tenant.create: %v", err)
+	}
+	if _, err := h.invokeKey(t, "token-admin", "project.create",
+		`{"project_id":"proj-existing","name":"Existing"}`, "p-existing", nil); err != nil {
+		t.Fatalf("project.create proj-existing: %v", err)
+	}
+
+	// Token still asserts tenant admin role, but principal has no active
+	// tenant membership in the store (revoked).
+	h.principals.principals["token-revoked-admin"] = identity.Principal{
+		ID:      "admin-revoked",
+		Kind:    identity.KindHuman,
+		Scope:   tenancy.Scope{TenantID: testTenant},
+		Roles:   []tenancy.Role{tenancy.RoleAdmin},
+		Enabled: true,
+		Version: 1,
+	}
+
+	for _, tc := range []struct {
+		name   string
+		source string
+		key    string
+	}{
+		{name: "existing source project", source: "proj-existing", key: "revoked-existing"},
+		{name: "nonexistent source project", source: "proj-does-not-exist", key: "revoked-missing"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := h.invokeKey(t, "token-revoked-admin", "project.create",
+				`{"project_id":"proj-probed","name":"Probed","copy_members_from":"`+tc.source+`"}`, tc.key, nil)
+			if class, ok := fault.ClassOf(err); !ok || class != fault.Forbidden {
+				t.Fatalf("revoked admin copy_members_from=%q err = %v; want forbidden", tc.source, err)
+			}
+		})
+	}
+}
+
+// TestProjectCreateCopyMembersFromReplayIgnoresSourceDrift verifies that
+// replaying project.create with copy_members_from after source project
+// memberships change neither fails with idempotency_conflict nor leaks newly
+// added source members into the already-created project.
+func TestProjectCreateCopyMembersFromReplayIgnoresSourceDrift(t *testing.T) {
+	h := newHarness(t)
+	if _, err := h.invokeKey(t, "token-admin", "tenant.create",
+		`{"tenant_id":"`+testTenant+`","name":"Tenant A"}`, "t-create-drift", nil); err != nil {
+		t.Fatalf("tenant.create: %v", err)
+	}
+	if _, err := h.invokeKey(t, "token-admin", "project.create",
+		`{"project_id":"proj-src","name":"Source"}`, "p-src", nil); err != nil {
+		t.Fatalf("project.create proj-src: %v", err)
+	}
+	if _, err := h.invokeKey(t, "token-admin", "membership.grant",
+		`{"project_id":"proj-src","principal_id":"engineer-9","roles":["engineer","reviewer"]}`, "grant-e9-v1", nil); err != nil {
+		t.Fatalf("membership.grant engineer-9: %v", err)
+	}
+
+	createBody := `{"project_id":"proj-dst","name":"Dest","copy_members_from":"proj-src"}`
+	firstRaw, err := h.invokeKey(t, "token-admin", "project.create", createBody, "p-copy-drift", nil)
+	if err != nil {
+		t.Fatalf("project.create proj-dst: %v", err)
+	}
+	var first api.ProjectCreateResult
+	decodeResult(t, firstRaw, &first)
+
+	// Also create a project with copy_members_from and explicit empty creator_roles.
+	emptyCopyBody := `{"project_id":"proj-dst-empty","name":"Dest Empty","copy_members_from":"proj-src","creator_roles":[]}`
+	if _, err := h.invokeKey(t, "token-admin", "project.create", emptyCopyBody, "p-copy-empty-drift", nil); err != nil {
+		t.Fatalf("project.create proj-dst-empty: %v", err)
+	}
+
+	// Mutate proj-src memberships after proj-dst creation: update engineer-9's
+	// roles and add a brand-new member viewer-new.
+	if _, err := h.invokeVersion(t, "token-admin", "membership.grant",
+		`{"project_id":"proj-src","principal_id":"engineer-9","roles":["engineer","reviewer","operator"]}`,
+		1, nil); err != nil {
+		t.Fatalf("membership.grant engineer-9 v2: %v", err)
+	}
+	if _, err := h.invokeKey(t, "token-admin", "membership.grant",
+		`{"project_id":"proj-src","principal_id":"viewer-new","roles":["viewer"]}`, "grant-viewer-new", nil); err != nil {
+		t.Fatalf("membership.grant viewer-new: %v", err)
+	}
+
+	// Replay both project.create requests with their original idempotency keys.
+	replayRaw, err := h.invokeKey(t, "token-admin", "project.create", createBody, "p-copy-drift", nil)
+	if err != nil {
+		t.Fatalf("project.create replay after source drift: %v", err)
+	}
+	var replayed api.ProjectCreateResult
+	decodeResult(t, replayRaw, &replayed)
+	if replayed != first {
+		t.Fatalf("replayed = %+v; want %+v", replayed, first)
+	}
+
+	dstRaw, err := h.invoke(t, "token-admin", "membership.list", `{"project_id":"proj-dst"}`, nil)
+	if err != nil {
+		t.Fatalf("membership.list proj-dst: %v", err)
+	}
+	var dstList api.MembershipListResult
+	decodeResult(t, dstRaw, &dstList)
+	byPrincipal := make(map[string][]string, len(dstList.Memberships))
+	for _, m := range dstList.Memberships {
+		byPrincipal[m.PrincipalID] = m.Roles
+	}
+	if len(byPrincipal) != 2 {
+		t.Fatalf("proj-dst memberships = %+v; want exactly admin and engineer-9 (no leaked viewer-new)", byPrincipal)
+	}
+	if !reflect.DeepEqual(byPrincipal["engineer-9"], []string{"engineer", "reviewer"}) {
+		t.Fatalf("proj-dst engineer-9 roles = %v; want original [engineer reviewer]", byPrincipal["engineer-9"])
+	}
+	if _, leaked := byPrincipal["viewer-new"]; leaked {
+		t.Fatalf("viewer-new was leaked into proj-dst on replay: %+v", byPrincipal)
+	}
+
+	if _, err := h.invokeKey(t, "token-admin", "project.create", emptyCopyBody, "p-copy-empty-drift", nil); err != nil {
+		t.Fatalf("project.create empty creator_roles replay after source drift: %v", err)
+	}
+	dstEmptyRaw, err := h.invoke(t, "token-admin", "membership.list", `{"project_id":"proj-dst-empty"}`, nil)
+	if err != nil {
+		t.Fatalf("membership.list proj-dst-empty: %v", err)
+	}
+	var dstEmptyList api.MembershipListResult
+	decodeResult(t, dstEmptyRaw, &dstEmptyList)
+	for _, m := range dstEmptyList.Memberships {
+		if m.PrincipalID == "viewer-new" {
+			t.Fatalf("viewer-new leaked into proj-dst-empty on replay: %+v", dstEmptyList.Memberships)
+		}
+	}
+}
+
+// TestRepositoryCreateRejectsDotGitSuffixWithoutOrphanBinding verifies that
+// repository.create rejects names ending in ".git" (including "admin.git" and
+// "shop/web.git") at API validation before committing any binding or calling
+// the Git companion.
+func TestRepositoryCreateRejectsDotGitSuffixWithoutOrphanBinding(t *testing.T) {
+	provisioner := &fakeRepositoryProvisioner{
+		serviceID:      testService,
+		trustedOrigins: []string{"https://127.0.0.1:8443"},
+		publicGitURL:   "https://127.0.0.1:8443/git",
+	}
+	h := newHarnessWithProvisioner(t, provisioner)
+	if _, err := h.invokeKey(t, "token-admin", "tenant.create",
+		`{"tenant_id":"`+testTenant+`","name":"Tenant A"}`, "dg-tenant", nil); err != nil {
+		t.Fatalf("tenant.create: %v", err)
+	}
+	if _, err := h.invokeKey(t, "token-admin", "project.create",
+		`{"project_id":"`+testProject+`","name":"Project A"}`, "dg-proj", nil); err != nil {
+		t.Fatalf("project.create: %v", err)
+	}
+	if _, err := h.invokeKey(t, testToken, "service.create",
+		`{"project_id":"`+testProject+`","service_id":"`+testService+`","roles":["viewer"]}`, "dg-svc", nil); err != nil {
+		t.Fatalf("service.create: %v", err)
+	}
+
+	for _, name := range []string{"admin.git", "shop/web.git"} {
+		_, err := h.invokeKey(t, "token-admin", "repository.create",
+			`{"project_id":"`+testProject+`","name":"`+name+`"}`, "dg-"+name, nil)
+		if class, ok := fault.ClassOf(err); !ok || class != fault.InvalidInput {
+			t.Fatalf("repository.create name=%q err = %v; want invalid_input", name, err)
+		}
+	}
+	if len(provisioner.calls) != 0 {
+		t.Fatalf("provisioner called %d times for .git names; want 0", len(provisioner.calls))
+	}
+	listRaw, err := h.invoke(t, testToken, "repository.list", `{"project_id":"`+testProject+`"}`, nil)
+	if err != nil {
+		t.Fatalf("repository.list: %v", err)
+	}
+	var listRes api.RepositoryListResult
+	decodeResult(t, listRaw, &listRes)
+	if len(listRes.Repositories) != 0 {
+		t.Fatalf("repository.list = %+v; want 0 orphaned bindings", listRes.Repositories)
+	}
+}
+
+// TestRepositoryCreateCompensatesBindingOnPermanentProvisionFailureAndRetriesTransient
+// proves permanent Git companion errors (e.g. 409 version_conflict) roll back
+// the freshly created v1 binding so repository.list is not polluted, while
+// transient DependencyUnavailable errors preserve idempotent retry convergence.
+func TestRepositoryCreateCompensatesBindingOnPermanentProvisionFailureAndRetriesTransient(t *testing.T) {
+	provisioner := &fakeRepositoryProvisioner{
+		serviceID:      testService,
+		trustedOrigins: []string{"https://127.0.0.1:8443"},
+		publicGitURL:   "https://127.0.0.1:8443/git",
+	}
+	h := newHarnessWithProvisioner(t, provisioner)
+	if _, err := h.invokeKey(t, "token-admin", "tenant.create",
+		`{"tenant_id":"`+testTenant+`","name":"Tenant A"}`, "comp-tenant", nil); err != nil {
+		t.Fatalf("tenant.create: %v", err)
+	}
+	if _, err := h.invokeKey(t, "token-admin", "project.create",
+		`{"project_id":"`+testProject+`","name":"Project A"}`, "comp-proj", nil); err != nil {
+		t.Fatalf("project.create: %v", err)
+	}
+	if _, err := h.invokeKey(t, testToken, "service.create",
+		`{"project_id":"`+testProject+`","service_id":"`+testService+`","roles":["viewer"]}`, "comp-svc", nil); err != nil {
+		t.Fatalf("service.create: %v", err)
+	}
+
+	// 1. Permanent 409 conflict rolls back the freshly registered v1 binding.
+	provisioner.failErr = fault.New(fault.VersionConflict, "resource already bound to another repository")
+	_, err := h.invokeKey(t, "token-admin", "repository.create",
+		`{"project_id":"`+testProject+`","name":"conflict/repo"}`, "repo-perm-fail", nil)
+	if class, ok := fault.ClassOf(err); !ok || class != fault.VersionConflict {
+		t.Fatalf("permanent conflict err = %v; want version_conflict", err)
+	}
+
+	listRaw, err := h.invoke(t, testToken, "repository.list", `{"project_id":"`+testProject+`"}`, nil)
+	if err != nil {
+		t.Fatalf("repository.list after permanent failure: %v", err)
+	}
+	var listRes api.RepositoryListResult
+	decodeResult(t, listRaw, &listRes)
+	if len(listRes.Repositories) != 0 {
+		t.Fatalf("repository.list = %+v; want 0 bindings after permanent provision failure", listRes.Repositories)
+	}
+	_, err = h.invoke(t, testToken, "resource.binding.read",
+		`{"binding_id":"git-conflict-repo"}`, map[string]string{"binding": "git-conflict-repo"})
+	if class, ok := fault.ClassOf(err); !ok || class != fault.NotFound {
+		t.Fatalf("resource.binding.read after compensation err = %v; want not_found", err)
+	}
+
+	// 2. Transient dependency_unavailable preserves binding for idempotent retry.
+	provisioner.failErr = fault.New(fault.DependencyUnavailable, "git companion temporarily unreachable")
+	_, err = h.invokeKey(t, "token-admin", "repository.create",
+		`{"project_id":"`+testProject+`","name":"retry/repo"}`, "repo-transient-1", nil)
+	if class, ok := fault.ClassOf(err); !ok || class != fault.DependencyUnavailable {
+		t.Fatalf("transient failure err = %v; want dependency_unavailable", err)
+	}
+
+	provisioner.failErr = nil
+	retryRaw, err := h.invokeKey(t, "token-admin", "repository.create",
+		`{"project_id":"`+testProject+`","name":"retry/repo"}`, "repo-transient-1", nil)
+	if err != nil {
+		t.Fatalf("retry after transient failure: %v", err)
+	}
+	var converged api.RepositoryCreateResult
+	decodeResult(t, retryRaw, &converged)
+	if converged.Name != "retry/repo" || converged.Version != 1 || !converged.Created {
+		t.Fatalf("converged = %+v; want retry/repo v1 created=true", converged)
+	}
+}

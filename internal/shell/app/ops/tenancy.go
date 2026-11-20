@@ -85,24 +85,47 @@ func tenancyHandlers(deps Dependencies) map[authorize.OperationName]ops.Handler 
 			if request.TenantID == "" {
 				request.TenantID = string(call.Scope.TenantID)
 			}
-			var copiedMembers []tenancy.Membership
+			if request.CreatorRoles != nil && *request.CreatorRoles == nil {
+				empty := []string{}
+				request.CreatorRoles = &empty
+			}
+			content := receiptContent(call, request)
+			var (
+				copiedMembers []tenancy.Membership
+				skipInitCopy  bool
+			)
 			if request.CopyMembersFrom != "" {
-				if deps.Scanner != nil {
-					foundSource, err := projectExistsInTenant(ctx, deps.Scanner, call.Scope, request.CopyMembersFrom)
+				if err := confirmReadAuthority(ctx, deps, call, call.Scope); err != nil {
+					return api.Result{}, err
+				}
+				replayed, err := projectCreateReceiptMatches(ctx, deps, call, content)
+				if err != nil {
+					return api.Result{}, err
+				}
+				if replayed {
+					skipInitCopy, err = shouldSkipReplayMemberCopy(ctx, deps, call, id.ProjectID(request.ProjectID), request)
 					if err != nil {
 						return api.Result{}, err
 					}
-					if !foundSource {
-						return api.Result{}, fault.New(fault.NotFound, "source project to copy members from was not found")
+				}
+				if !skipInitCopy {
+					if deps.Scanner != nil {
+						foundSource, err := projectExistsInTenant(ctx, deps.Scanner, call.Scope, request.CopyMembersFrom)
+						if err != nil {
+							return api.Result{}, err
+						}
+						if !foundSource {
+							return api.Result{}, fault.New(fault.NotFound, "source project to copy members from was not found")
+						}
 					}
-				}
-				sourceScope := tenancy.Scope{
-					TenantID:  call.Scope.TenantID,
-					ProjectID: id.ProjectID(request.CopyMembersFrom),
-				}
-				copiedMembers, err = listAllProjectMemberships(ctx, deps.Tenancy, call.Principal, sourceScope)
-				if err != nil {
-					return api.Result{}, err
+					sourceScope := tenancy.Scope{
+						TenantID:  call.Scope.TenantID,
+						ProjectID: id.ProjectID(request.CopyMembersFrom),
+					}
+					copiedMembers, err = listAllProjectMemberships(ctx, deps.Tenancy, call.Principal, sourceScope)
+					if err != nil {
+						return api.Result{}, err
+					}
 				}
 			}
 			committed, err := deps.Tenancy.CreateProject(ctx, tenancyadmin.ProjectCreateCommand{
@@ -110,13 +133,15 @@ func tenancyHandlers(deps Dependencies) map[authorize.OperationName]ops.Handler 
 				ProjectID: id.ProjectID(request.ProjectID),
 				Name:      request.Name,
 				CallerKey: call.Request.IdempotencyKey,
-				Content:   receiptContent(call, request),
+				Content:   content,
 			})
 			if err != nil {
 				return api.Result{}, err
 			}
-			if err := grantInitialProjectMemberships(ctx, deps.Tenancy, call, committed.ProjectID, request, copiedMembers); err != nil {
-				return api.Result{}, err
+			if !skipInitCopy {
+				if err := grantInitialProjectMemberships(ctx, deps, call, committed.ProjectID, request, copiedMembers, committed.Replayed); err != nil {
+					return api.Result{}, err
+				}
 			}
 			return respond(call, api.ProjectCreateResult{ProjectID: string(committed.ProjectID), Version: committed.Version})
 		}),
@@ -396,14 +421,17 @@ func listAllProjectMemberships(
 // the authenticated creator's membership (defaulting to all human roles unless
 // already copied or overridden via creator_roles). Every grant goes through
 // TenancyAdmin.GrantMembership with deterministic derived caller keys so
-// authority is re-checked in-commit and retries converge cleanly.
+// authority is re-checked in-commit and retries converge cleanly. The creator's
+// own membership is granted last so its receipt serves as a durable completion
+// sentinel on idempotent replay.
 func grantInitialProjectMemberships(
 	ctx context.Context,
-	tenancyService TenancyAdmin,
+	deps Dependencies,
 	call ops.AuthorizedCall,
 	projectID id.ProjectID,
 	request api.ProjectCreateRequest,
 	copied []tenancy.Membership,
+	replayed bool,
 ) error {
 	grants := make(map[id.PrincipalID][]tenancy.Role, len(copied)+1)
 	for _, membership := range copied {
@@ -415,8 +443,8 @@ func grantInitialProjectMemberships(
 	if call.Principal.Kind == identity.KindHuman && call.Principal.ID != "" {
 		switch {
 		case request.CreatorRoles != nil:
-			if len(request.CreatorRoles) > 0 {
-				grants[call.Principal.ID] = rolesOf(request.CreatorRoles)
+			if len(*request.CreatorRoles) > 0 {
+				grants[call.Principal.ID] = rolesOf(*request.CreatorRoles)
 			}
 		default:
 			if _, exists := grants[call.Principal.ID]; !exists {
@@ -429,14 +457,31 @@ func grantInitialProjectMemberships(
 	}
 
 	principals := make([]string, 0, len(grants))
+	grantCreatorLast := false
 	for principalID := range grants {
+		if call.Principal.Kind == identity.KindHuman && principalID == call.Principal.ID {
+			grantCreatorLast = true
+			continue
+		}
 		principals = append(principals, string(principalID))
 	}
 	sort.Strings(principals)
+	if grantCreatorLast {
+		principals = append(principals, string(call.Principal.ID))
+	}
 
 	projectScope := tenancy.Scope{TenantID: call.Scope.TenantID, ProjectID: projectID}
 	for _, principal := range principals {
 		principalID := id.PrincipalID(principal)
+		if replayed {
+			exists, err := projectInitMemberReceiptExists(ctx, deps, call, projectID, principalID)
+			if err != nil {
+				return err
+			}
+			if exists {
+				continue
+			}
+		}
 		roles := grants[principalID]
 		grantRequest := api.MembershipGrantRequest{
 			ProjectID:   string(projectID),
@@ -449,7 +494,7 @@ func grantInitialProjectMemberships(
 		if err != nil {
 			encoded = []byte(`{"request":null}`)
 		}
-		_, err = tenancyService.GrantMembership(ctx, tenancyadmin.MembershipGrantCommand{
+		_, err = deps.Tenancy.GrantMembership(ctx, tenancyadmin.MembershipGrantCommand{
 			Actor: call.Principal,
 			Membership: tenancy.Membership{
 				Scope:       projectScope,
@@ -468,6 +513,77 @@ func grantInitialProjectMemberships(
 		}
 	}
 	return nil
+}
+
+func projectCreateReceiptMatches(
+	ctx context.Context,
+	deps Dependencies,
+	call ops.AuthorizedCall,
+	content receipt.Content,
+) (bool, error) {
+	if deps.Receipts == nil || call.Request.IdempotencyKey == "" {
+		return false, nil
+	}
+	key := receipt.Key{
+		TenantID:    call.Scope.TenantID,
+		ProjectID:   call.Scope.ProjectID,
+		PrincipalID: call.Principal.ID,
+		Operation:   string(call.Operation.Name),
+		CallerKey:   call.Request.IdempotencyKey,
+	}
+	record, found, err := deps.Receipts.Lookup(ctx, key)
+	if err != nil || !found {
+		return false, err
+	}
+	fingerprint, err := receipt.Fingerprint(content)
+	if err != nil {
+		return false, err
+	}
+	outcome, err := receipt.Match(&record, receipt.Record{Key: key, ContentHash: fingerprint})
+	if err != nil {
+		return false, err
+	}
+	return outcome == receipt.OutcomeReplay, nil
+}
+
+func shouldSkipReplayMemberCopy(
+	ctx context.Context,
+	deps Dependencies,
+	call ops.AuthorizedCall,
+	projectID id.ProjectID,
+	request api.ProjectCreateRequest,
+) (bool, error) {
+	expectsCreatorGrant := call.Principal.Kind == identity.KindHuman &&
+		call.Principal.ID != "" &&
+		(request.CreatorRoles == nil || len(*request.CreatorRoles) > 0)
+	if !expectsCreatorGrant {
+		return true, nil
+	}
+	return projectInitMemberReceiptExists(ctx, deps, call, projectID, call.Principal.ID)
+}
+
+func projectInitMemberReceiptExists(
+	ctx context.Context,
+	deps Dependencies,
+	call ops.AuthorizedCall,
+	projectID id.ProjectID,
+	targetPrincipal id.PrincipalID,
+) (bool, error) {
+	if deps.Receipts == nil || call.Request.IdempotencyKey == "" {
+		return false, nil
+	}
+	key := receipt.Key{
+		TenantID:    call.Scope.TenantID,
+		ProjectID:   projectID,
+		PrincipalID: call.Principal.ID,
+		Operation:   "membership.grant",
+		CallerKey:   projectInitMemberKey(call.Request.IdempotencyKey, projectID, targetPrincipal),
+	}
+	_, found, err := deps.Receipts.Lookup(ctx, key)
+	if err != nil {
+		return false, err
+	}
+	return found, nil
 }
 
 func projectInitMemberKey(callerKey string, projectID id.ProjectID, principalID id.PrincipalID) string {
