@@ -5,7 +5,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
+	"github.com/optimiware/kodema/api"
 	"github.com/optimiware/kodema/internal/fault"
 	"github.com/optimiware/kodema/internal/kernel"
 	"github.com/optimiware/kodema/internal/kernel/definition"
@@ -301,4 +303,64 @@ func TestResolveStaleApprovalGuard(t *testing.T) {
 		_, err := ts.service.Resolve(context.Background(), resolveCommand(scope, exec, 0, reviewer, request.DecisionPass, nil))
 		requireFaultClass(t, err, fault.DependencyUnavailable)
 	})
+}
+
+func TestEvaluateGitRefStalenessBoundsReasonToMaxSubjectBytes(t *testing.T) {
+	// Multibyte UTF-8 expected_base at the maximum subject field size must
+	// still produce a valid UTF-8 StaleReason within api.MaxSubjectValueBytes.
+	longBase := strings.Repeat("é", api.MaxSubjectValueBytes/2)
+	target := request.GitRefUpdateSubject{
+		Resource:     "git-repo-1",
+		Ref:          "refs/heads/main",
+		ExpectedBase: longBase,
+		Candidate:    "cccccccccccccccccccccccccccccccccccccccc",
+	}
+
+	stale, commit, reason := request.EvaluateGitRefStaleness(target, request.RefHead{
+		Found:  true,
+		Commit: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+	})
+	if !stale {
+		t.Fatal("expected stale=true")
+	}
+	if len(reason) > api.MaxSubjectValueBytes {
+		t.Fatalf("moved reason len = %d; want <= %d", len(reason), api.MaxSubjectValueBytes)
+	}
+	if !utf8.ValidString(reason) {
+		t.Fatalf("moved reason is not valid UTF-8")
+	}
+	if commit != "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" {
+		t.Fatalf("commit = %q", commit)
+	}
+	item := api.InboxItem{
+		Kind:        "request",
+		ExecutionID: "exec-1",
+		ActionID:    "act-1",
+		Assignment:  "role/reviewer",
+		Subject: &api.Subject{
+			Fields: []api.SubjectField{
+				{Name: "operation", Kind: "string", Value: "git.ref.update"},
+				{Name: "resource", Kind: "string", Value: "git-repo-1"},
+				{Name: "ref", Kind: "string", Value: "refs/heads/main"},
+				{Name: "expected_base", Kind: "string", Value: longBase},
+			},
+		},
+		Version:          1,
+		At:               time.Date(2026, 11, 20, 12, 0, 0, 0, time.UTC),
+		Stale:            stale,
+		CurrentRefCommit: commit,
+		StaleReason:      reason,
+	}
+	if err := item.Validate(); err != nil {
+		t.Fatalf("api.InboxItem.Validate() failed for max-length expected_base: %v", err)
+	}
+
+	// Deleted ref branch also stays bounded and valid UTF-8.
+	staleDel, commitDel, reasonDel := request.EvaluateGitRefStaleness(target, request.RefHead{
+		Found:   true,
+		Deleted: true,
+	})
+	if !staleDel || commitDel != "" || len(reasonDel) > api.MaxSubjectValueBytes || !utf8.ValidString(reasonDel) {
+		t.Fatalf("deleted staleness invalid: stale=%v commit=%q len=%d valid=%v", staleDel, commitDel, len(reasonDel), utf8.ValidString(reasonDel))
+	}
 }

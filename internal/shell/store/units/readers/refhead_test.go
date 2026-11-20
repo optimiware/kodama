@@ -243,3 +243,75 @@ func TestRefHeadReaderValidation(t *testing.T) {
 		})
 	}
 }
+
+type countingScanner struct {
+	inner store.Scanner
+	calls int
+}
+
+func (c *countingScanner) Query(ctx context.Context, scope tenancy.Scope, query store.ScanQuery) (store.QueryPage, error) {
+	c.calls++
+	return c.inner.Query(ctx, scope, query)
+}
+
+func TestRefHeadReaderDeletedFormatsMalformedDataAndBatchScan(t *testing.T) {
+	backend := memory.New()
+	scope := testScope()
+	counter := &countingScanner{inner: backend}
+	reader, err := readers.NewRefHeadReader(counter)
+	if err != nil {
+		t.Fatalf("NewRefHeadReader: %v", err)
+	}
+
+	commitRaw := func(idVal string, raw []byte) {
+		t.Helper()
+		unit := store.Unit{
+			Events: []event.Envelope{{
+				ID:             id.EventID(idVal),
+				Type:           event.TypeVerifiedReport,
+				ReportType:     event.ReportType("git.ref.updated"),
+				Source:         event.Source{Kind: event.SourceService, PrincipalID: "svc-git"},
+				Scope:          scope,
+				SubjectID:      "repo-1",
+				SubjectVersion: 1,
+				CausationID:    "ver-" + idVal,
+				At:             testNow,
+				Data:           raw,
+			}},
+		}
+		if _, err := backend.Execute(context.Background(), scope, unit); err != nil {
+			t.Fatalf("commit %s: %v", idVal, err)
+		}
+	}
+
+	// Native boolean deleted: true on refs/heads/bool-del.
+	commitVerifiedGitRefUpdated(t, backend, scope, "evt-bool-del", "repo-1", "refs/heads/bool-del", "commit-old", "commit-old", true, "")
+	// String-encoded deleted: "true" (matching verify.reportEventData) on refs/heads/str-del.
+	commitRaw("evt-str-del", []byte(`{"operation":"git.ref.update","resource":"repo-1","ref":"refs/heads/str-del","expected_base":"commit-old","candidate":"commit-old","deleted":"true"}`))
+	// String-encoded deleted: "false" on refs/heads/main.
+	commitRaw("evt-main-ok", []byte(`{"operation":"git.ref.update","resource":"repo-1","ref":"refs/heads/main","expected_base":"commit-0","candidate":"commit-1","deleted":"false"}`))
+	// Non-object / empty JSON rows newer than valid events must be skipped cleanly.
+	commitRaw("evt-malformed", []byte(`"not-an-object"`))
+	commitRaw("evt-empty", []byte(`{}`))
+
+	heads, err := reader.LatestRefHeads(context.Background(), scope, "repo-1", []string{
+		"refs/heads/main",
+		"refs/heads/bool-del",
+		"refs/heads/str-del",
+	})
+	if err != nil {
+		t.Fatalf("LatestRefHeads: %v", err)
+	}
+	if counter.calls != 1 {
+		t.Fatalf("batch LatestRefHeads executed %d scanner queries; want 1", counter.calls)
+	}
+	if h := heads["refs/heads/main"]; !h.Found || h.Deleted || h.Commit != "commit-1" {
+		t.Fatalf("main head = %+v; want commit-1", h)
+	}
+	if h := heads["refs/heads/bool-del"]; !h.Found || !h.Deleted || h.Commit != "" {
+		t.Fatalf("bool-del head = %+v; want Deleted=true", h)
+	}
+	if h := heads["refs/heads/str-del"]; !h.Found || !h.Deleted || h.Commit != "" {
+		t.Fatalf("str-del head = %+v; want Deleted=true", h)
+	}
+}

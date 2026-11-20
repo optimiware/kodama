@@ -3,6 +3,7 @@ package request
 import (
 	"context"
 	"fmt"
+	"unicode/utf8"
 
 	"github.com/optimiware/kodema/internal/kernel/definition"
 	"github.com/optimiware/kodema/internal/shell/tenancy"
@@ -15,6 +16,11 @@ const (
 
 	gitZeroOIDSHA1   = "0000000000000000000000000000000000000000"
 	gitZeroOIDSHA256 = "0000000000000000000000000000000000000000000000000000000000000000"
+
+	// maxStaleFieldBytes matches api.MaxSubjectValueBytes so projected
+	// staleness fields never exceed wire validation bounds even when a
+	// request subject carries a maximum-length expected_base or ref.
+	maxStaleFieldBytes = 4096
 )
 
 // RefHead is the latest verified ref state projected from committed
@@ -36,6 +42,13 @@ type RefHead struct {
 // event store. It never calls Git synchronously.
 type RefHeadReader interface {
 	LatestRefHead(ctx context.Context, scope tenancy.Scope, resourceID, ref string) (RefHead, error)
+}
+
+// BatchRefHeadReader is an optional extension implemented by store-backed
+// RefHeadReader implementations to resolve multiple refs on the same resource
+// in a single descending event scan.
+type BatchRefHeadReader interface {
+	LatestRefHeads(ctx context.Context, scope tenancy.Scope, resourceID string, refs []string) (map[string]RefHead, error)
 }
 
 // GitRefUpdateSubject holds the canonical resolved literal fields of one
@@ -112,7 +125,8 @@ func EvaluateGitRefStaleness(target GitRefUpdateSubject, head RefHead) (stale bo
 		if IsUnbornGitOID(target.ExpectedBase) {
 			return false, "", ""
 		}
-		return true, "", fmt.Sprintf("ref %s on %s was deleted (expected_base %s)", target.Ref, target.Resource, target.ExpectedBase)
+		deletedReason := fmt.Sprintf("ref %s on %s was deleted (expected_base %s)", target.Ref, target.Resource, target.ExpectedBase)
+		return true, "", truncateUTF8Bytes(deletedReason, maxStaleFieldBytes)
 	}
 	if target.ExpectedBase == head.Commit {
 		return false, "", ""
@@ -121,5 +135,22 @@ func EvaluateGitRefStaleness(target GitRefUpdateSubject, head RefHead) (stale bo
 	if IsUnbornGitOID(expectedDisplay) {
 		expectedDisplay = "<unborn>"
 	}
-	return true, head.Commit, fmt.Sprintf("ref %s on %s moved from expected_base %s to %s", target.Ref, target.Resource, expectedDisplay, head.Commit)
+	commit := truncateUTF8Bytes(head.Commit, maxStaleFieldBytes)
+	movedReason := fmt.Sprintf("ref %s on %s moved from expected_base %s to %s", target.Ref, target.Resource, expectedDisplay, head.Commit)
+	return true, commit, truncateUTF8Bytes(movedReason, maxStaleFieldBytes)
+}
+
+func truncateUTF8Bytes(s string, maxBytes int) string {
+	if len(s) <= maxBytes || maxBytes <= 0 {
+		return s
+	}
+	const ellipsis = "..."
+	if maxBytes <= len(ellipsis) {
+		return s[:maxBytes]
+	}
+	limit := maxBytes - len(ellipsis)
+	for limit > 0 && !utf8.RuneStart(s[limit]) {
+		limit--
+	}
+	return s[:limit] + ellipsis
 }
