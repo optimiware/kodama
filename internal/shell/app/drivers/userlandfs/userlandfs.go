@@ -1,10 +1,6 @@
 // Package userlandfs implements the Userland-declared kodema filesystem port
-// over the operating system file API.
-//
-// The wrapper is deliberately tiny: it exposes only the operations the
-// consumer-owned cli.FileSystem port declares and adds no policy of its own.
-// Command logic still maps a missing file, a permission failure and a
-// directory read error.
+// over the operating system file API, along with optional private-directory
+// helpers for human session storage.
 package userlandfs
 
 import (
@@ -162,6 +158,15 @@ func (FileSystem) CheckPrivateDir(dir string) error {
 	if info.Mode().Perm() == 0o700 {
 		return nil
 	}
+	if stat, ok := info.Sys().(*syscall.Stat_t); ok && stat.Uid != uint32(os.Geteuid()) {
+		return fault.New(
+			fault.InvalidInput,
+			fmt.Sprintf(
+				"the human session directory %q has mode %04o and is owned by another user, so it cannot be restricted to 0700; place the session file in a dedicated 0700 subdirectory",
+				cleaned, info.Mode().Perm(),
+			),
+		)
+	}
 	if isSharedSessionDir(cleaned, info) {
 		return fault.New(
 			fault.InvalidInput,
@@ -186,7 +191,15 @@ func (files FileSystem) EnsurePrivateDir(dir string) error {
 	if err := os.MkdirAll(cleaned, 0o700); err != nil {
 		return fault.Wrap(fault.DependencyUnavailable, fmt.Sprintf("the human session directory %q could not be created", cleaned), err)
 	}
-	info, err := os.Lstat(cleaned)
+	dirFile, err := os.OpenFile(cleaned, os.O_RDONLY|syscall.O_DIRECTORY|syscall.O_NOFOLLOW, 0)
+	if err != nil {
+		if errors.Is(err, syscall.ELOOP) || errors.Is(err, syscall.ENOTDIR) {
+			return fault.New(fault.InvalidInput, fmt.Sprintf("the human session directory %q is not a directory", cleaned))
+		}
+		return fault.Wrap(fault.DependencyUnavailable, "the human session directory is unreadable", err)
+	}
+	defer dirFile.Close()
+	info, err := dirFile.Stat()
 	if err != nil {
 		return fault.Wrap(fault.DependencyUnavailable, "the human session directory is unreadable", err)
 	}
@@ -194,7 +207,7 @@ func (files FileSystem) EnsurePrivateDir(dir string) error {
 		return fault.New(fault.InvalidInput, fmt.Sprintf("the human session directory %q is not a directory", cleaned))
 	}
 	if info.Mode().Perm() != 0o700 {
-		if err := os.Chmod(cleaned, 0o700); err != nil {
+		if err := dirFile.Chmod(0o700); err != nil {
 			return fault.Wrap(
 				fault.DependencyUnavailable,
 				fmt.Sprintf(
@@ -204,7 +217,7 @@ func (files FileSystem) EnsurePrivateDir(dir string) error {
 				err,
 			)
 		}
-		info, err = os.Lstat(cleaned)
+		info, err = dirFile.Stat()
 		if err != nil {
 			return fault.Wrap(fault.DependencyUnavailable, "the human session directory is unreadable", err)
 		}

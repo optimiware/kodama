@@ -141,6 +141,7 @@ func operationScopeMatches(operation Operation, scope tenancy.Scope) error {
 	}
 	return nil
 }
+
 // DenialMessage explains why a human or service principal was denied an
 // operation in scope. When an enabled project-scoped principal attempts a
 // tenant-scoped operation inside its own tenant, the message explains that a

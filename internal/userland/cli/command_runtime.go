@@ -277,6 +277,9 @@ func runRefresh(ctx context.Context, config Config, args []string, ports Ports, 
 	issuer, clientID, audience, bindErr := trustedBinding(ctx, runtime.OIDC, apiURL,
 		runtime.Issuer, runtime.ClientID, runtime.Audience)
 	if bindErr != nil {
+		if isTLSDiscoveryError(bindErr) {
+			return failure(ports.Err, bindErr)
+		}
 		return failure(ports.Err, loginRequired("the session binding could not be verified", bindErr))
 	}
 	updated, err := Refresh(ctx, RefreshDeps{
