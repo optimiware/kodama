@@ -142,6 +142,10 @@ func buildTestProfile(options serverOptions, getenv productionEnv) (productionBu
 	if err != nil {
 		return productionBuild{}, err
 	}
+	secretRules, err := options.secretRulesConfiguration(shellapp.ProfileTest, getenv)
+	if err != nil {
+		return productionBuild{}, err
+	}
 	natsAuth, err := natsAuthFromEnv(getenv)
 	if err != nil {
 		return productionBuild{}, err
@@ -198,6 +202,7 @@ func buildTestProfile(options serverOptions, getenv productionEnv) (productionBu
 		GitStorageRoot:       gitStorageRoot,
 		DefaultActionTimeout: shellapp.DefaultActionTimeout,
 		Discovery:            discovery,
+		SecretRules:          secretRules,
 		Models:               models,
 		WorkloadURL:          workloadURL,
 		ToolProxy:            toolProxy,

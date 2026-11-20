@@ -18,6 +18,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/optimiware/kodema/internal/id"
 )
 
 const (
@@ -63,6 +65,16 @@ type UpConfig struct {
 	PostgresImage         string
 	NATSImage             string
 	Foreground            bool
+	// DenyProjectSecrets disables the local workload secret-name allow-list so
+	// the server runs deny-by-default. By default (false) and when AllowSecrets
+	// is empty, kodema up allows project-stored workload secrets for
+	// (TenantID, ProjectID) while still rejecting KODEMA_TOKEN, missing secrets
+	// and other scopes.
+	DenyProjectSecrets bool
+	// AllowSecrets restricts the local workload secret-name allow-list to these
+	// exact secret names in (TenantID, ProjectID) instead of allowing all
+	// project-stored secrets.
+	AllowSecrets []string
 
 	// Optional test seams.
 	GOOS         string
@@ -249,6 +261,13 @@ func Up(ctx context.Context, cfg UpConfig, stdout io.Writer) (_ StackDescriptor,
 	kodemaImage := defaultIfEmpty(cfg.KodemaImage, KodemaImageRepository+":latest")
 	postgresImage := defaultIfEmpty(cfg.PostgresImage, DefaultPostgresImage)
 	natsImage := defaultIfEmpty(cfg.NATSImage, DefaultNATSImage)
+	if cfg.DenyProjectSecrets && len(cfg.AllowSecrets) > 0 {
+		return StackDescriptor{}, errors.New("cannot combine --allow-project-secrets=false with --allow-secret")
+	}
+	allowSecrets, err := validateAllowSecrets(cfg.AllowSecrets)
+	if err != nil {
+		return StackDescriptor{}, err
+	}
 
 	stateDir, err := ResolveStateDir(StateDirOptions{
 		GOOS:                  cfg.GOOS,
@@ -598,6 +617,11 @@ func Up(ctx context.Context, cfg UpConfig, stdout io.Writer) (_ StackDescriptor,
 		_ = writeFileAtomic(bootstrapMarker, []byte("bootstrapped\n"), 0o600)
 	}
 
+	secretRulesPath, err := reconcileSecretRulesFile(stateDir, tenantID, projectID, cfg.DenyProjectSecrets, allowSecrets)
+	if err != nil {
+		return StackDescriptor{}, err
+	}
+
 	// Start the server and git companion on dedicated 127.0.0.1 loopback ports;
 	// only the single-origin TLS gateway binds the public listen port (:8443).
 	serverEnv := []string{
@@ -634,6 +658,9 @@ func Up(ctx context.Context, cfg UpConfig, stdout io.Writer) (_ StackDescriptor,
 		"KODEMA_DISCOVERY_REVOCATION_ENDPOINT=" + disc.RevocationEndpoint,
 		"KODEMA_DISCOVERY_SCOPES=" + strings.Join(disc.Scopes, ","),
 		"KODEMA_DISCOVERY_API_URL=" + disc.APIURL,
+	}
+	if secretRulesPath != "" {
+		serverEnv = append(serverEnv, "KODEMA_SECRET_RULES_FILE="+secretRulesPath)
 	}
 
 	gitDir := filepath.Join(stateDir, "git")
@@ -1154,4 +1181,71 @@ func defaultIfEmpty(val, fallback string) string {
 		return fallback
 	}
 	return strings.TrimSpace(val)
+}
+
+const secretRulesFileName = "secret-rules.json"
+
+type localSecretRulesFile struct {
+	SecretRules []localSecretRule `json:"secret_rules"`
+}
+
+type localSecretRule struct {
+	TenantID  string   `json:"tenant_id"`
+	ProjectID string   `json:"project_id,omitempty"`
+	Names     []string `json:"names,omitempty"`
+	AllowAll  bool     `json:"allow_all,omitempty"`
+}
+
+// validateAllowSecrets validates and deduplicates explicit --allow-secret
+// names before any container or file state is touched.
+func validateAllowSecrets(raw []string) ([]string, error) {
+	if len(raw) == 0 {
+		return nil, nil
+	}
+	seen := make(map[string]bool, len(raw))
+	out := make([]string, 0, len(raw))
+	for _, entry := range raw {
+		trimmed := strings.TrimSpace(entry)
+		parsed, err := id.ParseSecretName(trimmed)
+		if err != nil {
+			return nil, fmt.Errorf("invalid --allow-secret %q: %w", entry, err)
+		}
+		name := string(parsed)
+		if seen[name] {
+			continue
+		}
+		seen[name] = true
+		out = append(out, name)
+	}
+	return out, nil
+}
+
+// reconcileSecretRulesFile writes or removes <state-dir>/secret-rules.json for
+// the local stack's server container. When denyAll is true it removes any stale
+// file and returns an empty path so the server stays deny-by-default.
+func reconcileSecretRulesFile(stateDir, tenantID, projectID string, denyAll bool, allowSecrets []string) (string, error) {
+	path := filepath.Join(stateDir, secretRulesFileName)
+	if denyAll {
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+			return "", fmt.Errorf("remove %s: %w", secretRulesFileName, err)
+		}
+		return "", nil
+	}
+	rule := localSecretRule{
+		TenantID:  tenantID,
+		ProjectID: projectID,
+	}
+	if len(allowSecrets) > 0 {
+		rule.Names = allowSecrets
+	} else {
+		rule.AllowAll = true
+	}
+	data, err := json.MarshalIndent(localSecretRulesFile{SecretRules: []localSecretRule{rule}}, "", "  ")
+	if err != nil {
+		return "", fmt.Errorf("marshal %s: %w", secretRulesFileName, err)
+	}
+	if err := writeFileAtomic(path, append(data, '\n'), 0o600); err != nil {
+		return "", fmt.Errorf("write %s: %w", secretRulesFileName, err)
+	}
+	return path, nil
 }

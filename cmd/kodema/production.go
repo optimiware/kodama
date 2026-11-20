@@ -218,6 +218,10 @@ func buildProduction(options serverOptions, getenv productionEnv, kube driverkub
 	if err != nil {
 		return productionBuild{}, err
 	}
+	secretRules, err := options.secretRulesConfiguration(shellapp.ProfileProduction, getenv)
+	if err != nil {
+		return productionBuild{}, err
+	}
 	natsAuth, err := natsAuthFromEnv(getenv)
 	if err != nil {
 		return productionBuild{}, err
@@ -245,6 +249,7 @@ func buildProduction(options serverOptions, getenv productionEnv, kube driverkub
 		MCPPath:        options.MCPPath,
 		LoopInterval:   loopInterval,
 		GitStorageRoot: gitStorageRoot,
+		SecretRules:    secretRules,
 		Models:         models,
 		ToolProxy:      toolProxy,
 		NATSAuth:       natsAuth,

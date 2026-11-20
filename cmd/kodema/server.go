@@ -20,6 +20,7 @@ import (
 	shellapp "github.com/optimiware/kodema/internal/shell/app"
 	driverkube "github.com/optimiware/kodema/internal/shell/app/drivers/kube"
 	"github.com/optimiware/kodema/internal/shell/identity"
+	"github.com/optimiware/kodema/internal/shell/secret"
 	"github.com/optimiware/kodema/internal/shell/tenancy"
 )
 
@@ -103,11 +104,13 @@ type serverOptions struct {
 	DevRoles       string
 	DevExpiry      time.Duration
 	Discovery      discoveryOptions
-	// ModelsFile and ToolProxyFile name the trusted files the optional model
-	// gateway and external MCP tool proxy are read from. An empty path keeps
-	// that optional surface disabled; a named file is never defaulted.
-	ModelsFile    string
-	ToolProxyFile string
+	// ModelsFile, ToolProxyFile and SecretRulesFile name the trusted files for
+	// the optional model gateway, external MCP tool proxy and workload
+	// secret-name allow-list. An empty path keeps that surface disabled (or
+	// deny-by-default for workload secrets); a named file is never defaulted.
+	ModelsFile      string
+	ToolProxyFile   string
+	SecretRulesFile string
 }
 
 // The durable entries' background scan cadence. The development composition
@@ -203,6 +206,7 @@ func applyServerEnv(options serverOptions) (serverOptions, error) {
 	options.DevExpiry = envDuration("KODEMA_DEV_EXPIRY", options.DevExpiry)
 	options.ModelsFile = envOr(shellapp.ModelsFileSetting, options.ModelsFile)
 	options.ToolProxyFile = envOr(shellapp.ToolProxyFileSetting, options.ToolProxyFile)
+	options.SecretRulesFile = envOr(shellapp.SecretRulesFileSetting, options.SecretRulesFile)
 	options.Discovery.Issuer = envOr("KODEMA_DISCOVERY_ISSUER", options.Discovery.Issuer)
 	options.Discovery.ClientID = envOr("KODEMA_DISCOVERY_CLIENT_ID", options.Discovery.ClientID)
 	options.Discovery.Audience = envOr("KODEMA_DISCOVERY_AUDIENCE", options.Discovery.Audience)
@@ -271,27 +275,28 @@ func envDurationStrict(name string, fallback time.Duration) (time.Duration, erro
 
 // serverFile is the optional JSON configuration file shape.
 type serverFile struct {
-	Profile        string               `json:"profile"`
-	Address        string               `json:"address"`
-	DataDir        string               `json:"data_dir"`
-	InstallationID string               `json:"installation_id"`
-	PublicURL      string               `json:"public_url"`
-	WorkloadURL    string               `json:"workload_url"`
-	WorkloadCAFile string               `json:"workload_ca_file"`
-	WorkloadGitURL string               `json:"workload_git_url"`
-	ToolboxFile    string               `json:"toolbox_file"`
-	MCPPath        string               `json:"mcp_path"`
-	LoopInterval   string               `json:"loop_interval"`
-	GitStorageRoot string               `json:"git_storage_root"`
-	DevTokens      []string             `json:"dev_tokens"`
-	DevPrincipal   string               `json:"dev_principal"`
-	DevTenant      string               `json:"dev_tenant"`
-	DevProject     string               `json:"dev_project"`
-	DevRoles       string               `json:"dev_roles"`
-	DevExpiry      string               `json:"dev_expiry"`
-	Discovery      *serverDiscoveryFile `json:"discovery"`
-	ModelsFile     string               `json:"models_file"`
-	ToolProxyFile  string               `json:"tool_proxy_file"`
+	Profile         string               `json:"profile"`
+	Address         string               `json:"address"`
+	DataDir         string               `json:"data_dir"`
+	InstallationID  string               `json:"installation_id"`
+	PublicURL       string               `json:"public_url"`
+	WorkloadURL     string               `json:"workload_url"`
+	WorkloadCAFile  string               `json:"workload_ca_file"`
+	WorkloadGitURL  string               `json:"workload_git_url"`
+	ToolboxFile     string               `json:"toolbox_file"`
+	MCPPath         string               `json:"mcp_path"`
+	LoopInterval    string               `json:"loop_interval"`
+	GitStorageRoot  string               `json:"git_storage_root"`
+	DevTokens       []string             `json:"dev_tokens"`
+	DevPrincipal    string               `json:"dev_principal"`
+	DevTenant       string               `json:"dev_tenant"`
+	DevProject      string               `json:"dev_project"`
+	DevRoles        string               `json:"dev_roles"`
+	DevExpiry       string               `json:"dev_expiry"`
+	Discovery       *serverDiscoveryFile `json:"discovery"`
+	ModelsFile      string               `json:"models_file"`
+	ToolProxyFile   string               `json:"tool_proxy_file"`
+	SecretRulesFile string               `json:"secret_rules_file"`
 }
 
 // serverDiscoveryFile is the optional public discovery configuration nested as
@@ -358,6 +363,7 @@ func parseServerOptions(args []string, stderr io.Writer) (serverOptions, int) {
 	flags.StringVar(&options.MCPPath, "mcp-path", options.MCPPath, "MCP JSON-RPC path")
 	flags.DurationVar(&options.LoopInterval, "loop-interval", options.LoopInterval, "durable profiles' background scan interval (default 1s, 100ms to 1m)")
 	flags.StringVar(&options.GitStorageRoot, "git-storage-root", options.GitStorageRoot, "mounted tenant Git storage root for retained-commit keep refs")
+	flags.StringVar(&options.SecretRulesFile, "secret-rules-file", options.SecretRulesFile, "trusted JSON file configuring workload secret-name allow-list rules")
 	flags.Var(&tokens, "dev-token", "development bearer token (repeatable)")
 	flags.StringVar(&options.DevPrincipal, "dev-principal", options.DevPrincipal, "development principal identity")
 	flags.StringVar(&options.DevTenant, "dev-tenant", options.DevTenant, "development tenant identity")
@@ -486,6 +492,9 @@ func mergeServerFile(file serverFile, options serverOptions) (serverOptions, err
 	}
 	if file.ToolProxyFile != "" {
 		options.ToolProxyFile = file.ToolProxyFile
+	}
+	if file.SecretRulesFile != "" {
+		options.SecretRulesFile = file.SecretRulesFile
 	}
 	if file.Discovery != nil {
 		if file.Discovery.Issuer != "" {
@@ -648,6 +657,10 @@ func (options serverOptions) config() (shellapp.Config, error) {
 	if err != nil {
 		return shellapp.Config{}, err
 	}
+	secretRules, err := options.secretRulesConfiguration(shellapp.ProfileDevelopment, nil)
+	if err != nil {
+		return shellapp.Config{}, err
+	}
 	expiresAt := time.Now().Add(options.DevExpiry)
 	tokens := make([]shellapp.DevToken, len(options.DevTokens))
 	for index, token := range options.DevTokens {
@@ -672,6 +685,7 @@ func (options serverOptions) config() (shellapp.Config, error) {
 		LoopInterval:         20 * time.Millisecond,
 		MCPPath:              options.MCPPath,
 		Discovery:            discovery,
+		SecretRules:          secretRules,
 		Models:               models,
 		WorkloadURL:          options.WorkloadURL,
 		ToolProxy:            toolProxy,
@@ -712,6 +726,21 @@ func (options serverOptions) gatewayConfigurations(profile shellapp.Profile) (*s
 		toolProxy = loaded
 	}
 	return models, toolProxy, nil
+}
+
+// secretRulesConfiguration loads the optional trusted workload secret-name
+// allow-list file. An empty path leaves workload secret resolution
+// deny-by-default; a named file is validated for profile (production refuses
+// wildcard allow_all rules).
+func (options serverOptions) secretRulesConfiguration(profile shellapp.Profile, getenv productionEnv) ([]secret.NameRule, error) {
+	path := strings.TrimSpace(options.SecretRulesFile)
+	if path == "" && getenv != nil {
+		path = strings.TrimSpace(getenv(shellapp.SecretRulesFileSetting))
+	}
+	if path == "" {
+		return nil, nil
+	}
+	return shellapp.LoadSecretRulesFile(path, profile)
 }
 
 // discoveryConfig validates and maps the optional public discovery settings to

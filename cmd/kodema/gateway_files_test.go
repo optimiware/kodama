@@ -209,3 +209,119 @@ func TestBuildTestProfileReadsGatewayFiles(t *testing.T) {
 		t.Fatalf("test profile accepted a malformed tool proxy file: %v", err)
 	}
 }
+
+func TestSecretRulesFileAcrossProfiles(t *testing.T) {
+	exactPath := writeGatewaySettingsFile(t, "secret-rules-exact.json", `{
+  "secret_rules": [
+    {"tenant_id": "tenant-1", "project_id": "project-1", "names": ["API_KEY"]}
+  ]
+}`)
+	allowAllPath := writeGatewaySettingsFile(t, "secret-rules-allow-all.json", `{
+  "secret_rules": [
+    {"tenant_id": "tenant-local", "project_id": "project-local", "allow_all": true}
+  ]
+}`)
+
+	t.Run("development reads KODEMA_SECRET_RULES_FILE", func(t *testing.T) {
+		t.Setenv(shellapp.SecretRulesFileSetting, allowAllPath)
+		var stderr lockedBuffer
+		options, code := parseServerOptions([]string{
+			"--profile", "development",
+			"--data-dir", t.TempDir(),
+			"--dev-token", "dev-token",
+		}, &stderr)
+		if code != 0 {
+			t.Fatalf("parseServerOptions exited %d: %s", code, stderr.String())
+		}
+		config, err := options.config()
+		if err != nil {
+			t.Fatalf("development config: %v", err)
+		}
+		if len(config.SecretRules) != 1 || !config.SecretRules[0].AllowAll {
+			t.Fatalf("SecretRules = %+v; want allow_all rule", config.SecretRules)
+		}
+	})
+
+	t.Run("test profile stays deny-by-default when unset and loads KODEMA_SECRET_RULES_FILE", func(t *testing.T) {
+		fixture := newTestProfileFixture(t)
+		build, err := buildTestProfile(fixture.options, fixture.getenv)
+		if err != nil {
+			t.Fatalf("buildTestProfile default: %v", err)
+		}
+		if len(build.Config.SecretRules) != 0 {
+			t.Fatalf("default test profile SecretRules = %+v; want empty (deny-by-default)", build.Config.SecretRules)
+		}
+
+		fixture.values[shellapp.SecretRulesFileSetting] = allowAllPath
+		build, err = buildTestProfile(fixture.options, fixture.getenv)
+		if err != nil {
+			t.Fatalf("buildTestProfile with allow_all: %v", err)
+		}
+		if len(build.Config.SecretRules) != 1 || !build.Config.SecretRules[0].AllowAll ||
+			build.Config.SecretRules[0].Scope.TenantID != "tenant-local" ||
+			build.Config.SecretRules[0].Scope.ProjectID != "project-local" {
+			t.Fatalf("test profile SecretRules = %+v", build.Config.SecretRules)
+		}
+	})
+
+	t.Run("production stays deny-by-default, accepts exact rules, refuses allow_all", func(t *testing.T) {
+		getenv, kube, options := productionFixture(t)
+		build, err := buildProduction(options, getenv, kube)
+		if err != nil {
+			t.Fatalf("buildProduction default: %v", err)
+		}
+		if len(build.Config.SecretRules) != 0 {
+			t.Fatalf("default production SecretRules = %+v; want empty (deny-by-default)", build.Config.SecretRules)
+		}
+
+		options.SecretRulesFile = exactPath
+		build, err = buildProduction(options, getenv, kube)
+		if err != nil {
+			t.Fatalf("buildProduction exact secret rules: %v", err)
+		}
+		if len(build.Config.SecretRules) != 1 || len(build.Config.SecretRules[0].Names) != 1 || build.Config.SecretRules[0].Names[0] != "API_KEY" {
+			t.Fatalf("production exact SecretRules = %+v", build.Config.SecretRules)
+		}
+
+		options.SecretRulesFile = allowAllPath
+		if _, err := buildProduction(options, getenv, kube); err == nil || !strings.Contains(err.Error(), shellapp.SecretRulesFileSetting) {
+			t.Fatalf("production accepted wildcard allow_all secret rules: %v", err)
+		}
+	})
+
+	t.Run("flag and JSON config file wire secret_rules_file", func(t *testing.T) {
+		t.Setenv(shellapp.SecretRulesFileSetting, "")
+		if err := os.Unsetenv(shellapp.SecretRulesFileSetting); err != nil {
+			t.Fatal(err)
+		}
+		configJSON := writeGatewaySettingsFile(t, "server.json", `{
+  "profile": "development",
+  "secret_rules_file": "`+filepath.ToSlash(exactPath)+`"
+}`)
+		var stderr lockedBuffer
+		options, code := parseServerOptions([]string{
+			"--config", configJSON,
+			"--data-dir", t.TempDir(),
+			"--dev-token", "dev-token",
+		}, &stderr)
+		if code != 0 {
+			t.Fatalf("parseServerOptions(--config) exited %d: %s", code, stderr.String())
+		}
+		if options.SecretRulesFile != filepath.ToSlash(exactPath) {
+			t.Fatalf("SecretRulesFile from --config = %q; want %q", options.SecretRulesFile, filepath.ToSlash(exactPath))
+		}
+		// CLI flag overrides config file.
+		options, code = parseServerOptions([]string{
+			"--config", configJSON,
+			"--secret-rules-file", allowAllPath,
+			"--data-dir", t.TempDir(),
+			"--dev-token", "dev-token",
+		}, &stderr)
+		if code != 0 {
+			t.Fatalf("parseServerOptions(--secret-rules-file) exited %d: %s", code, stderr.String())
+		}
+		if options.SecretRulesFile != allowAllPath {
+			t.Fatalf("SecretRulesFile from flag = %q; want %q", options.SecretRulesFile, allowAllPath)
+		}
+	})
+}

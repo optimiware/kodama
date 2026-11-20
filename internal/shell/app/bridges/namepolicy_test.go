@@ -80,6 +80,16 @@ func TestNamePolicyConstructorsRefuseInvalidConfiguration(t *testing.T) {
 	if _, err := bridges.NewMCPNamePolicy([]secret.NameRule{{Scope: testScope(), Names: []id.SecretName{"bad name"}}}); err == nil {
 		t.Fatal("NewMCPNamePolicy accepted an invalid secret name")
 	}
+	allowAll := []secret.NameRule{{Scope: testScope(), AllowAll: true}}
+	if _, err := bridges.NewWorkloadNamePolicy(allowAll); err != nil {
+		t.Fatalf("NewWorkloadNamePolicy rejected AllowAll: %v", err)
+	}
+	if _, err := bridges.NewGatewayNamePolicy(allowAll); err == nil {
+		t.Fatal("NewGatewayNamePolicy accepted AllowAll")
+	}
+	if _, err := bridges.NewMCPNamePolicy(allowAll); err == nil {
+		t.Fatal("NewMCPNamePolicy accepted AllowAll")
+	}
 }
 
 func mustWorkloadPolicy(t *testing.T, rules []secret.NameRule) secret.NamePolicy {

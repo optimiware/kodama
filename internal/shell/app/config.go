@@ -308,7 +308,8 @@ type Config struct {
 	// The composition builds the workload name policy from it and resolves
 	// only declared names that an explicit rule authorizes in the execution's
 	// scope. An empty list authorizes no activation secret, so a missing
-	// allow-list fails closed. Rules never carry secret values.
+	// allow-list fails closed. Rules never carry secret values. Production
+	// refuses wildcard AllowAll rules and requires exact secret names.
 	SecretRules []secret.NameRule
 
 	// ToolProxy is the optional external MCP tool proxy configuration. A nil
@@ -556,6 +557,30 @@ func (config Config) validate() error {
 	// or ambiguous enabled configuration fails before any adapter is
 	// constructed; a nil configuration keeps the optional surface disabled.
 	if err := config.Models.validate(config.Profile); err != nil {
+		return err
+	}
+	// Workload secret-name rules are trusted input. Production refuses wildcard
+	// AllowAll rules; invalid scopes, empty rules or reserved names fail before
+	// any adapter is constructed.
+	if err := validateWorkloadSecretRules(config.SecretRules, config.Profile); err != nil {
+		return err
+	}
+	return nil
+}
+
+// validateWorkloadSecretRules checks workload secret-name rules for one
+// composition profile. Production refuses wildcard AllowAll rules so production
+// installations always list exact secret names (or stay deny-by-default).
+func validateWorkloadSecretRules(rules []secret.NameRule, profile Profile) error {
+	if profile == ProfileProduction {
+		for index, rule := range rules {
+			if rule.AllowAll {
+				return fault.New(fault.InvalidInput,
+					fmt.Sprintf("production composition refuses wildcard allow_all workload secret rule %d; list exact secret names", index+1))
+			}
+		}
+	}
+	if _, err := bridges.NewWorkloadNamePolicy(rules); err != nil {
 		return err
 	}
 	return nil
