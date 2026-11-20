@@ -1879,6 +1879,7 @@ func TestPurePersonaCLIWorkflows(t *testing.T) {
 		}
 		wantOps := []string{
 			"task.inbox",
+			"execution.inspect", // inbox table enriches request rows
 			"execution.inspect",
 			"execution.inspect",
 			"execution.logs.read",
@@ -2011,7 +2012,7 @@ func TestPurePersonaCLIWorkflows(t *testing.T) {
 				t.Fatalf("%v produced empty output", argv)
 			}
 		}
-		wantOps := []string{"task.inbox", "execution.inspect", "execution.request.resolve"}
+		wantOps := []string{"task.inbox", "execution.inspect", "execution.inspect", "execution.request.resolve"}
 		if strings.Join(seen, ",") != strings.Join(wantOps, ",") {
 			t.Fatalf("service operations = %v; want %v", seen, wantOps)
 		}

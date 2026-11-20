@@ -30,6 +30,7 @@ type inspectedAction struct {
 	Decision    string                     `json:"decision,omitempty"`
 	Actor       string                     `json:"actor,omitempty"`
 	AnsweredAt  *time.Time                 `json:"answered_at,omitempty"`
+	Note        string                     `json:"note,omitempty"`
 }
 
 func (action inspectedAction) effectiveState() string {
@@ -44,6 +45,10 @@ type inspectedExecution struct {
 	ExecutionID   string                `json:"execution_id"`
 	TaskID        string                `json:"task_id,omitempty"`
 	PipelineID    string                `json:"pipeline_id,omitempty"`
+	StartedBy     string                `json:"started_by,omitempty"`
+	Inputs        map[string]string     `json:"inputs,omitempty"`
+	Trigger       *api.ExecutionTrigger `json:"trigger,omitempty"`
+	CreatedAt     *time.Time            `json:"created_at,omitempty"`
 	State         string                `json:"state"`
 	Status        string                `json:"status"`
 	Version       uint64                `json:"version"`

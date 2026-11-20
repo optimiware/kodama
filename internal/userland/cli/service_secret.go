@@ -1062,7 +1062,8 @@ func runSecretDelete(ctx context.Context, config Config, args []string, ports Po
 }
 
 func trimSingleTrailingNewline(value string) string {
-	value = strings.TrimSuffix(value, "\n")
-	value = strings.TrimSuffix(value, "\r")
+	if strings.HasSuffix(value, "\n") {
+		value = strings.TrimSuffix(strings.TrimSuffix(value, "\n"), "\r")
+	}
 	return value
 }

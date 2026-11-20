@@ -459,12 +459,12 @@ func TestRunGitConfigure(t *testing.T) {
 	}
 	rendered := out.String()
 	for _, want := range []string{
-		"git config --local --replace-all credential.https://127.0.0.1:8443.helper ''",
-		"git config --local --add credential.https://127.0.0.1:8443.helper",
+		"git config --local --replace-all -- credential.https://127.0.0.1:8443.helper ''",
+		"git config --local --add -- credential.https://127.0.0.1:8443.helper",
 		"--trusted-origin https://127.0.0.1:8443 git credential",
 		"--ca-file /tmp/kodema-ca.pem",
 		"--session /tmp/session.json",
-		"git config --local http.https://127.0.0.1:8443.sslCAInfo /tmp/kodema-ca.pem",
+		"git config --local -- http.https://127.0.0.1:8443.sslCAInfo /tmp/kodema-ca.pem",
 	} {
 		if !strings.Contains(rendered, want) {
 			t.Fatalf("git configure --print missing %q:\n%s", want, rendered)
@@ -488,7 +488,7 @@ func TestRunGitConfigure(t *testing.T) {
 	if len(executed) != 3 {
 		t.Fatalf("executed %d git commands; want 3: %v", len(executed), executed)
 	}
-	if executed[0][1] != "--global" || executed[2][2] != "http.https://127.0.0.1:8443.sslCAInfo" {
+	if executed[0][1] != "--global" || executed[2][3] != "http.https://127.0.0.1:8443.sslCAInfo" {
 		t.Fatalf("executed git args = %v", executed)
 	}
 }

@@ -338,6 +338,10 @@ func hoistGlobalFlags(args []string) []string {
 		// `--print` works even before a CA file exists on disk.
 		if isGitConfigure && (name == "--ca-file" || name == "--session" || name == "--session-file") {
 			trailing = append(trailing, arg)
+			if !hasEq && i+1 < len(args) {
+				i++
+				trailing = append(trailing, args[i])
+			}
 			continue
 		}
 		// On approve/reject, `--output k=v` is a request response output pair,

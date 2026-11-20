@@ -22,7 +22,7 @@ func configureDoubleDashUsage(flags *flag.FlagSet, args []string, stdout, stderr
 		if arg == "--" {
 			break
 		}
-		if arg == "-h" || arg == "--help" {
+		if arg == "-h" || arg == "-help" || arg == "--help" {
 			out = stdout
 			break
 		}

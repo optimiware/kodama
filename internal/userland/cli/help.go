@@ -352,9 +352,9 @@ Looks up the service version via service.list when --expected-version is omitted
   delete   kodema secret delete <name> [--project <id>] [--expected-version <v>]`,
 	},
 	"secret set": {
-		usage:       "kodema secret set <name> [<value> | --value <v> | --value-file <path> | --stdin] [--project <id>] [--output <table|json>]",
+		usage:       "kodema secret set <name> [<value> | --value <v> | --value-file <path> | --stdin] [--project <id>] [--expected-version <v>] [--output <table|json>]",
 		summary:     "Write a project secret value",
-		description: `Stores a project secret via secret.write. The value is never printed back to stdout or stderr.`,
+		description: `Stores a project secret via secret.write. Pass --expected-version <v> to update an existing secret. The value is never printed back to stdout or stderr.`,
 	},
 	"secret list": {
 		usage:       "kodema secret list [--project <id>] [--output <table|json>]",

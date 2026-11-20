@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"path/filepath"
 	"strings"
 )
 
@@ -105,6 +106,20 @@ func runGitConfigure(ctx context.Context, config Config, args []string, ports Po
 	if binary == "" {
 		binary = "kodema"
 	}
+	if caFile != "" {
+		absCAFile, err := filepath.Abs(caFile)
+		if err != nil {
+			return failure(ports.Err, fmt.Errorf("cannot resolve CA file %q: %w", caFile, err))
+		}
+		caFile = absCAFile
+	}
+	if sessionFile != "" {
+		absSessionFile, err := filepath.Abs(sessionFile)
+		if err != nil {
+			return failure(ports.Err, fmt.Errorf("cannot resolve session file %q: %w", sessionFile, err))
+		}
+		sessionFile = absSessionFile
+	}
 	helperParts := []string{shellQuoteGit(binary)}
 	if server := strings.TrimSpace(config.ServerURL); server != "" {
 		helperParts = append(helperParts, "--server", shellQuoteGit(server))
@@ -120,11 +135,11 @@ func runGitConfigure(ctx context.Context, config Config, args []string, ports Po
 
 	credentialKey := "credential." + origin + ".helper"
 	commands := [][]string{
-		{"config", scopeFlag, "--replace-all", credentialKey, ""},
-		{"config", scopeFlag, "--add", credentialKey, helperValue},
+		{"config", scopeFlag, "--replace-all", "--", credentialKey, ""},
+		{"config", scopeFlag, "--add", "--", credentialKey, helperValue},
 	}
 	if caFile != "" {
-		commands = append(commands, []string{"config", scopeFlag, "http." + origin + ".sslCAInfo", caFile})
+		commands = append(commands, []string{"config", scopeFlag, "--", "http." + origin + ".sslCAInfo", caFile})
 	}
 
 	if printFlag {

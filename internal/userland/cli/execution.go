@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 	"text/tabwriter"
+	"time"
 
 	"github.com/optimiware/kodema/api"
 )
@@ -172,8 +173,14 @@ func runExecutionList(ctx context.Context, config Config, args []string, ports P
 
 	pipelineID := strings.TrimSpace(pipelineFlag)
 	if pipelineID != "" && !strings.HasPrefix(pipelineID, "pipeline-") {
-		if resolved, found, lookupErr := resolvePipelineIDByName(ctx, ports, projectID, pipelineID); lookupErr == nil && found {
+		resolved, found, lookupErr := resolvePipelineIDByName(ctx, ports, projectID, pipelineID)
+		if lookupErr == nil && found {
 			pipelineID = resolved
+		} else if strings.Contains(pipelineID, ".") {
+			if lookupErr != nil {
+				return failure(ports.Err, lookupErr)
+			}
+			return failure(ports.Err, fmt.Errorf("pipeline %q was not found in project %s", pipelineID, projectID))
 		}
 	}
 
@@ -281,6 +288,45 @@ func renderExecutionInspectTable(out io.Writer, result api.Result) error {
 	if inspected.PipelineID != "" {
 		fmt.Fprintf(summary, "pipeline_id\t%s\n", inspected.PipelineID)
 	}
+	if inspected.StartedBy != "" {
+		fmt.Fprintf(summary, "started_by\t%s\n", inspected.StartedBy)
+	}
+	if inspected.CreatedAt != nil && !inspected.CreatedAt.IsZero() {
+		fmt.Fprintf(summary, "created_at\t%s\n", inspected.CreatedAt.UTC().Format(time.RFC3339))
+	}
+	if inspected.Trigger != nil {
+		var parts []string
+		if inspected.Trigger.EventID != "" {
+			parts = append(parts, "event_id="+inspected.Trigger.EventID)
+		}
+		if inspected.Trigger.Repository != "" {
+			parts = append(parts, "repository="+inspected.Trigger.Repository)
+		}
+		if inspected.Trigger.Ref != "" {
+			parts = append(parts, "ref="+inspected.Trigger.Ref)
+		}
+		if inspected.Trigger.Commit != "" {
+			parts = append(parts, "commit="+inspected.Trigger.Commit)
+		}
+		if inspected.Trigger.PreviousCommit != "" {
+			parts = append(parts, "previous_commit="+inspected.Trigger.PreviousCommit)
+		}
+		if len(parts) > 0 {
+			fmt.Fprintf(summary, "trigger\t%s\n", strings.Join(parts, " "))
+		}
+	}
+	if len(inspected.Inputs) > 0 {
+		keys := make([]string, 0, len(inspected.Inputs))
+		for key := range inspected.Inputs {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		var pairs []string
+		for _, key := range keys {
+			pairs = append(pairs, key+"="+singleLine(inspected.Inputs[key], 80))
+		}
+		fmt.Fprintf(summary, "inputs\t%s\n", strings.Join(pairs, " "))
+	}
 	if inspected.Cleanup.State != "" {
 		cleanupDesc := inspected.Cleanup.State
 		if inspected.Cleanup.LastError != "" {
@@ -333,6 +379,9 @@ func formatInspectedActionDetail(action inspectedAction) string {
 			decision += " by " + action.Actor
 		}
 		parts = append(parts, decision)
+	}
+	if strings.TrimSpace(action.Note) != "" {
+		parts = append(parts, fmt.Sprintf("note=%q", singleLine(action.Note, 120)))
 	}
 	if action.Subject != nil && len(action.Subject.Fields) > 0 {
 		var fields []string
