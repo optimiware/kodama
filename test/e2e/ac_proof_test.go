@@ -492,12 +492,18 @@ func TestE2E_AC07Identity(t *testing.T) {
 		api.ExecutionListRequest{ProjectID: instance.projectID})
 	instance.requireAllowed(t, harness.PersonaReviewer, api.MethodGet, "task.inbox",
 		api.TaskInboxRequest{ProjectID: instance.projectID})
+	instance.requireAllowed(t, harness.PersonaReviewer, api.MethodGet, "execution.list",
+		api.ExecutionListRequest{ProjectID: instance.projectID})
 	instance.requireAllowed(t, harness.PersonaOperator, api.MethodGet, "execution.list",
 		api.ExecutionListRequest{ProjectID: instance.projectID})
-	instance.requireForbidden(t, harness.PersonaEngineer, api.MethodGet, "resource.binding.read",
-		api.ResourceBindingReadRequest{BindingID: "ac07-missing-binding"})
-	instance.requireForbidden(t, harness.PersonaReviewer, api.MethodGet, "execution.list",
-		api.ExecutionListRequest{ProjectID: instance.projectID})
+	instance.requireForbidden(t, harness.PersonaEngineer, api.MethodPost, "service.create",
+		api.ServiceCreateRequest{ProjectID: instance.projectID, ServiceID: "ac07-refused-service", Roles: []string{"viewer"}})
+	instance.requireForbidden(t, harness.PersonaReviewer, api.MethodPost, "task.create",
+		api.TaskCreateRequest{ProjectID: instance.projectID, Title: "ac07-refused-task"})
+	instance.requireForbidden(t, harness.PersonaOperator, api.MethodPut, "secret.write",
+		api.SecretWriteRequest{ProjectID: instance.projectID, SecretID: "AC07_REFUSED_SECRET", Value: "refused"})
+	instance.requireForbidden(t, harness.PersonaAdmin, api.MethodPost, "task.create",
+		api.TaskCreateRequest{ProjectID: instance.projectID, Title: "ac07-refused-admin-task"})
 
 	// A project outside the caller's scope is never readable as if it were the
 	// caller's project.
@@ -766,12 +772,16 @@ func TestE2E_AC19AuthorizationVerification(t *testing.T) {
 
 	instance.requireAllowed(t, harness.PersonaEngineer, api.MethodGet, "execution.list",
 		api.ExecutionListRequest{ProjectID: instance.projectID})
-	instance.requireForbidden(t, harness.PersonaReviewer, api.MethodGet, "execution.list",
+	instance.requireAllowed(t, harness.PersonaReviewer, api.MethodGet, "execution.list",
 		api.ExecutionListRequest{ProjectID: instance.projectID})
-	instance.requireForbidden(t, harness.PersonaOperator, api.MethodGet, "pipeline.read",
-		api.PipelineReadRequest{ProjectID: instance.projectID, PipelineID: "ac19-missing"})
-	instance.requireForbidden(t, harness.PersonaEngineer, api.MethodGet, "resource.binding.read",
-		api.ResourceBindingReadRequest{BindingID: "ac19-missing"})
+	instance.requireAllowed(t, harness.PersonaOperator, api.MethodGet, "pipeline.list",
+		api.PipelineListRequest{ProjectID: instance.projectID})
+	instance.requireForbidden(t, harness.PersonaReviewer, api.MethodPost, "task.create",
+		api.TaskCreateRequest{ProjectID: instance.projectID, Title: "ac19-refused-task"})
+	instance.requireForbidden(t, harness.PersonaOperator, api.MethodPut, "secret.write",
+		api.SecretWriteRequest{ProjectID: instance.projectID, SecretID: "AC19_REFUSED_SECRET", Value: "refused"})
+	instance.requireForbidden(t, harness.PersonaEngineer, api.MethodPost, "service.create",
+		api.ServiceCreateRequest{ProjectID: instance.projectID, ServiceID: "ac19-refused-service", Roles: []string{"viewer"}})
 
 	operator := instance.smokeToken(t, harness.PersonaOperator)
 	engineer := instance.smokeToken(t, harness.PersonaEngineer)

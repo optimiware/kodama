@@ -43,8 +43,8 @@ package lifecycle
 // Reviewer question discovery: the waiting_task inbox item carries question_id,
 // the question body, references, the task lifecycle version and a Version equal
 // to the outstanding question version. The reply scenario therefore discovers
-// the question through the assigned reviewer's own inbox, which the reviewer
-// role may call, instead of an engineer-only task.read.
+// the question through the assigned reviewer's own inbox projection instead of
+// relying on an engineer's task.read.
 
 import (
 	"fmt"
@@ -269,8 +269,8 @@ func testOutageReply(t *testing.T, harness *factory.Harness) {
 	}
 
 	// The assigned reviewer discovers the outstanding question identity from
-	// its own inbox projection; no task.read is granted to that role. This is a
-	// store read, so it stays available while the broker is down.
+	// its own inbox projection. This is a store read, so it stays available
+	// while the broker is down.
 	reviewerInbox := inboxWaitingTasks(t, harness, harness.ReviewerToken)
 	inboxItem, found := findWaitingTask(reviewerInbox, started.TaskID)
 	if !found {

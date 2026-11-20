@@ -436,6 +436,9 @@ func TestOperationRegistryInvariants(t *testing.T) {
 				t.Errorf("%s has invalid service role %q", op.Name, role)
 			}
 		}
+		if op.Requires.AnyEnabledService && len(op.Requires.ServiceRoles) != 0 {
+			t.Errorf("%s sets both any_enabled_service and service_roles", op.Name)
+		}
 		if !op.Requires.Execution.Valid() {
 			t.Errorf("%s has invalid execution permission %q", op.Name, op.Requires.Execution)
 		}

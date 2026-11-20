@@ -416,7 +416,9 @@ func TestHarnessKMSNegativeMatrix(t *testing.T) {
 
 // TestHarnessIdentityCredentialMatrix is Q02 failure probe (g7). It exercises
 // the real authorization matrix for every credential kind and pins the
-// no-fallback invariants: Admin is not Reviewer, a service never becomes
+// no-fallback invariants: project reads (such as task.inbox) follow the project
+// read boundary while roles remain distinct for mutations (Admin is not
+// Engineer/Reviewer, Reviewer is not Admin/Engineer), a service never becomes
 // Admin, an execution cannot resolve requests or administer, a foreign tenant
 // scope never authorizes by role alone, a disabled principal is refused and an
 // unknown operation is an error.
@@ -449,11 +451,23 @@ func TestHarnessIdentityCredentialMatrix(t *testing.T) {
 		return got
 	}
 
-	if got := decision(t, human("admin", tenancy.RoleAdmin, project, true), "task.inbox", project); got != authorize.DecisionDeny {
-		t.Fatalf("Admin task.inbox = %s; Admin must not imply Reviewer", got)
+	if got := decision(t, human("admin", tenancy.RoleAdmin, project, true), "task.inbox", project); got != authorize.DecisionAllow {
+		t.Fatalf("Admin task.inbox = %s; want allow (project read boundary)", got)
+	}
+	if got := decision(t, human("admin", tenancy.RoleAdmin, project, true), "pipeline.apply", project); got != authorize.DecisionDeny {
+		t.Fatalf("Admin pipeline.apply = %s; Admin must not imply Engineer", got)
+	}
+	if got := decision(t, human("admin", tenancy.RoleAdmin, project, true), "task.edit", project); got != authorize.DecisionDeny {
+		t.Fatalf("Admin task.edit = %s; Admin must not imply Engineer", got)
+	}
+	if got := decision(t, human("admin", tenancy.RoleAdmin, tenant, true), "membership.grant", tenant); got != authorize.DecisionAllow {
+		t.Fatalf("Admin membership.grant = %s; want allow", got)
 	}
 	if got := decision(t, human("reviewer", tenancy.RoleReviewer, project, true), "task.inbox", project); got != authorize.DecisionAllow {
 		t.Fatalf("Reviewer task.inbox = %s; want allow", got)
+	}
+	if got := decision(t, human("reviewer", tenancy.RoleReviewer, tenant, true), "membership.grant", tenant); got != authorize.DecisionDeny {
+		t.Fatalf("Reviewer membership.grant = %s; Reviewer must not imply Admin", got)
 	}
 	if got := decision(t, human("reviewer", tenancy.RoleReviewer, project, true), "pipeline.apply", project); got != authorize.DecisionDeny {
 		t.Fatalf("Reviewer pipeline.apply = %s; want deny", got)
