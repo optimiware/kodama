@@ -13,9 +13,11 @@ import (
 	"github.com/optimiware/kodema/internal/userland/git"
 )
 
-// RejectionMessage is the single sanitized diagnostic every hook refusal
-// prints. Every refusal, including an unknown, forged or expired handle, is
-// identical so the callback is not an oracle.
+// RejectionMessage is the uniform sanitized diagnostic prefix for hook
+// refusals. Authentication failures (including unknown, forged, or expired
+// handles), malformed requests, timeouts, and internal/dependency failures
+// return RejectionMessage verbatim so the callback is not an oracle, while
+// safe policy/validation/approval refusals may append a single-line detail.
 const RejectionMessage = "kodema git: update rejected"
 
 // Handler handles one decoded hook callback request.

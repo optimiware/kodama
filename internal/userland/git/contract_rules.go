@@ -74,11 +74,13 @@ func ParseConfig(data []byte) (Config, error) {
 // during policy validation prevents silent lockouts.
 func (config Config) ValidateResourceBindings(staticResourceIDs map[string]string) error {
 	pinnedByRepo := make(map[string]string, len(staticResourceIDs))
+	pinnedRepoByResource := make(map[string]string, len(staticResourceIDs))
 	for repository, resourceID := range staticResourceIDs {
 		name := strings.TrimSpace(repository)
 		value := strings.TrimSpace(resourceID)
 		if name != "" && value != "" {
 			pinnedByRepo[name] = value
+			pinnedRepoByResource[value] = name
 		}
 	}
 	for _, name := range config.order {
@@ -89,6 +91,14 @@ func (config Config) ValidateResourceBindings(staticResourceIDs map[string]strin
 				return fmt.Errorf("line %d: repository %q declares option resource that disagrees with its configured resource id", policy.Line, name)
 			}
 			return fmt.Errorf("repository %q declares option resource that disagrees with its configured resource id", name)
+		}
+		if policy.ResourceID != "" {
+			if owner, exists := pinnedRepoByResource[policy.ResourceID]; exists && owner != name {
+				if policy.Line > 0 {
+					return fmt.Errorf("line %d: repository %q declares option resource already configured for repository %q", policy.Line, name, owner)
+				}
+				return fmt.Errorf("repository %q declares option resource already configured for repository %q", name, owner)
+			}
 		}
 		if name != "admin" && policy.ResourceID == "" && pinned == "" {
 			if policy.Line > 0 {
