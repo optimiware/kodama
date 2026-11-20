@@ -64,13 +64,19 @@ func executionHandlers(deps Dependencies) map[authorizeOperation]ops.Handler {
 			}
 			result := api.ExecutionListResult{NextCursor: committed.Next}
 			for _, view := range committed.Items {
-				result.Executions = append(result.Executions, api.ExecutionSummary{
+				summary := api.ExecutionSummary{
 					ExecutionID: string(view.ExecutionID),
 					TaskID:      string(view.TaskID),
 					PipelineID:  string(view.PipelineID),
+					StartedBy:   string(view.StartedBy),
 					State:       string(view.State),
 					Version:     view.Version,
-				})
+				}
+				if !view.CreatedAt.IsZero() {
+					created := view.CreatedAt
+					summary.CreatedAt = &created
+				}
+				result.Executions = append(result.Executions, summary)
 			}
 			return respond(call, result)
 		}),
@@ -142,6 +148,7 @@ func executionHandlers(deps Dependencies) map[authorizeOperation]ops.Handler {
 				ExpectedActionVersion:    request.ExpectedActionVersion,
 				Decision:                 shellrequest.Decision(request.Decision),
 				Response:                 kernel.Outputs(outputsOf(request.Outputs)),
+				Note:                     request.Note,
 			})
 			if err != nil {
 				return api.Result{}, err
@@ -215,6 +222,8 @@ func inspectResult(view execution.View) (api.ExecutionInspectResult, error) {
 		ExecutionID:   string(view.ExecutionID),
 		TaskID:        string(view.TaskID),
 		PipelineID:    string(view.PipelineID),
+		StartedBy:     string(view.StartedBy),
+		Inputs:        inputStringsOf(view.Inputs),
 		State:         string(view.State),
 		Version:       view.Version,
 		CurrentAction: view.CurrentAction,
@@ -225,6 +234,19 @@ func inspectResult(view execution.View) (api.ExecutionInspectResult, error) {
 			Attempts:    view.Cleanup.Attempts,
 			LastError:   view.Cleanup.LastError,
 		},
+	}
+	if !view.CreatedAt.IsZero() {
+		created := view.CreatedAt
+		result.CreatedAt = &created
+	}
+	if view.Trigger != nil {
+		result.Trigger = &api.ExecutionTrigger{
+			EventID:        string(view.Trigger.EventID),
+			Repository:     view.Trigger.Repository,
+			Ref:            view.Trigger.Ref,
+			Commit:         view.Trigger.Commit,
+			PreviousCommit: view.Trigger.PreviousCommit,
+		}
 	}
 	for _, action := range view.Actions {
 		converted, err := inspectAction(action)
@@ -241,6 +263,18 @@ func inspectResult(view execution.View) (api.ExecutionInspectResult, error) {
 		}
 	}
 	return result, nil
+}
+
+// inputStringsOf converts admitted input keys into wire map strings.
+func inputStringsOf(values map[id.InputKey]string) map[string]string {
+	if len(values) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(values))
+	for key, value := range values {
+		out[string(key)] = value
+	}
+	return out
 }
 
 // inspectAction maps one action view. Staged outputs, workspace identities and
@@ -260,6 +294,7 @@ func inspectAction(action execution.ActionView) (api.ExecutionAction, error) {
 		Outputs:        stringsOf(action.Outputs),
 		Decision:       action.Decision,
 		Actor:          string(action.Actor),
+		Note:           action.Note,
 	}
 	if action.Kind == definition.ActionKindRequest {
 		if action.State == kernel.ActionRunning && action.Subject == nil {

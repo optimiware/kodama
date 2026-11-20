@@ -309,3 +309,76 @@ func TestExecutionLogsReadRefusesForeignAndUnknownExecutionWithNotFound(t *testi
 		t.Fatalf("own execution.logs.read log reader calls = %d; want 1", logs.calls)
 	}
 }
+
+// TestExecutionProvenanceAndPushServiceValidation verifies end-to-end through
+// the real opsapp harness that:
+//   - execution.inspect returns started_by, admitted inputs and created_at,
+//   - execution.list returns pipeline_id, started_by and created_at, and
+//   - pipeline.apply rejects an on.push pipeline referencing a nonexistent
+//     service account before committing.
+func TestExecutionProvenanceAndPushServiceValidation(t *testing.T) {
+	h := newHarness(t)
+	yaml := []byte("inputs: [env]\nactions:\n  - name: build\n    image: " + pinnedImage + "\n    commands:\n      - echo ok\n")
+	applied, err := h.invoke(t, testToken, "pipeline.apply", jsonBody(t, map[string]any{
+		"yaml": base64.StdEncoding.EncodeToString(yaml),
+	}), map[string]string{"project": testProject, "pipeline": "prov-build"})
+	if err != nil {
+		t.Fatalf("pipeline.apply: %v", err)
+	}
+	var pipe api.PipelineApplyResult
+	decodeResult(t, applied, &pipe)
+
+	started, err := h.invokeVersion(t, testToken, "pipeline.start", jsonBody(t, map[string]any{
+		"inputs": map[string]string{"env": "staging"},
+	}), 1, map[string]string{"project": testProject, "pipeline": pipe.PipelineID})
+	if err != nil {
+		t.Fatalf("pipeline.start: %v", err)
+	}
+	var start api.PipelineStartResult
+	decodeResult(t, started, &start)
+
+	inspected, err := h.invoke(t, testToken, "execution.inspect", `{}`, map[string]string{"execution": start.ExecutionID})
+	if err != nil {
+		t.Fatalf("execution.inspect: %v", err)
+	}
+	var view api.ExecutionInspectResult
+	decodeResult(t, inspected, &view)
+	if view.StartedBy != testEngineer {
+		t.Fatalf("inspect started_by = %q; want %q", view.StartedBy, testEngineer)
+	}
+	if view.Inputs["env"] != "staging" {
+		t.Fatalf("inspect inputs = %+v; want env=staging", view.Inputs)
+	}
+	if view.CreatedAt == nil || view.CreatedAt.IsZero() {
+		t.Fatalf("inspect created_at = %v; want non-zero timestamp", view.CreatedAt)
+	}
+
+	listed, err := h.invoke(t, testToken, "execution.list", `{}`, map[string]string{"project": testProject})
+	if err != nil {
+		t.Fatalf("execution.list: %v", err)
+	}
+	var list api.ExecutionListResult
+	decodeResult(t, listed, &list)
+	if len(list.Executions) != 1 {
+		t.Fatalf("list executions = %d; want 1", len(list.Executions))
+	}
+	if list.Executions[0].StartedBy != testEngineer || list.Executions[0].CreatedAt == nil {
+		t.Fatalf("list summary = %+v; want started_by and created_at", list.Executions[0])
+	}
+
+	// Applying an on.push pipeline referencing a nonexistent service must fail
+	// fast with invalid_input.
+	pushYAML := []byte("repository: repo-ci\nservice: nonexistent-bot\non:\n  push:\n    - refs/heads/work/ci\nactions:\n  - name: test\n    image: " + pinnedImage + "\n    commands:\n      - echo ok\n")
+	_, err = h.invokeKey(t, testToken, "pipeline.apply", jsonBody(t, map[string]any{
+		"yaml": base64.StdEncoding.EncodeToString(pushYAML),
+	}), "apply-bad-push", map[string]string{"project": testProject, "pipeline": "bad-push"})
+	if err == nil {
+		t.Fatal("pipeline.apply accepted an on.push pipeline referencing a nonexistent service")
+	}
+	if class, ok := fault.ClassOf(err); !ok || class != fault.InvalidInput {
+		t.Fatalf("pipeline.apply missing-service fault = %v; want invalid_input", err)
+	}
+	if !strings.Contains(err.Error(), "nonexistent-bot") {
+		t.Fatalf("pipeline.apply error = %q; want service name in message", err)
+	}
+}

@@ -59,6 +59,8 @@ const (
 	MaxSubjectFields = 64
 	// MaxSubjectValueBytes bounds one typed subject value.
 	MaxSubjectValueBytes = 4096
+	// MaxNoteBytes bounds one optional request decision note (reason/comment) in UTF-8 bytes.
+	MaxNoteBytes = 4096
 	// MaxCredentialBytes bounds one forwarded actor credential.
 	MaxCredentialBytes = 4096
 )

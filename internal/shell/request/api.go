@@ -91,6 +91,7 @@ type ResolveCommand struct {
 	ExpectedActionVersion    uint64
 	Decision                 Decision
 	Response                 kernel.Outputs
+	Note                     string
 }
 
 // Config is the complete set of injected request-operation boundaries.

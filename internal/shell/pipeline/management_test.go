@@ -3,6 +3,7 @@ package pipeline_test
 import (
 	"context"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 
@@ -10,6 +11,7 @@ import (
 	"github.com/optimiware/kodema/internal/shell/authorize"
 	"github.com/optimiware/kodema/internal/shell/identity"
 	"github.com/optimiware/kodema/internal/shell/pipeline"
+	"github.com/optimiware/kodema/internal/shell/service"
 	"github.com/optimiware/kodema/internal/shell/tenancy"
 )
 
@@ -1165,4 +1167,220 @@ func TestManagementPushProjectionRoundTripThroughStore(t *testing.T) {
 	if !reflect.DeepEqual(got.PushTriggers, wantPushProjection()) {
 		t.Fatalf("read push projection = %+v; want %+v", got.PushTriggers, wantPushProjection())
 	}
+}
+
+type fakeServiceReader struct {
+	accounts map[string]service.Service
+}
+
+func (reader fakeServiceReader) ReadService(_ context.Context, req service.ServiceReadRequest) (service.Service, error) {
+	key := string(req.Scope.TenantID) + "/" + string(req.Scope.ProjectID) + "/" + string(req.ServiceID)
+	account, ok := reader.accounts[key]
+	if !ok {
+		return service.Service{}, fault.New(fault.NotFound, "service not found")
+	}
+	return account, nil
+}
+
+// TestApplyAndUpdateValidatePushService proves that binding an on.push trigger
+// fails fast when the named service does not exist in scope, is disabled, or
+// lacks the engineer role, while accepting enabled project-scoped or
+// tenant-wide services that hold engineer.
+func TestApplyAndUpdateValidatePushService(t *testing.T) {
+	scope := tenancy.Scope{TenantID: "tenant-a", ProjectID: "project-a"}
+	tenantWide := tenancy.Scope{TenantID: "tenant-a"}
+	actor := humanActor("tenant-a", "project-a", "principal-admin", tenancy.RoleEngineer, tenancy.RoleAdmin)
+
+	newMgmt := func(t *testing.T, accounts map[string]service.Service, authority *fakeAuthorityReader) (*pipeline.Management, *fakeChangePort) {
+		t.Helper()
+		reader := &fakeReader{
+			byNameFn: func(context.Context, tenancy.Scope, string) (pipeline.Definition, error) {
+				return pipeline.Definition{}, fault.New(fault.NotFound, "pipeline not found")
+			},
+			getFn: func(context.Context, tenancy.Scope, pipeline.PipelineID) (pipeline.Definition, error) {
+				return pipeline.Definition{ID: "pipeline-1", Name: "push", YAML: requestOnlyYAML(), Version: 1}, nil
+			},
+		}
+		changes := &fakeChangePort{change: func(context.Context, pipeline.ChangeUnit) (pipeline.ChangeResult, error) {
+			return pipeline.ChangeResult{PipelineID: "pipeline-1", Version: 1}, nil
+		}}
+		if authority == nil {
+			authority = &fakeAuthorityReader{}
+		}
+		mgmt, err := pipeline.NewManagement(pipeline.ManagementConfig{
+			Clock:      fixedClock{now: testNow},
+			IDs:        &sequentialIDs{},
+			Authorizer: &fakeAuthorizer{},
+			Authority:  authority,
+			Changes:    changes,
+			Reader:     reader,
+			Services:   fakeServiceReader{accounts: accounts},
+		})
+		requireNoError(t, err, "NewManagement")
+		return mgmt, changes
+	}
+
+	t.Run("nonexistent push service refused on apply and update", func(t *testing.T) {
+		mgmt, changes := newMgmt(t, map[string]service.Service{}, nil)
+		changes.change = func(context.Context, pipeline.ChangeUnit) (pipeline.ChangeResult, error) {
+			return pipeline.ChangeResult{}, fault.New(fault.VersionConflict, "pinned service row is missing")
+		}
+		_, err := mgmt.Apply(t.Context(), applyCommand(actor, "push", pushPipelineYAML()))
+		requireFaultClass(t, err, fault.InvalidInput)
+		if !strings.Contains(err.Error(), "git-service") || !strings.Contains(err.Error(), "does not exist") {
+			t.Fatalf("apply error = %q; want clear missing-service diagnostic", err)
+		}
+		_, err = mgmt.Update(t.Context(), updateCommand(actor, "pipeline-1", "push", pushPipelineYAML(), 1))
+		requireFaultClass(t, err, fault.InvalidInput)
+		if changes.callCount() != 2 {
+			t.Fatalf("change port calls = %d; want 2 (receipt-first port always observes unit)", changes.callCount())
+		}
+	})
+
+	t.Run("disabled push service refused", func(t *testing.T) {
+		accounts := map[string]service.Service{
+			"tenant-a/project-a/git-service": {
+				ID:    "git-service",
+				Scope: scope,
+				State: service.StateDisabled,
+				Roles: []tenancy.Role{tenancy.RoleEngineer},
+			},
+		}
+		mgmt, changes := newMgmt(t, accounts, nil)
+		changes.change = func(context.Context, pipeline.ChangeUnit) (pipeline.ChangeResult, error) {
+			return pipeline.ChangeResult{}, fault.New(fault.VersionConflict, "pinned service row is disabled")
+		}
+		_, err := mgmt.Apply(t.Context(), applyCommand(actor, "push", pushPipelineYAML()))
+		requireFaultClass(t, err, fault.InvalidInput)
+		if !strings.Contains(err.Error(), "disabled") {
+			t.Fatalf("apply error = %q; want disabled diagnostic", err)
+		}
+		if changes.callCount() != 1 {
+			t.Fatalf("change port calls = %d; want 1", changes.callCount())
+		}
+	})
+
+	t.Run("push service without engineer role refused", func(t *testing.T) {
+		accounts := map[string]service.Service{
+			"tenant-a/project-a/git-service": {
+				ID:    "git-service",
+				Scope: scope,
+				State: service.StateEnabled,
+				Roles: []tenancy.Role{tenancy.RoleViewer},
+			},
+		}
+		mgmt, changes := newMgmt(t, accounts, nil)
+		changes.change = func(context.Context, pipeline.ChangeUnit) (pipeline.ChangeResult, error) {
+			return pipeline.ChangeResult{}, fault.New(fault.VersionConflict, "pinned service row lacks engineer")
+		}
+		_, err := mgmt.Apply(t.Context(), applyCommand(actor, "push", pushPipelineYAML()))
+		requireFaultClass(t, err, fault.InvalidInput)
+		if !strings.Contains(err.Error(), "engineer") {
+			t.Fatalf("apply error = %q; want engineer-role diagnostic", err)
+		}
+		if changes.callCount() != 1 {
+			t.Fatalf("change port calls = %d; want 1", changes.callCount())
+		}
+	})
+
+	t.Run("replay succeeds after push service is disabled", func(t *testing.T) {
+		accounts := map[string]service.Service{
+			"tenant-a/project-a/git-service": {
+				ID:    "git-service",
+				Scope: scope,
+				State: service.StateDisabled,
+				Roles: []tenancy.Role{tenancy.RoleEngineer},
+			},
+		}
+		mgmt, changes := newMgmt(t, accounts, nil)
+		changes.change = func(context.Context, pipeline.ChangeUnit) (pipeline.ChangeResult, error) {
+			return pipeline.ChangeResult{PipelineID: "pipeline-1", Version: 1, Replayed: true}, nil
+		}
+		replayed, err := mgmt.Apply(t.Context(), applyCommand(actor, "push", pushPipelineYAML()))
+		requireNoError(t, err, "replayed Apply after service disable")
+		if !replayed.Replayed || replayed.PipelineID != "pipeline-1" || replayed.Version != 1 {
+			t.Fatalf("replayed = %+v; want replayed pipeline-1 v1", replayed)
+		}
+		replayedUpdate, err := mgmt.Update(t.Context(), updateCommand(actor, "pipeline-1", "push", pushPipelineYAML(), 1))
+		requireNoError(t, err, "replayed Update after service disable")
+		if !replayedUpdate.Replayed {
+			t.Fatalf("replayed update = %+v; want Replayed=true", replayedUpdate)
+		}
+	})
+
+	t.Run("changed content replay is not masked by disabled push service", func(t *testing.T) {
+		accounts := map[string]service.Service{
+			"tenant-a/project-a/git-service": {
+				ID:    "git-service",
+				Scope: scope,
+				State: service.StateDisabled,
+				Roles: []tenancy.Role{tenancy.RoleEngineer},
+			},
+		}
+		mgmt, changes := newMgmt(t, accounts, nil)
+		changes.change = func(context.Context, pipeline.ChangeUnit) (pipeline.ChangeResult, error) {
+			return pipeline.ChangeResult{}, fault.New(fault.ChangedIdempotencyContent, "receipt content mismatch")
+		}
+		_, err := mgmt.Apply(t.Context(), applyCommand(actor, "push", pushPipelineYAML()))
+		requireFaultClass(t, err, fault.ChangedIdempotencyContent)
+	})
+
+	t.Run("enabled project-scoped engineer service accepted", func(t *testing.T) {
+		accounts := map[string]service.Service{
+			"tenant-a/project-a/git-service": {
+				ID:    "git-service",
+				Scope: scope,
+				State: service.StateEnabled,
+				Roles: []tenancy.Role{tenancy.RoleEngineer},
+			},
+		}
+		mgmt, changes := newMgmt(t, accounts, nil)
+		if _, err := mgmt.Apply(t.Context(), applyCommand(actor, "push", pushPipelineYAML())); err != nil {
+			t.Fatalf("Apply with valid project push service: %v", err)
+		}
+		if changes.callCount() != 1 {
+			t.Fatalf("change port calls = %d; want 1", changes.callCount())
+		}
+	})
+
+	t.Run("enabled tenant-wide engineer service accepted", func(t *testing.T) {
+		accounts := map[string]service.Service{
+			"tenant-a//git-service": {
+				ID:    "git-service",
+				Scope: tenantWide,
+				State: service.StateEnabled,
+				Roles: []tenancy.Role{tenancy.RoleEngineer},
+			},
+		}
+		mgmt, changes := newMgmt(t, accounts, nil)
+		if _, err := mgmt.Apply(t.Context(), applyCommand(actor, "push", pushPipelineYAML())); err != nil {
+			t.Fatalf("Apply with valid tenant-wide push service: %v", err)
+		}
+		if changes.callCount() != 1 {
+			t.Fatalf("change port calls = %d; want 1", changes.callCount())
+		}
+	})
+
+	t.Run("non-admin still receives forbidden before service lookup", func(t *testing.T) {
+		denied := &fakeAuthorityReader{read: func(_ context.Context, reads []authorize.AuthorityRead) ([]authorize.AuthorityFact, error) {
+			facts := make([]authorize.AuthorityFact, len(reads))
+			for i, read := range reads {
+				facts[i] = authorize.AuthorityFact{
+					Check:       read.Check,
+					Scope:       read.Scope,
+					PrincipalID: read.PrincipalID,
+					TargetID:    read.TargetID,
+					Version:     read.ExpectedVersion,
+					Allowed:     read.Check != authorize.CheckPushServiceAdmin,
+				}
+			}
+			return facts, nil
+		}}
+		mgmt, changes := newMgmt(t, map[string]service.Service{}, denied)
+		_, err := mgmt.Apply(t.Context(), applyCommand(actor, "push", pushPipelineYAML()))
+		requireFaultClass(t, err, fault.Forbidden)
+		if changes.callCount() != 0 {
+			t.Fatalf("change port calls = %d; want 0", changes.callCount())
+		}
+	})
 }

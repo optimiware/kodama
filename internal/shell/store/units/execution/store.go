@@ -3,6 +3,7 @@ package executionstore
 import (
 	"context"
 	"fmt"
+	"maps"
 	"sort"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/optimiware/kodema/internal/shell/pipeline"
 	"github.com/optimiware/kodema/internal/shell/request"
 	"github.com/optimiware/kodema/internal/shell/store"
+	"github.com/optimiware/kodema/internal/shell/store/units/execution/snapshotdoc"
 	"github.com/optimiware/kodema/internal/shell/tenancy"
 )
 
@@ -119,50 +121,52 @@ func loadAggregate(ctx context.Context, source aggregateSource, executionID id.E
 
 // aggregateFromRow rebuilds one kernel execution from one executions row.
 func aggregateFromRow(ctx context.Context, source aggregateSource, row store.Row) (kernel.Execution, error) {
-	aggregate, _, err := aggregateFromRowWithAssignments(ctx, source, row)
+	aggregate, _, _, err := aggregateFromRowWithAdmitted(ctx, source, row)
 	return aggregate, err
 }
 
-// aggregateFromRowWithAssignments rebuilds one kernel execution from one
-// executions row and also returns the exact persisted request assignment of
-// every request action, keyed by action identity. The assignment is the durable
+// aggregateFromRowWithAdmitted rebuilds one kernel execution from one
+// executions row and also returns the decoded admitted snapshot metadata
+// (provenance/inputs) and the exact persisted request assignment of every
+// request action, keyed by action identity. The assignment is the durable
 // inspect fact; it is never inferred from the admitted declaration.
-func aggregateFromRowWithAssignments(ctx context.Context, source aggregateSource, row store.Row) (kernel.Execution, map[id.ActionID]request.Assignment, error) {
+func aggregateFromRowWithAdmitted(ctx context.Context, source aggregateSource, row store.Row) (kernel.Execution, snapshotdoc.Admitted, map[id.ActionID]request.Assignment, error) {
 	executionID, err := rowString(row.Values, "id")
 	if err != nil {
-		return kernel.Execution{}, nil, err
+		return kernel.Execution{}, snapshotdoc.Admitted{}, nil, err
 	}
 	version, err := rowUint64(row.Values, "version")
 	if err != nil {
-		return kernel.Execution{}, nil, err
+		return kernel.Execution{}, snapshotdoc.Admitted{}, nil, err
 	}
 	state, err := rowString(row.Values, "state")
 	if err != nil {
-		return kernel.Execution{}, nil, err
+		return kernel.Execution{}, snapshotdoc.Admitted{}, nil, err
 	}
 	workspace, err := rowString(row.Values, "workspace_id")
 	if err != nil {
-		return kernel.Execution{}, nil, err
+		return kernel.Execution{}, snapshotdoc.Admitted{}, nil, err
 	}
 	snapshotData, err := rowBytes(row.Values, "snapshot")
 	if err != nil {
-		return kernel.Execution{}, nil, err
+		return kernel.Execution{}, snapshotdoc.Admitted{}, nil, err
 	}
-	snapshot, err := decodeSnapshot(snapshotData)
+	admitted, err := snapshotdoc.Decode(snapshotData)
 	if err != nil {
-		return kernel.Execution{}, nil, err
+		return kernel.Execution{}, snapshotdoc.Admitted{}, nil, err
 	}
+	snapshot := definitionSnapshot(admitted)
 	failure, err := decodeFailure(row.Values["failure"])
 	if err != nil {
-		return kernel.Execution{}, nil, err
+		return kernel.Execution{}, snapshotdoc.Admitted{}, nil, err
 	}
 	actions, current, assignments, err := actionsOf(ctx, source, id.ExecutionID(executionID), snapshot.Pipeline().Actions, id.WorkspaceID(workspace))
 	if err != nil {
-		return kernel.Execution{}, nil, err
+		return kernel.Execution{}, snapshotdoc.Admitted{}, nil, err
 	}
 	cleanup, err := cleanupOf(ctx, source, id.ExecutionID(executionID))
 	if err != nil {
-		return kernel.Execution{}, nil, err
+		return kernel.Execution{}, snapshotdoc.Admitted{}, nil, err
 	}
 	return kernel.Execution{
 		ID:            id.ExecutionID(executionID),
@@ -174,7 +178,7 @@ func aggregateFromRowWithAssignments(ctx context.Context, source aggregateSource
 		CurrentAction: current,
 		Failure:       failure,
 		Cleanup:       cleanup,
-	}, assignments, nil
+	}, admitted, assignments, nil
 }
 
 // actionsOf reads the ordered action rows and pairs each with its admitted
@@ -358,13 +362,18 @@ func decodeAction(values map[string]any, definitions []definition.Action, worksp
 			if err != nil {
 				return kernel.Action{}, err
 			}
-			provenance, err := rowBytes(values, "answer_provenance")
+			rawProvenance, err := rowBytes(values, "answer_provenance")
+			if err != nil {
+				return kernel.Action{}, err
+			}
+			note, provenance, err := decodeAnswerProvenance(rawProvenance)
 			if err != nil {
 				return kernel.Action{}, err
 			}
 			requestAction.Answer = &kernel.Answer{
 				Decision:   kernel.Decision(decision),
 				Outputs:    outputs,
+				Note:       note,
 				Actor:      id.PrincipalID(actor),
 				At:         at,
 				Provenance: provenance,
@@ -457,11 +466,11 @@ func (s *Store) Inspect(ctx context.Context, scope tenancy.Scope, executionID id
 	if err != nil {
 		return execution.View{}, err
 	}
-	aggregate, assignments, err := aggregateFromRowWithAssignments(ctx, source, row)
+	aggregate, admitted, assignments, err := aggregateFromRowWithAdmitted(ctx, source, row)
 	if err != nil {
 		return execution.View{}, err
 	}
-	return view(scope, row, aggregate, assignments)
+	return view(scope, row, aggregate, admitted, assignments)
 }
 
 // List returns one stable scoped execution page. The scanner applies the scope
@@ -503,11 +512,11 @@ func (s *Store) List(ctx context.Context, scope tenancy.Scope, filter execution.
 	source := scopedSource{executor: s.executor, scanner: s.scanner, scope: scope}
 	result := execution.Page{Items: make([]execution.View, 0, len(page.Rows))}
 	for _, row := range page.Rows {
-		aggregate, assignments, err := aggregateFromRowWithAssignments(ctx, source, row)
+		aggregate, admitted, assignments, err := aggregateFromRowWithAdmitted(ctx, source, row)
 		if err != nil {
 			return execution.Page{}, err
 		}
-		projection, err := view(scope, row, aggregate, assignments)
+		projection, err := view(scope, row, aggregate, admitted, assignments)
 		if err != nil {
 			return execution.Page{}, err
 		}
@@ -522,7 +531,7 @@ func (s *Store) List(ctx context.Context, scope tenancy.Scope, filter execution.
 // view projects one kernel aggregate into the credential-free inspection view.
 // assignments carries the exact persisted request assignment of every request
 // action, so a responder never needs a second read.
-func view(scope tenancy.Scope, row store.Row, aggregate kernel.Execution, assignments map[id.ActionID]request.Assignment) (execution.View, error) {
+func view(scope tenancy.Scope, row store.Row, aggregate kernel.Execution, admitted snapshotdoc.Admitted, assignments map[id.ActionID]request.Assignment) (execution.View, error) {
 	pipelineID, err := rowString(row.Values, "pipeline_id")
 	if err != nil {
 		return execution.View{}, err
@@ -531,11 +540,34 @@ func view(scope tenancy.Scope, row store.Row, aggregate kernel.Execution, assign
 	if err != nil {
 		return execution.View{}, err
 	}
+	createdAt, err := rowTime(row.Values, "created_at")
+	if err != nil {
+		return execution.View{}, err
+	}
+	var inputs map[id.InputKey]string
+	if len(admitted.Snapshot.Inputs) > 0 {
+		inputs = make(map[id.InputKey]string, len(admitted.Snapshot.Inputs))
+		maps.Copy(inputs, admitted.Snapshot.Inputs)
+	}
+	var triggerView *execution.TriggerView
+	if admitted.Trigger != nil {
+		triggerView = &execution.TriggerView{
+			EventID:        admitted.Trigger.EventID,
+			Repository:     admitted.Trigger.Repository,
+			Ref:            admitted.Trigger.Ref,
+			Commit:         admitted.Trigger.Commit,
+			PreviousCommit: admitted.Trigger.PreviousCommit,
+		}
+	}
 	projection := execution.View{
 		Owner:         scope,
 		ExecutionID:   aggregate.ID,
 		TaskID:        id.TaskID(taskID),
 		PipelineID:    pipeline.PipelineID(pipelineID),
+		StartedBy:     admitted.StartedBy,
+		Inputs:        inputs,
+		Trigger:       triggerView,
+		CreatedAt:     createdAt,
 		State:         aggregate.State,
 		Version:       aggregate.Version,
 		CurrentAction: aggregate.CurrentAction,
@@ -570,6 +602,7 @@ func view(scope tenancy.Scope, row store.Row, aggregate kernel.Execution, assign
 				actionView.Decision = string(action.Request.Answer.Decision)
 				actionView.Actor = action.Request.Answer.Actor
 				actionView.AnsweredAt = action.Request.Answer.At
+				actionView.Note = action.Request.Answer.Note
 			}
 		}
 		projection.Actions = append(projection.Actions, actionView)

@@ -818,3 +818,67 @@ func TestResolveConfirmsAuthorityFactIdentityAndVersion(t *testing.T) {
 		}
 	})
 }
+
+func TestResolvePersistsDecisionNoteAndValidatesIdempotency(t *testing.T) {
+	actor := humanActor("tenant-1", "project-1", "principal-1", tenancy.RoleReviewer)
+
+	t.Run("rejection note persists without declared reason output", func(t *testing.T) {
+		fixture, scope, aggregate, _ := newResolveFixture(t, "role/reviewer")
+		cmd := resolveCommand(scope, aggregate, 0, actor, request.DecisionFail, nil)
+		cmd.Note = "Security checklist incomplete"
+
+		result, err := fixture.service.Resolve(context.Background(), cmd)
+		requireNoError(t, err, "Resolve fail with note")
+		if result.Decision != request.DecisionFail {
+			t.Fatalf("decision = %q; want fail", result.Decision)
+		}
+		unit := fixture.resolutions.captured()[0]
+		if unit.Note != "Security checklist incomplete" {
+			t.Fatalf("unit.Note = %q; want Security checklist incomplete", unit.Note)
+		}
+		if unit.Commit.Answer == nil || unit.Commit.Answer.Note != "Security checklist incomplete" {
+			t.Fatalf("commit answer = %+v; want note preserved", unit.Commit.Answer)
+		}
+		if unit.Commit.Failure == nil || unit.Commit.Failure.Detail != "Security checklist incomplete" {
+			t.Fatalf("commit failure = %+v; want failure detail from note", unit.Commit.Failure)
+		}
+
+		// Same note replays cleanly; changed note is refused with changed_idempotency_content.
+		replay, err := fixture.service.Resolve(context.Background(), cmd)
+		requireNoError(t, err, "Resolve replay with same note")
+		if !replay.Replayed {
+			t.Fatal("identical note retry did not report a replay")
+		}
+		changed := cmd
+		changed.Note = "Another reason"
+		_, err = fixture.service.Resolve(context.Background(), changed)
+		requireFaultClass(t, err, fault.ChangedIdempotencyContent)
+	})
+
+	t.Run("approval comment note persists without declared comment output", func(t *testing.T) {
+		fixture, scope, aggregate, _ := newResolveFixture(t, "role/reviewer")
+		cmd := resolveCommand(scope, aggregate, 0, actor, request.DecisionPass, nil)
+		cmd.Note = "LGTM"
+
+		if _, err := fixture.service.Resolve(context.Background(), cmd); err != nil {
+			t.Fatalf("Resolve pass with note: %v", err)
+		}
+		stored, _ := fixture.store.Execution(aggregate.ID)
+		if stored.Actions[0].Request.Answer == nil || stored.Actions[0].Request.Answer.Note != "LGTM" {
+			t.Fatalf("stored answer = %+v; want Note=LGTM", stored.Actions[0].Request.Answer)
+		}
+	})
+
+	t.Run("invalid or oversized note is refused before commit", func(t *testing.T) {
+		fixture, scope, aggregate, _ := newResolveFixture(t, "role/reviewer")
+		for _, bad := range []string{string([]byte{0xff, 0xfe}), strings.Repeat("x", kernel.MaxNoteBytes+1)} {
+			cmd := resolveCommand(scope, aggregate, 0, actor, request.DecisionFail, nil)
+			cmd.Note = bad
+			_, err := fixture.service.Resolve(context.Background(), cmd)
+			requireFaultClass(t, err, fault.InvalidInput)
+		}
+		if fixture.resolutions.callCount() != 0 {
+			t.Fatalf("resolve port calls = %d; want zero", fixture.resolutions.callCount())
+		}
+	})
+}

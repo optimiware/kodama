@@ -12,6 +12,7 @@ import (
 	"github.com/optimiware/kodema/internal/shell/pipeline"
 	"github.com/optimiware/kodema/internal/shell/receipt"
 	"github.com/optimiware/kodema/internal/shell/store"
+	"github.com/optimiware/kodema/internal/shell/store/units/execution/snapshotdoc"
 	"github.com/optimiware/kodema/internal/shell/tenancy"
 	"github.com/optimiware/kodema/internal/shell/trigger"
 )
@@ -368,6 +369,8 @@ func (adapter *Triggers) startSelected(ctx context.Context, unit trigger.StartUn
 		pipelineID:      unit.PipelineID,
 		pipelineVersion: pipelineVersion,
 		principal:       unit.ExecutionPrincipal,
+		startedBy:       unit.Initiator,
+		trigger:         triggerMetadata(unit),
 		snapshot:        unit.Admission.Snapshot,
 		actions:         unit.Admission.Actions,
 		at:              unit.At,
@@ -428,9 +431,55 @@ func (adapter *Triggers) startRefused(ctx context.Context, unit trigger.StartUni
 		Events:        events,
 	})
 	if err != nil {
-		return trigger.Result{}, err
+		// When Select refused on current authority (for example, a disabled or
+		// unprivileged automatic service), no incomplete receipt was inserted.
+		// Commit the refusal receipt and its pipeline.start_refused event via
+		// ReceiptInsert so the refusal is durable and queryable via event.read
+		// instead of stalling the processor indefinitely.
+		if class, ok := fault.ClassOf(err); ok && class == fault.VersionConflict && reason == "" {
+			committed, err = execute(ctx, adapter.executor, unit.Owner, store.Unit{
+				Receipt:     &record,
+				ReceiptMode: store.ReceiptInsert,
+				Audit:       unit.Audit,
+				Events:      events,
+			})
+		}
+		if err != nil {
+			return trigger.Result{}, err
+		}
 	}
 	return adapter.completedResult(committed, result)
+}
+
+// triggerMetadata builds the credential-free push-trigger provenance persisted
+// in executions.snapshot for one push-started execution.
+func triggerMetadata(unit trigger.StartUnit) *snapshotdoc.TriggerMetadata {
+	if unit.EventID == "" {
+		return nil
+	}
+	repo := string(unit.Selection.Repository)
+	if repo == "" {
+		repo = unit.Selection.Inputs[id.InputKey("repository")]
+	}
+	ref := unit.Selection.Ref
+	if ref == "" {
+		ref = unit.Selection.Inputs[id.InputKey("ref")]
+	}
+	commit := unit.Selection.Commit
+	if commit == "" {
+		commit = unit.Selection.Inputs[id.InputKey("commit")]
+	}
+	previous := unit.Selection.PreviousCommit
+	if previous == "" {
+		previous = unit.Selection.Inputs[id.InputKey("previous_commit")]
+	}
+	return &snapshotdoc.TriggerMetadata{
+		EventID:        unit.EventID,
+		Repository:     repo,
+		Ref:            ref,
+		Commit:         commit,
+		PreviousCommit: previous,
+	}
 }
 
 // withSelectionResult stores the common-receipt result envelope, which carries

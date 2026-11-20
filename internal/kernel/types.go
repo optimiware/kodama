@@ -344,12 +344,14 @@ func (o *Observation) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// Output bounds from the output contract.
+// Output and answer bounds from the execution contract.
 const (
 	// MaxOutputValues bounds one nullable output object.
 	MaxOutputValues = 8
 	// MaxOutputValueBytes bounds each declared UTF-8 output value in bytes.
 	MaxOutputValueBytes = 4096
+	// MaxNoteBytes bounds one optional request answer decision note in UTF-8 bytes.
+	MaxNoteBytes = 4096
 )
 
 // Outputs is one nullable JSON object of declared string values. A nil map is
@@ -416,12 +418,14 @@ func (o *Outputs) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// Answer is the authorized settlement of one request action. Actor, time and
-// provenance are recorded separately from workload-controlled output strings.
-// A failed answer stays inspectable but never becomes downstream-eligible.
+// Answer is the authorized settlement of one request action. Actor, time,
+// optional decision note and provenance are recorded separately from
+// workload-controlled output strings. A failed answer stays inspectable but
+// never becomes downstream-eligible.
 type Answer struct {
 	Decision   Decision       `json:"decision"`
 	Outputs    Outputs        `json:"outputs,omitempty"`
+	Note       string         `json:"note,omitempty"`
 	Actor      id.PrincipalID `json:"actor"`
 	At         time.Time      `json:"at"`
 	Provenance []byte         `json:"provenance,omitempty"`

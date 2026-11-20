@@ -20,8 +20,21 @@
 //	  "snapshot": { ...pipeline.Snapshot public fields... },
 //	  "actions": [ ...pipeline.AdmittedAction, in admitted index order... ],
 //	  "pipeline_id": "pipe-...",
-//	  "pipeline_version": 3
+//	  "pipeline_version": 3,
+//	  "started_by": "prn-...",
+//	  "trigger": {
+//	    "event_id": "evt-...",
+//	    "repository": "repo-...",
+//	    "ref": "refs/heads/main",
+//	    "commit": "...",
+//	    "previous_commit": "..."
+//	  }
 //	}
+//
+// started_by and trigger are optional provenance fields (omitted when absent):
+// started_by records the initiating principal and trigger records push-trigger
+// metadata (event_id, repository, ref, commit, previous_commit) for
+// automatically started executions.
 //
 // The nested snapshot carries the SHA-256 digest of the exact YAML bytes
 // (yaml_sha256), the admitted input values, the admitted Env defaults, the

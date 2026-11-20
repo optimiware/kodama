@@ -48,12 +48,26 @@ type Page struct {
 	Next  string
 }
 
+// TriggerView is the credential-free push-trigger provenance of an
+// automatically started execution.
+type TriggerView struct {
+	EventID        id.EventID
+	Repository     string
+	Ref            string
+	Commit         string
+	PreviousCommit string
+}
+
 // View is the credential-free inspection projection of one execution.
 type View struct {
 	Owner         tenancy.Scope
 	ExecutionID   id.ExecutionID
 	TaskID        id.TaskID
 	PipelineID    pipeline.PipelineID
+	StartedBy     id.PrincipalID
+	Inputs        map[id.InputKey]string
+	Trigger       *TriggerView
+	CreatedAt     time.Time
 	State         kernel.ExecutionState
 	Version       uint64
 	CurrentAction int
@@ -86,6 +100,7 @@ type ActionView struct {
 	Decision         string
 	Actor            id.PrincipalID
 	AnsweredAt       time.Time
+	Note             string
 	Subject          *definition.Subject
 	Assignment       request.Assignment
 }

@@ -419,6 +419,7 @@ func newHarness(t *testing.T) *harness {
 		Authority:  adapter,
 		Changes:    pipes,
 		Reader:     pipes,
+		Services:   adapter,
 	})
 	if err != nil {
 		t.Fatalf("pipeline.NewManagement: %v", err)

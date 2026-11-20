@@ -273,6 +273,27 @@ func validateReceipt(record receipt.Record) error {
 	return nil
 }
 
+// committedReceipt reports whether a durable receipt with the unit's
+// idempotency identity already exists in the unit's scope. It is a pre-flight
+// read only: the executor still decides replay versus changed content
+// atomically, and a fresh commit still carries every authority and dependency
+// guard.
+func committedReceipt(ctx context.Context, scanner store.Scanner, scope tenancy.Scope, key receipt.Key) (bool, error) {
+	page, err := scanner.Query(ctx, scope, store.ScanQuery{
+		Table: "receipts",
+		Equals: map[string]any{
+			"principal_id": string(key.PrincipalID),
+			"operation":    key.Operation,
+			"caller_key":   key.CallerKey,
+		},
+		Limit: 1,
+	})
+	if err != nil {
+		return false, err
+	}
+	return len(page.Rows) > 0, nil
+}
+
 // requireNonEmpty refuses an empty string field a unit must carry.
 func requireNonEmpty(kind, value string) error {
 	if value == "" {

@@ -34,6 +34,8 @@ type executionPlan struct {
 	pipelineVersion uint64
 	taskID          id.TaskID
 	principal       id.PrincipalID
+	startedBy       id.PrincipalID
+	trigger         *snapshotdoc.TriggerMetadata
 	snapshot        pipeline.Snapshot
 	actions         []pipeline.AdmittedAction
 	at              time.Time
@@ -57,6 +59,8 @@ func (plan executionPlan) writes() ([]store.Write, error) {
 		PipelineVersion: plan.pipelineVersion,
 		Snapshot:        plan.snapshot,
 		Actions:         plan.actions,
+		StartedBy:       plan.startedBy,
+		Trigger:         plan.trigger,
 	})
 	if err != nil {
 		return nil, err
@@ -519,6 +523,7 @@ func creationWrites(unit task.CreateUnit) ([]store.Write, []store.Lock, error) {
 		pipelineVersion: start.ExpectedPipelineVersion,
 		taskID:          unit.TaskID,
 		principal:       start.ExecutionPrincipal,
+		startedBy:       start.Initiator,
 		snapshot:        start.Snapshot,
 		actions:         start.Actions,
 		at:              start.At,
@@ -545,24 +550,9 @@ func creationWrites(unit task.CreateUnit) ([]store.Write, []store.Lock, error) {
 	return writes, locks, nil
 }
 
-// committedReceipt reports whether a durable receipt with the unit's
-// idempotency identity already exists in the unit's scope. It is a pre-flight
-// read only: the executor still decides replay versus changed content
-// atomically, and a fresh start still carries every authority guard.
+// committedReceipt delegates to the shared pre-flight receipt lookup.
 func (adapter *Task) committedReceipt(ctx context.Context, scope tenancy.Scope, key receipt.Key) (bool, error) {
-	page, err := adapter.scanner.Query(ctx, scope, store.ScanQuery{
-		Table: "receipts",
-		Equals: map[string]any{
-			"principal_id": string(key.PrincipalID),
-			"operation":    key.Operation,
-			"caller_key":   key.CallerKey,
-		},
-		Limit: 1,
-	})
-	if err != nil {
-		return false, err
-	}
-	return len(page.Rows) > 0, nil
+	return committedReceipt(ctx, adapter.scanner, scope, key)
 }
 
 // Start applies one complete start/admission commit unit.
@@ -606,6 +596,7 @@ func (adapter *Task) Start(ctx context.Context, unit task.StartUnit) (task.Start
 		pipelineVersion: unit.ExpectedPipelineVersion,
 		taskID:          unit.TaskID,
 		principal:       unit.ExecutionPrincipal,
+		startedBy:       unit.Initiator,
 		snapshot:        unit.Snapshot,
 		actions:         unit.Actions,
 		at:              unit.At,
@@ -896,6 +887,7 @@ func (adapter *Task) Reply(ctx context.Context, unit task.ReplyUnit) (task.Reply
 		pipelineVersion: unit.ExpectedPipelineVersion,
 		taskID:          unit.TaskID,
 		principal:       unit.ExecutionPrincipal,
+		startedBy:       unit.Initiator,
 		snapshot:        unit.Snapshot,
 		actions:         unit.Actions,
 		at:              unit.At,

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"time"
+	"unicode/utf8"
 )
 
 // Execution, output, request-resolution and retained-log wire vocabulary.
@@ -48,7 +49,7 @@ func (evidence ExecutionStopEvidence) Validate() error {
 }
 
 // ExecutionAction is one admitted action observation. Recorded outputs,
-// decision/actor/answered_at, timeout/deadline and the stop summary are
+// decision/actor/answered_at/note, timeout/deadline and the stop summary are
 // credential-free inspection facts; staged outputs and workspace identities are
 // never exposed. A request action also exposes the immutable typed Subject and
 // the exact role/<role> or service/<id> Assignment, so a responder can decide
@@ -70,6 +71,7 @@ type ExecutionAction struct {
 	Decision       string                 `json:"decision,omitempty"`
 	Actor          string                 `json:"actor,omitempty" schema:"id"`
 	AnsweredAt     *time.Time             `json:"answered_at,omitempty"`
+	Note           string                 `json:"note,omitempty"`
 }
 
 // UnmarshalJSON decodes one action strictly. The request subject is decoded
@@ -174,8 +176,11 @@ func (action ExecutionAction) Validate() error {
 		if action.AnsweredAt == nil || action.AnsweredAt.IsZero() {
 			return invalid("request decision answered_at is missing")
 		}
-	} else if action.Actor != "" || action.AnsweredAt != nil {
-		return invalid("request decision actor/time is present without a decision")
+		if err := validateNote(action.Note); err != nil {
+			return err
+		}
+	} else if action.Actor != "" || action.AnsweredAt != nil || action.Note != "" {
+		return invalid("request decision actor/time/note is present without a decision")
 	}
 	return nil
 }
@@ -233,15 +238,57 @@ func (cleanup ExecutionCleanup) Validate() error {
 	return nil
 }
 
+// ExecutionTrigger is the credential-free trigger provenance of an
+// automatically started execution (for example an on.push Git update).
+type ExecutionTrigger struct {
+	EventID        string `json:"event_id" schema:"id"`
+	Repository     string `json:"repository,omitempty" schema:"id"`
+	Ref            string `json:"ref,omitempty"`
+	Commit         string `json:"commit,omitempty"`
+	PreviousCommit string `json:"previous_commit,omitempty"`
+}
+
+// Validate checks the trigger event identity and bounded push metadata.
+func (trigger ExecutionTrigger) Validate() error {
+	if !validID(trigger.EventID) {
+		return invalid("trigger event_id is invalid")
+	}
+	if trigger.Repository != "" && !validID(trigger.Repository) {
+		return invalid("trigger repository is invalid")
+	}
+	for _, field := range []struct {
+		name  string
+		value string
+	}{
+		{"ref", trigger.Ref},
+		{"commit", trigger.Commit},
+		{"previous_commit", trigger.PreviousCommit},
+	} {
+		if len(field.value) > MaxSubjectValueBytes {
+			return invalid("trigger %s is %d bytes; at most %d are allowed", field.name, len(field.value), MaxSubjectValueBytes)
+		}
+		if !utf8.ValidString(field.value) {
+			return invalid("trigger %s is not valid UTF-8", field.name)
+		}
+	}
+	return nil
+}
+
 // ExecutionInspectResult is the execution.inspect result. TaskID is empty for a
 // task-free pipeline execution. PipelineID is the optional stored-pipeline
 // identity: it is empty (and omitted from the wire) for a task-free inline
-// execution, never fabricated. Failure is present only after a terminal
-// failure; Cleanup is always present and is independent of the outcome.
+// execution, never fabricated. StartedBy, Inputs, Trigger and CreatedAt expose
+// credential-free execution provenance. Failure is present only after a
+// terminal failure; Cleanup is always present and is independent of the
+// outcome.
 type ExecutionInspectResult struct {
 	ExecutionID   string            `json:"execution_id"`
 	TaskID        string            `json:"task_id,omitempty" schema:"id"`
 	PipelineID    string            `json:"pipeline_id,omitempty"`
+	StartedBy     string            `json:"started_by,omitempty" schema:"id"`
+	Inputs        map[string]string `json:"inputs,omitempty"`
+	Trigger       *ExecutionTrigger `json:"trigger,omitempty"`
+	CreatedAt     *time.Time        `json:"created_at,omitempty"`
 	State         string            `json:"state"`
 	Version       uint64            `json:"version" schema:"version"`
 	CurrentAction int               `json:"current_action"`
@@ -285,6 +332,20 @@ func (result ExecutionInspectResult) Validate() error {
 	}
 	if result.PipelineID != "" && !validID(result.PipelineID) {
 		return invalid("pipeline_id is invalid")
+	}
+	if result.StartedBy != "" && !validID(result.StartedBy) {
+		return invalid("started_by is invalid")
+	}
+	if err := validateInputs(result.Inputs); err != nil {
+		return err
+	}
+	if result.Trigger != nil {
+		if err := result.Trigger.Validate(); err != nil {
+			return err
+		}
+	}
+	if result.CreatedAt != nil && result.CreatedAt.IsZero() {
+		return invalid("created_at is zero")
 	}
 	if !validExecutionState(result.State) {
 		return invalid("unknown execution state %q", result.State)
@@ -344,11 +405,13 @@ func (request ExecutionListRequest) Validate() error {
 // identity: it is empty (and omitted from the wire) for a task-free inline
 // execution, never fabricated.
 type ExecutionSummary struct {
-	ExecutionID string `json:"execution_id"`
-	TaskID      string `json:"task_id,omitempty" schema:"id"`
-	PipelineID  string `json:"pipeline_id,omitempty"`
-	State       string `json:"state"`
-	Version     uint64 `json:"version" schema:"version"`
+	ExecutionID string     `json:"execution_id"`
+	TaskID      string     `json:"task_id,omitempty" schema:"id"`
+	PipelineID  string     `json:"pipeline_id,omitempty"`
+	StartedBy   string     `json:"started_by,omitempty" schema:"id"`
+	CreatedAt   *time.Time `json:"created_at,omitempty"`
+	State       string     `json:"state"`
+	Version     uint64     `json:"version" schema:"version"`
 }
 
 // UnmarshalJSON decodes one summary strictly with the same presence-aware
@@ -385,6 +448,12 @@ func (summary ExecutionSummary) Validate() error {
 	}
 	if summary.PipelineID != "" && !validID(summary.PipelineID) {
 		return invalid("pipeline_id is invalid")
+	}
+	if summary.StartedBy != "" && !validID(summary.StartedBy) {
+		return invalid("started_by is invalid")
+	}
+	if summary.CreatedAt != nil && summary.CreatedAt.IsZero() {
+		return invalid("created_at is zero")
 	}
 	if !validExecutionState(summary.State) {
 		return invalid("unknown execution state %q", summary.State)
@@ -493,10 +562,11 @@ type ExecutionRequestResolveRequest struct {
 	ExpectedActionVersion uint64            `json:"expected_action_version" schema:"version"`
 	Decision              string            `json:"decision"`
 	Outputs               map[string]string `json:"outputs,omitempty"`
+	Note                  string            `json:"note,omitempty"`
 }
 
 // Validate checks the optional execution/action identities, the expected action
-// version, the declared decision and optional outputs.
+// version, the declared decision, optional outputs and optional decision note.
 func (request ExecutionRequestResolveRequest) Validate() error {
 	if request.ExecutionID != "" && !validID(request.ExecutionID) {
 		return invalid("execution_id is invalid")
@@ -509,6 +579,9 @@ func (request ExecutionRequestResolveRequest) Validate() error {
 	}
 	if !validDecision(request.Decision) {
 		return invalid("unknown request decision %q", request.Decision)
+	}
+	if err := validateNote(request.Note); err != nil {
+		return err
 	}
 	return validateOutputs(request.Outputs)
 }
@@ -687,6 +760,17 @@ func validCleanupState(state string) bool {
 		}
 	}
 	return false
+}
+
+// validateNote checks an optional bounded UTF-8 decision note (reason/comment).
+func validateNote(note string) error {
+	if len(note) > MaxNoteBytes {
+		return invalid("request note is %d bytes; at most %d are allowed", len(note), MaxNoteBytes)
+	}
+	if !utf8.ValidString(note) {
+		return invalid("request note is not valid UTF-8")
+	}
+	return nil
 }
 
 // validateOutputs checks an optional bounded declared-output map.

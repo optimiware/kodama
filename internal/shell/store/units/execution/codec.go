@@ -1,6 +1,7 @@
 package executionstore
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -29,6 +30,53 @@ const (
 	tableMemberships = "memberships"
 	tableResources   = "resources"
 )
+
+// answerMetaMagic distinguishes a structured answer metadata envelope (carrying
+// a decision note and optional raw provenance bytes) from legacy raw provenance
+// bytes stored directly in actions.answer_provenance.
+var answerMetaMagic = []byte("kodema:answer-meta:v1\x00")
+
+type answerMetaEnvelope struct {
+	Note       string `json:"note,omitempty"`
+	Provenance []byte `json:"provenance,omitempty"`
+}
+
+// encodeAnswerProvenance renders one answer's optional decision note and
+// provenance bytes into actions.answer_provenance. When note is empty and
+// provenance does not collide with the magic prefix, the raw provenance bytes
+// are stored verbatim so existing tests and rows stay byte-identical.
+func encodeAnswerProvenance(note string, provenance []byte) ([]byte, error) {
+	if note == "" && !bytes.HasPrefix(provenance, answerMetaMagic) {
+		if len(provenance) == 0 {
+			return nil, nil
+		}
+		return append([]byte(nil), provenance...), nil
+	}
+	encoded, err := json.Marshal(answerMetaEnvelope{
+		Note:       note,
+		Provenance: provenance,
+	})
+	if err != nil {
+		return nil, fault.Wrap(fault.InternalFailure, "answer metadata could not be encoded", err)
+	}
+	return slices.Concat(answerMetaMagic, encoded), nil
+}
+
+// decodeAnswerProvenance rebuilds an answer's optional decision note and raw
+// provenance bytes from actions.answer_provenance.
+func decodeAnswerProvenance(raw []byte) (string, []byte, error) {
+	if len(raw) == 0 {
+		return "", nil, nil
+	}
+	if !bytes.HasPrefix(raw, answerMetaMagic) {
+		return "", append([]byte(nil), raw...), nil
+	}
+	var envelope answerMetaEnvelope
+	if err := json.Unmarshal(raw[len(answerMetaMagic):], &envelope); err != nil {
+		return "", nil, fault.Wrap(fault.InternalFailure, "answer metadata is malformed", err)
+	}
+	return envelope.Note, envelope.Provenance, nil
+}
 
 // decodeSnapshot rebuilds the immutable kernel snapshot from the shared
 // snapshot document. A malformed document is an internal_failure, never an

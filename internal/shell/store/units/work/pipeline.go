@@ -4,6 +4,8 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"fmt"
+	"slices"
 
 	"github.com/optimiware/kodema/internal/fault"
 	"github.com/optimiware/kodema/internal/shell/pipeline"
@@ -131,6 +133,36 @@ func (adapter *Pipelines) Change(ctx context.Context, unit pipeline.ChangeUnit) 
 		return pipeline.ChangeResult{}, err
 	}
 	locks = append(locks, authority...)
+	if (unit.Kind == pipeline.ChangeApply || unit.Kind == pipeline.ChangeUpdate) && len(unit.PushTriggers) > 0 {
+		// A durable receipt with this idempotency identity means the invocation
+		// already committed (or reused its key with changed content). Skip the
+		// fresh-commit on.push service validation so a lost-response retry still
+		// replays even if the referenced service was later disabled or modified;
+		// the executor still decides replay versus changed content atomically.
+		replaying, err := committedReceipt(ctx, adapter.scanner, unit.Owner, unit.Receipt.Key)
+		if err != nil {
+			return pipeline.ChangeResult{}, err
+		}
+		if !replaying {
+			pushLocks, err := pushServiceLocks(ctx, adapter.executor, adapter.scanner, unit.Owner, unit.PushTriggers)
+			if err != nil {
+				// A concurrent identical retry may have committed between the
+				// pre-flight lookup and the service read, after which the
+				// service was disabled or modified. Re-check the receipt so the
+				// retry still converges on the stored result; a genuinely fresh
+				// commit keeps the refusal.
+				committed, lookupErr := committedReceipt(ctx, adapter.scanner, unit.Owner, unit.Receipt.Key)
+				if lookupErr != nil {
+					return pipeline.ChangeResult{}, lookupErr
+				}
+				if !committed {
+					return pipeline.ChangeResult{}, err
+				}
+			} else {
+				locks = append(locks, pushLocks...)
+			}
+		}
+	}
 	committed, err := execute(ctx, adapter.executor, unit.Owner, store.Unit{
 		Locks:   locks,
 		Writes:  writes,
@@ -150,6 +182,65 @@ func (adapter *Pipelines) Change(ctx context.Context, unit pipeline.ChangeUnit) 
 		return replayed, nil
 	}
 	return result, nil
+}
+
+// pushServiceLocks verifies that every on.push automatic-start service named by
+// the pipeline exists in project or tenant scope, is enabled and holds the
+// engineer role, and returns guarded locks pinning each observed services row
+// (version, enabled state and tenant-wide scope flag) inside the same atomic
+// commit unit so concurrent service.disable or role removal cannot race past
+// validation.
+func pushServiceLocks(
+	ctx context.Context,
+	executor store.Executor,
+	scanner store.Scanner,
+	scope tenancy.Scope,
+	triggers []pipeline.PushTrigger,
+) ([]store.Lock, error) {
+	resolver := authorityResolver{executor: executor, scanner: scanner}
+	seen := make(map[service.ServiceID]struct{}, len(triggers))
+	locks := make([]store.Lock, 0, len(triggers))
+	for _, trigger := range triggers {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		if trigger.Service == "" {
+			return nil, fault.New(fault.InvalidInput, "on.push service is empty")
+		}
+		if _, ok := seen[trigger.Service]; ok {
+			continue
+		}
+		seen[trigger.Service] = struct{}{}
+		row, found, tenantWide, err := resolver.readNullableScope(ctx, scope, "services", string(trigger.Service))
+		if err != nil {
+			return nil, err
+		}
+		if !found {
+			return nil, fault.New(fault.InvalidInput, fmt.Sprintf("on.push service %q does not exist in scope", trigger.Service))
+		}
+		if textValue(row, "state") != serviceStateEnabled {
+			return nil, fault.New(fault.InvalidInput, fmt.Sprintf("on.push service %q is disabled; enable it before binding an on.push trigger", trigger.Service))
+		}
+		roles, err := decodeAuthorityRoles(bytesValue(row, "roles"))
+		if err != nil {
+			return nil, err
+		}
+		if !slices.Contains(tenancy.AssignableServiceRoles(roles), tenancy.RoleEngineer) {
+			return nil, fault.New(fault.InvalidInput, fmt.Sprintf("on.push service %q does not hold the %q role required to start executions on push", trigger.Service, tenancy.RoleEngineer))
+		}
+		version := versionValue(row, "version")
+		if version == 0 {
+			return nil, fault.New(fault.InternalFailure, fmt.Sprintf("on.push service %q has no version", trigger.Service))
+		}
+		locks = append(locks, store.Lock{
+			Table:         "services",
+			IDs:           []string{string(trigger.Service)},
+			ExpectVersion: version,
+			Expect:        map[string]any{"state": serviceStateEnabled},
+			TenantWide:    tenantWide,
+		})
+	}
+	return locks, nil
 }
 
 // Get reads one scoped pipeline definition and its persisted push projection.

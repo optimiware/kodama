@@ -325,7 +325,9 @@ func runResolveDecision(ctx context.Context, config Config, args []string, ports
 	}
 
 	implicitKey := ""
+	note := ""
 	if approve && strings.TrimSpace(commentFlag) != "" {
+		note = commentFlag
 		if outputs == nil {
 			outputs = make(map[string]string, 1)
 		}
@@ -335,6 +337,7 @@ func runResolveDecision(ctx context.Context, config Config, args []string, ports
 		}
 	}
 	if !approve {
+		note = reasonFlag
 		if outputs == nil {
 			outputs = make(map[string]string, 1)
 		}
@@ -355,22 +358,24 @@ func runResolveDecision(ctx context.Context, config Config, args []string, ports
 		ExpectedActionVersion: actionVersion,
 		Decision:              decision,
 		Outputs:               outputs,
+		Note:                  note,
 	}
 	if err := req.Validate(); err != nil {
 		return usage(ports.Err, publicMessage(err))
 	}
 
 	result, err := invokeResolveRequest(ctx, ports, deps, req, expectedExecVer, idempotencyKeyFlag)
-	if err != nil && implicitKey != "" && idempotencyKeyFlag == "" &&
+	if err != nil && implicitKey != "" &&
 		strings.Contains(err.Error(), fmt.Sprintf("response key %q is not declared", implicitKey)) {
 		// If the pipeline's request schema declared no comment/reason output key,
-		// retry once without the undeclared key so standard approval gates work.
+		// retry once without the undeclared output key while preserving req.Note
+		// so the rejection reason or approval comment is always persisted.
 		delete(outputs, implicitKey)
 		if len(outputs) == 0 {
 			outputs = nil
 		}
 		req.Outputs = outputs
-		result, err = invokeResolveRequest(ctx, ports, deps, req, expectedExecVer, "")
+		result, err = invokeResolveRequest(ctx, ports, deps, req, expectedExecVer, idempotencyKeyFlag)
 	}
 	if err != nil {
 		return failure(ports.Err, err)
@@ -386,8 +391,13 @@ func runResolveDecision(ctx context.Context, config Config, args []string, ports
 	var resolved api.ExecutionRequestResolveResult
 	_ = json.Unmarshal(result.Body, &resolved)
 	if approve {
-		fmt.Fprintf(ports.Out, "approved execution %s action %s (decision=%s, execution_version=%d, action_version=%d)\n",
-			executionID, actionID, decision, resolved.ExecutionVersion, resolved.ActionVersion)
+		if note != "" {
+			fmt.Fprintf(ports.Out, "approved execution %s action %s (decision=%s, comment=%q, execution_version=%d, action_version=%d)\n",
+				executionID, actionID, decision, note, resolved.ExecutionVersion, resolved.ActionVersion)
+		} else {
+			fmt.Fprintf(ports.Out, "approved execution %s action %s (decision=%s, execution_version=%d, action_version=%d)\n",
+				executionID, actionID, decision, resolved.ExecutionVersion, resolved.ActionVersion)
+		}
 	} else {
 		fmt.Fprintf(ports.Out, "rejected execution %s action %s (decision=%s, reason=%q, execution_version=%d, action_version=%d)\n",
 			executionID, actionID, decision, reasonFlag, resolved.ExecutionVersion, resolved.ActionVersion)

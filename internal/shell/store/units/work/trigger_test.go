@@ -478,7 +478,7 @@ func (f *fixture) seedPushEnvironment(t *testing.T, scope tenancy.Scope) {
 	t.Helper()
 	f.seedPipeline(t, scope, testPipeline, "build", []byte("kind: Pipeline\n"), 1)
 	f.seedBinding(t, scope, "binding-1", "repo-1", "svc-a", 1)
-	f.seedService(t, scope, "svc-a", "enabled", 1)
+	f.seedServiceWithRoles(t, scope, "svc-a", "enabled", 1, tenancy.RoleEngineer)
 }
 
 func TestTriggerSelectInsertsIncompleteReceipt(t *testing.T) {
@@ -902,5 +902,184 @@ func TestTriggerSelectFirstSelectionSurvivesDefinitionEdit(t *testing.T) {
 	}
 	if completed.ExecutionID != "execution-1" {
 		t.Fatalf("completed receipt = %+v", completed)
+	}
+}
+
+// TestTriggerStartRefusalWithoutPriorSelectReceiptCommitsEvent proves that
+// when Select fails on current authority (e.g. a disabled or nonexistent
+// automatic service) and never inserts an incomplete receipt, Start with
+// StatusRefused still durably records the refusal receipt and publishes the
+// queryable pipeline.start_refused event instead of failing version_conflict.
+func TestTriggerStartRefusalWithoutPriorSelectReceiptCommitsEvent(t *testing.T) {
+	fixture := newFixture(t)
+	scope := testScope()
+	record := fixture.receiptFor(scope, startOperationName, selectionCallerKey(testPipeline, testEvent), contentHashA)
+	refusalEvent, err := trigger.NewStartRefusedEvent(
+		"event-refused-1",
+		scope,
+		trigger.Selection{
+			PipelineID: testPipeline,
+			EventID:    testEvent,
+			ServiceID:  "service-disabled",
+		},
+		1,
+		trigger.RefusalReason(fault.Forbidden),
+		"service-disabled",
+		testNow,
+	)
+	if err != nil {
+		t.Fatalf("NewStartRefusedEvent: %v", err)
+	}
+	start := trigger.StartUnit{
+		Owner:                   scope,
+		PipelineID:              testPipeline,
+		EventID:                 testEvent,
+		ExpectedPipelineVersion: 1,
+		Selection: trigger.Selection{
+			PipelineID: testPipeline,
+			EventID:    testEvent,
+			YAML:       []byte("actions:\n  - name: build\n    image: registry.example.com/app@sha256:1111\n"),
+			ServiceID:  "service-disabled",
+		},
+		Initiator: "service-disabled",
+		Status:    trigger.StatusRefused,
+		At:        testNow,
+		Receipt:   record,
+		Audit:     []event.Audit{fixture.audit(scope, startOperationName)},
+		Events:    []event.Envelope{refusalEvent},
+	}
+
+	got, err := fixture.triggers.Start(context.Background(), start)
+	if err != nil {
+		t.Fatalf("Start refusal without prior select receipt: %v", err)
+	}
+	if got.Status != trigger.StatusRefused || got.Replayed {
+		t.Fatalf("refusal result = %+v; want non-replayed refused", got)
+	}
+	eventRow, ok := fixture.scanRow(t, scope, "events", map[string]any{"type": string(event.TypePipelineStartRefused)})
+	if !ok {
+		t.Fatal("pipeline.start_refused event was not persisted")
+	}
+	if textValue(eventRow, "subject_id") != string(testPipeline) {
+		t.Fatalf("refusal event subject_id = %q; want %q", textValue(eventRow, "subject_id"), testPipeline)
+	}
+
+	// Replaying the same refusal converges as a replay without inserting a second event.
+	replay, err := fixture.triggers.Start(context.Background(), start)
+	if err != nil {
+		t.Fatalf("Start refusal replay: %v", err)
+	}
+	if !replay.Replayed || replay.Status != trigger.StatusRefused {
+		t.Fatalf("refusal replay = %+v; want replayed refused", replay)
+	}
+}
+
+// TestTriggerStartPersistsExecutionProvenance proves that a push-started
+// execution records started_by, admitted inputs and trigger metadata readable
+// through executionstore.Inspect.
+func TestTriggerStartPersistsExecutionProvenance(t *testing.T) {
+	fixture := newFixture(t)
+	scope := testScope()
+	yamlBytes := []byte("actions:\n  - name: build\n    image: registry.example.com/app@sha256:1111\n")
+	fixture.seedPipeline(t, scope, testPipeline, "push", yamlBytes, 1)
+	fixture.seedService(t, scope, "service-1", "enabled", 1)
+	fixture.seedBinding(t, scope, "binding-1", "repo-1", "service-1", 1)
+
+	record := fixture.receiptFor(scope, startOperationName, selectionCallerKey(testPipeline, testEvent), contentHashA)
+	sel := trigger.Selection{
+		PipelineID:     testPipeline,
+		EventID:        testEvent,
+		YAML:           yamlBytes,
+		ServiceID:      "service-1",
+		Repository:     "repo-1",
+		Ref:            "refs/heads/work/ci",
+		Commit:         "abc1234",
+		PreviousCommit: "def5678",
+		Inputs: map[id.InputKey]string{
+			"repository": "repo-1",
+			"ref":        "refs/heads/work/ci",
+			"commit":     "abc1234",
+		},
+	}
+	selectUnit := trigger.SelectUnit{
+		Owner:                   scope,
+		PipelineID:              testPipeline,
+		EventID:                 testEvent,
+		ExpectedPipelineVersion: 1,
+		ExpectedBindingVersion:  1,
+		Selection:               sel,
+		Receipt:                 record,
+		Audit:                   []event.Audit{fixture.audit(scope, startOperationName)},
+		Authority: []authorize.AuthorityRead{{
+			Check:           authorize.CheckBindingVersion,
+			Scope:           scope,
+			PrincipalID:     "service-1",
+			TargetID:        "binding-1",
+			ExpectedVersion: 1,
+		}},
+	}
+	if _, err := fixture.triggers.Select(context.Background(), selectUnit); err != nil {
+		t.Fatalf("Select: %v", err)
+	}
+	admitted, err := pipeline.NewSnapshot(pipeline.SnapshotInput{
+		YAML:   sel.YAML,
+		Inputs: sel.Inputs,
+	})
+	if err != nil {
+		t.Fatalf("NewSnapshot: %v", err)
+	}
+	start := trigger.StartUnit{
+		Owner:                   scope,
+		PipelineID:              testPipeline,
+		EventID:                 testEvent,
+		ExpectedPipelineVersion: 1,
+		ExpectedBindingVersion:  1,
+		Selection:               sel,
+		Admission: pipeline.AdmissionResult{
+			PipelineID:      testPipeline,
+			PipelineVersion: 1,
+			Snapshot:        admitted,
+			Actions:         []pipeline.AdmittedAction{testAction(0)},
+		},
+		Initiator:          id.PrincipalID("service-1"),
+		ExecutionPrincipal: "principal-exec-push-1",
+		NewExecutionID:     "exec-push-1",
+		Status:             trigger.StatusSelected,
+		At:                 testNow,
+		Receipt:            record,
+		Audit:              []event.Audit{fixture.audit(scope, startOperationName)},
+		Events:             []event.Envelope{fixture.event(scope, "exec-push-1", 1)},
+		Authority: []authorize.AuthorityRead{{
+			Check:           authorize.CheckBindingVersion,
+			Scope:           scope,
+			PrincipalID:     "service-1",
+			TargetID:        "binding-1",
+			ExpectedVersion: 1,
+		}},
+	}
+	if _, err := fixture.triggers.Start(context.Background(), start); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	view, err := executionstore.New(fixture.store, fixture.store).Inspect(context.Background(), scope, "exec-push-1")
+	if err != nil {
+		t.Fatalf("Inspect: %v", err)
+	}
+	if view.StartedBy != id.PrincipalID("service-1") {
+		t.Fatalf("StartedBy = %q; want service-1", view.StartedBy)
+	}
+	if view.Inputs["commit"] != "abc1234" || view.Inputs["ref"] != "refs/heads/work/ci" {
+		t.Fatalf("Inputs = %+v; want admitted push inputs", view.Inputs)
+	}
+	if view.Trigger == nil ||
+		view.Trigger.EventID != testEvent ||
+		view.Trigger.Repository != "repo-1" ||
+		view.Trigger.Ref != "refs/heads/work/ci" ||
+		view.Trigger.Commit != "abc1234" ||
+		view.Trigger.PreviousCommit != "def5678" {
+		t.Fatalf("Trigger = %+v; want full push metadata", view.Trigger)
+	}
+	if !view.CreatedAt.Equal(testNow) {
+		t.Fatalf("CreatedAt = %v; want %v", view.CreatedAt, testNow)
 	}
 }

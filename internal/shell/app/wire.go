@@ -187,6 +187,7 @@ func wireApp(ctx context.Context, builder *builder, environment *environment) (*
 		Authority:  identityAdapter,
 		Changes:    pipelinesAdapter,
 		Reader:     pipelinesAdapter,
+		Services:   identityAdapter,
 	})
 	if err != nil {
 		return nil, err

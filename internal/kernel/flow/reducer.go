@@ -26,7 +26,9 @@ import (
 	"encoding/hex"
 	"fmt"
 	"maps"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/optimiware/kodema/internal/fault"
 	"github.com/optimiware/kodema/internal/id"
@@ -468,6 +470,12 @@ func reduceAnswer(execution kernel.Execution, fact AnswerFact) (kernel.Execution
 	if !fact.Answer.Decision.Valid() {
 		return execution, nil, refuseInvalid("flow: answer decision %q is not supported", fact.Answer.Decision)
 	}
+	if !utf8.ValidString(fact.Answer.Note) {
+		return execution, nil, refuseInvalid("flow: answer note is not valid UTF-8")
+	}
+	if len(fact.Answer.Note) > kernel.MaxNoteBytes {
+		return execution, nil, refuseInvalid("flow: answer note is %d bytes; at most %d are allowed", len(fact.Answer.Note), kernel.MaxNoteBytes)
+	}
 	if err := fact.Answer.Outputs.Validate(action.Request.Definition.Outputs); err != nil {
 		return execution, nil, err
 	}
@@ -533,10 +541,16 @@ func reduceAnswer(execution kernel.Execution, fact AnswerFact) (kernel.Execution
 		commit.Output = OutputChange{Action: OutputDiscard}
 		commit.PendingCancellations = pendingCancellations(execution, action.ID)
 		commit.InvalidateCredential = true
+		detail := "request action was answered with a failing decision"
+		if trimmed := strings.TrimSpace(answer.Note); trimmed != "" {
+			detail = trimmed
+		} else if reason := strings.TrimSpace(answer.Outputs[id.OutputKey("reason")]); reason != "" {
+			detail = reason
+		}
 		commit.Failure = &kernel.Failure{
 			Kind:   kernel.FailureRuntime,
 			Reason: "answer_rejected",
-			Detail: "request action was answered with a failing decision",
+			Detail: detail,
 		}
 		// A failing answer settles the execution without a later Reconcile
 		// pass, so the pending cleanup intent/progress must travel in this
@@ -1083,17 +1097,18 @@ func cloneAnswer(answer kernel.Answer) kernel.Answer {
 }
 
 // answersEqual compares the settlement content a retry must reproduce: the
-// decision, the declared outputs and the authorized principal. Sender
-// timestamps and transport provenance are ignored metadata, so an identical
-// retry carrying a different Answer.At or different Provenance still converges
-// on the recorded result. A different decision, output map or principal remains
-// a replacement settlement and is refused.
+// decision, the declared outputs, the decision note and the authorized
+// principal. Sender timestamps and transport provenance are ignored metadata,
+// so an identical retry carrying a different Answer.At or different Provenance
+// still converges on the recorded result. A different decision, output map,
+// note or principal remains a replacement settlement and is refused.
 func answersEqual(recorded *kernel.Answer, candidate kernel.Answer) bool {
 	if recorded == nil {
 		return false
 	}
 	return recorded.Decision == candidate.Decision &&
 		outputsEqual(recorded.Outputs, candidate.Outputs) &&
+		recorded.Note == candidate.Note &&
 		recorded.Actor == candidate.Actor
 }
 
