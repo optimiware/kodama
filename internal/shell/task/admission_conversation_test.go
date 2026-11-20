@@ -195,6 +195,19 @@ func TestReplyAdmitsConversationWithAnswer(t *testing.T) {
 				{Author: reviewerPrincipal, At: testNow, Body: "Use candidate B"},
 			},
 		},
+		"legacy waiting question with intervening comment stays chronological": {
+			messages: []task.Message{
+				prior,
+				{Author: reviewerPrincipal, At: questionAt.Add(30 * time.Second), Body: "Checking candidate B"},
+			},
+			references: []string{"commit=abcdef123456"},
+			want: []task.Message{
+				prior,
+				questionWithRefs,
+				{Author: reviewerPrincipal, At: questionAt.Add(30 * time.Second), Body: "Checking candidate B"},
+				{Author: reviewerPrincipal, At: testNow, Body: "Use candidate B"},
+			},
+		},
 		"question without references omits references key": {
 			messages:   nil,
 			references: nil,

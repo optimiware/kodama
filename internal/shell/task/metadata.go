@@ -136,6 +136,29 @@ func questionMessage(question *Question) *Message {
 	}
 }
 
+// insertMessageChronologically returns a copy of messages with addition
+// inserted at its chronological position by timestamp (after any existing
+// messages at or before addition.At), keeping legacy backfilled questions
+// aligned with task.read/task.history ordering even when comments arrived
+// while the task was waiting.
+func insertMessageChronologically(messages []Message, addition *Message) []Message {
+	if addition == nil {
+		return messages
+	}
+	index := len(messages)
+	for i, message := range messages {
+		if message.At.After(addition.At) {
+			index = i
+			break
+		}
+	}
+	out := make([]Message, 0, len(messages)+1)
+	out = append(out, messages[:index]...)
+	out = append(out, *addition)
+	out = append(out, messages[index:]...)
+	return out
+}
+
 // messagesContainQuestion reports whether the task's stored conversation
 // messages already contain the durable message recorded for question.
 func messagesContainQuestion(messages []Message, question *Question) bool {

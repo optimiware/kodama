@@ -601,12 +601,12 @@ func (service *Service) Reply(ctx context.Context, command ReplyCommand) (ReplyR
 		return ReplyResult{}, err
 	}
 	now := service.clock.Now()
-	var question *Message
-	if current.Question != nil && !messagesContainQuestion(current.Messages, current.Question) {
-		question = questionMessage(current.Question)
+	messages := current.Messages
+	if current.Question != nil && !messagesContainQuestion(messages, current.Question) {
+		messages = insertMessageChronologically(messages, questionMessage(current.Question))
 	}
 	answer := &Message{Author: command.Actor.ID, At: now, Body: command.Answer}
-	conversation, err := conversationBytes(current.Messages, question, answer)
+	conversation, err := conversationBytes(messages, answer)
 	if err != nil {
 		return ReplyResult{}, err
 	}
