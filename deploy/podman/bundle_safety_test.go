@@ -648,15 +648,58 @@ func TestRunbookDocumentsVerifiedLimitations(t *testing.T) {
 		"firewall",
 		"deny-by-default",
 		"not configurable",
-		"`/workspace`", "Retained logs are collected", "submit declared outputs over HTTPS",
+		"`/workspace`",
+		"/kodema/ca.crt",
+		"KODEMA_CA_FILE",
+		"Retained logs are collected",
+		"submit declared outputs over HTTPS",
 	} {
 		if !strings.Contains(runbook, phrase) {
 			t.Fatalf("the quickstart limitations do not document %q", phrase)
 		}
 	}
-	for _, wrong := range []string{"has no CA material to submit an output", "no CA material"} {
+	for _, wrong := range []string{
+		"has no CA material to submit an output",
+		"no CA material",
+		"does not project the CA",
+		"Automatic CA projection is P15",
+		"(P15)",
+	} {
 		if strings.Contains(runbook, wrong) {
 			t.Fatalf("the quickstart still claims %q", wrong)
+		}
+	}
+	releaseSmoke := readFile(t, filepath.Join(repoRoot(t), "docs", "runbooks", "release-smoke.md"))
+	for _, wrong := range []string{
+		"remains a P15 follow-up",
+		"Mounted CA projection is P15",
+	} {
+		if strings.Contains(releaseSmoke, wrong) {
+			t.Fatalf("release-smoke.md still claims %q", wrong)
+		}
+	}
+}
+
+func TestRunbookProtectedTaskUsesKodemaCLI(t *testing.T) {
+	section := quickstartSection(t, "Run a first protected task")
+	for _, want := range []string{
+		"kodema pipeline apply",
+		"kodema task run",
+		"kodema inbox",
+		"kodema approve",
+		"kodema watch",
+		"kodema logs",
+	} {
+		if !strings.Contains(section, want) {
+			t.Fatalf("protected task walk-through omits %q", want)
+		}
+	}
+	for _, block := range shellBlocks(section) {
+		body := strings.Join(block.lines, "\n")
+		for _, forbidden := range []string{"curl ", "jq "} {
+			if strings.Contains(body, forbidden) {
+				t.Fatalf("protected task shell block at line %d still uses raw %q instead of kodema CLI:\n%s", block.start, strings.TrimSpace(forbidden), body)
+			}
 		}
 	}
 }

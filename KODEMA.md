@@ -431,12 +431,14 @@ repo admin
     RW                              = @admin
 
 repo shop/web
+    option resource                 = git-shop-web
     R                               = @all
     RW+  refs/heads/work/           = @engineer @execution
     RW   refs/heads/main            = @execution
     option approve.refs/heads/main  = reviewer
 
 repo shop/deploy
+    option resource                 = git-shop-deploy
     R                               = @operator @execution
     RW+  refs/heads/release/        = @execution
     RW   refs/heads/main            = @execution
@@ -445,9 +447,11 @@ repo shop/deploy
 
 Repository names are relative to the tenant. `R` reads the repository, `RW` creates or fast-forwards a ref, `RW+` also rewinds or deletes it, and `-` denies. Rules apply in order: the first rule whose ref and principal match and whose permission covers the attempt allows, a matching `-` rule denies, and no match refuses. A rule without a ref covers every ref; otherwise refs match exactly, or by prefix when ending in `/`, with no regular expressions. Principals are Kodema roles held in the repository's scope (`@admin`, `@engineer`, `@reviewer`, `@operator`, `@viewer`), `@execution` for running executions in scope, `@all` for every principal in scope, or service-account IDs.
 
+`option resource = <resource-id>` binds a repository stanza to its registered Kodema resource ID so the Git service can verify actors against that resource binding without a static startup `--resource` pin. Preserve `option resource` when editing a repository's stanza in `conf/git.conf`: omitting it on a repository without a static pin leaves it unmapped (refusing access as unauthorized), declaring it twice in one stanza is rejected, and a value that disagrees with a static pin is refused.
+
 `option approve.<ref> = <role>` makes every update to that ref also require approval evidence: the `pre-receive` hook asks verification for a passed `request: role/<role>` in the pushing execution whose subject holds `operation: git.ref.update`, the repository, and the exact `ref`, `expected_base`, and `candidate`. Service roles, result strings, and labels never count. Humans and services carry no such evidence, so they cannot update approval-guarded refs directly; integrating laptop work means pushing a work branch and starting an integration pipeline.
 
-Provisioning a tenant creates `admin` with `RW` for `@admin`, keeping rule history append-only. Provisioning a repository adds default rules: `R` for `@all`, `RW+` on `refs/heads/work/` for `@engineer` and `@execution`, and `RW` on the default branch for `@execution` with `reviewer` approval. Engineers import history into empty repositories under rules Admins grant. Admins have no bypass beyond a recorded rule change in `admin`, which may itself require approval.
+Provisioning a tenant creates `admin` with `RW` for `@admin`, keeping rule history append-only. Provisioning a repository adds default rules: `option resource = <resource-id>`, `R` for `@all`, `RW+` on `refs/heads/work/` for `@engineer` and `@execution`, and `RW` on the default branch for `@execution` with `reviewer` approval. Engineers import history into empty repositories under rules Admins grant. Admins have no bypass beyond a recorded rule change in `admin`, which may itself require approval.
 
 Git applies each accepted update atomically: fast-forward ancestry unless the rule grants `RW+`, and only if the ref still equals the expected base. A moved target fails integration; a changed candidate needs fresh review. Before mutation, journal intent, stable source event ID, and verification ID. Confirm the outcome from Git and durably record acceptance before reporting `git.ref.updated` through [verified ingress](#events-and-operations); the Shell then records and distributes it on NATS. Reconcile uncertain entries against repository evidence before retrying; retry interrupted reporting, not the push. Verified causation keeps execution-originated pushes out of push triggers even when reported after the execution ends.
 

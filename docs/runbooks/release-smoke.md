@@ -218,11 +218,11 @@ not printed.
    The certificate is public data, not a credential. The `test` profile builds
    the workload secret-name policy from `SecretRules`, which is deny-by-default
    and has no configuration entry today; a declared secret name is refused at
-   activation with `forbidden: secret name is not authorized`. Materializing the
-   public bytes keeps TLS verification on and needs no product change. Automatic
-   or mounted-secret CA projection remains a P15 follow-up; when an installation
-   exposes a secret-name allow-list, the same helper can switch to a declared
-   secret without weakening this proof.
+   activation with `forbidden: secret name is not authorized`. While container
+   runtimes now support automatic CA projection (`KODEMA_CA_FILE`), the
+   portable preflight still materializes the public bytes in the workspace so
+   the test stays installation-neutral and keeps TLS verification on even
+   against installations without a projected CA bundle.
 
 The preflight fails, not skips, when the installation is required and an input
 is missing. It needs the four persona memberships and a workload-reachable Git
@@ -525,8 +525,9 @@ though it passed.
   shell program and test), not a model, OpenCode/Claude integration or
   native-agent claim.
 - The `test` profile's workload secret-name allow-list is empty and not
-  configurable, so the smoke materializes public CA bytes in the workspace
-  instead of a declared secret. Mounted CA projection is P15/I01e work. The
-  certificate is public data, never a private key.
+  configurable, so the portable smoke materializes public CA bytes in the
+  workspace instead of a declared secret (even though the Podman and Kubernetes
+  runtimes project `KODEMA_CA_FILE` when configured). The certificate is public
+  data, never a private key.
 - The default selection of `deploy/podman/smoke.sh` is 12 selected tests: the
   seven live tests plus the five scenarios.

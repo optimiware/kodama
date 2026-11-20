@@ -20,11 +20,6 @@ built-in sign-in that asks for no password. For production, see the
 
 ## Start
 
-Check the version printed by the installer. For **0.2.3**, use the
-[0.2.3 instructions](https://github.com/optimiware/kodema/blob/v0.2.3/docs/runbooks/quickstart.md);
-its client is `kodactl` and its workloads have no toolbox. To try the
-single-binary version before it is released, [build from a checkout](#from-a-checkout).
-
 ```sh
 curl -fsSL https://raw.githubusercontent.com/optimiware/kodema/master/install.sh | sh
 kodema up
@@ -149,14 +144,30 @@ kodema task list
 
 ## Sign in as a person
 
-`env.sh` uses an administrator token that `kodema up` wrote. To act as one of
-the personas, sign in:
+`env.sh` exports `KODEMA_CREDENTIAL_FILE` pointing at the administrator token
+that `kodema up` wrote (which takes precedence over a saved human session). To
+act as one of the personas, unset it and sign in:
 
 ```sh
 unset KODEMA_CREDENTIAL_FILE
 kodema login            # or: kodema login --device, without a browser
 kodema whoami
 ```
+
+If you run `kodema login` in a fresh shell without sourcing `env.sh`, pass the
+server URL and the installation's CA bundle explicitly:
+
+```sh
+kodema --server https://127.0.0.1:8443 \
+  --ca-file ~/.kodema/instances/default/tls/ca.crt \
+  login                 # or: login --device
+```
+
+Because `kodema up` generates a local self-signed CA that browsers do not trust
+by default, browser-based `kodema login` hits a self-signed certificate warning
+on `https://127.0.0.1:8443/auth/...`. Accept the local certificate prompt once
+to continue to the persona picker, or use `kodema login --device` (alias
+`--no-browser`) in headless or CLI-only environments.
 
 The sign-in page offers the four personas and asks for no password. It answers
 this machine only.
