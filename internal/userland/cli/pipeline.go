@@ -219,6 +219,13 @@ func runRun(ctx context.Context, config Config, args []string, ports Ports, deps
 		}
 		return failure(ports.Err, err)
 	}
+	failTerminal := func(state string, err error) int {
+		if ctx.Err() != nil {
+			fmt.Fprintf(ports.Err, "run interrupted while reading logs for %s execution %s\n", state, executionID)
+			return ExitFailure
+		}
+		return failure(ports.Err, err)
+	}
 	actionStates := make(map[string]string)
 	for settling := 0; ; {
 		inspected, err := fetchExecutionInspect(ctx, ports, executionID)
@@ -239,7 +246,7 @@ func runRun(ctx context.Context, config Config, args []string, ports Ports, deps
 				}
 				logs := logStreamState{actionID: action.ActionID}
 				if _, _, err := drainLogPages(ctx, ports, executionID, "stdout", OutputTable, false, &logs); err != nil {
-					return fail(err)
+					return failTerminal(state, err)
 				}
 			}
 			if state == "succeeded" {
@@ -248,7 +255,7 @@ func runRun(ctx context.Context, config Config, args []string, ports Ports, deps
 			}
 			if state == "failed" {
 				if err := printFailedActionStderr(ctx, ports, executionID, inspected.Actions); err != nil {
-					return fail(err)
+					return failTerminal(state, err)
 				}
 			}
 			message := fmt.Sprintf("execution %s %s", executionID, state)
@@ -399,7 +406,7 @@ func boundStderrTail(raw string, maxLines, maxBytes int) (string, bool) {
 			trimmed = trimmed[1:]
 		}
 		if startedMidLine {
-			if nl := strings.IndexByte(trimmed, '\n'); nl >= 0 && nl+1 < len(trimmed) {
+			if nl := strings.IndexByte(trimmed, '\n'); nl >= 0 && strings.TrimSpace(trimmed[nl+1:]) != "" {
 				trimmed = trimmed[nl+1:]
 			}
 		}
