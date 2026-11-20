@@ -741,3 +741,58 @@ func TestCommittedPolicyRefusesOversizedPolicyBlob(t *testing.T) {
 		t.Fatalf("ValidateCommit error = %v; want ErrCommittedPolicyTooLarge", err)
 	}
 }
+
+func TestCommittedPolicyValidateCommitOptionResourceAndDiagnostics(t *testing.T) {
+	candidate := strings.Repeat("2", 40)
+
+	t.Run("refuses non-admin repo missing option resource when not statically pinned", func(t *testing.T) {
+		executor := &committedPolicyExecutor{}
+		executor.set(candidate, map[string]string{
+			candidate + ":conf/git.conf": "repo admin\n    RW = @admin\n\nrepo uc08-deploy\n    R = @operator @execution\n",
+		})
+		policy := newTestCommittedPolicy(t, policyRepositoryPath(t), executor)
+		policy.resourceIDs = map[string]string{AdminRepository: "git-admin"}
+		err := policy.ValidateCommit(context.Background(), candidate)
+		if err == nil {
+			t.Fatal("ValidateCommit accepted non-admin repo missing option resource")
+		}
+		var validationErr *PolicyValidationError
+		if !errors.As(err, &validationErr) {
+			t.Fatalf("error type = %T; want *PolicyValidationError", err)
+		}
+		if !strings.Contains(validationErr.Diagnostic, "conf/git.conf") ||
+			!strings.Contains(validationErr.Diagnostic, "line 4:") ||
+			!strings.Contains(validationErr.Diagnostic, "uc08-deploy") ||
+			!strings.Contains(validationErr.Diagnostic, "option resource") {
+			t.Fatalf("diagnostic = %q; want line-numbered option resource error", validationErr.Diagnostic)
+		}
+	})
+
+	t.Run("accepts non-admin repo with option resource or static pin", func(t *testing.T) {
+		executor := &committedPolicyExecutor{}
+		executor.set(candidate, map[string]string{
+			candidate + ":conf/git.conf": "repo admin\n    RW = @admin\n\nrepo static/app\n    R = @all\n\nrepo dynamic/app\n    option resource = git-dynamic-app\n    R = @all\n",
+		})
+		policy := newTestCommittedPolicy(t, policyRepositoryPath(t), executor)
+		policy.resourceIDs = map[string]string{AdminRepository: "git-admin", "static/app": "git-static-app"}
+		if err := policy.ValidateCommit(context.Background(), candidate); err != nil {
+			t.Fatalf("ValidateCommit refused valid policy: %v", err)
+		}
+	})
+
+	t.Run("refuses duplicate repository with line-numbered PolicyValidationError", func(t *testing.T) {
+		executor := &committedPolicyExecutor{}
+		executor.set(candidate, map[string]string{
+			candidate + ":conf/git.conf": "repo admin\n    RW = @admin\nrepo foo\n    option resource = git-foo\n    R = @all\nrepo foo\n    option resource = git-foo-2\n    R = @all\n",
+		})
+		policy := newTestCommittedPolicy(t, policyRepositoryPath(t), executor)
+		err := policy.ValidateCommit(context.Background(), candidate)
+		var validationErr *PolicyValidationError
+		if !errors.As(err, &validationErr) {
+			t.Fatalf("error = %v; want *PolicyValidationError", err)
+		}
+		if !strings.Contains(validationErr.Diagnostic, "line 6:") || !strings.Contains(validationErr.Diagnostic, `"foo"`) {
+			t.Fatalf("diagnostic = %q; want line 6 duplicate repo error", validationErr.Diagnostic)
+		}
+	})
+}

@@ -309,11 +309,15 @@ func newServer(ctx context.Context, config Config) (*Server, error) {
 			return nil, fmt.Errorf("install trusted admin policy hooks: %w", err)
 		}
 	}
+	logger := config.Logger
+	if logger == nil {
+		logger = slog.Default()
+	}
 	hookHandler, err := native.NewHookHandler(native.HookHandlerConfig{
 		Service:          service,
 		Actors:           config.HookActors,
 		Policy:           policies,
-		Logger:           config.Logger,
+		Logger:           logger,
 		PolicyRepository: native.AdminRepository,
 		PolicyValidator:  policies,
 		RepositoryPath: func(repository string) (string, error) {
@@ -324,10 +328,6 @@ func newServer(ctx context.Context, config Config) (*Server, error) {
 		return nil, err
 	}
 	resourceIDs := config.ResourceIDs
-	logger := config.Logger
-	if logger == nil {
-		logger = slog.Default()
-	}
 	staticResourceIDs := make(map[string]string, len(resourceIDs))
 	repositories := make([]string, 0, len(resourceIDs))
 	for repository, resourceID := range resourceIDs {

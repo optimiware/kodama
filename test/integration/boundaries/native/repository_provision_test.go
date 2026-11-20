@@ -49,14 +49,17 @@ func TestRepositoryProvisionCLIDefaultRulesGovernAPush(t *testing.T) {
 	}
 	lines := strings.Split(strings.TrimSpace(stdout), "\n")
 	if len(lines) != 2 {
-		t.Fatalf("provision-repository stdout = %q; want a mapping line and a restart reminder", stdout)
+		t.Fatalf("provision-repository stdout = %q; want a mapping line and a dynamic routing notice", stdout)
 	}
 	wantMapping := "--resource " + nativefix.Repository + "=" + nativefix.ResourceID
 	if lines[0] != wantMapping {
 		t.Fatalf("mapping line = %q; want %q", lines[0], wantMapping)
 	}
-	if !strings.Contains(lines[1], "restart kodema git serve") {
-		t.Fatalf("restart reminder = %q; want a git serve restart reminder", lines[1])
+	if strings.Contains(stdout, "restart kodema git serve") {
+		t.Fatalf("provision-repository stdout still tells operator to restart git serve: %q", stdout)
+	}
+	if !strings.Contains(lines[1], "option resource = "+nativefix.ResourceID) {
+		t.Fatalf("dynamic routing notice = %q; want option resource confirmation", lines[1])
 	}
 
 	// Start a fresh service instance over the provisioned repository and the

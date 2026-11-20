@@ -1,10 +1,12 @@
 package native
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"log/slog"
 	"strings"
 	"sync"
 	"testing"
@@ -624,4 +626,102 @@ func TestHookHandlerGatesEveryPhaseOnTheCommittedPolicy(t *testing.T) {
 	if got := journal.loadCount(); got != loads {
 		t.Fatalf("journal loads = %d; want %d after the unavailable-policy refusals", got, loads)
 	}
+}
+
+func TestHookHandlerSurfacesSafeDiagnosticsAndLogsRefusalsWithoutSecrets(t *testing.T) {
+	t.Run("policy validation error surfaces diagnostic and logs ref", func(t *testing.T) {
+		var logBuf bytes.Buffer
+		logger := slog.New(slog.NewTextHandler(&logBuf, nil))
+		validator := &recordingPolicyValidator{
+			err: &PolicyValidationError{
+				Diagnostic: `conf/git.conf: line 4: repository "uc08-deploy" must declare option resource = <resource-id>`,
+				Cause:      errors.New(`proposed admin policy conf/git.conf: line 4: repository "uc08-deploy" must declare option resource = <resource-id>`),
+			},
+		}
+		handler := testHookHandlerWithConfig(t, fakeJournal{}, HookHandlerConfig{
+			Logger:           logger,
+			PolicyRepository: "shop/web",
+			PolicyValidator:  validator,
+		})
+		request := validRequest(PhasePreReceive)
+		request.ActorRef = "kah_valid"
+		response := handler.Handle(context.Background(), request)
+		if response.Accepted() {
+			t.Fatal("invalid policy was accepted")
+		}
+		wantMsg := RejectionMessage + `: conf/git.conf: line 4: repository "uc08-deploy" must declare option resource = <resource-id>`
+		if response.Message != wantMsg {
+			t.Fatalf("message = %q; want %q", response.Message, wantMsg)
+		}
+		logged := logBuf.String()
+		for _, want := range []string{"phase=pre-receive", "repository=shop/web", "ref=refs/heads/main", "reason=invalid_policy", "uc08-deploy"} {
+			if !strings.Contains(logged, want) {
+				t.Fatalf("server log %q missing %q", logged, want)
+			}
+		}
+		if strings.Contains(logged, "kah_valid") || strings.Contains(logged, "credential") {
+			t.Fatalf("server log leaked actor ref or credential: %q", logged)
+		}
+	})
+
+	t.Run("approval refusal surfaces category and logs actor_id and ref", func(t *testing.T) {
+		var logBuf bytes.Buffer
+		logger := slog.New(slog.NewTextHandler(&logBuf, nil))
+		policy := &mutablePolicy{body: "repo shop/web\n    option resource = res-1\n    RW refs/heads/main = @execution\n    option approve.refs/heads/main = reviewer\n"}
+		verify := &approvalFaultVerification{err: fault.New(fault.Forbidden, "no matching approval evidence")}
+		service, err := git.NewService(git.ServiceConfig{
+			TenantID:  "tenant-1",
+			Storage:   fakeStorage{},
+			Policies:  policy,
+			Executor:  fakeExecutor{},
+			Observer:  fakeObserver{},
+			Journal:   fakeJournal{},
+			Verify:    verify,
+			Retention: fakeRetention{},
+			Clock:     fakeClock{},
+		})
+		if err != nil {
+			t.Fatalf("NewService: %v", err)
+		}
+		handler, err := NewHookHandler(HookHandlerConfig{
+			Service:        service,
+			Actors:         fakeActors{valid: "kah_valid"},
+			Policy:         policy,
+			Logger:         logger,
+			RepositoryPath: func(string) (string, error) { return "/tmp/repo", nil },
+		})
+		if err != nil {
+			t.Fatalf("NewHookHandler: %v", err)
+		}
+		request := validRequest(PhasePreReceive)
+		request.ActorRef = "kah_valid"
+		response := handler.Handle(context.Background(), request)
+		if response.Accepted() {
+			t.Fatal("unapproved push was accepted")
+		}
+		if !strings.HasPrefix(response.Message, RejectionMessage+": ") || !strings.Contains(response.Message, "role/reviewer") {
+			t.Fatalf("message = %q; want safe approval mismatch category", response.Message)
+		}
+		logged := logBuf.String()
+		for _, want := range []string{"phase=pre-receive", "repository=shop/web", "ref=refs/heads/main", "reason=approval_mismatch", "no matching approval evidence"} {
+			if !strings.Contains(logged, want) {
+				t.Fatalf("server log %q missing %q", logged, want)
+			}
+		}
+		if strings.Contains(logged, "kah_valid") || strings.Contains(logged, "credential") {
+			t.Fatalf("server log leaked actor ref or credential: %q", logged)
+		}
+	})
+}
+
+type approvalFaultVerification struct {
+	err error
+}
+
+func (v *approvalFaultVerification) Verify(context.Context, api.VerifyRequest) (api.VerifyResponse, error) {
+	return api.VerifyResponse{}, v.err
+}
+
+func (*approvalFaultVerification) Report(context.Context, api.ReportRequest) (api.ReportResponse, error) {
+	return api.ReportResponse{}, errors.New("not configured")
 }

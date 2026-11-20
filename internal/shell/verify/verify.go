@@ -353,12 +353,57 @@ func matchesApproval(input Attempt, actor identity.Principal, evidence []Evidenc
 		if candidate.ResourceID != input.ResourceID {
 			continue
 		}
-		if !SubjectMatches(input.Subject, candidate.Subject) {
+		if !subjectMatchesApproval(input.Operation, input.Subject, candidate.Subject) {
 			continue
 		}
 		return true
 	}
 	return false
+}
+
+// subjectMatchesApproval applies SubjectMatches and additionally treats Git's
+// standard 40-zero (SHA-1) or 64-zero (SHA-256) null OID as equivalent to ""
+// for the `expected_base` string field of `git.ref.update` (unborn ref
+// creation). Non-unborn updates still enforce exact SHA equality, and every
+// other field and operation enforces strict SubjectMatches equality.
+func subjectMatchesApproval(operation resource.Operation, required, recorded Subject) bool {
+	if operation != resource.OperationGitRefUpdate {
+		return SubjectMatches(required, recorded)
+	}
+	requiredFields, ok := fieldMap(required)
+	if !ok {
+		return false
+	}
+	if len(requiredFields) == 0 {
+		return len(recorded.Fields) == 0
+	}
+	recordedFields, ok := fieldMap(recorded)
+	if !ok {
+		return false
+	}
+	for name, want := range requiredFields {
+		got, present := recordedFields[name]
+		if !present || got.Kind != want.Kind {
+			return false
+		}
+		if got.Value == want.Value {
+			continue
+		}
+		if name == "expected_base" && want.Kind == KindString && isUnbornGitBase(want.Value) && isUnbornGitBase(got.Value) {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+const (
+	gitZeroOIDSHA1   = "0000000000000000000000000000000000000000"
+	gitZeroOIDSHA256 = "0000000000000000000000000000000000000000000000000000000000000000"
+)
+
+func isUnbornGitBase(value string) bool {
+	return value == "" || value == gitZeroOIDSHA1 || value == gitZeroOIDSHA256
 }
 
 // declaresOperation reports whether the binding declares the attempted resource

@@ -3,12 +3,15 @@
 package native_test
 
 import (
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/optimiware/kodema/api"
 	"github.com/optimiware/kodema/internal/userland/git"
+	idfix "github.com/optimiware/kodema/test/support/boundaries/identity"
 	nativefix "github.com/optimiware/kodema/test/support/boundaries/native"
 )
 
@@ -144,4 +147,159 @@ func between(text, start, end string) string {
 		return ""
 	}
 	return text[startIndex : startIndex+endIndex]
+}
+
+// TestProtectedRefDiagnosticsAndUnbornExpectedBase pins:
+//  1. Pushing to a protected ref without approval or with a mismatched
+//     candidate/base logs the exact refusal reason on the Git server and
+//     surfaces a safe reason category to the Git client.
+//  2. Creating an unborn protected ref succeeds whether the approved
+//     git.ref.update subject specifies expected_base "" or Git's 40-zero null
+//     OID, while subsequent updates of the existing ref enforce exact SHA
+//     equality.
+func TestProtectedRefDiagnosticsAndUnbornExpectedBase(t *testing.T) {
+	var logs lockedLogBuffer
+	logger := slog.New(slog.NewTextHandler(&logs, nil))
+	harness := newHarness(t, nativefix.Options{Logger: logger})
+	directory, _ := seedMain(t, harness)
+
+	guardedSubject := func(ref, expectedBase, candidate string) api.Subject {
+		return api.Subject{Fields: []api.SubjectField{
+			{Name: "operation", Kind: "string", Value: string(api.ResourceOperationGitRefUpdate)},
+			{Name: "resource", Kind: "string", Value: nativefix.ResourceID},
+			{Name: "ref", Kind: "string", Value: ref},
+			{Name: "expected_base", Kind: "string", Value: expectedBase},
+			{Name: "candidate", Kind: "string", Value: candidate},
+		}}
+	}
+
+	const zero40 = "0000000000000000000000000000000000000000"
+
+	// 1. Direct human push to protected ref -> refused with approval_required.
+	logs.Reset()
+	firstCandidate := harness.Commit(t, directory, "guarded-init-1")
+	stderr, code := harness.Push(t, directory, harness.HumanToken, "origin", "HEAD:refs/heads/guarded/init-empty")
+	requireFailure(t, stderr, code)
+	if !strings.Contains(stderr, "kodema git: update rejected: protected ref requires role/reviewer approval") {
+		t.Fatalf("human protected push stderr = %q; want approval_required diagnostic", stderr)
+	}
+	if logged := logs.String(); !strings.Contains(logged, "reason=approval_required") || !strings.Contains(logged, "ref=refs/heads/guarded/init-empty") {
+		t.Fatalf("human protected push server logs = %q; want reason=approval_required and ref", logged)
+	}
+
+	// 2. Execution push without approval -> refused with approval_mismatch.
+	logs.Reset()
+	stderr, code = harness.Push(t, directory, nativefix.ExecutionToken, "origin", "HEAD:refs/heads/guarded/init-empty")
+	requireFailure(t, stderr, code)
+	if !strings.Contains(stderr, "kodema git: update rejected: approval subject mismatch or missing role/reviewer approval") {
+		t.Fatalf("unapproved execution push stderr = %q; want approval_mismatch diagnostic", stderr)
+	}
+	if logged := logs.String(); !strings.Contains(logged, "reason=approval_mismatch") || !strings.Contains(logged, "no matching approval evidence") || !strings.Contains(logged, "ref=refs/heads/guarded/init-empty") {
+		t.Fatalf("unapproved execution push server logs = %q; want exact refusal reason", logged)
+	}
+
+	// 3. Mismatched candidate approval -> refused with approval_mismatch.
+	logs.Reset()
+	harness.Contract.AddApproval(idfix.ApprovalFact{
+		ExecutionID: nativefix.ExecutionID,
+		Assignment:  "role/reviewer",
+		ResourceID:  nativefix.ResourceID,
+		Operation:   string(api.ResourceOperationGitRefUpdate),
+		Subject:     guardedSubject("refs/heads/guarded/init-empty", "", strings.Repeat("f", 40)),
+		Decision:    "pass",
+	})
+	stderr, code = harness.Push(t, directory, nativefix.ExecutionToken, "origin", "HEAD:refs/heads/guarded/init-empty")
+	requireFailure(t, stderr, code)
+	if !strings.Contains(stderr, "approval subject mismatch or missing role/reviewer approval") {
+		t.Fatalf("mismatched candidate push stderr = %q; want approval_mismatch diagnostic", stderr)
+	}
+	if logged := logs.String(); !strings.Contains(logged, "reason=approval_mismatch") {
+		t.Fatalf("mismatched candidate server logs = %q; want reason=approval_mismatch", logged)
+	}
+
+	// 4. Unborn protected ref with approval expected_base: "" -> succeeds.
+	harness.Contract.AddApproval(idfix.ApprovalFact{
+		ExecutionID: nativefix.ExecutionID,
+		Assignment:  "role/reviewer",
+		ResourceID:  nativefix.ResourceID,
+		Operation:   string(api.ResourceOperationGitRefUpdate),
+		Subject:     guardedSubject("refs/heads/guarded/init-empty", "", firstCandidate),
+		Decision:    "pass",
+	})
+	stderr, code = harness.Push(t, directory, nativefix.ExecutionToken, "origin", "HEAD:refs/heads/guarded/init-empty")
+	requireSuccess(t, stderr, code)
+	if observed := harness.RemoteRef(t, nativefix.Repository, "refs/heads/guarded/init-empty"); observed != firstCandidate {
+		t.Fatalf("guarded/init-empty = %q; want %q", observed, firstCandidate)
+	}
+
+	// 5. Unborn protected ref with approval expected_base: 40-zero null OID -> succeeds.
+	harness.Contract.AddApproval(idfix.ApprovalFact{
+		ExecutionID: nativefix.ExecutionID,
+		Assignment:  "role/reviewer",
+		ResourceID:  nativefix.ResourceID,
+		Operation:   string(api.ResourceOperationGitRefUpdate),
+		Subject:     guardedSubject("refs/heads/guarded/init-zero40", zero40, firstCandidate),
+		Decision:    "pass",
+	})
+	stderr, code = harness.Push(t, directory, nativefix.ExecutionToken, "origin", "HEAD:refs/heads/guarded/init-zero40")
+	requireSuccess(t, stderr, code)
+	if observed := harness.RemoteRef(t, nativefix.Repository, "refs/heads/guarded/init-zero40"); observed != firstCandidate {
+		t.Fatalf("guarded/init-zero40 = %q; want %q", observed, firstCandidate)
+	}
+
+	// 6. Existing (non-unborn) protected ref still enforces exact SHA equality:
+	// an approval with 40-zero expected_base must be refused.
+	logs.Reset()
+	secondCandidate := harness.Commit(t, directory, "guarded-ff-2")
+	harness.Contract.AddApproval(idfix.ApprovalFact{
+		ExecutionID: nativefix.ExecutionID,
+		Assignment:  "role/reviewer",
+		ResourceID:  nativefix.ResourceID,
+		Operation:   string(api.ResourceOperationGitRefUpdate),
+		Subject:     guardedSubject("refs/heads/guarded/init-zero40", zero40, secondCandidate),
+		Decision:    "pass",
+	})
+	stderr, code = harness.Push(t, directory, nativefix.ExecutionToken, "origin", "HEAD:refs/heads/guarded/init-zero40")
+	requireFailure(t, stderr, code)
+	if !strings.Contains(stderr, "approval subject mismatch or missing role/reviewer approval") {
+		t.Fatalf("non-unborn push with 40-zero approval stderr = %q; want approval_mismatch", stderr)
+	}
+	if observed := harness.RemoteRef(t, nativefix.Repository, "refs/heads/guarded/init-zero40"); observed != firstCandidate {
+		t.Fatalf("non-unborn ref moved to %q; want unchanged %q", observed, firstCandidate)
+	}
+
+	// 7. Existing protected ref with exact base SHA succeeds.
+	harness.Contract.AddApproval(idfix.ApprovalFact{
+		ExecutionID: nativefix.ExecutionID,
+		Assignment:  "role/reviewer",
+		ResourceID:  nativefix.ResourceID,
+		Operation:   string(api.ResourceOperationGitRefUpdate),
+		Subject:     guardedSubject("refs/heads/guarded/init-zero40", firstCandidate, secondCandidate),
+		Decision:    "pass",
+	})
+	stderr, code = harness.Push(t, directory, nativefix.ExecutionToken, "origin", "HEAD:refs/heads/guarded/init-zero40")
+	requireSuccess(t, stderr, code)
+	if observed := harness.RemoteRef(t, nativefix.Repository, "refs/heads/guarded/init-zero40"); observed != secondCandidate {
+		t.Fatalf("guarded/init-zero40 = %q; want %q", observed, secondCandidate)
+	}
+
+	// 8. Policy-denied push logs reason=policy_denied, ref and verified
+	// actor_id without leaking any credential.
+	logs.Reset()
+	stderr, code = harness.Push(t, directory, nativefix.ExecutionToken, "origin", "HEAD:refs/heads/protected")
+	requireFailure(t, stderr, code)
+	if !strings.Contains(stderr, "kodema git: update rejected: push denied by repository policy") {
+		t.Fatalf("policy-denied push stderr = %q; want policy_denied diagnostic", stderr)
+	}
+	logged := logs.String()
+	for _, want := range []string{"reason=policy_denied", "ref=refs/heads/protected", "actor_id=" + nativefix.ExecutionID} {
+		if !strings.Contains(logged, want) {
+			t.Fatalf("policy-denied server logs = %q; want %q", logged, want)
+		}
+	}
+	for _, secret := range []string{nativefix.ExecutionToken, harness.HumanToken, harness.AdminToken, nativefix.ServiceToken} {
+		if strings.Contains(stderr, secret) || strings.Contains(logged, secret) {
+			t.Fatalf("credential leaked in refusal stderr or server logs")
+		}
+	}
 }

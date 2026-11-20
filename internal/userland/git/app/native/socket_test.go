@@ -143,6 +143,29 @@ func TestSlowHandlerIsRejectedByTimeout(t *testing.T) {
 	if response.Accepted() {
 		t.Fatal("a timed-out decision was accepted")
 	}
+	if response.Message != RejectionMessage {
+		t.Fatalf("timed-out message = %q; want uniform %q", response.Message, RejectionMessage)
+	}
+}
+
+func TestSocketPreservesSanitizedHandlerRejectionDiagnostic(t *testing.T) {
+	want := RejectionMessage + `: conf/git.conf: line 4: repository "foo" is declared twice`
+	path := serveSocket(t, SocketConfig{
+		Handler: HandlerFunc(func(context.Context, Request) Response {
+			return Response{ExitCode: 1, Message: want}
+		}),
+		Timeout: time.Second,
+	}).Path()
+	response, err := Call(context.Background(), path, validRequest(PhasePreReceive), 2*time.Second)
+	if err != nil {
+		t.Fatalf("Call: %v", err)
+	}
+	if response.Accepted() {
+		t.Fatal("rejected decision was accepted")
+	}
+	if response.Message != want {
+		t.Fatalf("message = %q; want %q", response.Message, want)
+	}
 }
 
 func TestPeerCredentialMismatchRefused(t *testing.T) {
