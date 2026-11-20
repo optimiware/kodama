@@ -203,8 +203,8 @@ func TestMCPToolsCallYAMLEnvelopeBound(t *testing.T) {
 // advertises a oneOf, matching api.OperationInputSchema.
 func TestMCPPipelineStartOneOfParity(t *testing.T) {
 	catalog := mcp.ToolCatalog()
-	if len(catalog) != 58 {
-		t.Fatalf("catalog tools = %d; want 58", len(catalog))
+	if len(catalog) != 59 {
+		t.Fatalf("catalog tools = %d; want 59", len(catalog))
 	}
 
 	found := 0

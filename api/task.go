@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // Task and conversation-handoff wire vocabulary.
@@ -317,16 +318,25 @@ func (result TaskSelectPipelineResult) Validate() error {
 
 // TaskStartRequest is the task.start input. The task is carried explicitly for
 // MCP callers and is optional for REST callers whose route supplies it.
+// Optional pipeline_id and inputs atomically switch the task's selected
+// pipeline and/or inputs before admitting the new execution in the same
+// transaction.
 type TaskStartRequest struct {
-	TaskID string `json:"task_id,omitempty" schema:"id"`
+	TaskID     string            `json:"task_id,omitempty" schema:"id"`
+	PipelineID string            `json:"pipeline_id,omitempty" schema:"id"`
+	Inputs     map[string]string `json:"inputs,omitempty"`
 }
 
-// Validate checks an optional bounded task identity.
+// Validate checks the optional task identity, optional pipeline identity and
+// optional inputs.
 func (request TaskStartRequest) Validate() error {
 	if request.TaskID != "" && !validID(request.TaskID) {
 		return invalid("task_id is invalid")
 	}
-	return nil
+	if request.PipelineID != "" && !validID(request.PipelineID) {
+		return invalid("pipeline_id is invalid")
+	}
+	return validateInputs(request.Inputs)
 }
 
 // TaskStartResult is the task.start result.
@@ -339,6 +349,59 @@ type TaskStartResult struct {
 func (result TaskStartResult) Validate() error {
 	if !validID(result.ExecutionID) {
 		return invalid("execution_id is invalid")
+	}
+	if result.LifecycleVersion == 0 {
+		return invalid("task lifecycle version must be positive")
+	}
+	return nil
+}
+
+// TaskRestartRequest is the task.restart input. It atomically cancels any
+// active nonterminal execution on the task as superseded (recording the
+// optional reason without fabricating a review rejection), optionally updates
+// the selected pipeline and/or inputs, and queues a fresh replacement
+// execution.
+type TaskRestartRequest struct {
+	TaskID     string            `json:"task_id,omitempty" schema:"id"`
+	Reason     string            `json:"reason,omitempty"`
+	PipelineID string            `json:"pipeline_id,omitempty" schema:"id"`
+	Inputs     map[string]string `json:"inputs,omitempty"`
+}
+
+// Validate checks the optional task identity, optional bounded UTF-8 reason,
+// optional pipeline identity and optional inputs.
+func (request TaskRestartRequest) Validate() error {
+	if request.TaskID != "" && !validID(request.TaskID) {
+		return invalid("task_id is invalid")
+	}
+	if !utf8.ValidString(request.Reason) {
+		return invalid("restart reason is not valid UTF-8")
+	}
+	if len(request.Reason) > MaxSubjectValueBytes {
+		return invalid("restart reason is %d bytes; at most %d are allowed", len(request.Reason), MaxSubjectValueBytes)
+	}
+	if request.PipelineID != "" && !validID(request.PipelineID) {
+		return invalid("pipeline_id is invalid")
+	}
+	return validateInputs(request.Inputs)
+}
+
+// TaskRestartResult is the task.restart result. SupersededExecution is set
+// when the restart cancelled a nonterminal predecessor execution.
+type TaskRestartResult struct {
+	ExecutionID         string `json:"execution_id"`
+	SupersededExecution string `json:"superseded_execution,omitempty" schema:"id"`
+	LifecycleVersion    uint64 `json:"lifecycle_version" schema:"version"`
+}
+
+// Validate checks the admitted execution identity, optional superseded
+// execution identity and committed lifecycle version.
+func (result TaskRestartResult) Validate() error {
+	if !validID(result.ExecutionID) {
+		return invalid("execution_id is invalid")
+	}
+	if result.SupersededExecution != "" && !validID(result.SupersededExecution) {
+		return invalid("superseded_execution is invalid")
 	}
 	if result.LifecycleVersion == 0 {
 		return invalid("task lifecycle version must be positive")

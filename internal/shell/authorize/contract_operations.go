@@ -5,7 +5,7 @@ import (
 	"github.com/optimiware/kodema/internal/shell/tenancy"
 )
 
-// This file is the declared operation registry: 58 operations in 12 families.
+// This file is the declared operation registry: 59 operations in 12 families.
 // Schema names follow one convention so REST/MCP parity checks can enumerate
 // the registry without a second table:
 //
@@ -249,6 +249,9 @@ var registry = []Operation{
 	operation("task.start", FamilyTask, ScopeProject,
 		[]tenancy.Role{tenancy.RoleEngineer, tenancy.RoleOperator}, []tenancy.Role{tenancy.RoleEngineer}, ExecNone,
 		[]AuthorityCheck{CheckMembership, CheckTaskVersion, CheckPipelineVersion, CheckFailedTaskOperatorStart}, ReceiptRequired, admissionErrors()),
+	operation("task.restart", FamilyTask, ScopeProject,
+		[]tenancy.Role{tenancy.RoleEngineer}, []tenancy.Role{tenancy.RoleEngineer}, ExecNone,
+		[]AuthorityCheck{CheckMembership, CheckTaskVersion, CheckPipelineVersion, CheckExecutionVersion}, ReceiptRequired, admissionErrors()),
 	operation("task.create_and_start", FamilyTask, ScopeProject,
 		[]tenancy.Role{tenancy.RoleEngineer}, []tenancy.Role{tenancy.RoleEngineer}, ExecNone,
 		[]AuthorityCheck{CheckMembership, CheckPipelineVersion}, ReceiptRequired, admissionErrors()),

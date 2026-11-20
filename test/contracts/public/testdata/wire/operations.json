@@ -463,11 +463,31 @@
     {
       "operation": "task.start",
       "request": {
-        "task_id": "tsk-1"
+        "task_id": "tsk-1",
+        "pipeline_id": "pipe-2",
+        "inputs": {
+          "branch": "work/task-1"
+        }
       },
       "result": {
         "execution_id": "exe-1",
         "lifecycle_version": 3
+      }
+    },
+    {
+      "operation": "task.restart",
+      "request": {
+        "task_id": "tsk-1",
+        "reason": "rebase onto latest main",
+        "pipeline_id": "pipe-2",
+        "inputs": {
+          "branch": "work/task-1"
+        }
+      },
+      "result": {
+        "execution_id": "exe-2",
+        "superseded_execution": "exe-1",
+        "lifecycle_version": 4
       }
     },
     {

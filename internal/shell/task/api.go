@@ -281,12 +281,30 @@ type EditCommand struct {
 	Content                  receipt.Content
 }
 
-// StartCommand is one authorized ordinary start.
+// StartCommand is one authorized task start. Optional PipelineID and Inputs
+// switch the task's selected pipeline and/or inputs atomically with admission.
 type StartCommand struct {
 	Actor                    authorize.Principal
 	Scope                    tenancy.Scope
 	TaskID                   id.TaskID
 	ExpectedLifecycleVersion uint64
+	PipelineID               pipeline.PipelineID
+	Inputs                   map[id.InputKey]string
+	CallerKey                string
+	Content                  receipt.Content
+}
+
+// RestartCommand is one authorized task restart. It atomically cancels any
+// active nonterminal execution as superseded (recording the optional Reason),
+// optionally switches PipelineID and/or Inputs, and queues a fresh execution.
+type RestartCommand struct {
+	Actor                    authorize.Principal
+	Scope                    tenancy.Scope
+	TaskID                   id.TaskID
+	ExpectedLifecycleVersion uint64
+	Reason                   string
+	PipelineID               pipeline.PipelineID
+	Inputs                   map[id.InputKey]string
 	CallerKey                string
 	Content                  receipt.Content
 }

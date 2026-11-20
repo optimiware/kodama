@@ -242,13 +242,13 @@ func routeInput(route api.Route) (json.RawMessage, string) {
 	return data, "/" + strings.Join(expanded, "/")
 }
 
-// TestHTTPTransportBindsAllRoutes pins all 58 route bindings: method,
+// TestHTTPTransportBindsAllRoutes pins all 59 route bindings: method,
 // concrete path from the input parameters, one JSON api.Request body including
 // GET/DELETE, expected version, idempotency key and the bearer header.
 func TestHTTPTransportBindsAllRoutes(t *testing.T) {
 	routes := api.Routes()
-	if len(routes) != 58 {
-		t.Fatalf("api.Routes() length = %d; want 58", len(routes))
+	if len(routes) != 59 {
+		t.Fatalf("api.Routes() length = %d; want 59", len(routes))
 	}
 	for _, route := range routes {
 		t.Run(route.Operation, func(t *testing.T) {

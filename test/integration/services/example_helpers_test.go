@@ -113,6 +113,8 @@ var examplePipelineInventory = []string{
 	"promote.yaml",
 	"rollback.yaml",
 	"readiness.yaml",
+	"implement-stage.yaml",
+	"integrate-stage.yaml",
 }
 
 // exampleInvalidFixtureInventory is the exact negative-fixture set.

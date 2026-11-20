@@ -13,7 +13,7 @@ import (
 type Tool = api.MCPTool
 
 // toolCatalog is the deterministic declaration built once from the declared
-// route inventory: exactly the 58 registry operations in registry order, each
+// route inventory: exactly the 59 registry operations in registry order, each
 // with the field-level api.OperationInputSchema of its operation. A
 // construction failure is retained so the edge refuses instead of advertising a
 // placeholder.
@@ -71,7 +71,8 @@ var toolDescriptions = map[string]string{
 	"task.edit":             "Update a task's title, description and metadata at an expected version.",
 	"task.comment":          "Append a durable comment and optional references to a task.",
 	"task.select_pipeline":  "Select or update the pipeline and inputs bound to an open task.",
-	"task.start":            "Admit and start an execution for an open task's selected pipeline.",
+	"task.start":            "Admit and start an execution for a task, optionally switching its selected pipeline and inputs atomically.",
+	"task.restart":          "Atomically supersede any active execution on an open task, optionally update pipeline or inputs, and queue a fresh execution.",
 	"task.create_and_start": "Atomically create a task and start its initial pipeline execution.",
 	"task.ask":              "Ask an assigned role or service question on a task and pause execution.",
 	"task.reply":            "Answer a waiting task's outstanding question and queue a replacement execution.",

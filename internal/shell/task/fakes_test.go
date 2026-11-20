@@ -550,7 +550,11 @@ func (ports *fakePorts) Start(_ context.Context, unit task.StartUnit) (task.Star
 	if callback != nil {
 		return callback(unit)
 	}
-	return task.StartResult{ExecutionID: unit.NewExecutionID, LifecycleVersion: unit.ExpectedLifecycleVersion + 1}, nil
+	result := task.StartResult{ExecutionID: unit.NewExecutionID, LifecycleVersion: unit.ExpectedLifecycleVersion + 1}
+	if unit.CancelCommit != nil {
+		result.SupersededExecution = unit.CancelCommit.ExecutionID
+	}
+	return result, nil
 }
 
 func (ports *fakePorts) Ask(_ context.Context, unit task.AskUnit) (task.AskResult, error) {

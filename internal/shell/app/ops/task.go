@@ -221,6 +221,8 @@ func taskHandlers(deps Dependencies) map[authorizeOperation]ops.Handler {
 				Scope:                    call.Scope,
 				TaskID:                   id.TaskID(request.TaskID),
 				ExpectedLifecycleVersion: version,
+				PipelineID:               pipelineIDOf(request.PipelineID),
+				Inputs:                   inputsOf(request.Inputs),
 				CallerKey:                call.Request.IdempotencyKey,
 				Content:                  receiptContent(call, request),
 			})
@@ -230,6 +232,35 @@ func taskHandlers(deps Dependencies) map[authorizeOperation]ops.Handler {
 			return respond(call, api.TaskStartResult{
 				ExecutionID:      string(committed.ExecutionID),
 				LifecycleVersion: committed.LifecycleVersion,
+			})
+		}),
+		"task.restart": handlerFunc(func(ctx context.Context, call ops.AuthorizedCall) (api.Result, error) {
+			request, err := decodeRequest[api.TaskRestartRequest](call)
+			if err != nil {
+				return api.Result{}, err
+			}
+			version, err := requiredVersion(call)
+			if err != nil {
+				return api.Result{}, err
+			}
+			committed, err := deps.Tasks.Restart(ctx, task.RestartCommand{
+				Actor:                    call.Principal,
+				Scope:                    call.Scope,
+				TaskID:                   id.TaskID(request.TaskID),
+				ExpectedLifecycleVersion: version,
+				Reason:                   request.Reason,
+				PipelineID:               pipelineIDOf(request.PipelineID),
+				Inputs:                   inputsOf(request.Inputs),
+				CallerKey:                call.Request.IdempotencyKey,
+				Content:                  receiptContent(call, request),
+			})
+			if err != nil {
+				return api.Result{}, err
+			}
+			return respond(call, api.TaskRestartResult{
+				ExecutionID:         string(committed.ExecutionID),
+				SupersededExecution: string(committed.SupersededExecution),
+				LifecycleVersion:    committed.LifecycleVersion,
 			})
 		}),
 		"task.ask": handlerFunc(func(ctx context.Context, call ops.AuthorizedCall) (api.Result, error) {

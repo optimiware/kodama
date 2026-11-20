@@ -119,18 +119,22 @@ const (
 	CancelRequested CancelReason = "requested"
 	// CancelUpstreamFailed cancels unstarted actions after an earlier failure.
 	CancelUpstreamFailed CancelReason = "upstream_failed"
+	// CancelSuperseded cancels a non-terminal execution replaced by a fresh attempt.
+	CancelSuperseded CancelReason = "superseded"
 )
 
 // Valid reports whether the reason is one of the declared reasons.
 func (r CancelReason) Valid() bool {
-	return r == CancelRequested || r == CancelUpstreamFailed
+	return r == CancelRequested || r == CancelUpstreamFailed || r == CancelSuperseded
 }
 
 // CancelFact requests cancellation. Pending actions are cancelled rather than
-// skipped, and no new work starts after this transition commits.
+// skipped, and no new work starts after this transition commits. Detail carries
+// optional caller-supplied context (for example a restart reason).
 type CancelFact struct {
 	ExecutionID id.ExecutionID
 	Reason      CancelReason
+	Detail      string
 	At          time.Time
 }
 

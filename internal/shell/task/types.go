@@ -109,12 +109,26 @@ type Task struct {
 // task and pipeline versions, the admitted snapshot, the resolved pipeline and
 // ordered action rows, the initiating and execution principals, the queued
 // execution identity and every write that must commit with it.
+//
+// Optional stage-transition fields (ExpectedState, Inputs, UpdateInputs,
+// UpdateInitiator) allow an atomic pipeline/input switch on task.start or
+// task.restart. Optional predecessor cancellation fields
+// (ExpectedExecutionVersion, CredentialUpdate, CancelCommit) allow task.restart
+// to supersede a nonterminal predecessor execution atomically with queuing the
+// replacement execution.
 type StartUnit struct {
 	Owner                    tenancy.Scope             `json:"owner"`
 	TaskID                   id.TaskID                 `json:"task_id"`
 	PipelineID               pipeline.PipelineID       `json:"pipeline_id"`
+	ExpectedState            State                     `json:"expected_state,omitempty"`
 	ExpectedLifecycleVersion uint64                    `json:"expected_lifecycle_version"`
 	ExpectedPipelineVersion  uint64                    `json:"expected_pipeline_version"`
+	ExpectedExecutionVersion uint64                    `json:"expected_execution_version,omitempty"`
+	Inputs                   map[id.InputKey]string    `json:"inputs,omitempty"`
+	UpdateInputs             bool                      `json:"update_inputs,omitempty"`
+	UpdateInitiator          bool                      `json:"update_initiator,omitempty"`
+	CredentialUpdate         *token.Credential         `json:"credential_update,omitempty"`
+	CancelCommit             *flow.Commit              `json:"cancel_commit,omitempty"`
 	Snapshot                 pipeline.Snapshot         `json:"snapshot"`
 	Actions                  []AdmittedAction          `json:"actions"`
 	Initiator                id.PrincipalID            `json:"initiator"`
@@ -128,11 +142,21 @@ type StartUnit struct {
 	PostCommit               []event.PostCommitEffect  `json:"post_commit"`
 }
 
-// StartResult is the committed start result.
+// StartResult is the committed start result. SupersededExecution is populated
+// only when a task.restart cancelled a nonterminal predecessor execution.
 type StartResult struct {
-	ExecutionID      id.ExecutionID `json:"execution_id"`
-	LifecycleVersion uint64         `json:"lifecycle_version"`
-	Replayed         bool           `json:"replayed"`
+	ExecutionID         id.ExecutionID `json:"execution_id"`
+	SupersededExecution id.ExecutionID `json:"superseded_execution,omitempty"`
+	LifecycleVersion    uint64         `json:"lifecycle_version"`
+	Replayed            bool           `json:"replayed"`
+}
+
+// RestartResult is the committed restart result.
+type RestartResult struct {
+	ExecutionID         id.ExecutionID `json:"execution_id"`
+	SupersededExecution id.ExecutionID `json:"superseded_execution,omitempty"`
+	LifecycleVersion    uint64         `json:"lifecycle_version"`
+	Replayed            bool           `json:"replayed"`
 }
 
 // AskUnit is the complete atomic conversation-handoff commit unit. It appends

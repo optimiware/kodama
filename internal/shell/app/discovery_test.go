@@ -484,8 +484,8 @@ func TestDiscoveryWiringLeavesOperationsAndMCPUnchanged(t *testing.T) {
 	environment.config.Discovery = discoveryTestConfig(discoveryTestIssuer)
 	app := environment.startApp(t)
 
-	if routes := api.Routes(); len(routes) != 58 {
-		t.Fatalf("api.Routes() has %d entries; want the 58 declared operations", len(routes))
+	if routes := api.Routes(); len(routes) != 59 {
+		t.Fatalf("api.Routes() has %d entries; want the 59 declared operations", len(routes))
 	}
 	body := []byte(`{"jsonrpc":"2.0","id":1,"method":"tools/list"}`)
 	request := httptest.NewRequest(http.MethodPost, "/mcp", bytes.NewReader(body))
@@ -505,8 +505,8 @@ func TestDiscoveryWiringLeavesOperationsAndMCPUnchanged(t *testing.T) {
 	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
 		t.Fatalf("decode tools/list: %v", err)
 	}
-	if len(response.Result.Tools) != 58 {
-		t.Fatalf("tools/list returned %d tools; want 58", len(response.Result.Tools))
+	if len(response.Result.Tools) != 59 {
+		t.Fatalf("tools/list returned %d tools; want 59", len(response.Result.Tools))
 	}
 	for index, route := range api.Routes() {
 		if response.Result.Tools[index].Name != route.MCPTool {
