@@ -1,5 +1,83 @@
 # Changelog
 
+## 0.5.0
+
+Changed:
+
+- **Project is now the read/visibility boundary.** Every human project member
+  and every enabled service in scope (including `roles: []`) can read
+  non-secret project operational state (`execution.*`, `task.*`, `pipeline.*`,
+  `resource.binding.*`, `secret.metadata.*`, `service.list`, `event.*`), while
+  roles strictly gate mutations, approvals, and administration.
+- Local Podman workload defaults are raised to 2 GiB memory / 2 CPUs (max
+  4 GiB / 4 CPUs). Default and maximum workload limits are configurable with
+  `--workload-memory`, `--workload-cpus`, `--workload-max-memory`, and
+  `--workload-max-cpus` (`KODEMA_WORKLOAD_*`), and container actions accept
+  bounded per-action `resources` (`memory`, `cpu`) in pipeline YAML.
+- `/mcp` Streamable HTTP protocol semantics are aligned with standard MCP
+  clients: `Edge.authenticate` enforces `principal.Enabled` and requires
+  authentication across `initialize`, `tools/list`, and `tools/call`; server
+  version reporting reflects the build version; float64 JWT `exp` claims decode
+  cleanly; argument validation emits field-level diagnostics; and tool
+  execution errors follow MCP tool-error conventions.
+
+Added:
+
+- First-class CLI commands: `kodema cancel`, `kodema pipeline list`,
+  `kodema execution <list|inspect|watch|cancel>`, `kodema service`,
+  `kodema secret`, and `kodema git configure`, plus `-d`/`--detach` on
+  `kodema run`, pipeline-name resolution on task commands, and concise startup
+  progress output on `kodema up` and `kodema run`.
+- Optional bounded decision notes (`reason`/`comment`) persisted on
+  `execution.request.resolve` (surfaced in `execution.inspect`, rejected
+  request `failure.detail`, and `kodema approve`/`reject`/`inspect`),
+  commit-boundary `on.push` service validation on `pipeline.apply` and
+  `pipeline.update`, and execution provenance (`started_by`, admitted inputs,
+  push trigger metadata, `created_at`) in `execution.inspect` and
+  `execution.list`.
+- Project-scoped workload secret materialization enabled by default in
+  `kodema up` (`--allow-project-secrets`, `--allow-secret`), and
+  `KODEMA_SECRET_RULES_FILE` / `--secret-rules-file` / `secret_rules_file`
+  support across development, test, and production profiles.
+- End-to-end `OOMKilled` diagnostics surfaced as `runtime/oom_killed` from
+  Podman and Kubernetes into `execution.inspect` and `kodema run`, alongside an
+  unprivileged Kaniko OCI build example (`examples/pipelines/oci-build.yaml`)
+  and operator guide (`docs/runbooks/unprivileged-oci-builds.md`).
+
+Fixed:
+
+- Drain completed container logs into the retained sink as soon as a workload
+  exits so logs are readable while downstream request actions wait for
+  approval, and fix `kodema logs` action selection on failed or timed-out
+  pipelines.
+- Preserve `task.ask` questions and durable references across `task.reply` in
+  `/kodema/task.json`, `task.read`, `task.history`, `kodema inbox`, and
+  `kodema task show`, and derive version-prefixed `task_messages` row IDs so
+  equal-timestamp messages keep causal order in `(at, id)` scans.
+- Surface bounded container stderr and actionable `kodema logs` hints on
+  `kodema run` failure, and detect service-assigned request waits.
+- Fix silent auth and credential failures: tighten/validate `0700` session
+  directory permissions, fall back to session API URL and default instance CA
+  in `kodema git credential`, surface `--ca-file` hints and actionable x509
+  errors, auto-discover running `~/.kodema/instances/default`, warn when
+  environment credentials shadow a saved session, and clarify project vs tenant
+  scope in `kodema whoami` and denials.
+- Wire structured pre-receive rejection logging into `git serve`, validate
+  push-option resource bindings and cross-repo `--resource` collisions, support
+  unborn `expected_base` approvals, and improve `git provision-repository`
+  output.
+- Propagate `--session` / `KODEMA_SESSION` through `kodema mcp install` and
+  refuse conflicting `--session` and `--credential-file` flags.
+- Align CLI flag hoisting, JSON/table output, validation, help routing, MCP
+  catalog schemas, and Podman/kind e2e and integration suites.
+
+Documentation:
+
+- Align `README.md`, `docs/runbooks/quickstart.md`,
+  `docs/runbooks/podman-quickstart.md`, `docs/runbooks/release-smoke.md`, and
+  `KODEMA.md` with the single-binary `kodema` CLI, project read boundary, and
+  secret custody model.
+
 ## 0.4.0
 
 Changed:
