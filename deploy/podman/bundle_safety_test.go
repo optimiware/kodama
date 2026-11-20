@@ -582,12 +582,20 @@ func TestReleaseSmokePreflightMatchesTheTest(t *testing.T) {
 			preflight = preflight[:next[0]+1]
 		}
 	}
-	for _, wrong := range []string{"read through the public `membership.list`", "engineer cannot\n   list memberships", "engineer cannot list memberships"} {
+	for _, wrong := range []string{
+		"read through the public `membership.list`",
+		"engineer cannot\n   list memberships",
+		"engineer cannot list memberships",
+		"engineer cannot read `resource.binding.read`",
+		"reviewer cannot read\n   `execution.list`",
+		"reviewer cannot read `execution.list`",
+		"operator cannot read `pipeline.read`",
+	} {
 		if strings.Contains(preflight, wrong) {
 			t.Fatalf("the preflight section still claims %q", wrong)
 		}
 	}
-	for _, phrase := range []string{"resource.binding.read", "execution.list", "pipeline.read", "public `forbidden`"} {
+	for _, phrase := range []string{"execution.list", "service.create", "task.create", "secret.write", "public `forbidden`"} {
 		if !strings.Contains(preflight, phrase) {
 			t.Fatalf("the preflight section does not describe the real refusal check %q", phrase)
 		}
@@ -598,6 +606,10 @@ func TestReleaseSmokePreflightMatchesTheTest(t *testing.T) {
 	source := readFile(t, filepath.Join(repoRoot(t), "test", "e2e", "installation_access_test.go"))
 	if strings.Contains(source, "declared public secret") {
 		t.Fatal("the installation access test still claims a declared public secret")
+	}
+	smoke := readFile(t, filepath.Join(bundleRoot(t), "smoke.sh"))
+	if strings.Contains(smoke, "The reviewer has no execution-read role") {
+		t.Fatal("smoke.sh still asserts that the reviewer cannot read project executions")
 	}
 }
 

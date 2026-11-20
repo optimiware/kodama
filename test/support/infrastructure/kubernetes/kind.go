@@ -93,6 +93,14 @@ const (
 	deleteAttempts = 3
 	// deleteRetryBackoff is the pause between deletion attempts.
 	deleteRetryBackoff = 500 * time.Millisecond
+
+	// createNetworkRaceAttempts bounds CreateCluster retries when parallel
+	// rootless Podman lanes race on kind's shared "kind" bridge network
+	// creation ("failed to ensure podman network ... network already exists").
+	createNetworkRaceAttempts = 3
+	// createRetryBackoff is the pause between CreateCluster retries after a
+	// concurrent Podman network creation race.
+	createRetryBackoff = 500 * time.Millisecond
 )
 
 // ErrKindUnavailable distinguishes a missing or unusable kind binary from a
@@ -394,14 +402,18 @@ func (k *Kind) CreateCluster(ctx context.Context, options ClusterOptions) (*Clus
 	if readyTimeout <= 0 {
 		readyTimeout = DefaultReadyTimeout
 	}
-	_, err := k.run(ctx,
-		"create", "cluster",
-		"--name", name,
-		"--config", configPath,
-		"--kubeconfig", kubeconfigPath,
-		"--wait", "0s",
-	)
-	if err != nil {
+	var err error
+	for attempt := 1; attempt <= createNetworkRaceAttempts; attempt++ {
+		_, err = k.run(ctx,
+			"create", "cluster",
+			"--name", name,
+			"--config", configPath,
+			"--kubeconfig", kubeconfigPath,
+			"--wait", "0s",
+		)
+		if err == nil {
+			break
+		}
 		// A failed create can still have created some of the cluster's
 		// containers (a timeout or a killed process). The cluster was never
 		// registered, so delete that exact generated name now; the sweep could
@@ -410,6 +422,15 @@ func (k *Kind) CreateCluster(ctx context.Context, options ClusterOptions) (*Clus
 		if deleteErr := k.deleteWithRetry(context.Background(), name, kubeconfigPath, 1); deleteErr != nil {
 			k.logf("kubesupport: best-effort delete after failed create of %s: %v", name, deleteErr)
 		}
+		if attempt == createNetworkRaceAttempts || !isPodmanNetworkCreateRace(err) || ctx.Err() != nil {
+			break
+		}
+		k.logf("kubesupport: retrying cluster %s after concurrent podman network creation race (attempt %d/%d)", name, attempt, createNetworkRaceAttempts)
+		if sleepErr := k.clock.Sleep(ctx, createRetryBackoff); sleepErr != nil {
+			break
+		}
+	}
+	if err != nil {
 		if ownedDir {
 			_ = os.RemoveAll(dir)
 		}
@@ -428,6 +449,18 @@ func (k *Kind) CreateCluster(ctx context.Context, options ClusterOptions) (*Clus
 	registerCluster(cluster)
 	k.logf("kubesupport: created cluster %s (node image %s, digest %s)", name, NodeImageReference, NodeImageDigest)
 	return cluster, nil
+}
+
+// isPodmanNetworkCreateRace reports whether a kind create failure came from two
+// concurrent Podman kind processes racing to create the shared "kind" bridge
+// network on a fresh host.
+func isPodmanNetworkCreateRace(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := err.Error()
+	return strings.Contains(message, "failed to ensure podman network") &&
+		(strings.Contains(message, "network already exists") || strings.Contains(message, "already used"))
 }
 
 // ListClusters returns every kind cluster name visible to the provider.

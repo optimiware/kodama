@@ -108,6 +108,7 @@ var examplePipelineInventory = []string{
 	"service-response.yaml",
 	"push-test.yaml",
 	"build.yaml",
+	"oci-build.yaml",
 	"test.yaml",
 	"promote.yaml",
 	"rollback.yaml",

@@ -739,6 +739,77 @@ func TestKindPinsMatchVersionDigestAndNodeImage(t *testing.T) {
 	}
 }
 
+// TestCreateClusterRetriesPodmanNetworkRace proves a transient concurrent
+// Podman "kind" network creation race cleans up and retries, while a persistent
+// race still fails after the bounded attempt count and non-race failures never
+// retry.
+func TestCreateClusterRetriesPodmanNetworkRace(t *testing.T) {
+	const raceError = `failed to create cluster: failed to ensure podman network: command "podman network create -d=bridge --ipv6 --subnet fc00:f853:ccd:e793::/64 kind" failed with error: exit status 125` +
+		"\nCommand Output: Error: network name kind already used: network already exists"
+
+	t.Run("recovers on retry", func(t *testing.T) {
+		attempts := 0
+		kind, runner := newTestKind(t, func(command harness.Command) (harness.Result, error) {
+			if hasArgs(command.Args, "create", "cluster") {
+				attempts++
+				if attempts == 1 {
+					return harness.Result{}, errors.New(raceError)
+				}
+				return createHandler(t, nil)(command)
+			}
+			return harness.Result{}, nil
+		})
+		cluster, err := kind.CreateCluster(context.Background(), ClusterOptions{Dir: t.TempDir()})
+		if err != nil {
+			t.Fatalf("CreateCluster after transient network race: %v", err)
+		}
+		t.Cleanup(func() { _ = cluster.Close() })
+		if attempts != 2 {
+			t.Fatalf("create attempts = %d; want 2", attempts)
+		}
+		if deletes := countArgs(runner.snapshot(), "delete"); deletes != 1 {
+			t.Fatalf("cleanup deletes before retry = %d; want 1", deletes)
+		}
+	})
+
+	t.Run("stops after bounded retries", func(t *testing.T) {
+		attempts := 0
+		kind, runner := newTestKind(t, func(command harness.Command) (harness.Result, error) {
+			if hasArgs(command.Args, "create", "cluster") {
+				attempts++
+				return harness.Result{}, errors.New(raceError)
+			}
+			return harness.Result{}, nil
+		})
+		if _, err := kind.CreateCluster(context.Background(), ClusterOptions{Dir: t.TempDir()}); err == nil {
+			t.Fatal("CreateCluster returned nil when every attempt hit the network race")
+		}
+		if attempts != createNetworkRaceAttempts {
+			t.Fatalf("create attempts = %d; want %d", attempts, createNetworkRaceAttempts)
+		}
+		if deletes := countArgs(runner.snapshot(), "delete"); deletes != createNetworkRaceAttempts {
+			t.Fatalf("cleanup deletes = %d; want %d", deletes, createNetworkRaceAttempts)
+		}
+	})
+
+	t.Run("does not retry non-race failures", func(t *testing.T) {
+		attempts := 0
+		kind, _ := newTestKind(t, func(command harness.Command) (harness.Result, error) {
+			if hasArgs(command.Args, "create", "cluster") {
+				attempts++
+				return harness.Result{}, errors.New("failed to ensure podman network: permission denied")
+			}
+			return harness.Result{}, nil
+		})
+		if _, err := kind.CreateCluster(context.Background(), ClusterOptions{Dir: t.TempDir()}); err == nil {
+			t.Fatal("CreateCluster returned nil for a non-race error")
+		}
+		if attempts != 1 {
+			t.Fatalf("create attempts for non-race error = %d; want 1", attempts)
+		}
+	})
+}
+
 // containsString reports whether values contains want.
 func containsString(values []string, want string) bool {
 	return slices.Contains(values, want)

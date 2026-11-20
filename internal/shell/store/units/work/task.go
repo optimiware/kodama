@@ -217,12 +217,30 @@ func taskValue(identity id.TaskID, scope tenancy.Scope, columns taskColumns, mes
 	}
 }
 
+// lifecycleMessageID derives a deterministic, bounded task_messages row
+// identity prefixed with the zero-padded committed lifecycle version so
+// task.ask and task.reply messages preserve causal order in (at, id) scans
+// even when two transitions share the same timestamp.
+func lifecycleMessageID(lifecycleVersion uint64, kind string, receiptID id.ReceiptID) string {
+	sum := sha256.Sum256([]byte("task-message:" + kind + ":" + string(receiptID)))
+	return fmt.Sprintf("msg-l%020d-%s", lifecycleVersion, hex.EncodeToString(sum[:16]))
+}
+
+// commentMessageID derives a deterministic, bounded task_messages row identity
+// prefixed with the zero-padded committed content version so same-timestamp
+// task.comment appends preserve causal order in (at, id) scans.
+func commentMessageID(contentVersion uint64, receiptID id.ReceiptID) string {
+	sum := sha256.Sum256([]byte("task-message:comment:" + string(receiptID)))
+	return fmt.Sprintf("msg-c%020d-%s", contentVersion, hex.EncodeToString(sum[:16]))
+}
+
 // legacyQuestionMessageID derives a deterministic, bounded task_messages row
 // identity for backfilling an unanswered question that predates Ask writing to
-// task_messages directly.
-func legacyQuestionMessageID(receiptID id.ReceiptID) string {
-	sum := sha256.Sum256([]byte("task-question-message:" + string(receiptID)))
-	return "ask-" + hex.EncodeToString(sum[:16])
+// task_messages directly. Using the question's committed lifecycle version
+// orders it before the reply committed at lifecycleVersion+1 when both share a
+// timestamp.
+func legacyQuestionMessageID(questionLifecycleVersion uint64, receiptID id.ReceiptID) string {
+	return lifecycleMessageID(questionLifecycleVersion, "legacy-ask", receiptID)
 }
 
 // messagesContainQuestion reports whether the durable task_messages rows
@@ -754,7 +772,7 @@ func (adapter *Task) Ask(ctx context.Context, unit task.AskUnit) (task.AskResult
 		// them after the waiting question slot is cleared.
 		{
 			Table:  "task_messages",
-			ID:     string(unit.Receipt.ID),
+			ID:     lifecycleMessageID(unit.ExpectedLifecycleVersion+1, "ask", unit.Receipt.ID),
 			Insert: true,
 			Values: map[string]any{
 				"task_id":   string(unit.TaskID),
@@ -938,7 +956,7 @@ func (adapter *Task) Reply(ctx context.Context, unit task.ReplyUnit) (task.Reply
 			}
 			writes = append(writes, store.Write{
 				Table:  "task_messages",
-				ID:     legacyQuestionMessageID(unit.Receipt.ID),
+				ID:     legacyQuestionMessageID(unit.ExpectedLifecycleVersion, unit.Receipt.ID),
 				Insert: true,
 				Values: map[string]any{
 					"task_id":   string(unit.TaskID),
@@ -955,7 +973,7 @@ func (adapter *Task) Reply(ctx context.Context, unit task.ReplyUnit) (task.Reply
 	// conversation snapshot includes it.
 	writes = append(writes, store.Write{
 		Table:  "task_messages",
-		ID:     string(unit.Receipt.ID),
+		ID:     lifecycleMessageID(unit.ExpectedLifecycleVersion+1, "reply", unit.Receipt.ID),
 		Insert: true,
 		Values: map[string]any{
 			"task_id":   string(unit.TaskID),
@@ -1161,7 +1179,7 @@ func (adapter *Task) Edit(ctx context.Context, unit task.EditUnit) (task.EditRes
 			}),
 			{
 				Table:  "task_messages",
-				ID:     string(unit.Receipt.ID),
+				ID:     commentMessageID(unit.ExpectedContentVersion+1, unit.Receipt.ID),
 				Insert: true,
 				Values: map[string]any{
 					"task_id":   string(unit.TaskID),
