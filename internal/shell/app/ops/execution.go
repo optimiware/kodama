@@ -2,6 +2,8 @@ package opsapp
 
 import (
 	"context"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/optimiware/kodema/api"
@@ -13,6 +15,8 @@ import (
 	"github.com/optimiware/kodema/internal/shell/identity"
 	"github.com/optimiware/kodema/internal/shell/log"
 	shellrequest "github.com/optimiware/kodema/internal/shell/request"
+	"github.com/optimiware/kodema/internal/shell/store"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
 	"github.com/optimiware/kodema/internal/shell/transport/ops"
 )
 
@@ -36,6 +40,19 @@ func executionHandlers(deps Dependencies) map[authorizeOperation]ops.Handler {
 			result, err := inspectResult(view)
 			if err != nil {
 				return api.Result{}, err
+			}
+			if deps.Scanner != nil && view.ExecutionID != "" {
+				usageScope := view.Owner
+				if !usageScope.ProjectScoped() {
+					usageScope = call.Scope
+				}
+				if usageScope.ProjectScoped() {
+					usage, err := readExecutionModelUsage(ctx, deps.Scanner, usageScope, view.ExecutionID)
+					if err != nil {
+						return api.Result{}, err
+					}
+					result.ModelUsage = usage
+				}
 			}
 			return respond(call, result)
 		}),
@@ -336,4 +353,110 @@ func hasAction(actions []execution.ActionView, target id.ActionID) bool {
 		}
 	}
 	return false
+}
+
+type modelUsageKey struct {
+	provider string
+	model    string
+}
+
+// readExecutionModelUsage aggregates attributed model_usage rows for one
+// execution inside its verified project scope. It returns nil when the
+// execution has no recorded model calls.
+func readExecutionModelUsage(
+	ctx context.Context,
+	scanner store.Scanner,
+	scope tenancy.Scope,
+	executionID id.ExecutionID,
+) (*api.ExecutionModelUsage, error) {
+	if scanner == nil || !scope.ProjectScoped() || executionID == "" {
+		return nil, nil
+	}
+	var (
+		after   string
+		summary api.ExecutionModelUsage
+		byKey   = make(map[modelUsageKey]*api.ExecutionModelUsageBreakdown)
+	)
+	for {
+		page, err := scanner.Query(ctx, scope, store.ScanQuery{
+			Table:   store.ModelUsageTable,
+			Equals:  map[string]any{"execution_id": string(executionID)},
+			OrderBy: []store.Order{{Column: "recorded_at"}, {Column: "id"}},
+			After:   after,
+			Limit:   store.MaxQueryLimit,
+		})
+		if err != nil {
+			return nil, err
+		}
+		for _, row := range page.Rows {
+			rawModel, err := scanRowString(row, "model")
+			if err != nil {
+				return nil, err
+			}
+			upstreamModel, err := scanRowString(row, "upstream_model")
+			if err != nil {
+				return nil, err
+			}
+			promptTokens, err := scanRowUint(row, "prompt_tokens")
+			if err != nil {
+				return nil, err
+			}
+			completionTokens, err := scanRowUint(row, "completion_tokens")
+			if err != nil {
+				return nil, err
+			}
+			totalTokens, err := scanRowUint(row, "total_tokens")
+			if err != nil {
+				return nil, err
+			}
+
+			provider, modelName := splitUsageProviderModel(rawModel, upstreamModel)
+			key := modelUsageKey{provider: provider, model: modelName}
+			entry, ok := byKey[key]
+			if !ok {
+				entry = &api.ExecutionModelUsageBreakdown{
+					Provider: provider,
+					Model:    modelName,
+				}
+				byKey[key] = entry
+			}
+			entry.Requests++
+			entry.InputTokens += int64(promptTokens)
+			entry.OutputTokens += int64(completionTokens)
+			entry.TotalTokens += int64(totalTokens)
+
+			summary.Requests++
+			summary.InputTokens += int64(promptTokens)
+			summary.OutputTokens += int64(completionTokens)
+			summary.TotalTokens += int64(totalTokens)
+		}
+		if !page.HasMore {
+			break
+		}
+		after = page.Next
+	}
+	if summary.Requests == 0 {
+		return nil, nil
+	}
+	summary.ByModel = make([]api.ExecutionModelUsageBreakdown, 0, len(byKey))
+	for _, entry := range byKey {
+		summary.ByModel = append(summary.ByModel, *entry)
+	}
+	sort.Slice(summary.ByModel, func(i, j int) bool {
+		if summary.ByModel[i].Provider != summary.ByModel[j].Provider {
+			return summary.ByModel[i].Provider < summary.ByModel[j].Provider
+		}
+		return summary.ByModel[i].Model < summary.ByModel[j].Model
+	})
+	return &summary, nil
+}
+
+func splitUsageProviderModel(model, upstreamModel string) (string, string) {
+	if provider, rest, ok := strings.Cut(model, "/"); ok && provider != "" && rest != "" {
+		return provider, rest
+	}
+	if model != "" {
+		return "", model
+	}
+	return "", upstreamModel
 }

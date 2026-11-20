@@ -877,3 +877,363 @@ func TestLLMProxyComposedAppInjectsBaseURLEnvAndStreamsForLiveWorkload(t *testin
 		t.Fatalf("cancelled execution LLM proxy status = %d; want 401/403 (body=%s)", afterCancel.Code, afterCancel.Body.String())
 	}
 }
+
+func TestInjectModelProxyEnvBuiltinsCustomAndNoShadowing(t *testing.T) {
+	providers := []ModelProviderConfig{
+		{Name: "anthropic", BaseURL: "https://api.anthropic.com", AuthHeader: "x-api-key"},
+		{Name: "my-claude", BaseURL: "https://claude.internal", AuthHeader: "x-api-key"},
+		{Name: "openai", BaseURL: "https://api.openai.com"},
+		{Name: "opencode", BaseURL: "https://opencode.ai/inference/openai/v1"},
+		{Name: "openrouter-eu", BaseURL: "https://openrouter.ai/api/v1"},
+	}
+	existing := []kerneldefinition.EnvVar{
+		{Name: "APP_MODE", Value: "batch"},
+		{Name: EnvLLMOpenAIBaseURL, Value: "https://attacker.invalid/openai"},
+		{Name: EnvLLMOpenCodeBaseURL, Value: "https://attacker.invalid/opencode"},
+		{Name: "KODEMA_LLM_SPOOFED_BASE_URL", Value: "https://attacker.invalid/spoof"},
+	}
+
+	got := injectModelProxyEnv(existing, "https://kodema.local:8443/", providers)
+	envMap := make(map[id.EnvName]string, len(got))
+	for _, entry := range got {
+		if _, dup := envMap[entry.Name]; dup {
+			t.Fatalf("duplicate env %q in %+v", entry.Name, got)
+		}
+		envMap[entry.Name] = entry.Value
+	}
+
+	want := map[id.EnvName]string{
+		"APP_MODE":                          "batch",
+		EnvLLMAnthropicBaseURL:              "https://kodema.local:8443/llm/anthropic",
+		"KODEMA_LLM_MY_CLAUDE_BASE_URL":     "https://kodema.local:8443/llm/my-claude",
+		EnvLLMOpenAIBaseURL:                 "https://kodema.local:8443/llm/openai/v1",
+		EnvLLMOpenCodeBaseURL:               "https://kodema.local:8443/llm/opencode/v1",
+		"KODEMA_LLM_OPENROUTER_EU_BASE_URL": "https://kodema.local:8443/llm/openrouter-eu/v1",
+	}
+	if len(envMap) != len(want) {
+		t.Fatalf("env count = %d (%v); want %d (%v)", len(envMap), envMap, len(want), want)
+	}
+	for k, v := range want {
+		if envMap[k] != v {
+			t.Errorf("%s = %q; want %q", k, envMap[k], v)
+		}
+	}
+	if _, spoofed := envMap["KODEMA_LLM_SPOOFED_BASE_URL"]; spoofed {
+		t.Fatal("spoofed KODEMA_LLM_SPOOFED_BASE_URL survived injection")
+	}
+
+	// Sanitization edge cases: special characters, empty, and overly long names.
+	if name, ok := EnvLLMProviderBaseURL("custom.provider/v2"); !ok || name != "KODEMA_LLM_CUSTOM_PROVIDER_V2_BASE_URL" {
+		t.Fatalf("EnvLLMProviderBaseURL(custom.provider/v2) = %q, %v", name, ok)
+	}
+	if _, ok := EnvLLMProviderBaseURL("---"); ok {
+		t.Fatal("EnvLLMProviderBaseURL(---) unexpectedly succeeded")
+	}
+	if _, ok := EnvLLMProviderBaseURL(strings.Repeat("a", 50)); ok {
+		t.Fatal("EnvLLMProviderBaseURL(oversized) unexpectedly succeeded")
+	}
+}
+
+func TestLLMProxyUsageTrackerFormatsAndBounds(t *testing.T) {
+	t.Run("OpenAI Chat Completions JSON", func(t *testing.T) {
+		tracker := newLLMProxyUsageTracker("application/json; charset=utf-8")
+		tracker.Observe([]byte(`{"id":"chatcmpl-1","model":"gpt-4o","usage":{"prompt_tokens":120,"completion_tokens":45,"total_tokens":165}}`))
+		model, usage, ok := tracker.Finish()
+		if !ok || model != "gpt-4o" || usage.PromptTokens != 120 || usage.CompletionTokens != 45 || usage.TotalTokens != 165 {
+			t.Fatalf("got model=%q usage=%+v ok=%v", model, usage, ok)
+		}
+	})
+
+	t.Run("OpenAI Chat Completions SSE split across chunks", func(t *testing.T) {
+		tracker := newLLMProxyUsageTracker("text/event-stream")
+		stream := "data: {\"id\":\"chatcmpl-1\",\"model\":\"gpt-4o-mini\",\"choices\":[{\"delta\":{\"content\":\"hi\"}}]}\n\n" +
+			"data: {\"id\":\"chatcmpl-1\",\"model\":\"gpt-4o-mini\",\"choices\":[],\"usage\":{\"prompt_tokens\":80,\"completion_tokens\":20,\"total_tokens\":100}}\n\n" +
+			"data: [DONE]\n\n"
+		for i := 0; i < len(stream); i += 17 {
+			end := min(i+17, len(stream))
+			tracker.Observe([]byte(stream[i:end]))
+		}
+		model, usage, ok := tracker.Finish()
+		if !ok || model != "gpt-4o-mini" || usage.PromptTokens != 80 || usage.CompletionTokens != 20 || usage.TotalTokens != 100 {
+			t.Fatalf("got model=%q usage=%+v ok=%v", model, usage, ok)
+		}
+	})
+
+	t.Run("OpenAI Responses SSE", func(t *testing.T) {
+		tracker := newLLMProxyUsageTracker("text/event-stream; charset=utf-8")
+		tracker.Observe([]byte("event: response.created\ndata: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_1\",\"model\":\"gpt-5.4\"}}\n\n"))
+		tracker.Observe([]byte("event: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_1\",\"model\":\"gpt-5.4\",\"usage\":{\"input_tokens\":250,\"output_tokens\":90,\"total_tokens\":340}}}\n\n"))
+		model, usage, ok := tracker.Finish()
+		if !ok || model != "gpt-5.4" || usage.PromptTokens != 250 || usage.CompletionTokens != 90 || usage.TotalTokens != 340 {
+			t.Fatalf("got model=%q usage=%+v ok=%v", model, usage, ok)
+		}
+	})
+
+	t.Run("Anthropic Messages SSE with cache tokens", func(t *testing.T) {
+		tracker := newLLMProxyUsageTracker("text/event-stream")
+		tracker.Observe([]byte("event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_1\",\"model\":\"claude-sonnet-4-6\",\"usage\":{\"input_tokens\":100,\"cache_creation_input_tokens\":25,\"cache_read_input_tokens\":75,\"output_tokens\":1}}}\n\n"))
+		tracker.Observe([]byte("event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":60}}\n\n"))
+		tracker.Observe([]byte("event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"))
+		model, usage, ok := tracker.Finish()
+		if !ok || model != "claude-sonnet-4-6" || usage.PromptTokens != 200 || usage.CompletionTokens != 60 || usage.TotalTokens != 260 {
+			t.Fatalf("got model=%q usage=%+v ok=%v", model, usage, ok)
+		}
+	})
+
+	t.Run("Anthropic Messages non-streaming JSON", func(t *testing.T) {
+		tracker := newLLMProxyUsageTracker("application/json")
+		tracker.Observe([]byte(`{"id":"msg_2","model":"claude-opus-4-6","usage":{"input_tokens":310,"output_tokens":140}}`))
+		model, usage, ok := tracker.Finish()
+		if !ok || model != "claude-opus-4-6" || usage.PromptTokens != 310 || usage.CompletionTokens != 140 || usage.TotalTokens != 450 {
+			t.Fatalf("got model=%q usage=%+v ok=%v", model, usage, ok)
+		}
+	})
+
+	t.Run("oversized SSE line is skipped without breaking subsequent usage event", func(t *testing.T) {
+		tracker := newLLMProxyUsageTracker("text/event-stream")
+		huge := "data: " + strings.Repeat("x", maxLLMProxyUsageSSELineBytes+128) + "\n"
+		tracker.Observe([]byte(huge))
+		tracker.Observe([]byte("data: {\"model\":\"gpt-5.4\",\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":5,\"total_tokens\":15}}\n"))
+		model, usage, ok := tracker.Finish()
+		if !ok || model != "gpt-5.4" || usage.TotalTokens != 15 {
+			t.Fatalf("got model=%q usage=%+v ok=%v", model, usage, ok)
+		}
+	})
+}
+
+func TestLLMProxyStrictSecretIsolationAndUsageAttributionInInspect(t *testing.T) {
+	const (
+		openCodeSecretName = id.SecretName("OPENCODE_API_KEY")
+		openCodeSecretVal  = "sk-opencode-real-secret-777"
+		appSecretName      = id.SecretName("APP_NON_PROXY_SECRET")
+		appSecretVal       = "ordinary-app-secret"
+	)
+
+	upstream := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/messages":
+			if r.Header.Get("x-api-key") != llmProxyTestAnthropicSecret {
+				http.Error(w, "bad anthropic key", http.StatusUnauthorized)
+				return
+			}
+			w.Header().Set("Content-Type", "text/event-stream")
+			w.WriteHeader(http.StatusOK)
+			flusher, _ := w.(http.Flusher)
+			_, _ = io.WriteString(w, "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"model\":\"claude-sonnet-4-6\",\"usage\":{\"input_tokens\":120,\"output_tokens\":2}}}\n\n")
+			if flusher != nil {
+				flusher.Flush()
+			}
+			_, _ = io.WriteString(w, "event: message_delta\ndata: {\"type\":\"message_delta\",\"usage\":{\"output_tokens\":45}}\n\n")
+			if flusher != nil {
+				flusher.Flush()
+			}
+			_, _ = io.WriteString(w, "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n")
+		case "/inference/openai/v1/chat/completions":
+			if r.Header.Get("Authorization") != "Bearer "+openCodeSecretVal {
+				http.Error(w, "bad opencode key", http.StatusUnauthorized)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = io.WriteString(w, `{"id":"chatcmpl-1","model":"zen-coder-1","usage":{"prompt_tokens":300,"completion_tokens":100,"total_tokens":400}}`)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer upstream.Close()
+
+	tenantScope := tenancy.Scope{TenantID: "tenant-1"}
+	fixture := newActivationFixture(t, []secret.NameRule{{
+		// Mirrors `kodema up`'s default tenant-scoped allow_all workload rule.
+		Scope:    tenantScope,
+		AllowAll: true,
+	}})
+	fixture.environment.config.WorkloadURL = "https://host.containers.internal:18443"
+	fixture.environment.config.Models = &ModelsConfig{
+		Providers: []ModelProviderConfig{
+			{
+				Scope:      tenantScope,
+				Name:       "anthropic",
+				BaseURL:    upstream.URL,
+				SecretName: llmProxyTestAnthropicSecretName,
+			},
+			{
+				Scope:      tenantScope,
+				Name:       "opencode",
+				BaseURL:    upstream.URL + "/inference/openai/v1",
+				SecretName: openCodeSecretName,
+			},
+		},
+		// Deliberately leave SecretRules empty to verify providers-only
+		// gateway policy resolves configured provider secrets without widening
+		// workload secret access.
+		Transport: upstream.Client().Transport,
+	}
+
+	composed := fixture.environment.startApp(t)
+	handler := composed.Handler()
+	grantProjectEngineer(t, handler, "dev-admin-token")
+	writeActivationSecret(t, handler, "dev-project-token", llmProxyTestAnthropicSecretName, llmProxyTestAnthropicSecret, "write-anthropic")
+	writeActivationSecret(t, handler, "dev-project-token", openCodeSecretName, openCodeSecretVal, "write-opencode")
+	writeActivationSecret(t, handler, "dev-project-token", appSecretName, appSecretVal, "write-app-secret")
+
+	// 1. Strict secret isolation: even with tenant allow_all, a pipeline trying
+	// to mount raw OPENCODE_API_KEY via secrets:[OPENCODE_API_KEY] MUST fail
+	// preparation and never materialize the provider secret into a container.
+	exfilPipeline := "actions:\n" +
+		"  - name: exfil\n" +
+		"    image: registry.example.com/kodema/harness@sha256:49f756463ad9dcfb9b6ade54d7d6f15476e7214f46a65b4b0c55d46845b12f70\n" +
+		"    secrets:\n" +
+		"      - OPENCODE_API_KEY\n" +
+		"    commands:\n" +
+		"      - cat /kodema/secrets/OPENCODE_API_KEY\n"
+	exfilApplied := applyActivationPipeline(t, handler, "dev-project-token", []byte(exfilPipeline), "exfil-pipeline")
+	exfilStarted := startActivationTask(t, handler, "dev-project-token", exfilApplied.PipelineID, "exfil-task")
+
+	waitDeadline := time.Now().Add(3 * time.Second)
+	for {
+		rec, res, _ := rawExecutionInspect(t, handler, "dev-project-token", exfilStarted.ExecutionID)
+		if rec.Code == api.HTTPStatusSuccess {
+			inspected := decodeBody[api.ExecutionInspectResult](t, res)
+			if inspected.State == "failed" {
+				if inspected.Failure == nil || inspected.Failure.Kind != "preparation" {
+					t.Fatalf("exfil failure = %+v; want preparation failure", inspected.Failure)
+				}
+				break
+			}
+		}
+		if time.Now().After(waitDeadline) {
+			t.Fatal("exfil pipeline declaring proxy-owned secret did not fail preparation")
+		}
+		time.Sleep(15 * time.Millisecond)
+	}
+	if prepares := fixture.runtime.prepareSnapshot(); len(prepares) != 0 {
+		t.Fatalf("exfil pipeline reached runtime.Prepare (%d calls); raw provider secret must never be materialized", len(prepares))
+	}
+
+	// 2. Ordinary non-proxy project secrets STILL work, KODEMA_LLM_OPENCODE_BASE_URL
+	// is injected, and proxied calls attribute token usage to execution.inspect.
+	goodPipeline := "actions:\n" +
+		"  - name: code\n" +
+		"    image: registry.example.com/kodema/harness@sha256:49f756463ad9dcfb9b6ade54d7d6f15476e7214f46a65b4b0c55d46845b12f70\n" +
+		"    secrets:\n" +
+		"      - APP_NON_PROXY_SECRET\n" +
+		"    commands:\n" +
+		"      - echo coding\n"
+	goodApplied := applyActivationPipeline(t, handler, "dev-project-token", []byte(goodPipeline), "good-pipeline")
+	goodStarted := startActivationTask(t, handler, "dev-project-token", goodApplied.PipelineID, "good-task")
+
+	prepares := waitForActivationPrepares(t, fixture.runtime, 1)
+	prepare := prepares[0]
+	if len(prepare.Secrets) != 1 || prepare.Secrets[0].Name != appSecretName || prepare.Secrets[0].Value != appSecretVal {
+		t.Fatalf("prepared secrets = %+v; want only APP_NON_PROXY_SECRET", prepare.Secrets)
+	}
+	envMap := make(map[id.EnvName]string, len(prepare.Container.Env))
+	for _, e := range prepare.Container.Env {
+		envMap[e.Name] = e.Value
+	}
+	if got := envMap[EnvLLMOpenCodeBaseURL]; got != "https://host.containers.internal:18443/llm/opencode/v1" {
+		t.Fatalf("%s = %q; want https://host.containers.internal:18443/llm/opencode/v1", EnvLLMOpenCodeBaseURL, got)
+	}
+	if got := envMap[EnvLLMAnthropicBaseURL]; got != "https://host.containers.internal:18443/llm/anthropic" {
+		t.Fatalf("%s = %q; want https://host.containers.internal:18443/llm/anthropic", EnvLLMAnthropicBaseURL, got)
+	}
+
+	// Wait for action running and call /llm/anthropic/v1/messages (SSE) + /llm/opencode/v1/chat/completions (JSON).
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "/llm/anthropic/v1/messages",
+			strings.NewReader(`{"model":"claude-sonnet-4-6","stream":true}`))
+		req.Header.Set("x-api-key", prepare.Credential)
+		handler.ServeHTTP(rec, req)
+		if rec.Code == http.StatusOK {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("anthropic proxy call never succeeded: status=%d body=%s", rec.Code, rec.Body.String())
+		}
+		time.Sleep(15 * time.Millisecond)
+	}
+
+	ocRec := httptest.NewRecorder()
+	ocReq := httptest.NewRequest(http.MethodPost, "/llm/opencode/v1/chat/completions",
+		strings.NewReader(`{"model":"zen-coder-1","messages":[{"role":"user","content":"hi"}]}`))
+	ocReq.Header.Set("Authorization", "Bearer "+prepare.Credential)
+	handler.ServeHTTP(ocRec, ocReq)
+	if ocRec.Code != http.StatusOK {
+		t.Fatalf("opencode proxy status=%d body=%s", ocRec.Code, ocRec.Body.String())
+	}
+
+	// Verify execution.inspect over REST surfaces attributed model_usage.
+	inspectRec, inspectRes, _ := rawExecutionInspect(t, handler, "dev-project-token", goodStarted.ExecutionID)
+	if inspectRec.Code != api.HTTPStatusSuccess {
+		t.Fatalf("inspect status=%d", inspectRec.Code)
+	}
+	inspected := decodeBody[api.ExecutionInspectResult](t, inspectRes)
+	if inspected.ModelUsage == nil {
+		t.Fatal("execution.inspect returned nil model_usage after proxied LLM calls")
+	}
+	if inspected.ModelUsage.Requests != 2 ||
+		inspected.ModelUsage.InputTokens != 420 ||
+		inspected.ModelUsage.OutputTokens != 145 ||
+		inspected.ModelUsage.TotalTokens != 565 {
+		t.Fatalf("model_usage = %+v; want requests=2 input=420 output=145 total=565", inspected.ModelUsage)
+	}
+	if len(inspected.ModelUsage.ByModel) != 2 {
+		t.Fatalf("by_model = %+v; want 2 entries", inspected.ModelUsage.ByModel)
+	}
+	if inspected.ModelUsage.ByModel[0] != (api.ExecutionModelUsageBreakdown{
+		Provider:     "anthropic",
+		Model:        "claude-sonnet-4-6",
+		Requests:     1,
+		InputTokens:  120,
+		OutputTokens: 45,
+		TotalTokens:  165,
+	}) {
+		t.Fatalf("by_model[0] = %+v", inspected.ModelUsage.ByModel[0])
+	}
+	if inspected.ModelUsage.ByModel[1] != (api.ExecutionModelUsageBreakdown{
+		Provider:     "opencode",
+		Model:        "zen-coder-1",
+		Requests:     1,
+		InputTokens:  300,
+		OutputTokens: 100,
+		TotalTokens:  400,
+	}) {
+		t.Fatalf("by_model[1] = %+v", inspected.ModelUsage.ByModel[1])
+	}
+
+	// Verify MCP execution_inspect returns the exact same model_usage summary.
+	mcpPayload := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"execution_inspect","arguments":{"input":{"execution_id":"` + goodStarted.ExecutionID + `"}}}}`
+	mcpRec := httptest.NewRecorder()
+	mcpReq := httptest.NewRequest(http.MethodPost, DefaultMCPPath, strings.NewReader(mcpPayload))
+	mcpReq.Header.Set("Authorization", "Bearer dev-project-token")
+	mcpReq.Header.Set("Content-Type", "application/json")
+	handler.ServeHTTP(mcpRec, mcpReq)
+	if mcpRec.Code != http.StatusOK {
+		t.Fatalf("MCP execution_inspect status=%d body=%s", mcpRec.Code, mcpRec.Body.String())
+	}
+	if !strings.Contains(mcpRec.Body.String(), `"model_usage"`) ||
+		!strings.Contains(mcpRec.Body.String(), `"total_tokens":565`) ||
+		!strings.Contains(mcpRec.Body.String(), `"opencode"`) {
+		t.Fatalf("MCP execution_inspect body missing attributed model_usage:\n%s", mcpRec.Body.String())
+	}
+}
+
+func TestLLMProxyUsageTrackerPreservesInputTokensAcrossZeroDelta(t *testing.T) {
+	tracker := newLLMProxyUsageTracker("text/event-stream")
+	tracker.Observe([]byte("event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"model\":\"claude-sonnet-4-6\",\"usage\":{\"input_tokens\":120,\"output_tokens\":1}}}\n\n"))
+	tracker.Observe([]byte("event: message_delta\ndata: {\"type\":\"message_delta\",\"usage\":{\"input_tokens\":0,\"output_tokens\":45}}\n\n"))
+
+	model, usage, known := tracker.Finish()
+	if !known {
+		t.Fatal("expected known usage")
+	}
+	if model != "claude-sonnet-4-6" {
+		t.Fatalf("model = %q; want claude-sonnet-4-6", model)
+	}
+	if usage.PromptTokens != 120 || usage.CompletionTokens != 45 || usage.TotalTokens != 165 {
+		t.Fatalf("usage = %+v; want prompt=120 completion=45 total=165", usage)
+	}
+}

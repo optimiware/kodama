@@ -91,6 +91,17 @@ type UpConfig struct {
 	// exact secret names in (TenantID, ProjectID) instead of allowing all
 	// project-stored secrets.
 	AllowSecrets []string
+	// DisableLLMProxy turns off the default streaming LLM proxy in the local
+	// stack. By default (false), kodema up writes <state-dir>/models.json with
+	// built-in providers (openai, anthropic, opencode) plus any LLMProviders so
+	// storing project secrets makes /llm/<provider>/* immediately usable.
+	DisableLLMProxy bool
+	// ModelsFile optionally points to a custom models.json file copied into
+	// <state-dir>/models.json instead of the generated default providers file.
+	ModelsFile string
+	// LLMProviders adds custom OpenAI-compatible (or Anthropic-compatible)
+	// streaming LLM proxy providers, or overrides a built-in provider by name.
+	LLMProviders []LLMProviderSpec
 	// Stderr receives concise startup progress lines (defaults to io.Discard).
 	Stderr io.Writer
 
@@ -287,6 +298,21 @@ func Up(ctx context.Context, cfg UpConfig, stdout io.Writer) (_ StackDescriptor,
 	allowSecrets, err := validateAllowSecrets(cfg.AllowSecrets)
 	if err != nil {
 		return StackDescriptor{}, err
+	}
+	if cfg.DisableLLMProxy && (strings.TrimSpace(cfg.ModelsFile) != "" || len(cfg.LLMProviders) > 0) {
+		return StackDescriptor{}, errors.New("cannot combine --llm-proxy=false with --models-file or --llm-provider")
+	}
+	if strings.TrimSpace(cfg.ModelsFile) != "" && len(cfg.LLMProviders) > 0 {
+		return StackDescriptor{}, errors.New("cannot combine --models-file with --llm-provider")
+	}
+	extraProviders, err := validateLLMProviders(cfg.LLMProviders)
+	if err != nil {
+		return StackDescriptor{}, err
+	}
+	if customPath := strings.TrimSpace(cfg.ModelsFile); customPath != "" {
+		if _, _, err := readAndValidateCustomModelsFile(customPath); err != nil {
+			return StackDescriptor{}, err
+		}
 	}
 
 	stateDir, err := ResolveStateDir(StateDirOptions{
@@ -654,6 +680,10 @@ func Up(ctx context.Context, cfg UpConfig, stdout io.Writer) (_ StackDescriptor,
 	if err != nil {
 		return StackDescriptor{}, err
 	}
+	modelsFilePath, llmProviderNames, err := reconcileModelsFile(stateDir, tenantID, cfg.DisableLLMProxy, cfg.ModelsFile, extraProviders)
+	if err != nil {
+		return StackDescriptor{}, err
+	}
 
 	// Start the server and git companion on dedicated 127.0.0.1 loopback ports;
 	// only the single-origin TLS gateway binds the public listen port (:8443).
@@ -694,6 +724,9 @@ func Up(ctx context.Context, cfg UpConfig, stdout io.Writer) (_ StackDescriptor,
 	}
 	if secretRulesPath != "" {
 		serverEnv = append(serverEnv, "KODEMA_SECRET_RULES_FILE="+secretRulesPath)
+	}
+	if modelsFilePath != "" {
+		serverEnv = append(serverEnv, "KODEMA_MODELS_FILE="+modelsFilePath)
 	}
 	serverEnv = append(serverEnv, workloadResourceEnv(cfg)...)
 
@@ -814,6 +847,9 @@ func Up(ctx context.Context, cfg UpConfig, stdout io.Writer) (_ StackDescriptor,
 	fmt.Fprintf(stdout, "  API & MCP:  %s  (%s/mcp)\n", publicURL, publicURL)
 	fmt.Fprintf(stdout, "  OIDC Auth:  %s/auth/.well-known/openid-configuration\n", publicURL)
 	fmt.Fprintf(stdout, "  Git HTTP:   %s/git/\n", publicURL)
+	if len(llmProviderNames) > 0 {
+		fmt.Fprintf(stdout, "  LLM Proxy:  %s/llm/{%s}/*\n", publicURL, strings.Join(llmProviderNames, ","))
+	}
 	fmt.Fprintf(stdout, "  Shell env:  source %s\n", shellSingleQuote(envFilePath))
 	fmt.Fprintf(stdout, "  CLI login:  kodema --server %s --ca-file %s login\n",
 		shellSingleQuote(publicURL), shellSingleQuote(tlsBundle.CACertPath))

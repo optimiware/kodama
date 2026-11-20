@@ -325,3 +325,90 @@ func TestSecretRulesFileAcrossProfiles(t *testing.T) {
 		}
 	})
 }
+
+func TestServerModelsFileAndLLMProviderFlags(t *testing.T) {
+	modelsPath := writeGatewaySettingsFile(t, "models.json", entryModelsFile)
+	t.Setenv("KODEMA_MODELS_FILE", "")
+	if err := os.Unsetenv("KODEMA_MODELS_FILE"); err != nil {
+		t.Fatal(err)
+	}
+
+	var stderr lockedBuffer
+	options, code := parseServerOptions([]string{
+		"--profile", "development",
+		"--data-dir", t.TempDir(),
+		"--dev-token", "dev-token",
+		"--models-file", modelsPath,
+		"--llm-provider", "opencode=https://opencode.ai/inference/openai/v1",
+		"--llm-provider", "custom=https://llm.example.test/v1,secret=CUSTOM_KEY",
+	}, &stderr)
+	if code != 0 {
+		t.Fatalf("parseServerOptions exited %d: %s", code, stderr.String())
+	}
+	cfg, err := options.config()
+	if err != nil {
+		t.Fatalf("options.config: %v", err)
+	}
+	if cfg.Models == nil || len(cfg.Models.Models) != 1 || len(cfg.Models.Providers) != 2 {
+		t.Fatalf("cfg.Models = %+v; want 1 model and 2 providers", cfg.Models)
+	}
+	if cfg.Models.Providers[0].Name != "opencode" || cfg.Models.Providers[0].SecretName != "OPENCODE_API_KEY" || cfg.Models.Providers[0].Scope.TenantID != "tenant-1" {
+		t.Fatalf("provider 0 = %+v", cfg.Models.Providers[0])
+	}
+	if cfg.Models.Providers[1].Name != "custom" || cfg.Models.Providers[1].SecretName != "CUSTOM_KEY" {
+		t.Fatalf("provider 1 = %+v", cfg.Models.Providers[1])
+	}
+
+	// Production requires explicit tenant=<id> and verified https URLs.
+	getenv, kube, prodOpts := productionFixture(t)
+	prodOpts.LLMProviders = []string{"openrouter=https://openrouter.ai/api/v1"}
+	if _, err := buildProduction(prodOpts, getenv, kube); err == nil || !strings.Contains(err.Error(), "tenant=") {
+		t.Fatalf("production accepted --llm-provider without tenant: %v", err)
+	}
+	prodOpts.LLMProviders = []string{"openrouter=http://openrouter.ai/api/v1,tenant=tenant-1"}
+	if _, err := buildProduction(prodOpts, getenv, kube); err == nil {
+		t.Fatal("production accepted plaintext http --llm-provider")
+	}
+	prodOpts.LLMProviders = []string{"openrouter=https://openrouter.ai/api/v1,tenant=tenant-1"}
+	built, err := buildProduction(prodOpts, getenv, kube)
+	if err != nil {
+		t.Fatalf("production valid --llm-provider failed: %v", err)
+	}
+	if built.Config.Models == nil || len(built.Config.Models.Providers) != 1 || built.Config.Models.Providers[0].Name != "openrouter" {
+		t.Fatalf("production models = %+v", built.Config.Models)
+	}
+
+	// Combining a providers-only --models-file (omitting secret_rules) with
+	// --llm-provider must keep SecretRules empty so llmProxySecretRules derives
+	// gateway rules for BOTH file-declared and CLI-declared providers.
+	providersOnlyPath := writeGatewaySettingsFile(t, "providers-only.json", `{
+  "providers": [
+    {
+      "tenant_id": "tenant-1",
+      "name": "openai",
+      "base_url": "https://api.openai.com",
+      "secret_name": "OPENAI_API_KEY"
+    }
+  ]
+}`)
+	options, code = parseServerOptions([]string{
+		"--profile", "development",
+		"--data-dir", t.TempDir(),
+		"--dev-token", "dev-token",
+		"--models-file", providersOnlyPath,
+		"--llm-provider", "opencode=https://opencode.ai/inference/openai/v1",
+	}, &stderr)
+	if code != 0 {
+		t.Fatalf("parseServerOptions(providers-only + --llm-provider) exited %d: %s", code, stderr.String())
+	}
+	mergedCfg, err := options.config()
+	if err != nil {
+		t.Fatalf("options.config(providers-only + --llm-provider): %v", err)
+	}
+	if mergedCfg.Models == nil || len(mergedCfg.Models.Providers) != 2 {
+		t.Fatalf("mergedCfg.Models = %+v; want 2 providers", mergedCfg.Models)
+	}
+	if len(mergedCfg.Models.SecretRules) != 0 {
+		t.Fatalf("mergedCfg.Models.SecretRules = %+v; want empty so gateway rules derive for all providers", mergedCfg.Models.SecretRules)
+	}
+}

@@ -274,27 +274,101 @@ func (trigger ExecutionTrigger) Validate() error {
 	return nil
 }
 
+// ExecutionModelUsageBreakdown is one provider/model slice of an execution's
+// attributed model usage.
+type ExecutionModelUsageBreakdown struct {
+	Provider     string `json:"provider,omitempty"`
+	Model        string `json:"model"`
+	Requests     int64  `json:"requests"`
+	InputTokens  int64  `json:"input_tokens"`
+	OutputTokens int64  `json:"output_tokens"`
+	TotalTokens  int64  `json:"total_tokens"`
+}
+
+// Validate checks the provider/model identifiers and non-negative, consistent
+// token and request counts.
+func (entry ExecutionModelUsageBreakdown) Validate() error {
+	if entry.Provider != "" {
+		if len(entry.Provider) > maxIDLength {
+			return invalid("model_usage provider is %d bytes; at most %d are allowed", len(entry.Provider), maxIDLength)
+		}
+		if !utf8.ValidString(entry.Provider) {
+			return invalid("model_usage provider is not valid UTF-8")
+		}
+	}
+	if entry.Model == "" {
+		return invalid("model_usage model is empty")
+	}
+	if len(entry.Model) > MaxSubjectValueBytes {
+		return invalid("model_usage model is %d bytes; at most %d are allowed", len(entry.Model), MaxSubjectValueBytes)
+	}
+	if !utf8.ValidString(entry.Model) {
+		return invalid("model_usage model is not valid UTF-8")
+	}
+	if entry.Requests < 0 {
+		return invalid("model_usage requests must not be negative")
+	}
+	if entry.InputTokens < 0 || entry.OutputTokens < 0 || entry.TotalTokens < 0 {
+		return invalid("model_usage token counts must not be negative")
+	}
+	if entry.InputTokens+entry.OutputTokens != entry.TotalTokens {
+		return invalid("model_usage input+output tokens do not equal total tokens")
+	}
+	return nil
+}
+
+// ExecutionModelUsage is the attributed model-gateway and LLM-proxy usage
+// summary for one execution.
+type ExecutionModelUsage struct {
+	Requests     int64                          `json:"requests"`
+	InputTokens  int64                          `json:"input_tokens"`
+	OutputTokens int64                          `json:"output_tokens"`
+	TotalTokens  int64                          `json:"total_tokens"`
+	ByModel      []ExecutionModelUsageBreakdown `json:"by_model,omitempty"`
+}
+
+// Validate checks aggregate counts and every provider/model breakdown entry.
+func (usage ExecutionModelUsage) Validate() error {
+	if usage.Requests < 0 {
+		return invalid("model_usage requests must not be negative")
+	}
+	if usage.InputTokens < 0 || usage.OutputTokens < 0 || usage.TotalTokens < 0 {
+		return invalid("model_usage token counts must not be negative")
+	}
+	if usage.InputTokens+usage.OutputTokens != usage.TotalTokens {
+		return invalid("model_usage input+output tokens do not equal total tokens")
+	}
+	for _, entry := range usage.ByModel {
+		if err := entry.Validate(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // ExecutionInspectResult is the execution.inspect result. TaskID is empty for a
 // task-free pipeline execution. PipelineID is the optional stored-pipeline
 // identity: it is empty (and omitted from the wire) for a task-free inline
 // execution, never fabricated. StartedBy, Inputs, Trigger and CreatedAt expose
-// credential-free execution provenance. Failure is present only after a
-// terminal failure; Cleanup is always present and is independent of the
-// outcome.
+// credential-free execution provenance. ModelUsage is present when the
+// execution has attributed model gateway or LLM proxy calls. Failure is present
+// only after a terminal failure; Cleanup is always present and is independent
+// of the outcome.
 type ExecutionInspectResult struct {
-	ExecutionID   string            `json:"execution_id"`
-	TaskID        string            `json:"task_id,omitempty" schema:"id"`
-	PipelineID    string            `json:"pipeline_id,omitempty"`
-	StartedBy     string            `json:"started_by,omitempty" schema:"id"`
-	Inputs        map[string]string `json:"inputs,omitempty"`
-	Trigger       *ExecutionTrigger `json:"trigger,omitempty"`
-	CreatedAt     *time.Time        `json:"created_at,omitempty"`
-	State         string            `json:"state"`
-	Version       uint64            `json:"version" schema:"version"`
-	CurrentAction int               `json:"current_action"`
-	Actions       []ExecutionAction `json:"actions"`
-	Failure       *ExecutionFailure `json:"failure,omitempty"`
-	Cleanup       ExecutionCleanup  `json:"cleanup"`
+	ExecutionID   string               `json:"execution_id"`
+	TaskID        string               `json:"task_id,omitempty" schema:"id"`
+	PipelineID    string               `json:"pipeline_id,omitempty"`
+	StartedBy     string               `json:"started_by,omitempty" schema:"id"`
+	Inputs        map[string]string    `json:"inputs,omitempty"`
+	Trigger       *ExecutionTrigger    `json:"trigger,omitempty"`
+	CreatedAt     *time.Time           `json:"created_at,omitempty"`
+	State         string               `json:"state"`
+	Version       uint64               `json:"version" schema:"version"`
+	CurrentAction int                  `json:"current_action"`
+	Actions       []ExecutionAction    `json:"actions"`
+	ModelUsage    *ExecutionModelUsage `json:"model_usage,omitempty"`
+	Failure       *ExecutionFailure    `json:"failure,omitempty"`
+	Cleanup       ExecutionCleanup     `json:"cleanup"`
 }
 
 // UnmarshalJSON decodes one inspection result strictly. The optional
@@ -358,6 +432,11 @@ func (result ExecutionInspectResult) Validate() error {
 	}
 	for _, action := range result.Actions {
 		if err := action.Validate(); err != nil {
+			return err
+		}
+	}
+	if result.ModelUsage != nil {
+		if err := result.ModelUsage.Validate(); err != nil {
 			return err
 		}
 	}

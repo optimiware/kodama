@@ -36,11 +36,65 @@ Supplied when configured by the installation:
   fi
   ```
 - `KODEMA_GIT_URL` — base URL of the installation's Git service (`$KODEMA_GIT_URL/<repository>`). Kodema injects `GIT_CONFIG_*` so Git authenticates to that origin alone via `/kodema/bin/kodema git credential` with no pipeline setup.
-- `KODEMA_LLM_ANTHROPIC_BASE_URL` / `KODEMA_LLM_OPENAI_BASE_URL` — optional streaming LLM proxy endpoints (`${KODEMA_URL}/llm/anthropic` and `${KODEMA_URL}/llm/openai/v1`).
+- `KODEMA_LLM_<PROVIDER>_BASE_URL` — unshadowable streaming LLM proxy endpoint for every provider enabled in the execution's scope (provider name normalized to uppercase `[A-Z0-9_]`). In `kodema up`, Kodema enables three built-in providers out of the box plus any custom `--llm-provider` entries:
+  - `KODEMA_LLM_OPENAI_BASE_URL` -> `${KODEMA_URL}/llm/openai/v1` (backed by project secret `OPENAI_API_KEY`)
+  - `KODEMA_LLM_ANTHROPIC_BASE_URL` -> `${KODEMA_URL}/llm/anthropic` (backed by project secret `ANTHROPIC_API_KEY`)
+  - `KODEMA_LLM_OPENCODE_BASE_URL` -> `${KODEMA_URL}/llm/opencode/v1` (OpenCode Zen, backed by project secret `OPENCODE_API_KEY`)
+  - Custom providers (e.g. `--llm-provider openrouter=https://openrouter.ai/api/v1`) -> `KODEMA_LLM_OPENROUTER_BASE_URL=${KODEMA_URL}/llm/openrouter/v1`
 
-## Using Kodema's LLM proxy from external harnesses
+## Using Kodema's native LLM proxy from coding harnesses
 
-Raw provider keys stay in the control plane. Point the harness at the proxy and read `/kodema/secrets/KODEMA_TOKEN` as the API key:
+Store provider API keys once as project secrets (`kodema secret set OPENCODE_API_KEY`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, etc.). **Never declare provider keys in container `secrets: [...]`**—Kodema keeps raw provider keys inside the control plane and strictly refuses to mount LLM-proxy-managed secrets into workload containers (even when local `kodema up` allows other project secrets).
+
+Every harness authenticates with `/kodema/secrets/KODEMA_TOKEN` and trusts `$KODEMA_CA_FILE`. Token usage for every proxied call is attributed automatically to the execution and surfaced by `kodema inspect <execution-id>` (`model_usage`).
+
+Shared TLS prelude:
+
+```sh
+if [ -n "${KODEMA_CA_FILE:-}" ]; then
+  export NODE_EXTRA_CA_CERTS="$KODEMA_CA_FILE"
+  export SSL_CERT_FILE="$KODEMA_CA_FILE"
+  export CURL_CA_BUNDLE="$KODEMA_CA_FILE"
+  export GIT_SSL_CAINFO="$KODEMA_CA_FILE"
+fi
+```
+
+### OpenCode
+
+Store `OPENCODE_API_KEY` (or `ANTHROPIC_API_KEY` / `OPENAI_API_KEY`) via `kodema secret set`:
+
+```sh
+export OPENAI_BASE_URL="${KODEMA_LLM_OPENCODE_BASE_URL:-${KODEMA_URL}/llm/opencode/v1}"
+IFS= read -r OPENAI_API_KEY < /kodema/secrets/KODEMA_TOKEN || [ -n "$OPENAI_API_KEY" ]
+export OPENAI_API_KEY
+opencode run "Implement the requested change and run tests"
+```
+
+### Claude Code
+
+Store `ANTHROPIC_API_KEY` via `kodema secret set ANTHROPIC_API_KEY`:
+
+```sh
+export ANTHROPIC_BASE_URL="${KODEMA_LLM_ANTHROPIC_BASE_URL:-${KODEMA_URL}/llm/anthropic}"
+IFS= read -r ANTHROPIC_API_KEY < /kodema/secrets/KODEMA_TOKEN || [ -n "$ANTHROPIC_API_KEY" ]
+export ANTHROPIC_API_KEY
+claude -p "Implement the requested change and run tests" --dangerously-skip-permissions
+```
+
+### Codex
+
+Store `OPENAI_API_KEY` via `kodema secret set OPENAI_API_KEY`:
+
+```sh
+export OPENAI_BASE_URL="${KODEMA_LLM_OPENAI_BASE_URL:-${KODEMA_URL}/llm/openai/v1}"
+IFS= read -r OPENAI_API_KEY < /kodema/secrets/KODEMA_TOKEN || [ -n "$OPENAI_API_KEY" ]
+export OPENAI_API_KEY
+codex exec "Implement the requested change and run tests"
+```
+
+### Pi
+
+Store `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` (or a custom provider key via `--llm-provider`):
 
 ```sh
 export ANTHROPIC_BASE_URL="${KODEMA_LLM_ANTHROPIC_BASE_URL:-${KODEMA_URL}/llm/anthropic}"
@@ -48,9 +102,50 @@ export OPENAI_BASE_URL="${KODEMA_LLM_OPENAI_BASE_URL:-${KODEMA_URL}/llm/openai/v
 IFS= read -r ANTHROPIC_API_KEY < /kodema/secrets/KODEMA_TOKEN || [ -n "$ANTHROPIC_API_KEY" ]
 IFS= read -r OPENAI_API_KEY < /kodema/secrets/KODEMA_TOKEN || [ -n "$OPENAI_API_KEY" ]
 export ANTHROPIC_API_KEY OPENAI_API_KEY
+pi -p "Implement the requested change and run tests"
 ```
 
-Read any other declared secret file the same way with `IFS= read -r ... < /kodema/secrets/<NAME>`.
+### Minimal coding-harness base image (`Containerfile`)
+
+Build a lean, repeatable image with `git`, `jq`, `curl`, `node`, and OpenCode preconfigured to wire `$KODEMA_CA_FILE` and `/kodema/secrets/KODEMA_TOKEN` to Kodema's native LLM proxy:
+
+```dockerfile
+FROM docker.io/library/node:22-bookworm-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      ca-certificates curl git jq \
+    && rm -rf /var/lib/apt/lists/* \
+    && npm install -g opencode-ai
+
+RUN cat <<'EOF' > /usr/local/bin/kodema-proxy-env.sh
+#!/bin/sh
+if [ -r /kodema/secrets/KODEMA_TOKEN ]; then
+  IFS= read -r ANTHROPIC_API_KEY < /kodema/secrets/KODEMA_TOKEN || [ -n "$ANTHROPIC_API_KEY" ]
+  IFS= read -r OPENAI_API_KEY < /kodema/secrets/KODEMA_TOKEN || [ -n "$OPENAI_API_KEY" ]
+  IFS= read -r OPENCODE_API_KEY < /kodema/secrets/KODEMA_TOKEN || [ -n "$OPENCODE_API_KEY" ]
+  export ANTHROPIC_API_KEY OPENAI_API_KEY OPENCODE_API_KEY
+fi
+if [ -n "${KODEMA_LLM_ANTHROPIC_BASE_URL:-}" ]; then
+  export ANTHROPIC_BASE_URL="$KODEMA_LLM_ANTHROPIC_BASE_URL"
+fi
+if [ -n "${KODEMA_LLM_OPENCODE_BASE_URL:-}" ]; then
+  export OPENAI_BASE_URL="$KODEMA_LLM_OPENCODE_BASE_URL"
+elif [ -n "${KODEMA_LLM_OPENAI_BASE_URL:-}" ]; then
+  export OPENAI_BASE_URL="$KODEMA_LLM_OPENAI_BASE_URL"
+fi
+if [ -n "${KODEMA_CA_FILE:-}" ]; then
+  export NODE_EXTRA_CA_CERTS="$KODEMA_CA_FILE"
+  export SSL_CERT_FILE="$KODEMA_CA_FILE"
+  export CURL_CA_BUNDLE="$KODEMA_CA_FILE"
+  export GIT_SSL_CAINFO="$KODEMA_CA_FILE"
+fi
+EOF
+RUN chmod 0755 /usr/local/bin/kodema-proxy-env.sh
+```
+
+Then source `/usr/local/bin/kodema-proxy-env.sh` in your pipeline command (for example `. /usr/local/bin/kodema-proxy-env.sh && opencode run "..."`).
+
+Read any other declared non-proxy secret file with `IFS= read -r ... < /kodema/secrets/<NAME>`.
 
 ## Toolbox commands inside containers
 

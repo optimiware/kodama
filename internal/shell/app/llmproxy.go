@@ -70,6 +70,8 @@ type llmProxyDependencies struct {
 	Authority      authorize.AuthorityReader
 	Lookup         secret.NameLookup
 	Cipher         secret.EnvelopeCipher
+	Store          store.Executor
+	NewUsageID     func() (gateway.UsageID, error)
 	Clock          Clock
 	Transport      http.RoundTripper
 	WatchInterval  time.Duration
@@ -101,6 +103,8 @@ type llmProxyHandler struct {
 	authority     authorize.AuthorityReader
 	executions    gateway.ExecutionReader
 	secrets       secret.Resolver
+	store         store.Executor
+	newUsageID    func() (gateway.UsageID, error)
 	client        *http.Client
 	clock         Clock
 	watchInterval time.Duration
@@ -136,7 +140,7 @@ func newLLMProxyHandler(deps llmProxyDependencies) (http.Handler, func(context.C
 		return nil, nil, fault.New(fault.InvalidInput, "LLM proxy requires a clock")
 	}
 
-	policy, err := bridges.NewGatewayNamePolicy(deps.Config.SecretRules)
+	policy, err := bridges.NewGatewayNamePolicy(llmProxySecretRules(deps.Config))
 	if err != nil {
 		return nil, nil, err
 	}
@@ -213,6 +217,8 @@ func newLLMProxyHandler(deps llmProxyDependencies) (http.Handler, func(context.C
 		authority:     deps.Authority,
 		executions:    executions,
 		secrets:       secrets,
+		store:         deps.Store,
+		newUsageID:    deps.NewUsageID,
 		client:        client,
 		clock:         deps.Clock,
 		watchInterval: watchInterval,
@@ -369,44 +375,74 @@ func (handler *llmProxyHandler) ServeHTTP(writer http.ResponseWriter, request *h
 		outbound.Header.Set("anthropic-version", provider.anthropicVersion)
 	}
 
+	trackUsage := request.Method == http.MethodPost && handler.store != nil && handler.newUsageID != nil
+	var requestedModel string
+	if trackUsage {
+		requestedModel = extractRequestedModel(body)
+	}
+
 	response, err := handler.client.Do(outbound)
 	if err != nil {
 		if response != nil && response.Body != nil {
 			_ = response.Body.Close()
 		}
 		if errors.Is(err, errLLMProxyRedirectRefused) {
+			if trackUsage {
+				handler.recordUsage(ctx, scope, admitted, provider.name, requestedModel, "", gateway.UsageFailed, api.ChatUsage{})
+			}
 			writeHTTPError(writer, fault.New(fault.DependencyUnavailable, "the configured model provider returned a redirect, which is refused"))
 			return
 		}
 		if callCtx.Err() != nil || ctx.Err() != nil {
+			if trackUsage {
+				handler.recordUsage(ctx, scope, admitted, provider.name, requestedModel, "", gateway.UsageUncertain, api.ChatUsage{})
+			}
 			writeHTTPError(writer, llmProxyDeadlineFault())
 			return
+		}
+		if trackUsage {
+			handler.recordUsage(ctx, scope, admitted, provider.name, requestedModel, "", gateway.UsageFailed, api.ChatUsage{})
 		}
 		writeHTTPError(writer, fault.New(fault.DependencyUnavailable, "the configured model provider is unreachable"))
 		return
 	}
 	if response == nil || response.Body == nil {
+		if trackUsage {
+			handler.recordUsage(ctx, scope, admitted, provider.name, requestedModel, "", gateway.UsageUncertain, api.ChatUsage{})
+		}
 		writeHTTPError(writer, fault.New(fault.DependencyUnavailable, "the configured model provider returned no response"))
 		return
 	}
 	defer func() { _ = response.Body.Close() }()
 
 	if response.StatusCode >= 300 && response.StatusCode <= 399 {
+		if trackUsage {
+			handler.recordUsage(ctx, scope, admitted, provider.name, requestedModel, "", gateway.UsageFailed, api.ChatUsage{})
+		}
 		writeHTTPError(writer, fault.New(fault.DependencyUnavailable, "the configured model provider returned a redirect, which is refused"))
 		return
 	}
 
 	if callCtx.Err() != nil {
+		if trackUsage {
+			handler.recordUsage(ctx, scope, admitted, provider.name, requestedModel, "", gateway.UsageUncertain, api.ChatUsage{})
+		}
 		writeHTTPError(writer, llmProxyDeadlineFault())
 		return
 	}
 
 	copySafeResponseHeaders(writer.Header(), response.Header, providerSecret)
-	if isEventStream(response.Header.Get("Content-Type")) {
+	contentType := response.Header.Get("Content-Type")
+	if isEventStream(contentType) {
 		if writer.Header().Get("Cache-Control") == "" {
 			writer.Header().Set("Cache-Control", "no-cache")
 		}
 		writer.Header().Set("X-Accel-Buffering", "no")
+	}
+
+	var usageTracker *llmProxyUsageTracker
+	if trackUsage && response.StatusCode >= 200 && response.StatusCode <= 299 {
+		usageTracker = newLLMProxyUsageTracker(contentType)
 	}
 
 	flusher, canFlush := writer.(http.Flusher)
@@ -423,17 +459,32 @@ func (handler *llmProxyHandler) ServeHTTP(writer http.ResponseWriter, request *h
 		n, readErr := response.Body.Read(buffer)
 		if n > 0 {
 			if callCtx.Err() != nil {
+				if trackUsage {
+					responseModel, _, _ := usageTracker.Finish()
+					handler.recordUsage(ctx, scope, admitted, provider.name, requestedModel, responseModel, gateway.UsageUncertain, api.ChatUsage{})
+				}
 				panic(http.ErrAbortHandler)
 			}
 			total += int64(n)
 			if total > maxLLMProxyResponseBytes {
+				if trackUsage {
+					responseModel, _, _ := usageTracker.Finish()
+					handler.recordUsage(ctx, scope, admitted, provider.name, requestedModel, responseModel, gateway.UsageUncertain, api.ChatUsage{})
+				}
 				panic(http.ErrAbortHandler)
 			}
 			chunk := buffer[:n]
 			if providerSecret != "" && bytes.Contains(chunk, []byte(providerSecret)) {
 				chunk = bytes.ReplaceAll(chunk, []byte(providerSecret), []byte("[REDACTED]"))
 			}
+			if usageTracker != nil {
+				usageTracker.Observe(chunk)
+			}
 			if _, writeErr := writer.Write(chunk); writeErr != nil {
+				if trackUsage {
+					responseModel, _, _ := usageTracker.Finish()
+					handler.recordUsage(ctx, scope, admitted, provider.name, requestedModel, responseModel, gateway.UsageUncertain, api.ChatUsage{})
+				}
 				return
 			}
 			if canFlush {
@@ -445,14 +496,77 @@ func (handler *llmProxyHandler) ServeHTTP(writer http.ResponseWriter, request *h
 			// may end its response cleanly because of it, so an end that
 			// follows them is not proof the response is complete.
 			if callCtx.Err() != nil {
+				if trackUsage {
+					responseModel, _, _ := usageTracker.Finish()
+					handler.recordUsage(ctx, scope, admitted, provider.name, requestedModel, responseModel, gateway.UsageUncertain, api.ChatUsage{})
+				}
 				panic(http.ErrAbortHandler)
+			}
+			if trackUsage {
+				if response.StatusCode >= 200 && response.StatusCode <= 299 {
+					responseModel, usage, _ := usageTracker.Finish()
+					handler.recordUsage(ctx, scope, admitted, provider.name, requestedModel, responseModel, gateway.UsageSucceeded, usage)
+				} else {
+					handler.recordUsage(ctx, scope, admitted, provider.name, requestedModel, "", gateway.UsageFailed, api.ChatUsage{})
+				}
 			}
 			return
 		}
 		if readErr != nil {
+			if trackUsage {
+				responseModel, _, _ := usageTracker.Finish()
+				handler.recordUsage(ctx, scope, admitted, provider.name, requestedModel, responseModel, gateway.UsageUncertain, api.ChatUsage{})
+			}
 			panic(http.ErrAbortHandler)
 		}
 	}
+}
+
+func (handler *llmProxyHandler) recordUsage(
+	ctx context.Context,
+	scope tenancy.Scope,
+	admitted authorize.AdmittedExecution,
+	providerName string,
+	requestedModel string,
+	responseModel string,
+	outcome gateway.UsageOutcome,
+	usage api.ChatUsage,
+) {
+	if handler == nil || handler.store == nil || handler.newUsageID == nil || handler.clock == nil {
+		return
+	}
+	usageID, err := handler.newUsageID()
+	if err != nil || usageID == "" {
+		return
+	}
+	now := handler.clock.Now()
+	if now.IsZero() {
+		return
+	}
+	known := outcome == gateway.UsageSucceeded
+	if !known {
+		usage = api.ChatUsage{}
+	}
+	modelLabel, upstreamModel := formatProxyUsageModels(providerName, requestedModel, responseModel)
+	record := gateway.UsageRecord{
+		ID:            usageID,
+		Scope:         scope,
+		PrincipalID:   admitted.Principal.ID,
+		ExecutionID:   admitted.ExecutionID,
+		Model:         modelLabel,
+		UpstreamModel: upstreamModel,
+		Outcome:       outcome,
+		UsageKnown:    known,
+		Usage:         usage,
+		At:            now,
+	}
+	unit, err := record.Unit()
+	if err != nil {
+		return
+	}
+	usageCtx, cancelUsage := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancelUsage()
+	_, _ = handler.store.Execute(usageCtx, scope, unit)
 }
 
 func (handler *llmProxyHandler) authenticateAndAuthorize(

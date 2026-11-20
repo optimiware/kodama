@@ -334,6 +334,14 @@ func renderExecutionInspectTable(out io.Writer, result api.Result) error {
 		}
 		fmt.Fprintf(summary, "cleanup\t%s\n", cleanupDesc)
 	}
+	if inspected.ModelUsage != nil && (inspected.ModelUsage.Requests > 0 || inspected.ModelUsage.TotalTokens > 0 || len(inspected.ModelUsage.ByModel) > 0) {
+		fmt.Fprintf(summary, "model_usage\trequests=%d input_tokens=%d output_tokens=%d total_tokens=%d\n",
+			inspected.ModelUsage.Requests,
+			inspected.ModelUsage.InputTokens,
+			inspected.ModelUsage.OutputTokens,
+			inspected.ModelUsage.TotalTokens,
+		)
+	}
 	if inspected.Failure != nil {
 		var parts []string
 		for _, part := range []string{inspected.Failure.Kind, inspected.Failure.Reason, inspected.Failure.Detail} {
@@ -348,24 +356,44 @@ func renderExecutionInspectTable(out io.Writer, result api.Result) error {
 	if err := summary.Flush(); err != nil {
 		return err
 	}
-	if len(inspected.Actions) == 0 {
-		return nil
+	if len(inspected.Actions) > 0 {
+		fmt.Fprintln(out)
+		tw := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
+		fmt.Fprintln(tw, "INDEX\tACTION\tNAME\tKIND\tSTATE\tVERSION\tDETAIL")
+		for _, action := range inspected.Actions {
+			fmt.Fprintf(tw, "%d\t%s\t%s\t%s\t%s\t%d\t%s\n",
+				action.Index,
+				orDash(action.ActionID),
+				orDash(action.Name),
+				orDash(action.Kind),
+				orDash(action.effectiveState()),
+				action.Version,
+				formatInspectedActionDetail(action),
+			)
+		}
+		if err := tw.Flush(); err != nil {
+			return err
+		}
 	}
-	fmt.Fprintln(out)
-	tw := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "INDEX\tACTION\tNAME\tKIND\tSTATE\tVERSION\tDETAIL")
-	for _, action := range inspected.Actions {
-		fmt.Fprintf(tw, "%d\t%s\t%s\t%s\t%s\t%d\t%s\n",
-			action.Index,
-			orDash(action.ActionID),
-			orDash(action.Name),
-			orDash(action.Kind),
-			orDash(action.effectiveState()),
-			action.Version,
-			formatInspectedActionDetail(action),
-		)
+	if inspected.ModelUsage != nil && len(inspected.ModelUsage.ByModel) > 0 {
+		fmt.Fprintln(out)
+		usageTable := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
+		fmt.Fprintln(usageTable, "PROVIDER\tMODEL\tREQUESTS\tINPUT_TOKENS\tOUTPUT_TOKENS\tTOTAL_TOKENS")
+		for _, entry := range inspected.ModelUsage.ByModel {
+			fmt.Fprintf(usageTable, "%s\t%s\t%d\t%d\t%d\t%d\n",
+				orDash(entry.Provider),
+				orDash(entry.Model),
+				entry.Requests,
+				entry.InputTokens,
+				entry.OutputTokens,
+				entry.TotalTokens,
+			)
+		}
+		if err := usageTable.Flush(); err != nil {
+			return err
+		}
 	}
-	return tw.Flush()
+	return nil
 }
 
 func formatInspectedActionDetail(action inspectedAction) string {

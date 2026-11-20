@@ -5,6 +5,7 @@
 | [KODEMA.md](../KODEMA.md) | The product specification and acceptance criteria. It governs on conflict. |
 | [specs/](specs/README.md) | Detailed specifications: package boundaries, state transitions, atomicity and failure behavior. |
 | [runbooks/quickstart.md](runbooks/quickstart.md) | A local Kodema with `kodema up`, and a first pipeline with `kodema run`. |
+| [runbooks/llm-proxy-harnesses.md](runbooks/llm-proxy-harnesses.md) | Native credential-injecting LLM proxy, coding-harness recipes (OpenCode, Claude Code, Codex, Pi), and minimal harness base image. |
 | [runbooks/unprivileged-oci-builds.md](runbooks/unprivileged-oci-builds.md) | Unprivileged OCI container builds (Kaniko, `ko`, `buildah` VFS) and workload memory/CPU limits. |
 | [runbooks/podman-quickstart.md](runbooks/podman-quickstart.md) | The Podman bundle: the single-host test installation the release smoke runs on. |
 | [runbooks/production-deployment.md](runbooks/production-deployment.md) | Deployment on Kubernetes (Scaleway, AWS, GCP). |
