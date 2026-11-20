@@ -44,7 +44,11 @@ func (reader *EventReader) Read(ctx context.Context, query event.ReadQuery) (eve
 		wanted[eventType] = true
 	}
 
-	page := event.ReadPage{Events: make([]event.Envelope, 0, query.Limit)}
+	page := event.ReadPage{
+		Events:    make([]event.Envelope, 0, query.Limit),
+		Sequences: make([]uint64, 0, query.Limit),
+		Next:      query.AfterSequence,
+	}
 	cursor := query.AfterSequence
 	for len(page.Events) < query.Limit {
 		result, err := reader.scanner.Query(ctx, query.Scope, store.ScanQuery{
@@ -74,6 +78,7 @@ func (reader *EventReader) Read(ctx context.Context, query event.ReadQuery) (eve
 				break
 			}
 			page.Events = append(page.Events, envelope)
+			page.Sequences = append(page.Sequences, sequence)
 			page.Next = sequence
 			if len(page.Events) == query.Limit {
 				page.HasMore = result.HasMore || index < len(result.Rows)-1
@@ -83,6 +88,9 @@ func (reader *EventReader) Read(ctx context.Context, query event.ReadQuery) (eve
 		if !progressed || !result.HasMore {
 			break
 		}
+	}
+	if cursor > page.Next {
+		page.Next = cursor
 	}
 	return page, nil
 }

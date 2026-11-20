@@ -50,8 +50,15 @@ func wireApp(ctx context.Context, builder *builder, environment *environment) (*
 	// health/operations listener can expose refusals and dependency errors.
 	operations := newOperationsMetrics()
 
+	// Wrap store.Executor and store.Controller with a lightweight post-commit
+	// wakeup hub so live HTTP SSE streams wake immediately when domain or
+	// kernel transitions commit event rows.
+	eventHub := newEventWakeupHub()
+	notifyingStore := &eventNotifyingStore{inner: environment.store, hub: eventHub}
+	notifyingController := &eventNotifyingController{inner: environment.controller, hub: eventHub}
+
 	identityAdapter, err := identitystore.New(identitystore.Config{
-		Executor: environment.store,
+		Executor: notifyingStore,
 		Scanner:  environment.scanner,
 		Clock:    clock,
 		IDs:      ids,
@@ -75,15 +82,15 @@ func wireApp(ctx context.Context, builder *builder, environment *environment) (*
 	if err != nil {
 		return nil, err
 	}
-	executionReader, err := readers.NewExecutionReader(environment.store, environment.scanner)
+	executionReader, err := readers.NewExecutionReader(notifyingStore, environment.scanner)
 	if err != nil {
 		return nil, err
 	}
-	ownershipReader, err := readers.NewOwnershipReader(environment.store)
+	ownershipReader, err := readers.NewOwnershipReader(notifyingStore)
 	if err != nil {
 		return nil, err
 	}
-	verificationReader, err := readers.NewVerificationReader(environment.store)
+	verificationReader, err := readers.NewVerificationReader(notifyingStore)
 	if err != nil {
 		return nil, err
 	}
@@ -92,15 +99,15 @@ func wireApp(ctx context.Context, builder *builder, environment *environment) (*
 	if err != nil {
 		return nil, err
 	}
-	ingressAdapter, err := platform.NewIngressAdapter(environment.store, environment.scanner)
+	ingressAdapter, err := platform.NewIngressAdapter(notifyingStore, environment.scanner)
 	if err != nil {
 		return nil, err
 	}
-	recordAdapter, err := platform.NewRecordAdapter(environment.store, environment.scanner)
+	recordAdapter, err := platform.NewRecordAdapter(notifyingStore, environment.scanner)
 	if err != nil {
 		return nil, err
 	}
-	reportAdapter, err := platform.NewReportAdapter(environment.store, environment.scanner)
+	reportAdapter, err := platform.NewReportAdapter(notifyingStore, environment.scanner)
 	if err != nil {
 		return nil, err
 	}
@@ -127,25 +134,25 @@ func wireApp(ctx context.Context, builder *builder, environment *environment) (*
 		return nil, err
 	}
 
-	taskAdapter, err := work.NewTask(environment.store, environment.scanner)
+	taskAdapter, err := work.NewTask(notifyingStore, environment.scanner)
 	if err != nil {
 		return nil, err
 	}
-	inboxAdapter, err := work.NewInbox(environment.store, environment.scanner)
+	inboxAdapter, err := work.NewInbox(notifyingStore, environment.scanner)
 	if err != nil {
 		return nil, err
 	}
-	pipelinesAdapter, err := work.NewPipelines(environment.store, environment.scanner, nil)
+	pipelinesAdapter, err := work.NewPipelines(notifyingStore, environment.scanner, nil)
 	if err != nil {
 		return nil, err
 	}
-	triggersAdapter, err := work.NewTriggers(environment.store, environment.scanner, environment.controller, clock.Now, ids.NewEventID)
+	triggersAdapter, err := work.NewTriggers(notifyingStore, environment.scanner, notifyingController, clock.Now, ids.NewEventID)
 	if err != nil {
 		return nil, err
 	}
 
-	executionStore := executionstore.New(environment.store, environment.scanner)
-	engineState := executionstore.NewEngine(environment.controller)
+	executionStore := executionstore.New(notifyingStore, environment.scanner)
+	engineState := executionstore.NewEngine(notifyingController)
 
 	factsPermission, err := bridges.NewPermissionSource(authorize.ExecOwnTaskContent, clock)
 	if err != nil {
@@ -235,7 +242,7 @@ func wireApp(ctx context.Context, builder *builder, environment *environment) (*
 		KeyVersion:     environment.keyVersion,
 		Clock:          clock,
 		IDs:            ids,
-		Executor:       environment.store,
+		Executor:       notifyingStore,
 		Scanner:        environment.scanner,
 		Cipher:         environment.cipher,
 		Lookup:         secretLookup,
@@ -684,7 +691,24 @@ func wireApp(ctx context.Context, builder *builder, environment *environment) (*
 	if err != nil {
 		return nil, err
 	}
-	handler := newPublicHandler(restEdge, mcpEdge, cfg.MCPPath, restConfig.Discovery, llmProxy)
+	var brokerWakeup eventWakeupSubscriber
+	if candidate, ok := environment.publisher.(eventWakeupSubscriber); ok {
+		brokerWakeup = candidate
+	}
+	eventStreamHandler, err := newProjectEventStreamHandler(projectEventStreamConfig{
+		Principals:   principals,
+		Scopes:       ownership,
+		Subscriber:   eventSubscriber,
+		Reader:       eventReadService,
+		Hub:          eventHub,
+		BrokerWakeup: brokerWakeup,
+		Clock:        clock,
+	})
+	if err != nil {
+		return nil, err
+	}
+	builder.addStop("event-stream", eventStreamHandler.Close)
+	handler := newPublicHandler(restEdge, mcpEdge, cfg.MCPPath, restConfig.Discovery, llmProxy, eventStreamHandler)
 
 	tracked, err := newTrackedRuntime(environment.runtime, closePolicyForRuntime(cfg.Installation.Runtime))
 	if err != nil {
@@ -719,8 +743,12 @@ func wireApp(ctx context.Context, builder *builder, environment *environment) (*
 	builder.addStop("live-log-runtime", collecting.Close)
 	engine := kernelengine.New(newPreparationState(engineState, activation), collecting, environment.workspace, clock)
 	dispatcher, err := event.NewDispatcher(event.DispatcherConfig{
-		Outbox:    environment.outbox,
-		Publisher: &metricsPublisher{inner: environment.publisher, metrics: operations},
+		Outbox: environment.outbox,
+		Publisher: &metricsPublisher{
+			inner:     environment.publisher,
+			metrics:   operations,
+			onPublish: func(envelope event.Envelope) { eventHub.notify(envelope.Scope) },
+		},
 		BatchSize: 64,
 		Idle: func(ctx context.Context) error {
 			return clock.Sleep(ctx, cfg.LoopInterval)
@@ -783,6 +811,7 @@ func wireApp(ctx context.Context, builder *builder, environment *environment) (*
 		trigger:       processor,
 		metrics:       operations,
 		metricsSource: newMetricsSource(environment.outbox, triggersAdapter, environment.controller, operations),
+		eventStream:   eventStreamHandler,
 		settlement:    newTaskSettlement(environment.controller, environment.controller, environment.scanner, taskService),
 		runtime:       tracked,
 		renewal:       renewal,

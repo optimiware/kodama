@@ -124,7 +124,7 @@ func runExecution(ctx context.Context, config Config, args []string, ports Ports
 		if hasHelpFlag(args[1:]) {
 			return runHelp(ports.Out, ports.Err, []string{"watch"})
 		}
-		return runWatch(ctx, config, args[1:], ports)
+		return runWatch(ctx, config, args[1:], ports, deps)
 	case "cancel":
 		return runCancel(ctx, config, args[1:], ports, deps)
 	default:

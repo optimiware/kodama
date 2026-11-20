@@ -38,6 +38,7 @@ Every project member and enabled project service account can read non-secret ope
 ## API and MCP conventions
 
 - REST (`/api/v1/...`) and MCP (`/mcp`) dispatch through one shared router and authorizer with 1:1 operation parity.
+- Live project events stream over HTTP Server-Sent Events at `GET /api/v1/projects/{project}/events/stream` (`text/event-stream`, supporting `since`/`after`, repeatable `type`, and `Last-Event-ID` reconnect) using the same Bearer auth, membership, scope boundary, and credential-expiry rules as `event.subscribe` and `event.read`.
 - In MCP, tool names use underscores (for example `task_create_and_start`) and accept either flat top-level arguments or the wrapped `{"input": {...}, "expected_version": ..., "idempotency_key": ...}` envelope.
 - State-changing operations require caller-supplied `idempotency_key` (retries with identical input converge; changed input fails with `changed_idempotency_content`).
 - Versioned mutations require `expected_version` (stale versions fail with `version_conflict`; re-read the entity and retry).

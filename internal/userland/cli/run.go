@@ -74,11 +74,13 @@ func RunWithDeps(ctx context.Context, config Config, args []string, ports Ports,
 			return runHelp(ports.Out, ports.Err, []string{"inspect"})
 		}
 		return runInspect(ctx, config, args[1:], ports)
+	case "events":
+		return runEvents(ctx, config, args[1:], ports, deps)
 	case "watch":
 		if hasHelpFlag(args[1:]) {
 			return runHelp(ports.Out, ports.Err, []string{"watch"})
 		}
-		return runWatch(ctx, config, args[1:], ports)
+		return runWatch(ctx, config, args[1:], ports, deps)
 	case "cancel":
 		return runCancel(ctx, config, args[1:], ports, deps)
 	case "execution":
@@ -433,19 +435,23 @@ func runInspect(ctx context.Context, config Config, args []string, ports Ports) 
 	return ExitSuccess
 }
 
-// runWatch polls execution.inspect until a terminal status or cancellation,
-// emitting a snapshot only when the execution's version or observable state
-// changes.
-func runWatch(ctx context.Context, config Config, args []string, ports Ports) int {
-	var outputFlag string
+// runWatch either polls execution.inspect for one execution ID until a terminal
+// status (preserving single-execution behavior and failed-action stderr tails),
+// or—when --project / --until is supplied without an execution ID—watches a
+// project's live event stream.
+func runWatch(ctx context.Context, config Config, args []string, ports Ports, deps CommandDeps) int {
+	var (
+		projectFlag string
+		untilFlag   string
+		outputFlag  string
+	)
 	spec := newArgSpec()
+	spec.stringFlag(&projectFlag, "--project", "-p")
+	spec.stringFlag(&untilFlag, "--until")
 	spec.stringFlag(&outputFlag, "--output")
-	positionals, _, err := spec.parse(args)
+	positionals, seen, err := spec.parse(args)
 	if err != nil {
 		return usage(ports.Err, err.Error())
-	}
-	if len(positionals) != 1 || positionals[0] == "" {
-		return usage(ports.Err, "watch requires exactly one execution")
 	}
 	format, err := resolveOutputFormat(outputFlag, config)
 	if err != nil {
@@ -453,6 +459,37 @@ func runWatch(ctx context.Context, config Config, args []string, ports Ports) in
 	}
 	if err := config.Validate(); err != nil {
 		return usage(ports.Err, err.Error())
+	}
+
+	until := strings.TrimSpace(untilFlag)
+	if seen["--until"] && until != "request" {
+		return usage(ports.Err, fmt.Sprintf("unknown --until condition %q; want request", until))
+	}
+
+	if len(positionals) > 1 {
+		return usage(ports.Err, "watch requires exactly one execution or --project <id>")
+	}
+
+	explicitProject := seen["--project"] || seen["-p"] || deps.ExplicitProject
+	if len(positionals) == 0 {
+		if !explicitProject && !seen["--until"] {
+			return usage(ports.Err, "watch requires exactly one execution or --project <id>")
+		}
+		projectID := resolveProject(projectFlag, config, deps)
+		if projectID == "" {
+			return usage(ports.Err, "watch --project requires a project ID (or KODEMA_PROJECT)")
+		}
+		if ports.Client == nil {
+			return failure(ports.Err, fmt.Errorf("no public client is configured"))
+		}
+		return runProjectWatch(ctx, ports, projectID, until, format)
+	}
+
+	if positionals[0] == "" {
+		return usage(ports.Err, "watch requires exactly one execution")
+	}
+	if seen["--until"] {
+		return usage(ports.Err, "--until is only supported for project-wide watch (omit <execution-id> and pass --project <id>)")
 	}
 	if ports.Client == nil {
 		return failure(ports.Err, fmt.Errorf("no public client is configured"))

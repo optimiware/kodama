@@ -70,6 +70,7 @@ func (execution inspectedExecution) effectiveState() string {
 type logsJSONPage struct {
 	ExecutionID string         `json:"execution_id"`
 	ActionID    string         `json:"action_id"`
+	ActionName  string         `json:"action_name,omitempty"`
 	Stream      string         `json:"stream"`
 	Data        string         `json:"data"`
 	Chunks      []api.LogChunk `json:"chunks"`
@@ -79,6 +80,7 @@ type logsJSONPage struct {
 // logStreamState tracks pagination and deduplication across one action's stream.
 type logStreamState struct {
 	actionID   string
+	actionName string
 	cursor     string
 	hasSeen    bool
 	lastOffset uint64
@@ -211,8 +213,18 @@ func runLogsOnce(ctx context.Context, ports Ports, executionID, actionFlag, stre
 }
 
 // runLogsFollow polls execution.inspect and drains execution.logs.read until
-// the target action or execution reaches a terminal status.
+// the target action or execution reaches a terminal status (or pauses at a
+// request action when following across all actions without --action).
 func runLogsFollow(ctx context.Context, ports Ports, executionID, actionFlag, stream string, format OutputFormat) int {
+	if actionFlag != "" {
+		return runLogsFollowExplicit(ctx, ports, executionID, actionFlag, stream, format)
+	}
+	return runLogsFollowMulti(ctx, ports, executionID, stream, format)
+}
+
+// runLogsFollowExplicit preserves single-action follow behavior when --action
+// is explicitly specified.
+func runLogsFollowExplicit(ctx context.Context, ports Ports, executionID, actionFlag, stream string, format OutputFormat) int {
 	var state *logStreamState
 	for settling := 0; ; {
 		if ctx.Err() != nil {
@@ -235,7 +247,6 @@ func runLogsFollow(ctx context.Context, ports Ports, executionID, actionFlag, st
 		}
 
 		if !hasTarget {
-			// Execution is queued or pending its first action.
 			switch execState {
 			case "queued", "running":
 				ports.Sleep(watchInterval)
@@ -253,20 +264,8 @@ func runLogsFollow(ctx context.Context, ports Ports, executionID, actionFlag, st
 			}
 		}
 
-		// If --action was omitted and the execution advanced to a new started
-		// container action after finishing the previous one, drain the previous
-		// action completely before switching to the new action.
-		if state != nil && state.actionID != targetAction.ActionID {
-			if _, _, drainErr := drainLogPages(ctx, ports, executionID, stream, format, true, state); drainErr != nil {
-				if ctx.Err() != nil {
-					fmt.Fprintln(ports.Err, "logs canceled")
-					return ExitFailure
-				}
-				return failure(ports.Err, drainErr)
-			}
-			state = &logStreamState{actionID: targetAction.ActionID}
-		} else if state == nil {
-			state = &logStreamState{actionID: targetAction.ActionID}
+		if state == nil || state.actionID != targetAction.ActionID {
+			state = &logStreamState{actionID: targetAction.ActionID, actionName: targetAction.Name}
 		}
 
 		if _, _, err := drainLogPages(ctx, ports, executionID, stream, format, true, state); err != nil {
@@ -277,7 +276,7 @@ func runLogsFollow(ctx context.Context, ports Ports, executionID, actionFlag, st
 			return failure(ports.Err, err)
 		}
 
-		terminalState, done, err := checkLogsTerminal(execState, targetAction, actionFlag != "", inspected.Actions)
+		terminalState, done, err := checkLogsTerminal(execState, targetAction, true, inspected.Actions)
 		if err != nil {
 			return failure(ports.Err, err)
 		}
@@ -295,6 +294,199 @@ func runLogsFollow(ctx context.Context, ports Ports, executionID, actionFlag, st
 
 		ports.Sleep(watchInterval)
 	}
+}
+
+// runLogsFollowMulti follows logs seamlessly across all sequential container
+// actions as an execution advances, draining each completed container action
+// before transitioning to the next, skipping non-container request actions, and
+// stopping cleanly on terminal execution states or when paused at a waiting
+// request action.
+func runLogsFollowMulti(ctx context.Context, ports Ports, executionID, stream string, format OutputFormat) int {
+	states := make(map[string]*logStreamState)
+	drainedComplete := make(map[string]bool)
+	headerPrinted := make(map[string]bool)
+	anyHeaderPrinted := false
+	lastByteNewline := true
+
+	for settling := 0; ; {
+		if ctx.Err() != nil {
+			fmt.Fprintln(ports.Err, "logs canceled")
+			return ExitFailure
+		}
+		inspected, err := fetchExecutionInspect(ctx, ports, executionID)
+		if err != nil {
+			if ctx.Err() != nil {
+				fmt.Fprintln(ports.Err, "logs canceled")
+				return ExitFailure
+			}
+			return failure(ports.Err, err)
+		}
+
+		execState := inspected.effectiveState()
+		startedContainers := orderedStartedContainerActions(inspected.Actions)
+		execTerminal := execState == "succeeded" || execState == "failed" || execState == "cancelled"
+		showHeaders := len(startedContainers) > 1 || (!execTerminal && countContainerActions(inspected.Actions) > 1)
+		cleanupPending := execTerminal && inspected.Cleanup.State == "pending"
+
+		for _, action := range startedContainers {
+			if drainedComplete[action.ActionID] {
+				continue
+			}
+			state := states[action.ActionID]
+			if state == nil {
+				state = &logStreamState{actionID: action.ActionID, actionName: action.Name}
+				states[action.ActionID] = state
+			} else if state.actionName == "" && action.Name != "" {
+				state.actionName = action.Name
+			}
+
+			if format != OutputJSON && showHeaders && !headerPrinted[action.ActionID] {
+				if anyHeaderPrinted && !lastByteNewline {
+					if _, err := fmt.Fprintln(ports.Out); err != nil {
+						return failure(ports.Err, err)
+					}
+				}
+				if _, err := fmt.Fprintf(ports.Out, "==> action %s <==\n", formatLogActionLabel(action)); err != nil {
+					return failure(ports.Err, err)
+				}
+				headerPrinted[action.ActionID] = true
+				anyHeaderPrinted = true
+				lastByteNewline = true
+			}
+
+			chunks, _, err := drainLogPages(ctx, ports, executionID, stream, format, true, state)
+			if err != nil {
+				if ctx.Err() != nil {
+					fmt.Fprintln(ports.Err, "logs canceled")
+					return ExitFailure
+				}
+				return failure(ports.Err, err)
+			}
+			if format != OutputJSON && len(chunks) > 0 {
+				for _, chunk := range chunks {
+					if len(chunk.Data) > 0 {
+						lastByteNewline = chunk.Data[len(chunk.Data)-1] == '\n'
+					}
+				}
+			}
+
+			if isActionTerminal(action.effectiveState()) && !cleanupPending {
+				drainedComplete[action.ActionID] = true
+			}
+		}
+
+		switch execState {
+		case "succeeded", "failed", "cancelled":
+			if logsSettling(inspected, &settling) {
+				ports.Sleep(watchInterval)
+				continue
+			}
+			if execState == "succeeded" {
+				if len(inspected.Actions) == 0 {
+					return failure(ports.Err, fmt.Errorf("execution %q has no actions", executionID))
+				}
+				return ExitSuccess
+			}
+			fmt.Fprintf(ports.Err, "logs failed: status %s\n", execState)
+			return ExitFailure
+		case "queued", "running":
+			if waitingReq, paused := activeWaitingRequestAction(inspected); paused {
+				assignSuffix := ""
+				if strings.TrimSpace(waitingReq.Assignment) != "" {
+					assignSuffix = fmt.Sprintf(" (%s)", waitingReq.Assignment)
+				}
+				fmt.Fprintf(ports.Err, "logs paused: waiting on request action %s%s\n", formatLogActionLabel(waitingReq), assignSuffix)
+				return ExitSuccess
+			}
+			if len(inspected.Actions) == 1 && inspected.Actions[0].Kind != "request" {
+				onlyState := inspected.Actions[0].effectiveState()
+				if isActionTerminal(onlyState) {
+					if logsSettling(inspected, &settling) {
+						ports.Sleep(watchInterval)
+						continue
+					}
+					if onlyState == "succeeded" {
+						return ExitSuccess
+					}
+					fmt.Fprintf(ports.Err, "logs failed: status %s\n", onlyState)
+					return ExitFailure
+				}
+			}
+			ports.Sleep(watchInterval)
+		case "":
+			if len(startedContainers) > 0 {
+				last := startedContainers[len(startedContainers)-1]
+				if isActionTerminal(last.effectiveState()) {
+					if last.effectiveState() == "succeeded" {
+						return ExitSuccess
+					}
+					fmt.Fprintf(ports.Err, "logs failed: status %s\n", last.effectiveState())
+					return ExitFailure
+				}
+				ports.Sleep(watchInterval)
+				continue
+			}
+			return failure(ports.Err, fmt.Errorf("execution status is missing or unknown"))
+		default:
+			return failure(ports.Err, fmt.Errorf("execution status %q is unknown", execState))
+		}
+	}
+}
+
+func countContainerActions(actions []inspectedAction) int {
+	count := 0
+	for _, action := range actions {
+		if action.Kind != "request" {
+			count++
+		}
+	}
+	return count
+}
+
+func orderedStartedContainerActions(actions []inspectedAction) []inspectedAction {
+	started := make([]inspectedAction, 0, len(actions))
+	for _, action := range actions {
+		if action.Kind == "request" {
+			continue
+		}
+		if actionWasStarted(action) {
+			started = append(started, action)
+		}
+	}
+	return started
+}
+
+func activeWaitingRequestAction(inspected inspectedExecution) (inspectedAction, bool) {
+	if idx := inspected.CurrentAction; idx >= 0 && idx < len(inspected.Actions) {
+		candidate := inspected.Actions[idx]
+		state := candidate.effectiveState()
+		if candidate.Kind == "request" && (state == "running" || state == "waiting") && candidate.Decision == "" {
+			return candidate, true
+		}
+	}
+	for _, action := range inspected.Actions {
+		state := action.effectiveState()
+		if action.Kind == "request" && (state == "running" || state == "waiting") && action.Decision == "" {
+			return action, true
+		}
+	}
+	return inspectedAction{}, false
+}
+
+func isActionTerminal(state string) bool {
+	switch state {
+	case "succeeded", "failed", "cancelled":
+		return true
+	default:
+		return false
+	}
+}
+
+func formatLogActionLabel(action inspectedAction) string {
+	if action.Name != "" && action.Name != action.ActionID {
+		return fmt.Sprintf("%s (%s)", action.Name, action.ActionID)
+	}
+	return orDash(action.ActionID)
 }
 
 // drainLogPages reads all currently available pages from state.cursor, writing
@@ -369,6 +561,7 @@ func drainLogPages(ctx context.Context, ports Ports, executionID, stream string,
 			out := logsJSONPage{
 				ExecutionID: executionID,
 				ActionID:    state.actionID,
+				ActionName:  state.actionName,
 				Stream:      stream,
 				Data:        text.String(),
 				Chunks:      fresh,

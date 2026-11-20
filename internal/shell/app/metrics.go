@@ -164,8 +164,9 @@ const cleanupStatePending = "pending"
 // dispatcher's publisher, so a broker outage increments the counter while the
 // durable outbox keeps the original identities.
 type metricsPublisher struct {
-	inner   event.Publisher
-	metrics *operationsMetrics
+	inner     event.Publisher
+	metrics   *operationsMetrics
+	onPublish func(event.Envelope)
 }
 
 var _ event.Publisher = (*metricsPublisher)(nil)
@@ -174,6 +175,9 @@ func (publisher *metricsPublisher) Publish(ctx context.Context, envelope event.E
 	err := publisher.inner.Publish(ctx, envelope)
 	if isDependencyError(err) {
 		publisher.metrics.countDependencyError()
+	}
+	if err == nil && publisher.onPublish != nil {
+		publisher.onPublish(envelope)
 	}
 	return err
 }

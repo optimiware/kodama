@@ -3,14 +3,19 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"strings"
 	"text/tabwriter"
 
 	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/client"
 )
 
 // runInbox queries task.inbox and renders a human-readable table or raw JSON.
+// When --wait is set, blocks on the project live event stream until at least
+// one actionable item appears for the caller.
 func runInbox(ctx context.Context, config Config, args []string, ports Ports, deps CommandDeps) int {
 	if hasHelpFlag(args) {
 		return runHelp(ports.Out, ports.Err, []string{"inbox"})
@@ -20,12 +25,14 @@ func runInbox(ctx context.Context, config Config, args []string, ports Ports, de
 		outputFlag  string
 		kindFlags   []string
 		wideFlag    bool
+		waitFlag    bool
 	)
 	spec := newArgSpec()
 	spec.stringFlag(&projectFlag, "--project", "-p")
 	spec.stringFlag(&outputFlag, "--output")
 	spec.listFlag(&kindFlags, "--kind")
 	spec.boolFlag(&wideFlag, "--wide", "-w")
+	spec.boolFlag(&waitFlag, "--wait")
 	positionals, _, err := spec.parse(args)
 	if err != nil {
 		return usage(ports.Err, err.Error())
@@ -61,6 +68,75 @@ func runInbox(ctx context.Context, config Config, args []string, ports Ports, de
 		return failure(ports.Err, fmt.Errorf("no public client is configured"))
 	}
 
+	allItems, firstBody, pages, err := fetchInboxPages(ctx, ports, projectID, kinds)
+	if err != nil {
+		if waitFlag && ctx.Err() != nil {
+			fmt.Fprintln(ports.Err, "inbox wait canceled")
+			return ExitFailure
+		}
+		return failure(ports.Err, err)
+	}
+	if !waitFlag || len(allItems) > 0 {
+		return renderInboxResult(ctx, ports, format, wideFlag, allItems, firstBody, pages)
+	}
+
+	// No actionable item yet: subscribe to the project live event stream and
+	// immediately re-check once after subscribing so no event committed in the
+	// window between the initial check and stream subscription is missed.
+	stream, err := openProjectEventStream(ctx, ports.Client, client.EventStreamRequest{
+		ProjectID: projectID,
+	})
+	if err != nil {
+		if ctx.Err() != nil {
+			fmt.Fprintln(ports.Err, "inbox wait canceled")
+			return ExitFailure
+		}
+		return failure(ports.Err, err)
+	}
+	defer func() { _ = stream.Close() }()
+
+	allItems, firstBody, pages, err = fetchInboxPages(ctx, ports, projectID, kinds)
+	if err != nil {
+		if ctx.Err() != nil {
+			fmt.Fprintln(ports.Err, "inbox wait canceled")
+			return ExitFailure
+		}
+		return failure(ports.Err, err)
+	}
+	if len(allItems) > 0 {
+		return renderInboxResult(ctx, ports, format, wideFlag, allItems, firstBody, pages)
+	}
+
+	for {
+		evt, err := stream.Next(ctx)
+		if err != nil {
+			if ctx.Err() != nil {
+				fmt.Fprintln(ports.Err, "inbox wait canceled")
+				return ExitFailure
+			}
+			if errors.Is(err, io.EOF) {
+				return failure(ports.Err, fmt.Errorf("event stream closed before an inbox item arrived"))
+			}
+			return failure(ports.Err, err)
+		}
+		if !isInboxRelevantEvent(evt.Type) {
+			continue
+		}
+		allItems, firstBody, pages, err = fetchInboxPages(ctx, ports, projectID, kinds)
+		if err != nil {
+			if ctx.Err() != nil {
+				fmt.Fprintln(ports.Err, "inbox wait canceled")
+				return ExitFailure
+			}
+			return failure(ports.Err, err)
+		}
+		if len(allItems) > 0 {
+			return renderInboxResult(ctx, ports, format, wideFlag, allItems, firstBody, pages)
+		}
+	}
+}
+
+func fetchInboxPages(ctx context.Context, ports Ports, projectID string, kinds []string) ([]api.InboxItem, json.RawMessage, int, error) {
 	var (
 		allItems  []api.InboxItem
 		firstBody json.RawMessage
@@ -74,18 +150,18 @@ func runInbox(ctx context.Context, config Config, args []string, ports Ports, de
 		}
 		input, err := json.Marshal(req)
 		if err != nil {
-			return failure(ports.Err, err)
+			return nil, nil, 0, err
 		}
 		invocation := api.Invocation{
 			Operation: "task.inbox",
 			Request:   api.Request{Input: input},
 		}
 		if err := invocation.Validate(); err != nil {
-			return usage(ports.Err, publicMessage(err))
+			return nil, nil, 0, err
 		}
 		result, err := ports.Client.Invoke(ctx, invocation)
 		if err != nil {
-			return failure(ports.Err, err)
+			return nil, nil, 0, err
 		}
 		pages++
 		if pages == 1 {
@@ -94,7 +170,7 @@ func runInbox(ctx context.Context, config Config, args []string, ports Ports, de
 		var page api.TaskInboxResult
 		if len(result.Body) > 0 {
 			if err := json.Unmarshal(result.Body, &page); err != nil {
-				return failure(ports.Err, fmt.Errorf("invalid task.inbox response: %w", err))
+				return nil, nil, 0, fmt.Errorf("invalid task.inbox response: %w", err)
 			}
 		}
 		allItems = append(allItems, page.Items...)
@@ -103,7 +179,18 @@ func runInbox(ctx context.Context, config Config, args []string, ports Ports, de
 		}
 		cursor = page.NextCursor
 	}
+	return allItems, firstBody, pages, nil
+}
 
+func renderInboxResult(
+	ctx context.Context,
+	ports Ports,
+	format OutputFormat,
+	wideFlag bool,
+	allItems []api.InboxItem,
+	firstBody json.RawMessage,
+	pages int,
+) int {
 	if format == OutputJSON {
 		if pages == 1 {
 			if err := renderResult(ports.Out, OutputJSON, api.Result{Operation: "task.inbox", Body: firstBody}); err != nil {
