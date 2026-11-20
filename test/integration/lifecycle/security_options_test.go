@@ -91,6 +91,7 @@ func TestFactoryTLSWorkloadRoundTrip(t *testing.T) {
 		t.Fatalf("build MCP request: %v", err)
 	}
 	request.Header.Set("Content-Type", api.MediaType)
+	request.Header.Set("Authorization", "Bearer "+harness.AdminToken)
 	response, err := client.Do(request)
 	if err != nil {
 		t.Fatalf("trusted client request over HTTPS: %v", err)
@@ -141,6 +142,7 @@ func TestFactoryTLSWorkloadRoundTrip(t *testing.T) {
 		t.Fatalf("build helper MCP request: %v", err)
 	}
 	helperRequest.Header.Set("Content-Type", api.MediaType)
+	helperRequest.Header.Set("Authorization", "Bearer "+harness.AdminToken)
 	helperResponse, err := helperClient.Do(helperRequest)
 	if err != nil {
 		t.Fatalf("harness helper transport refused the fixture-CA edge: %v", err)

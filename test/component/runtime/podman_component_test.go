@@ -4,6 +4,7 @@ package runtimeconformance
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -116,8 +117,10 @@ func TestPodmanRuntimeManifestEnvironmentPermissionsAndExit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("inspect resource limits: %v", err)
 	}
-	if got := strings.TrimSpace(string(limits.Stdout)); got != "100000 100000 1073741824" {
-		t.Fatalf("container resource limits = %q; want 1 CPU / 1 GiB", got)
+	wantQuota := (podman.DefaultCPUMillicores * podman.DefaultCPUPeriod) / 1000
+	wantLimits := fmt.Sprintf("%d %d %d", wantQuota, podman.DefaultCPUPeriod, podman.DefaultMemoryBytes)
+	if got := strings.TrimSpace(string(limits.Stdout)); got != wantLimits {
+		t.Fatalf("container resource limits = %q; want %q (default 2 CPUs / 2 GiB)", got, wantLimits)
 	}
 
 	evidence, err := fixture.adapter.Stop(ctx, engine.StopRequest{Identity: identity, WorkspaceID: fixture.workspaceID})
