@@ -135,6 +135,9 @@ func (edge *Edge) authenticate(ctx context.Context, credential string, id json.R
 	if err := principal.Validate(); err != nil {
 		return encodeFault(id, err)
 	}
+	if !principal.Enabled {
+		return encodeError(id, api.CodeUnauthenticated, "presented credential is invalid")
+	}
 	return nil
 }
 

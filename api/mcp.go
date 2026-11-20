@@ -369,7 +369,7 @@ func (request MCPRequest) Validate() error {
 			return invalid("tools/call names unknown operation %q", params.Name)
 		}
 		if _, err := DecodeMCPOperationArguments(canonical, params.Arguments); err != nil {
-			return invalid("tools/call arguments are invalid")
+			return err
 		}
 		return nil
 	default:

@@ -291,6 +291,9 @@ func runMCPInstall(ctx context.Context, config Config, args []string, ports Port
 	}
 	sessionPath := strings.TrimSpace(config.SessionFile)
 	credPath := strings.TrimSpace(config.CredentialFile)
+	if deps.ExplicitSessionFile && deps.ExplicitCredentialFile {
+		return usage(ports.Err, "mcp install accepts either --session or --credential-file, not both")
+	}
 	switch {
 	case sessionPath != "" && (credPath == "" || !deps.ExplicitCredentialFile):
 		// Preserve an explicit custom session path; prefer it over an ambient
@@ -444,12 +447,12 @@ func credentialTokenExpiry(raw string) (time.Time, bool) {
 		return time.Time{}, false
 	}
 	var claims struct {
-		Exp *int64 `json:"exp"`
+		Exp *float64 `json:"exp"`
 	}
 	if err := json.Unmarshal(payload, &claims); err != nil || claims.Exp == nil || *claims.Exp <= 0 {
 		return time.Time{}, false
 	}
-	return time.Unix(*claims.Exp, 0).UTC(), true
+	return time.Unix(int64(*claims.Exp), 0).UTC(), true
 }
 
 func resolveMCPConfigPath(target, explicit string, localScope bool, homeDir func() (string, error)) (string, error) {

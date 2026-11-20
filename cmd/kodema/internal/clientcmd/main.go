@@ -579,9 +579,11 @@ func loadConfig(flags *flag.FlagSet, configFile, serverURL, caFile, credentialFi
 	if flagSet(flags, "credential-file") || envSet("KODEMA_CREDENTIAL_FILE") {
 		config.CredentialFile = credentialFile
 	}
-	if flagSet(flags, "session") || flagSet(flags, "session-file") || envSet("KODEMA_SESSION") || envSet("KODEMA_SESSION_FILE") {
+	sessionFlag := flagSet(flags, "session") || flagSet(flags, "session-file")
+	sessionEnvVal := strings.TrimSpace(firstEnv("KODEMA_SESSION", "KODEMA_SESSION_FILE"))
+	if sessionFlag || sessionEnvVal != "" {
 		trimmedSession := strings.TrimSpace(sessionFile)
-		if trimmedSession == "" && (flagSet(flags, "session") || flagSet(flags, "session-file")) {
+		if trimmedSession == "" && sessionFlag {
 			return cli.Config{}, nil, false, usage(stderr, "--session requires a path")
 		}
 		config.SessionFile = trimmedSession
