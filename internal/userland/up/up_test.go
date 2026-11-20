@@ -922,7 +922,7 @@ func TestStackUpStatusAndDownWithMockEngine(t *testing.T) {
 		t.Fatal(err)
 	}
 	testListen := fmt.Sprintf("127.0.0.1:%d", testPort)
-	var out strings.Builder
+	var out, errOut strings.Builder
 	gatewayCtx, stopGateway := context.WithCancel(context.Background())
 	defer stopGateway()
 	desc, err := Up(context.Background(), UpConfig{
@@ -932,6 +932,7 @@ func TestStackUpStatusAndDownWithMockEngine(t *testing.T) {
 		HomeDir:    home,
 		DetectOpts: detectOpts,
 		EngineHTTP: rewritingClient,
+		Stderr:     &errOut,
 		// Up waits for the gateway it spawned, so the test runs a real one.
 		SpawnGateway: func(stateDir string) (int, error) {
 			go func() { _ = ServeStackGateway(gatewayCtx, stateDir) }()
@@ -942,6 +943,26 @@ func TestStackUpStatusAndDownWithMockEngine(t *testing.T) {
 	}, &out)
 	if err != nil {
 		t.Fatalf("Up failed: %v", err)
+	}
+	for _, want := range []string{
+		"using podman",
+		"checking container images...",
+		"starting postgres (kodema-test-postgres)...",
+		"waiting for postgres readiness...",
+		"starting nats (kodema-test-nats)...",
+		"running database migrations...",
+		"starting TLS gateway on " + testListen + "...",
+		"bootstrapping tenant tenant-local...",
+		"starting kodema server (kodema-test-server)...",
+		"waiting for kodema server readiness (https://" + testListen + "/readyz)...",
+		"starting git service (kodema-test-git)...",
+	} {
+		if !strings.Contains(errOut.String(), want) {
+			t.Fatalf("Up stderr missing %q:\n%s", want, errOut.String())
+		}
+	}
+	if strings.Contains(out.String(), "starting postgres") || strings.Contains(out.String(), "checking container images") {
+		t.Fatalf("Up progress leaked onto stdout:\n%s", out.String())
 	}
 	if desc.PublicURL != "https://"+testListen {
 		t.Fatalf("PublicURL = %q", desc.PublicURL)
@@ -1306,6 +1327,9 @@ func TestProvisionCreatesWhatIsMissingAndRenewsTheGitCredential(t *testing.T) {
 type mockEngine struct {
 	mu      sync.Mutex
 	created map[string]map[string]any
+	// missingImages reports every GET /images/<ref>/json as 404 until pulled.
+	missingImages bool
+	pulledImages  []string
 	// logs is the output every container reports.
 	logs   string
 	client *http.Client
@@ -1371,7 +1395,16 @@ func newMockEngine(t *testing.T) *mockEngine {
 				return
 			}
 			w.WriteHeader(http.StatusNotFound)
+		case path == "/v1.41/images/create" && r.Method == http.MethodPost:
+			engine.pulledImages = append(engine.pulledImages, r.URL.Query().Get("fromImage"))
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"status":"Status: Downloaded newer image"}` + "\n"))
 		case strings.HasPrefix(path, "/v1.41/images/"):
+			if engine.missingImages {
+				w.WriteHeader(http.StatusNotFound)
+				_, _ = w.Write([]byte(`{"message":"no such image"}`))
+				return
+			}
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write([]byte(`{"Id":"sha256:abc"}`))
 		case path == "/v1.41/containers/create":
@@ -1533,6 +1566,71 @@ func TestLastDistinctLines(t *testing.T) {
 	}
 	if got := lastDistinctLines("", 5); got != "" {
 		t.Fatalf("lastDistinctLines of no output = %q", got)
+	}
+}
+
+// TestUpReportsImagePullProgressOnStderr verifies that a cold image cache emits
+// per-image pull progress on stderr while keeping stdout limited to the final
+// summary.
+func TestUpReportsImagePullProgressOnStderr(t *testing.T) {
+	home := t.TempDir()
+	engine := newMockEngine(t)
+	engine.missingImages = true
+
+	testPort, err := allocateLoopbackPort()
+	if err != nil {
+		t.Fatal(err)
+	}
+	testListen := fmt.Sprintf("127.0.0.1:%d", testPort)
+	var out, errOut strings.Builder
+	gatewayCtx, stopGateway := context.WithCancel(context.Background())
+	defer stopGateway()
+	_, err = Up(context.Background(), UpConfig{
+		Instance:      "cold",
+		ListenAddr:    testListen,
+		KodemaImage:   "ghcr.io/optimiware/kodema/kodema:v0.4.0",
+		PostgresImage: "docker.io/library/postgres:18-alpine",
+		NATSImage:     "docker.io/library/nats:2.15-alpine",
+		GOOS:          "darwin",
+		HomeDir:       home,
+		Stderr:        &errOut,
+		DetectOpts: &DetectOptions{
+			ExplicitSocket: "/mock/podman.sock",
+			GOOS:           "darwin",
+			HomeDir:        home,
+			StatSocket:     func(string) bool { return true },
+			PingSocket:     func(context.Context, string) (RuntimeKind, error) { return KindPodman, nil },
+		},
+		EngineHTTP: engine.client,
+		SpawnGateway: func(stateDir string) (int, error) {
+			go func() { _ = ServeStackGateway(gatewayCtx, stateDir) }()
+			return os.Getpid(), nil
+		},
+		Provision: func(context.Context, provisionConfig) (string, error) { return "kodsvc.cold", nil },
+	}, &out)
+	if err != nil {
+		t.Fatalf("Up failed: %v", err)
+	}
+	wantImages := []string{
+		"docker.io/library/postgres:18-alpine",
+		"docker.io/library/nats:2.15-alpine",
+		"ghcr.io/optimiware/kodema/kodema:v0.4.0",
+	}
+	engine.mu.Lock()
+	pulled := slices.Clone(engine.pulledImages)
+	engine.mu.Unlock()
+	if !slices.Equal(pulled, wantImages) {
+		t.Fatalf("pulled images = %v, want %v", pulled, wantImages)
+	}
+	for _, img := range wantImages {
+		for _, want := range []string{"pulling image " + img + "...\n", "pulled image " + img + "\n"} {
+			if !strings.Contains(errOut.String(), want) {
+				t.Fatalf("stderr missing %q:\n%s", want, errOut.String())
+			}
+		}
+	}
+	if strings.Contains(out.String(), "pulling image") {
+		t.Fatalf("pull progress leaked onto stdout:\n%s", out.String())
 	}
 }
 

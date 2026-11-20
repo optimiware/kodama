@@ -220,17 +220,26 @@ Flags:
 configured project via pipeline.apply and prints each applied pipeline's ID for 'task run --pipeline'.`,
 	},
 	"run": {
-		usage:   "kodema run <file> [--project <id>] [--input <k=v>]",
+		usage:   "kodema run <file> [--project <id>] [--input <k=v>] [-d|--detach]",
 		summary: "Run one local pipeline file and follow it to its end",
 		description: `Starts the pipeline YAML in <file> inline via pipeline.start (nothing is applied or stored)
-and follows the execution to its end. Each container action's stdout is then printed in
-action order (the server keeps a workload's output when the execution ends); the execution
-id and the outcome go to stderr. Exits 0 when the execution succeeded and 1 when it failed,
-was cancelled, or stopped at a request that waits for a human ('kodema inbox', 'kodema approve').
+and follows the execution to its end unless --detach is set. With --detach, prints the
+execution ID to stdout and exits 0 immediately after admission.
+
+When following, the execution ID, action-state transitions (including waiting notices for
+service/* requests), any failing container's stderr tail, and the final outcome go to
+stderr, keeping stdout clean for container stdout (printed in action order once settled).
+
+Exit codes:
+  0   Execution succeeded (or admitted with --detach)
+  1   Execution failed, was cancelled, or paused at a human role/* request gate
+      (leaves the execution running; answer via 'kodema inbox' and 'kodema approve')
+  2   Usage or validation error
 
 Flags:
   --project <id>   Project ID (defaults to global --project or KODEMA_PROJECT)
-  --input <k=v>    Pipeline input key=value pair (repeatable)`,
+  --input <k=v>    Pipeline input key=value pair (repeatable)
+  -d, --detach     Print the execution ID and exit 0 immediately without waiting`,
 	},
 	"inspect": {
 		usage:       "kodema inspect <execution-id>",

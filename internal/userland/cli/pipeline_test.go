@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"io/fs"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/optimiware/kodema/api"
 	"github.com/optimiware/kodema/client"
@@ -336,7 +338,8 @@ func TestRunPipelineApplyDirectoryFailures(t *testing.T) {
 }
 
 // TestRunFile pins `kodema run <file>`: the inline pipeline.start input, the
-// container stdout in action order and the exit code and stderr per outcome.
+// container stdout in action order, action progress, failed container stderr
+// surfacing, --detach, and the exit code and stderr per outcome.
 func TestRunFile(t *testing.T) {
 	const path = "/repo/hello.yaml"
 	document := []byte("actions:\n  - name: hello\n")
@@ -345,14 +348,22 @@ func TestRunFile(t *testing.T) {
 		// inspections are the successive execution.inspect bodies; the last repeats.
 		inspections []string
 		// logs are the successive stdout chunks of each action.
-		logs       map[string][]string
-		wantCode   int
-		wantOut    string
-		wantErr    []string
-		wantSleeps int
+		logs map[string][]string
+		// stderrLogs are the successive stderr chunks of each action.
+		stderrLogs map[string][]string
+		// stderrErr simulates a failure reading the stderr stream.
+		stderrErr error
+		// stderrTruncated simulates server-side truncation on stderr.
+		stderrTruncated bool
+		wantCode        int
+		wantOut         string
+		wantErr         []string
+		wantNotErr      []string
+		wantErrCounts   map[string]int
+		wantSleeps      int
 	}{
 		{
-			name: "succeeded prints every container action in order",
+			name: "succeeded prints every container action in order with action transitions on stderr",
 			inspections: []string{
 				`{"state":"queued","actions":[
 					{"action_id":"act-1","kind":"container","state":"pending"},
@@ -375,14 +386,69 @@ func TestRunFile(t *testing.T) {
 					{"action_id":"act-2","kind":"request","state":"succeeded","assignment":"service/git-service","decision":"pass"},
 					{"action_id":"act-3","kind":"container","state":"succeeded"}]}`,
 			},
-			logs:       map[string][]string{"act-1": {"one\n", "two\n"}, "act-3": {"three\n"}},
-			wantCode:   cli.ExitSuccess,
-			wantOut:    "one\ntwo\nthree\n",
-			wantErr:    []string{"execution exec-1 started\n", "execution exec-1 succeeded\n"},
+			logs:     map[string][]string{"act-1": {"one\n", "two\n"}, "act-3": {"three\n"}},
+			wantCode: cli.ExitSuccess,
+			wantOut:  "one\ntwo\nthree\n",
+			wantErr: []string{
+				"execution exec-1 started\n",
+				"action act-1: running\n",
+				"action act-1: succeeded\n",
+				`execution exec-1 is waiting for service/git-service to answer request "act-2"` + "\n",
+				"action act-2: succeeded (pass)\n",
+				"action act-3: succeeded\n",
+				"execution exec-1 succeeded\n",
+			},
 			wantSleeps: 4,
 		},
 		{
-			name: "failed reports the server failure",
+			name: "service request waiting notice is emitted once across polls",
+			inspections: []string{
+				`{"state":"running","actions":[
+					{"action_id":"act-1","name":"qa-gate","kind":"request","state":"running","assignment":"service/uc09-qa-bot"}]}`,
+				`{"state":"running","actions":[
+					{"action_id":"act-1","name":"qa-gate","kind":"request","state":"running","assignment":"service/uc09-qa-bot"}]}`,
+				`{"state":"running","actions":[
+					{"action_id":"act-1","name":"qa-gate","kind":"request","state":"running","assignment":"service/uc09-qa-bot"}]}`,
+				`{"state":"succeeded","actions":[
+					{"action_id":"act-1","name":"qa-gate","kind":"request","state":"succeeded","assignment":"service/uc09-qa-bot","decision":"pass"}]}`,
+			},
+			wantCode: cli.ExitSuccess,
+			wantOut:  "",
+			wantErr: []string{
+				"execution exec-1 started\n",
+				`execution exec-1 is waiting for service/uc09-qa-bot to answer request "qa-gate"` + "\n",
+				"action qa-gate: succeeded (pass)\n",
+				"execution exec-1 succeeded\n",
+			},
+			wantErrCounts: map[string]int{
+				`execution exec-1 is waiting for service/uc09-qa-bot to answer request "qa-gate"`: 1,
+			},
+			wantSleeps: 3,
+		},
+		{
+			name: "failed surfaces container stderr on stderr while keeping stdout clean",
+			inspections: []string{
+				`{"state":"failed","actions":[
+					{"action_id":"act-1","name":"build","kind":"container","state":"failed"},
+					{"action_id":"act-2","name":"deploy","kind":"container","state":"cancelled"}],
+				"failure":{"kind":"runtime","reason":"exit_code","detail":"workload exited with status 17"}}`,
+			},
+			logs:       map[string][]string{"act-1": {"partial stdout\n"}},
+			stderrLogs: map[string][]string{"act-1": {"fatal: missing dependency\n", "exiting with 17\n"}},
+			wantCode:   cli.ExitFailure,
+			wantOut:    "partial stdout\n",
+			wantErr: []string{
+				"execution exec-1 started\n",
+				"action build: failed\n",
+				"--- stderr (action build) ---\n",
+				"fatal: missing dependency\nexiting with 17\n",
+				"---\n",
+				"execution exec-1 failed: runtime: exit_code: workload exited with status 17\n",
+			},
+			wantNotErr: []string{"stderr truncated"},
+		},
+		{
+			name: "failed with empty stderr reports logs inspection hint",
 			inspections: []string{
 				`{"state":"failed","actions":[
 					{"action_id":"act-1","kind":"container","state":"failed"},
@@ -392,7 +458,88 @@ func TestRunFile(t *testing.T) {
 			logs:     map[string][]string{"act-1": {"boom\n"}},
 			wantCode: cli.ExitFailure,
 			wantOut:  "boom\n",
-			wantErr:  []string{"execution exec-1 failed: runtime: exit_code: container exited 3\n"},
+			wantErr: []string{
+				"kodema logs exec-1 --action act-1 --stream stderr",
+				"execution exec-1 failed: runtime: exit_code: container exited 3\n",
+			},
+		},
+		{
+			name: "failed truncates oversized stderr tail and prints full logs hint",
+			inspections: []string{
+				`{"state":"failed","actions":[
+					{"action_id":"act-1","name":"test","kind":"container","state":"failed"}],
+				"failure":{"kind":"runtime","reason":"exit_code","detail":"workload exited with status 1"}}`,
+			},
+			stderrLogs: map[string][]string{"act-1": {numberedLines(80)}},
+			wantCode:   cli.ExitFailure,
+			wantErr: []string{
+				"--- stderr (action test) ---\n",
+				"line 31\n",
+				"line 80\n",
+				"stderr truncated; run 'kodema logs exec-1 --action test --stream stderr' for full logs\n",
+				"execution exec-1 failed: runtime: exit_code: workload exited with status 1\n",
+			},
+			wantNotErr: []string{"line 30\n", "line 1\n"},
+		},
+		{
+			name: "failed with byte-oversized UTF-8 stderr keeps valid UTF-8 tail and prints hint",
+			inspections: []string{
+				`{"state":"failed","actions":[
+					{"action_id":"act-1","name":"compile","kind":"container","state":"failed"}],
+				"failure":{"kind":"runtime","reason":"exit_code","detail":"workload exited with status 2"}}`,
+			},
+			stderrLogs: map[string][]string{"act-1": {strings.Repeat("é", 5000) + "\nfinal compile error\n"}},
+			wantCode:   cli.ExitFailure,
+			wantErr: []string{
+				"--- stderr (action compile) ---\n",
+				"final compile error\n",
+				"stderr truncated; run 'kodema logs exec-1 --action compile --stream stderr' for full logs\n",
+			},
+		},
+		{
+			name: "failed with server-truncated short stderr prints full logs hint",
+			inspections: []string{
+				`{"state":"failed","actions":[
+					{"action_id":"act-1","name":"lint","kind":"container","state":"failed"}],
+				"failure":{"kind":"runtime","reason":"exit_code","detail":"workload exited with status 1"}}`,
+			},
+			stderrLogs:      map[string][]string{"act-1": {"lint error: unused var\n"}},
+			stderrTruncated: true,
+			wantCode:        cli.ExitFailure,
+			wantErr: []string{
+				"--- stderr (action lint) ---\n",
+				"lint error: unused var\n",
+				"stderr truncated; run 'kodema logs exec-1 --action lint --stream stderr' for full logs\n",
+			},
+		},
+		{
+			name: "failed stderr read error still reports execution failure and logs hint",
+			inspections: []string{
+				`{"state":"failed","actions":[
+					{"action_id":"act-1","name":"build","kind":"container","state":"failed"}],
+				"failure":{"kind":"runtime","reason":"exit_code","detail":"workload exited with status 17"}}`,
+			},
+			stderrErr: fault.New(fault.Forbidden, "logs denied"),
+			wantCode:  cli.ExitFailure,
+			wantErr: []string{
+				"stderr (action build) unavailable",
+				"kodema logs exec-1 --action build --stream stderr",
+				"execution exec-1 failed: runtime: exit_code: workload exited with status 17\n",
+			},
+		},
+		{
+			name: "failed request action does not fetch container stderr",
+			inspections: []string{
+				`{"state":"failed","actions":[
+					{"action_id":"act-1","name":"qa-gate","kind":"request","state":"failed","assignment":"service/qa","decision":"fail"}],
+				"failure":{"kind":"request","reason":"rejected","detail":"request action was answered with a failing decision"}}`,
+			},
+			stderrErr: fault.New(fault.InvalidInput, "must not fetch stderr for request action"),
+			wantCode:  cli.ExitFailure,
+			wantErr: []string{
+				"action qa-gate: failed (fail)\n",
+				"execution exec-1 failed: request: rejected: request action was answered with a failing decision\n",
+			},
 		},
 		{
 			name: "cancelled exits 1",
@@ -420,7 +567,7 @@ func TestRunFile(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			inspects := 0
 			transport := &scriptedTransport{respond: func(_ context.Context, index int, invocation api.Invocation) (api.Result, error) {
-				if index > 20 {
+				if index > 25 {
 					t.Fatalf("call %d: run did not stop following", index)
 				}
 				body := json.RawMessage(`{"execution_id":"exec-1","version":1}`)
@@ -431,12 +578,23 @@ func TestRunFile(t *testing.T) {
 					inspects++
 				case "execution.logs.read":
 					var request api.ExecutionLogsReadRequest
-					if err := json.Unmarshal(invocation.Request.Input, &request); err != nil || request.Stream != "stdout" {
+					if err := json.Unmarshal(invocation.Request.Input, &request); err != nil || (request.Stream != "stdout" && request.Stream != "stderr") {
 						t.Fatalf("logs request = %s (%v)", invocation.Request.Input, err)
 					}
 					var page api.ExecutionLogsReadResult
-					for index, chunk := range testCase.logs[request.ActionID] {
-						page.Chunks = append(page.Chunks, api.LogChunk{ActionID: request.ActionID, Stream: "stdout", Offset: uint64(index), Sequence: uint64(index + 1), Data: []byte(chunk)})
+					switch request.Stream {
+					case "stdout":
+						for idx, chunk := range testCase.logs[request.ActionID] {
+							page.Chunks = append(page.Chunks, api.LogChunk{ActionID: request.ActionID, Stream: "stdout", Offset: uint64(idx), Sequence: uint64(idx + 1), Data: []byte(chunk)})
+						}
+					case "stderr":
+						if testCase.stderrErr != nil {
+							return api.Result{}, testCase.stderrErr
+						}
+						for idx, chunk := range testCase.stderrLogs[request.ActionID] {
+							page.Chunks = append(page.Chunks, api.LogChunk{ActionID: request.ActionID, Stream: "stderr", Offset: uint64(idx), Sequence: uint64(idx + 1), Data: []byte(chunk)})
+						}
+						page.Truncated = testCase.stderrTruncated
 					}
 					body, _ = json.Marshal(page)
 				default:
@@ -455,9 +613,22 @@ func TestRunFile(t *testing.T) {
 			if out.String() != testCase.wantOut {
 				t.Fatalf("stdout = %q; want %q", out.String(), testCase.wantOut)
 			}
+			if !utf8.ValidString(errOut.String()) {
+				t.Fatalf("stderr is not valid UTF-8: %q", errOut.String())
+			}
 			for _, want := range testCase.wantErr {
 				if !strings.Contains(errOut.String(), want) {
 					t.Fatalf("stderr = %q; want %q", errOut.String(), want)
+				}
+			}
+			for _, unwanted := range testCase.wantNotErr {
+				if strings.Contains(errOut.String(), unwanted) {
+					t.Fatalf("stderr = %q; did not want %q", errOut.String(), unwanted)
+				}
+			}
+			for substr, wantCount := range testCase.wantErrCounts {
+				if got := strings.Count(errOut.String(), substr); got != wantCount {
+					t.Fatalf("stderr count(%q) = %d; want %d (stderr: %q)", substr, got, wantCount, errOut.String())
 				}
 			}
 			if sleeps != testCase.wantSleeps {
@@ -474,6 +645,67 @@ func TestRunFile(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("detach prints execution id and exits 0 immediately", func(t *testing.T) {
+		for _, tc := range []struct {
+			name    string
+			args    []string
+			output  cli.OutputFormat
+			wantOut string
+		}{
+			{
+				name:    "table mode --detach",
+				args:    []string{"run", "--detach", path},
+				output:  cli.OutputTable,
+				wantOut: "exec-detach-1\n",
+			},
+			{
+				name:    "table mode -d after file",
+				args:    []string{"run", path, "-d"},
+				output:  cli.OutputTable,
+				wantOut: "exec-detach-1\n",
+			},
+			{
+				name:    "json mode --detach",
+				args:    []string{"run", "--detach", path},
+				output:  cli.OutputJSON,
+				wantOut: "{\"execution_id\":\"exec-detach-1\",\"version\":1}\n",
+			},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				transport := &scriptedTransport{respond: func(_ context.Context, _ int, invocation api.Invocation) (api.Result, error) {
+					if invocation.Operation != "pipeline.start" {
+						t.Fatalf("unexpected operation %s; --detach must not poll", invocation.Operation)
+					}
+					return api.Result{
+						Operation: invocation.Operation,
+						Body:      json.RawMessage(`{"execution_id":"exec-detach-1","version":1}`),
+					}, nil
+				}}
+				ports, out, errOut := testPorts(transport)
+				ports.Files.(*fakeFS).files[path] = document
+				sleeps := 0
+				ports.Sleep = func(time.Duration) { sleeps++ }
+				cfg := testConfig()
+				cfg.Output = tc.output
+				if code := cli.Run(context.Background(), cfg, tc.args, ports); code != cli.ExitSuccess {
+					t.Fatalf("exit code = %d; want %d (stderr: %s)", code, cli.ExitSuccess, errOut.String())
+				}
+				if out.String() != tc.wantOut {
+					t.Fatalf("stdout = %q; want %q", out.String(), tc.wantOut)
+				}
+				if errOut.Len() != 0 {
+					t.Fatalf("stderr = %q; want empty", errOut.String())
+				}
+				if sleeps != 0 {
+					t.Fatalf("sleeps = %d; want 0", sleeps)
+				}
+				if got := len(transport.recorded()); got != 1 {
+					t.Fatalf("invocations = %d; want 1", got)
+				}
+			})
+		}
+	})
 
 	t.Run("interrupt names the execution left running", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
@@ -507,6 +739,16 @@ func TestRunFile(t *testing.T) {
 			t.Fatalf("stdout = %q, stderr = %q; want only a file diagnostic", out.String(), errOut.String())
 		}
 	})
+}
+
+func numberedLines(count int) string {
+	var builder strings.Builder
+	for i := 1; i <= count; i++ {
+		builder.WriteString("line ")
+		builder.WriteString(strconv.Itoa(i))
+		builder.WriteByte('\n')
+	}
+	return builder.String()
 }
 
 var _ client.Transport = (*scriptedTransport)(nil)

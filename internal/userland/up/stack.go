@@ -75,6 +75,8 @@ type UpConfig struct {
 	// exact secret names in (TenantID, ProjectID) instead of allowing all
 	// project-stored secrets.
 	AllowSecrets []string
+	// Stderr receives concise startup progress lines (defaults to io.Discard).
+	Stderr io.Writer
 
 	// Optional test seams.
 	GOOS         string
@@ -250,6 +252,10 @@ func Up(ctx context.Context, cfg UpConfig, stdout io.Writer) (_ StackDescriptor,
 	if stdout == nil {
 		stdout = io.Discard
 	}
+	stderr := cfg.Stderr
+	if stderr == nil {
+		stderr = io.Discard
+	}
 	instance := defaultIfEmpty(cfg.Instance, DefaultInstanceName)
 	listenRaw := defaultIfEmpty(cfg.ListenAddr, DefaultListenAddr())
 	listenAddr, publicURL, err := PublicOriginFromListen(listenRaw)
@@ -289,6 +295,7 @@ func Up(ctx context.Context, cfg UpConfig, stdout io.Writer) (_ StackDescriptor,
 	if detected.Kind != KindPodman {
 		return StackDescriptor{}, fmt.Errorf("kodema up needs Podman: Kodema runs workloads through the Podman API, which %s (%s) does not serve", detected.Provider, detected.SocketPath)
 	}
+	fmt.Fprintf(stderr, "using %s (%s)\n", detected.Kind, detected.Provider)
 
 	if err := EnsureInstanceStateDir(stateDir, instance); err != nil {
 		return StackDescriptor{}, err
@@ -361,12 +368,13 @@ func Up(ctx context.Context, cfg UpConfig, stdout io.Writer) (_ StackDescriptor,
 		return StackDescriptor{}, err
 	}
 
+	fmt.Fprintln(stderr, "checking container images...")
 	for _, img := range []string{postgresImage, natsImage} {
-		if err := engine.EnsureImage(ctx, img); err != nil {
+		if err := engine.EnsureImageWithProgress(ctx, img, stderr); err != nil {
 			return StackDescriptor{}, err
 		}
 	}
-	if err := engine.EnsureImage(ctx, kodemaImage); err != nil {
+	if err := engine.EnsureImageWithProgress(ctx, kodemaImage, stderr); err != nil {
 		return StackDescriptor{}, fmt.Errorf("%w; from a checkout, build it with `make image`, or name another with --image", err)
 	}
 
@@ -405,6 +413,7 @@ func Up(ctx context.Context, cfg UpConfig, stdout io.Writer) (_ StackDescriptor,
 		return StackDescriptor{}, err
 	}
 
+	fmt.Fprintf(stderr, "starting postgres (%s)...\n", postgresContainer)
 	_ = engine.RemoveContainer(ctx, postgresContainer)
 	if _, err := engine.StartDetached(ctx, ContainerSpec{
 		Name:    postgresContainer,
@@ -420,6 +429,7 @@ func Up(ctx context.Context, cfg UpConfig, stdout io.Writer) (_ StackDescriptor,
 	}); err != nil {
 		return StackDescriptor{}, err
 	}
+	fmt.Fprintln(stderr, "waiting for postgres readiness...")
 	if err := waitPostgresReady(ctx, engine, postgresContainer); err != nil {
 		return StackDescriptor{}, err
 	}
@@ -429,6 +439,7 @@ func Up(ctx context.Context, cfg UpConfig, stdout io.Writer) (_ StackDescriptor,
 		return StackDescriptor{}, fmt.Errorf("initialize kodema_admin role: psql exited %d", code)
 	}
 
+	fmt.Fprintf(stderr, "starting nats (%s)...\n", natsContainer)
 	_ = engine.RemoveContainer(ctx, natsContainer)
 	if _, err := engine.StartDetached(ctx, ContainerSpec{
 		Name:    natsContainer,
@@ -447,6 +458,7 @@ func Up(ctx context.Context, cfg UpConfig, stdout io.Writer) (_ StackDescriptor,
 	authDBURL := fmt.Sprintf("postgres://kodema_auth:%s@%s:5432/kodema?sslmode=disable", authPass, postgresContainer)
 	adminDBURL := fmt.Sprintf("postgres://kodema_admin:%s@%s:5432/postgres?sslmode=disable", dbAdminPass, postgresContainer)
 
+	fmt.Fprintln(stderr, "running database migrations...")
 	if _, err := engine.RunOneShot(ctx, ContainerSpec{
 		Name:    prefix + "-migrate",
 		Image:   kodemaImage,
@@ -516,6 +528,7 @@ func Up(ctx context.Context, cfg UpConfig, stdout io.Writer) (_ StackDescriptor,
 		return StackDescriptor{}, err
 	}
 
+	fmt.Fprintf(stderr, "starting TLS gateway on %s...\n", listenAddr)
 	stopTempGateway := func() {}
 	defer func() { stopTempGateway() }()
 	if cfg.Foreground {
@@ -579,6 +592,7 @@ func Up(ctx context.Context, cfg UpConfig, stdout io.Writer) (_ StackDescriptor,
 
 	bootstrapMarker := filepath.Join(stateDir, "bootstrap.done")
 	if _, statErr := os.Stat(bootstrapMarker); os.IsNotExist(statErr) {
+		fmt.Fprintf(stderr, "bootstrapping tenant %s...\n", tenantID)
 		bootstrapCmd := []string{
 			"bootstrap-admin",
 			"--profile", "test",
@@ -663,6 +677,7 @@ func Up(ctx context.Context, cfg UpConfig, stdout io.Writer) (_ StackDescriptor,
 		serverEnv = append(serverEnv, "KODEMA_SECRET_RULES_FILE="+secretRulesPath)
 	}
 
+	fmt.Fprintf(stderr, "starting kodema server (%s)...\n", serverContainer)
 	gitDir := filepath.Join(stateDir, "git")
 	_ = engine.RemoveContainer(ctx, serverContainer)
 	if _, err := engine.StartDetached(ctx, ContainerSpec{
@@ -691,6 +706,7 @@ func Up(ctx context.Context, cfg UpConfig, stdout io.Writer) (_ StackDescriptor,
 	if provisionStack == nil {
 		provisionStack = provision
 	}
+	fmt.Fprintf(stderr, "waiting for kodema server readiness (%s/readyz)...\n", publicURL)
 	gitToken, err := provisionStack(ctx, provisionConfig{
 		PublicURL:    publicURL,
 		RootCAs:      pool,
@@ -712,6 +728,7 @@ func Up(ctx context.Context, cfg UpConfig, stdout io.Writer) (_ StackDescriptor,
 		return StackDescriptor{}, err
 	}
 
+	fmt.Fprintf(stderr, "starting git service (%s)...\n", gitContainer)
 	if _, err := engine.RunOneShot(ctx, ContainerSpec{
 		Name:        prefix + "-git-init",
 		Image:       kodemaImage,
