@@ -603,9 +603,6 @@ func view(scope tenancy.Scope, row store.Row, aggregate kernel.Execution, admitt
 				actionView.Actor = action.Request.Answer.Actor
 				actionView.AnsweredAt = action.Request.Answer.At
 				actionView.Note = action.Request.Answer.Note
-				if actionView.Outputs == nil && len(action.Request.Answer.Outputs) > 0 {
-					actionView.Outputs = action.Request.Answer.Outputs
-				}
 			}
 		}
 		projection.Actions = append(projection.Actions, actionView)

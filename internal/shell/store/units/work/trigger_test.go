@@ -478,7 +478,7 @@ func (f *fixture) seedPushEnvironment(t *testing.T, scope tenancy.Scope) {
 	t.Helper()
 	f.seedPipeline(t, scope, testPipeline, "build", []byte("kind: Pipeline\n"), 1)
 	f.seedBinding(t, scope, "binding-1", "repo-1", "svc-a", 1)
-	f.seedService(t, scope, "svc-a", "enabled", 1)
+	f.seedServiceWithRoles(t, scope, "svc-a", "enabled", 1, tenancy.RoleEngineer)
 }
 
 func TestTriggerSelectInsertsIncompleteReceipt(t *testing.T) {

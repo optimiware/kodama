@@ -16,6 +16,7 @@ import (
 	"github.com/optimiware/kodema/internal/shell/inbox"
 	"github.com/optimiware/kodema/internal/shell/pipeline"
 	"github.com/optimiware/kodema/internal/shell/request"
+	"github.com/optimiware/kodema/internal/shell/service"
 	"github.com/optimiware/kodema/internal/shell/store"
 	executionstore "github.com/optimiware/kodema/internal/shell/store/units/execution"
 	"github.com/optimiware/kodema/internal/shell/store/units/execution/snapshotdoc"
@@ -65,6 +66,7 @@ func TestRealPipelineManagementCommitsThroughAdapters(t *testing.T) {
 	if _, ok := env.fixture.storedRow(t, env.scope, "pipelines", string(applied.PipelineID)); ok {
 		t.Fatal("pipeline delete left the row behind")
 	}
+	env.fixture.seedServiceWithRoles(t, env.scope, "service-1", serviceStateEnabled, 1, tenancy.RoleEngineer)
 	pushed, err := env.management.Apply(ctx, pipeline.ApplyCommand{
 		Actor: actor, Scope: env.scope, Name: "push", YAML: integrationPushYAML(),
 		CallerKey: "pipeline-apply-push", Content: integrationContent("pipeline-apply-push"),
@@ -771,4 +773,118 @@ func TestRealPipelineManagementRefusesADuplicateName(t *testing.T) {
 
 	// The same name in another project is a different key.
 	env.fixture.seedPipeline(t, otherScope(), "pipeline-foreign", "build", integrationPipelineYAML("echo v1"), 1)
+}
+
+// storeServiceReader adapts the memory store's services table to
+// service.ServiceReader for real pipeline.Management integration tests.
+type storeServiceReader struct {
+	executor store.Executor
+}
+
+func (reader storeServiceReader) ReadService(ctx context.Context, req service.ServiceReadRequest) (service.Service, error) {
+	row, err := reader.executor.Read(ctx, req.Scope, "services", string(req.ServiceID))
+	if err != nil {
+		return service.Service{}, err
+	}
+	roles, err := decodeAuthorityRoles(bytesValue(row, "roles"))
+	if err != nil {
+		return service.Service{}, err
+	}
+	return service.Service{
+		ID:      req.ServiceID,
+		Scope:   req.Scope,
+		State:   service.State(textValue(row, "state")),
+		Roles:   roles,
+		Version: versionValue(row, "version"),
+	}, nil
+}
+
+// TestRealPipelineManagementReplaysAfterPushServiceDisabled drives the real
+// pipeline.Management service (with Services configured) onto the real
+// work.Pipelines adapter and proves:
+//   - an equal-key retry of pipeline.apply and pipeline.update replays after
+//     the referenced on.push service is disabled,
+//   - a changed-content retry still reports changed_idempotency_content,
+//   - a fresh apply against the disabled service fails with invalid_input, and
+//   - a concurrent service.disable racing a fresh apply fails with
+//     version_conflict and writes nothing.
+func TestRealPipelineManagementReplaysAfterPushServiceDisabled(t *testing.T) {
+	env := newRealServiceEnv(t)
+	ctx := context.Background()
+	actor := env.actor()
+	env.fixture.seedServiceWithRoles(t, env.scope, "service-1", serviceStateEnabled, 1, tenancy.RoleEngineer)
+
+	mgmt, err := pipeline.NewManagement(pipeline.ManagementConfig{
+		Clock:      integrationClock{now: testNow},
+		IDs:        env.ids,
+		Authorizer: allowAuthorizer{},
+		Authority:  confirmAuthority{},
+		Changes:    env.fixture.pipelines,
+		Reader:     env.fixture.pipelines,
+		Services:   storeServiceReader{executor: env.fixture.store},
+	})
+	if err != nil {
+		t.Fatalf("pipeline.NewManagement: %v", err)
+	}
+
+	applyCmd := pipeline.ApplyCommand{
+		Actor: actor, Scope: env.scope, Name: "push", YAML: integrationPushYAML(),
+		CallerKey: "push-apply-replay", Content: integrationContent("push-apply-replay"),
+	}
+	applied, err := mgmt.Apply(ctx, applyCmd)
+	if err != nil {
+		t.Fatalf("initial push apply: %v", err)
+	}
+	updateCmd := pipeline.UpdateCommand{
+		Actor: actor, Scope: env.scope, PipelineID: applied.PipelineID, Name: "push",
+		YAML: integrationPushYAML(), ExpectedVersion: applied.Version,
+		CallerKey: "push-update-replay", Content: integrationContent("push-update-replay"),
+	}
+	updated, err := mgmt.Update(ctx, updateCmd)
+	if err != nil {
+		t.Fatalf("initial push update: %v", err)
+	}
+
+	// Disable service-1 after both commits succeeded.
+	if _, err := env.fixture.store.Execute(ctx, env.scope, store.Unit{
+		Writes: []store.Write{{
+			Table:         "services",
+			ID:            "service-1",
+			ExpectVersion: 1,
+			Values:        map[string]any{"state": "disabled"},
+		}},
+	}); err != nil {
+		t.Fatalf("disable service-1: %v", err)
+	}
+	before := env.fixture.commitCounts(t, env.scope)
+
+	replayedApply, err := mgmt.Apply(ctx, applyCmd)
+	if err != nil {
+		t.Fatalf("replayed apply after service disable: %v", err)
+	}
+	if !replayedApply.Replayed || replayedApply.PipelineID != applied.PipelineID || replayedApply.Version != applied.Version {
+		t.Fatalf("replayed apply = %+v; want replayed %+v", replayedApply, applied)
+	}
+
+	replayedUpdate, err := mgmt.Update(ctx, updateCmd)
+	if err != nil {
+		t.Fatalf("replayed update after service disable: %v", err)
+	}
+	if !replayedUpdate.Replayed || replayedUpdate.PipelineID != updated.PipelineID || replayedUpdate.Version != updated.Version {
+		t.Fatalf("replayed update = %+v; want replayed %+v", replayedUpdate, updated)
+	}
+	env.fixture.requireUnchanged(t, env.scope, before)
+
+	changed := applyCmd
+	changed.Content = integrationContent("push-apply-replay-changed")
+	_, err = mgmt.Apply(ctx, changed)
+	mustClass(t, err, fault.ChangedIdempotencyContent)
+
+	fresh := applyCmd
+	fresh.Name = "push-fresh"
+	fresh.CallerKey = "push-apply-fresh"
+	fresh.Content = integrationContent("push-apply-fresh")
+	_, err = mgmt.Apply(ctx, fresh)
+	mustClass(t, err, fault.InvalidInput)
+	env.fixture.requireUnchanged(t, env.scope, before)
 }

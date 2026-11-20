@@ -59,10 +59,7 @@ func encodeAnswerProvenance(note string, provenance []byte) ([]byte, error) {
 	if err != nil {
 		return nil, fault.Wrap(fault.InternalFailure, "answer metadata could not be encoded", err)
 	}
-	out := make([]byte, len(answerMetaMagic)+len(encoded))
-	copy(out, answerMetaMagic)
-	copy(out[len(answerMetaMagic):], encoded)
-	return out, nil
+	return slices.Concat(answerMetaMagic, encoded), nil
 }
 
 // decodeAnswerProvenance rebuilds an answer's optional decision note and raw

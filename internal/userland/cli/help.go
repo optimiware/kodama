@@ -88,7 +88,7 @@ When --action is omitted, inspects the execution and selects the single waiting 
 
 Flags:
   --action <id>     Waiting request action ID (auto-detected when omitted)
-  --reason <text>   Required rejection reason
+  --reason <text>   Required rejection reason (persisted as decision note)
   --output <k=v>    Declared request response output pair (repeatable)`,
 	},
 	"task": {

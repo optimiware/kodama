@@ -853,7 +853,7 @@ func TestResolvePersistsDecisionNoteAndValidatesIdempotency(t *testing.T) {
 
 	t.Run("invalid or oversized note is refused before commit", func(t *testing.T) {
 		fixture, scope, aggregate, _ := newResolveFixture(t, "role/reviewer")
-		for _, bad := range []string{string([]byte{0xff, 0xfe}), strings.Repeat("x", kernel.MaxOutputValueBytes+1)} {
+		for _, bad := range []string{string([]byte{0xff, 0xfe}), strings.Repeat("x", kernel.MaxNoteBytes+1)} {
 			cmd := resolveCommand(scope, aggregate, 0, actor, request.DecisionFail, nil)
 			cmd.Note = bad
 			_, err := fixture.service.Resolve(context.Background(), cmd)

@@ -934,6 +934,7 @@ func requestAssignment() request.Assignment {
 func TestPipelinePushTriggersPersistOnPostgreSQL(t *testing.T) {
 	ctx := context.Background()
 	env := newServiceEnv(t)
+	env.shard.SeedService(ctx, env.scope, "service-1", "service-1", string(tenancy.RoleEngineer))
 	actor := env.actor()
 	yaml := []byte("repository: repo-1\nservice: service-1\non:\n  push:\n    - refs/heads/main\n" +
 		"inputs: [repository, ref, commit, previous_commit]\n" +

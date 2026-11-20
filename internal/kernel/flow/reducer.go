@@ -473,8 +473,8 @@ func reduceAnswer(execution kernel.Execution, fact AnswerFact) (kernel.Execution
 	if !utf8.ValidString(fact.Answer.Note) {
 		return execution, nil, refuseInvalid("flow: answer note is not valid UTF-8")
 	}
-	if len(fact.Answer.Note) > kernel.MaxOutputValueBytes {
-		return execution, nil, refuseInvalid("flow: answer note is %d bytes; at most %d are allowed", len(fact.Answer.Note), kernel.MaxOutputValueBytes)
+	if len(fact.Answer.Note) > kernel.MaxNoteBytes {
+		return execution, nil, refuseInvalid("flow: answer note is %d bytes; at most %d are allowed", len(fact.Answer.Note), kernel.MaxNoteBytes)
 	}
 	if err := fact.Answer.Outputs.Validate(action.Request.Definition.Outputs); err != nil {
 		return execution, nil, err

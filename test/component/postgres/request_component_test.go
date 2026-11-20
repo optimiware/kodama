@@ -838,7 +838,7 @@ func seedPendingRequestExecution(t *testing.T, env *requestRaceEnv, executionID 
 		Request: &definition.Request{Assignment: "role/engineer", Subject: subject},
 	}
 	document, err := snapshotdoc.Encode(snapshotdoc.Admitted{PipelineID: "pipeline-request", PipelineVersion: 1,
-		Snapshot: snapshot, Actions: []pipeline.AdmittedAction{action}})
+		Snapshot: snapshot, Actions: []pipeline.AdmittedAction{action}, StartedBy: "principal-1"})
 	if err != nil {
 		t.Fatalf("Encode snapshot: %v", err)
 	}
@@ -919,7 +919,7 @@ func TestRequestActivationPersistsExactRowsOnPostgreSQL(t *testing.T) {
 	document, err := snapshotdoc.Encode(snapshotdoc.Admitted{PipelineID: "pipeline-request", PipelineVersion: 1,
 		Snapshot: snapshot, Actions: []pipeline.AdmittedAction{{Index: 0, Name: "ask",
 			Kind: definition.ActionKindRequest, Timeout: 37 * time.Minute,
-			Request: &definition.Request{Assignment: "role/engineer", Subject: subject}}}})
+			Request: &definition.Request{Assignment: "role/engineer", Subject: subject}}}, StartedBy: "principal-1"})
 	if err != nil {
 		t.Fatalf("Encode snapshot: %v", err)
 	}

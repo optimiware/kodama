@@ -347,7 +347,13 @@ func TestInspectResultProjectsProvenanceAndDecisionNote(t *testing.T) {
 	if mapped.Actions[0].Note != "Security checklist incomplete" {
 		t.Fatalf("action Note = %q; want Security checklist incomplete", mapped.Actions[0].Note)
 	}
+	if len(mapped.Actions[0].Outputs) != 0 {
+		t.Fatalf("failed request action Outputs = %+v; want empty", mapped.Actions[0].Outputs)
+	}
 	if mapped.Failure == nil || mapped.Failure.Detail != "Security checklist incomplete" {
 		t.Fatalf("Failure = %+v; want rejection detail", mapped.Failure)
+	}
+	if api.MaxNoteBytes != kernel.MaxNoteBytes {
+		t.Fatalf("note length bounds diverged: api.MaxNoteBytes=%d kernel.MaxNoteBytes=%d", api.MaxNoteBytes, kernel.MaxNoteBytes)
 	}
 }

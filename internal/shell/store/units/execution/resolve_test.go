@@ -306,7 +306,7 @@ func TestResolveVersusCancelRaceHasOneWinner(t *testing.T) {
 	}
 }
 
-func TestResolvePersistsAnswerNoteAndInspectProjectsReasonAndOutputs(t *testing.T) {
+func TestResolvePersistsAnswerNoteAndInspectProjectsReasonWithoutOutputs(t *testing.T) {
 	clock := testNow
 	adapter, backend := newStoreWithClock(t, func() time.Time { return clock })
 	scope := projectScope()
@@ -353,7 +353,7 @@ func TestResolvePersistsAnswerNoteAndInspectProjectsReasonAndOutputs(t *testing.
 	if view.Actions[0].Note != "Security checklist incomplete" {
 		t.Fatalf("Inspect action Note = %q; want Security checklist incomplete", view.Actions[0].Note)
 	}
-	if view.Actions[0].Outputs["decision"] != "no" {
-		t.Fatalf("Inspect failed request outputs = %+v; want decision=no", view.Actions[0].Outputs)
+	if len(view.Actions[0].Outputs) != 0 {
+		t.Fatalf("Inspect failed request promoted outputs = %+v; want empty", view.Actions[0].Outputs)
 	}
 }

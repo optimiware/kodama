@@ -26,6 +26,13 @@ import (
 // committed bytes.
 func TestExamplePipelinesPassServedAdmission(t *testing.T) {
 	harness := factory.Start(t)
+	// Seed the automatic-start service referenced by examples/pipelines/push-test.yaml
+	// so on.push service validation succeeds during served admission.
+	harness.MustREST(harness.ProjectToken, "service.create", api.ServiceCreateRequest{
+		ProjectID: factory.ProjectID,
+		ServiceID: "git-service",
+		Roles:     []string{"engineer"},
+	}, nil, "example-create-git-service")
 	for _, name := range examplePipelineFiles(t) {
 		t.Run(name, func(t *testing.T) {
 			rel := "examples/pipelines/" + name

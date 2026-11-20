@@ -1213,6 +1213,9 @@ func TestApplyAndUpdateValidatePushService(t *testing.T) {
 
 	t.Run("nonexistent push service refused on apply and update", func(t *testing.T) {
 		mgmt, changes := newMgmt(t, map[string]service.Service{}, nil)
+		changes.change = func(context.Context, pipeline.ChangeUnit) (pipeline.ChangeResult, error) {
+			return pipeline.ChangeResult{}, fault.New(fault.VersionConflict, "pinned service row is missing")
+		}
 		_, err := mgmt.Apply(t.Context(), applyCommand(actor, "push", pushPipelineYAML()))
 		requireFaultClass(t, err, fault.InvalidInput)
 		if !strings.Contains(err.Error(), "git-service") || !strings.Contains(err.Error(), "does not exist") {
@@ -1220,8 +1223,8 @@ func TestApplyAndUpdateValidatePushService(t *testing.T) {
 		}
 		_, err = mgmt.Update(t.Context(), updateCommand(actor, "pipeline-1", "push", pushPipelineYAML(), 1))
 		requireFaultClass(t, err, fault.InvalidInput)
-		if changes.callCount() != 0 {
-			t.Fatalf("change port calls = %d; want 0", changes.callCount())
+		if changes.callCount() != 2 {
+			t.Fatalf("change port calls = %d; want 2 (receipt-first port always observes unit)", changes.callCount())
 		}
 	})
 
@@ -1235,13 +1238,16 @@ func TestApplyAndUpdateValidatePushService(t *testing.T) {
 			},
 		}
 		mgmt, changes := newMgmt(t, accounts, nil)
+		changes.change = func(context.Context, pipeline.ChangeUnit) (pipeline.ChangeResult, error) {
+			return pipeline.ChangeResult{}, fault.New(fault.VersionConflict, "pinned service row is disabled")
+		}
 		_, err := mgmt.Apply(t.Context(), applyCommand(actor, "push", pushPipelineYAML()))
 		requireFaultClass(t, err, fault.InvalidInput)
 		if !strings.Contains(err.Error(), "disabled") {
 			t.Fatalf("apply error = %q; want disabled diagnostic", err)
 		}
-		if changes.callCount() != 0 {
-			t.Fatalf("change port calls = %d; want 0", changes.callCount())
+		if changes.callCount() != 1 {
+			t.Fatalf("change port calls = %d; want 1", changes.callCount())
 		}
 	})
 
@@ -1255,14 +1261,59 @@ func TestApplyAndUpdateValidatePushService(t *testing.T) {
 			},
 		}
 		mgmt, changes := newMgmt(t, accounts, nil)
+		changes.change = func(context.Context, pipeline.ChangeUnit) (pipeline.ChangeResult, error) {
+			return pipeline.ChangeResult{}, fault.New(fault.VersionConflict, "pinned service row lacks engineer")
+		}
 		_, err := mgmt.Apply(t.Context(), applyCommand(actor, "push", pushPipelineYAML()))
 		requireFaultClass(t, err, fault.InvalidInput)
 		if !strings.Contains(err.Error(), "engineer") {
 			t.Fatalf("apply error = %q; want engineer-role diagnostic", err)
 		}
-		if changes.callCount() != 0 {
-			t.Fatalf("change port calls = %d; want 0", changes.callCount())
+		if changes.callCount() != 1 {
+			t.Fatalf("change port calls = %d; want 1", changes.callCount())
 		}
+	})
+
+	t.Run("replay succeeds after push service is disabled", func(t *testing.T) {
+		accounts := map[string]service.Service{
+			"tenant-a/project-a/git-service": {
+				ID:    "git-service",
+				Scope: scope,
+				State: service.StateDisabled,
+				Roles: []tenancy.Role{tenancy.RoleEngineer},
+			},
+		}
+		mgmt, changes := newMgmt(t, accounts, nil)
+		changes.change = func(context.Context, pipeline.ChangeUnit) (pipeline.ChangeResult, error) {
+			return pipeline.ChangeResult{PipelineID: "pipeline-1", Version: 1, Replayed: true}, nil
+		}
+		replayed, err := mgmt.Apply(t.Context(), applyCommand(actor, "push", pushPipelineYAML()))
+		requireNoError(t, err, "replayed Apply after service disable")
+		if !replayed.Replayed || replayed.PipelineID != "pipeline-1" || replayed.Version != 1 {
+			t.Fatalf("replayed = %+v; want replayed pipeline-1 v1", replayed)
+		}
+		replayedUpdate, err := mgmt.Update(t.Context(), updateCommand(actor, "pipeline-1", "push", pushPipelineYAML(), 1))
+		requireNoError(t, err, "replayed Update after service disable")
+		if !replayedUpdate.Replayed {
+			t.Fatalf("replayed update = %+v; want Replayed=true", replayedUpdate)
+		}
+	})
+
+	t.Run("changed content replay is not masked by disabled push service", func(t *testing.T) {
+		accounts := map[string]service.Service{
+			"tenant-a/project-a/git-service": {
+				ID:    "git-service",
+				Scope: scope,
+				State: service.StateDisabled,
+				Roles: []tenancy.Role{tenancy.RoleEngineer},
+			},
+		}
+		mgmt, changes := newMgmt(t, accounts, nil)
+		changes.change = func(context.Context, pipeline.ChangeUnit) (pipeline.ChangeResult, error) {
+			return pipeline.ChangeResult{}, fault.New(fault.ChangedIdempotencyContent, "receipt content mismatch")
+		}
+		_, err := mgmt.Apply(t.Context(), applyCommand(actor, "push", pushPipelineYAML()))
+		requireFaultClass(t, err, fault.ChangedIdempotencyContent)
 	})
 
 	t.Run("enabled project-scoped engineer service accepted", func(t *testing.T) {

@@ -369,9 +369,9 @@ func TestExecutionProvenanceAndPushServiceValidation(t *testing.T) {
 	// Applying an on.push pipeline referencing a nonexistent service must fail
 	// fast with invalid_input.
 	pushYAML := []byte("repository: repo-ci\nservice: nonexistent-bot\non:\n  push:\n    - refs/heads/work/ci\nactions:\n  - name: test\n    image: " + pinnedImage + "\n    commands:\n      - echo ok\n")
-	_, err = h.invoke(t, testToken, "pipeline.apply", jsonBody(t, map[string]any{
+	_, err = h.invokeKey(t, testToken, "pipeline.apply", jsonBody(t, map[string]any{
 		"yaml": base64.StdEncoding.EncodeToString(pushYAML),
-	}), map[string]string{"project": testProject, "pipeline": "bad-push"})
+	}), "apply-bad-push", map[string]string{"project": testProject, "pipeline": "bad-push"})
 	if err == nil {
 		t.Fatal("pipeline.apply accepted an on.push pipeline referencing a nonexistent service")
 	}

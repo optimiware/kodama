@@ -50,7 +50,14 @@ func TestTriggerStartedWholeRowsOnPostgreSQL(t *testing.T) {
 	}
 	container := definition.Container{Image: integrationImage, Commands: []string{"echo", "ok"}}
 	action := pipeline.AdmittedAction{Index: 0, Name: "run", Kind: definition.ActionKindContainer, Timeout: time.Minute, Container: &container}
-	document, err := snapshotdoc.Encode(snapshotdoc.Admitted{PipelineID: "pipeline-1", PipelineVersion: 1, Snapshot: snapshot, Actions: []pipeline.AdmittedAction{action}})
+	document, err := snapshotdoc.Encode(snapshotdoc.Admitted{
+		PipelineID:      "pipeline-1",
+		PipelineVersion: 1,
+		Snapshot:        snapshot,
+		Actions:         []pipeline.AdmittedAction{action},
+		StartedBy:       "principal-1",
+		Trigger:         &snapshotdoc.TriggerMetadata{EventID: "event-1", Ref: "refs/heads/main"},
+	})
 	if err != nil {
 		t.Fatalf("Encode: %v", err)
 	}

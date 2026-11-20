@@ -234,6 +234,8 @@ func testPushTriggers() []pipeline.PushTrigger {
 func TestPipelineReaderRoundTripsPushProjection(t *testing.T) {
 	fixture := newFixture(t)
 	scope := testScope()
+	fixture.seedServiceWithRoles(t, scope, "svc-a", serviceStateEnabled, 1, tenancy.RoleEngineer)
+	fixture.seedServiceWithRoles(t, scope, "svc-b", serviceStateEnabled, 1, tenancy.RoleEngineer)
 	unit := fixture.changeUnit(scope, pipeline.ChangeApply, "", "build", []byte("kind: Pipeline\n"), 0, fixture.receipt("pipeline.apply", "push-1", contentHashA))
 	unit.PushTriggers = testPushTriggers()
 	result, err := fixture.pipelines.Change(context.Background(), unit)
@@ -302,6 +304,8 @@ func TestPipelineReaderRoundTripsPushProjection(t *testing.T) {
 func TestPipelineCandidatesRequireMatchingBinding(t *testing.T) {
 	fixture := newFixture(t)
 	scope := testScope()
+	fixture.seedServiceWithRoles(t, scope, "svc-a", serviceStateEnabled, 1, tenancy.RoleEngineer)
+	fixture.seedServiceWithRoles(t, scope, "svc-b", serviceStateEnabled, 1, tenancy.RoleEngineer)
 	unit := fixture.changeUnit(scope, pipeline.ChangeApply, "", "build", []byte("kind: Pipeline\n"), 0, fixture.receipt("pipeline.apply", "candidate-1", contentHashA))
 	unit.PushTriggers = testPushTriggers()
 	if _, err := fixture.pipelines.Change(context.Background(), unit); err != nil {
@@ -358,6 +362,7 @@ func TestPipelineCandidatesRequireMatchingBinding(t *testing.T) {
 func TestPipelineCandidatesSelectBindingByRepository(t *testing.T) {
 	fixture := newFixture(t)
 	scope := testScope()
+	fixture.seedServiceWithRoles(t, scope, "svc-start", serviceStateEnabled, 1, tenancy.RoleEngineer)
 	unit := fixture.changeUnit(scope, pipeline.ChangeApply, "", "build", []byte("kind: Pipeline\n"), 0, fixture.receipt("pipeline.apply", "candidate-start-service", contentHashA))
 	unit.PushTriggers = []pipeline.PushTrigger{{Repository: "repo-1", Service: "svc-start", Refs: []string{"refs/heads/main"}}}
 	if _, err := fixture.pipelines.Change(context.Background(), unit); err != nil {
@@ -387,6 +392,7 @@ func TestPipelineCandidatesSelectBindingByRepository(t *testing.T) {
 func TestPipelineReaderScopeIsolation(t *testing.T) {
 	fixture := newFixture(t)
 	scope := testScope()
+	fixture.seedServiceWithRoles(t, scope, "svc-a", serviceStateEnabled, 1, tenancy.RoleEngineer)
 	unit := fixture.changeUnit(scope, pipeline.ChangeApply, "", "build", []byte("kind: Pipeline\n"), 0, fixture.receipt("pipeline.apply", "scope-1", contentHashA))
 	unit.PushTriggers = testPushTriggers()
 	result, err := fixture.pipelines.Change(context.Background(), unit)
@@ -417,4 +423,248 @@ func TestPipelineReaderScopeIsolation(t *testing.T) {
 	if len(candidates) != 0 {
 		t.Fatalf("a cross-scope candidate list leaked definitions: %+v", candidates)
 	}
+}
+
+// TestPipelineChangeEnforcesPushServiceValidation proves Pipelines.Change
+// enforces on.push automatic-start service existence, enablement and engineer
+// role at the commit boundary for both project-scoped and tenant-wide services.
+func TestPipelineChangeEnforcesPushServiceValidation(t *testing.T) {
+	ctx := context.Background()
+	scope := testScope()
+	tenantWide := tenancy.Scope{TenantID: scope.TenantID}
+
+	t.Run("missing service refused", func(t *testing.T) {
+		fixture := newFixture(t)
+		before := fixture.commitCounts(t, scope)
+		unit := fixture.changeUnit(scope, pipeline.ChangeApply, "", "push", []byte("kind: Pipeline\n"), 0, fixture.receipt("pipeline.apply", "missing-svc", contentHashA))
+		unit.PushTriggers = testPushTriggers()
+		_, err := fixture.pipelines.Change(ctx, unit)
+		mustClass(t, err, fault.InvalidInput)
+		fixture.requireUnchanged(t, scope, before)
+	})
+
+	t.Run("disabled service refused", func(t *testing.T) {
+		fixture := newFixture(t)
+		fixture.seedServiceWithRoles(t, scope, "svc-a", "disabled", 1, tenancy.RoleEngineer)
+		before := fixture.commitCounts(t, scope)
+		unit := fixture.changeUnit(scope, pipeline.ChangeApply, "", "push", []byte("kind: Pipeline\n"), 0, fixture.receipt("pipeline.apply", "disabled-svc", contentHashA))
+		unit.PushTriggers = testPushTriggers()
+		_, err := fixture.pipelines.Change(ctx, unit)
+		mustClass(t, err, fault.InvalidInput)
+		fixture.requireUnchanged(t, scope, before)
+	})
+
+	t.Run("service without engineer role refused", func(t *testing.T) {
+		fixture := newFixture(t)
+		fixture.seedServiceWithRoles(t, scope, "svc-a", serviceStateEnabled, 1, tenancy.RoleViewer)
+		before := fixture.commitCounts(t, scope)
+		unit := fixture.changeUnit(scope, pipeline.ChangeApply, "", "push", []byte("kind: Pipeline\n"), 0, fixture.receipt("pipeline.apply", "viewer-svc", contentHashA))
+		unit.PushTriggers = testPushTriggers()
+		_, err := fixture.pipelines.Change(ctx, unit)
+		mustClass(t, err, fault.InvalidInput)
+		fixture.requireUnchanged(t, scope, before)
+	})
+
+	t.Run("enabled tenant-wide engineer service accepted", func(t *testing.T) {
+		fixture := newFixture(t)
+		fixture.seedServiceWithRoles(t, tenantWide, "svc-a", serviceStateEnabled, 1, tenancy.RoleEngineer)
+		unit := fixture.changeUnit(scope, pipeline.ChangeApply, "", "push", []byte("kind: Pipeline\n"), 0, fixture.receipt("pipeline.apply", "tenant-svc", contentHashA))
+		unit.PushTriggers = testPushTriggers()
+		result, err := fixture.pipelines.Change(ctx, unit)
+		if err != nil {
+			t.Fatalf("Change with tenant-wide engineer service: %v", err)
+		}
+		if result.Version != 1 {
+			t.Fatalf("result = %+v; want version 1", result)
+		}
+	})
+}
+
+// TestPipelineChangePinsPushServiceRowAgainstConcurrentModification proves
+// Pipelines.Change pins each referenced on.push services row (version, enabled
+// state and TenantWide flag) inside the atomic commit unit so a concurrent
+// service.disable or engineer-role removal cannot race past validation.
+func TestPipelineChangePinsPushServiceRowAgainstConcurrentModification(t *testing.T) {
+	ctx := context.Background()
+	scope := testScope()
+	tenantWide := tenancy.Scope{TenantID: scope.TenantID}
+
+	cases := []struct {
+		name         string
+		serviceScope tenancy.Scope
+		mutate       func(t *testing.T, fixture *fixture, svcScope tenancy.Scope)
+	}{
+		{
+			name:         "project service disabled concurrently",
+			serviceScope: scope,
+			mutate: func(t *testing.T, fixture *fixture, svcScope tenancy.Scope) {
+				t.Helper()
+				if _, err := fixture.store.Execute(ctx, svcScope, store.Unit{
+					Writes: []store.Write{{
+						Table:         "services",
+						ID:            "svc-a",
+						ExpectVersion: 1,
+						Values:        map[string]any{"state": "disabled"},
+					}},
+				}); err != nil {
+					t.Fatalf("concurrent disable service: %v", err)
+				}
+			},
+		},
+		{
+			name:         "project service engineer role removed concurrently",
+			serviceScope: scope,
+			mutate: func(t *testing.T, fixture *fixture, svcScope tenancy.Scope) {
+				t.Helper()
+				roles, err := jsonColumn([]tenancy.Role{tenancy.RoleViewer})
+				if err != nil {
+					t.Fatalf("encode roles: %v", err)
+				}
+				if _, err := fixture.store.Execute(ctx, svcScope, store.Unit{
+					Writes: []store.Write{{
+						Table:         "services",
+						ID:            "svc-a",
+						ExpectVersion: 1,
+						Values:        map[string]any{"roles": roles},
+					}},
+				}); err != nil {
+					t.Fatalf("concurrent role removal: %v", err)
+				}
+			},
+		},
+		{
+			name:         "tenant-wide service disabled concurrently",
+			serviceScope: tenantWide,
+			mutate: func(t *testing.T, fixture *fixture, svcScope tenancy.Scope) {
+				t.Helper()
+				if _, err := fixture.store.Execute(ctx, svcScope, store.Unit{
+					Writes: []store.Write{{
+						Table:         "services",
+						ID:            "svc-a",
+						ExpectVersion: 1,
+						Values:        map[string]any{"state": "disabled"},
+					}},
+				}); err != nil {
+					t.Fatalf("concurrent disable tenant-wide service: %v", err)
+				}
+			},
+		},
+		{
+			name:         "tenant-wide service engineer role removed concurrently",
+			serviceScope: tenantWide,
+			mutate: func(t *testing.T, fixture *fixture, svcScope tenancy.Scope) {
+				t.Helper()
+				roles, err := jsonColumn([]tenancy.Role{tenancy.RoleViewer})
+				if err != nil {
+					t.Fatalf("encode roles: %v", err)
+				}
+				if _, err := fixture.store.Execute(ctx, svcScope, store.Unit{
+					Writes: []store.Write{{
+						Table:         "services",
+						ID:            "svc-a",
+						ExpectVersion: 1,
+						Values:        map[string]any{"roles": roles},
+					}},
+				}); err != nil {
+					t.Fatalf("concurrent tenant-wide role removal: %v", err)
+				}
+			},
+		},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			fixture := newFixture(t)
+			fixture.seedServiceWithRoles(t, testCase.serviceScope, "svc-a", serviceStateEnabled, 1, tenancy.RoleEngineer)
+			var before commitCounts
+			executor := &mutatingExecutor{
+				inner: fixture.store,
+				hook: func() {
+					testCase.mutate(t, fixture, testCase.serviceScope)
+					before = fixture.commitCounts(t, scope)
+				},
+			}
+			racing, err := NewPipelines(executor, fixture.store, nil)
+			if err != nil {
+				t.Fatalf("NewPipelines: %v", err)
+			}
+			unit := fixture.changeUnit(scope, pipeline.ChangeApply, "", "push-race", []byte("kind: Pipeline\n"), 0, fixture.receipt("pipeline.apply", "race-1", contentHashA))
+			unit.PushTriggers = testPushTriggers()
+			_, err = racing.Change(ctx, unit)
+			mustClass(t, err, fault.VersionConflict)
+			fixture.requireUnchanged(t, scope, before)
+			if count := fixture.countRows(t, scope, "pipelines", nil); count != 0 {
+				t.Fatalf("pipelines committed after concurrent service modification = %d; want 0", count)
+			}
+		})
+	}
+}
+
+// TestPipelineChangeReplaysPushPipelineAfterServiceDisable proves an equal-key
+// retry of an already-committed on.push apply or update still converges on its
+// original receipt even after the referenced service is disabled, while a
+// changed-content retry returns changed_idempotency_content and a fresh commit
+// is refused invalid_input.
+func TestPipelineChangeReplaysPushPipelineAfterServiceDisable(t *testing.T) {
+	ctx := context.Background()
+	fixture := newFixture(t)
+	scope := testScope()
+	fixture.seedServiceWithRoles(t, scope, "svc-a", serviceStateEnabled, 1, tenancy.RoleEngineer)
+
+	applyUnit := fixture.changeUnit(scope, pipeline.ChangeApply, "", "push", []byte("kind: Pipeline\nv: 1\n"), 0, fixture.receipt("pipeline.apply", "push-apply-1", contentHashA))
+	applyUnit.PushTriggers = testPushTriggers()
+	applied, err := fixture.pipelines.Change(ctx, applyUnit)
+	if err != nil {
+		t.Fatalf("initial push apply: %v", err)
+	}
+
+	updateUnit := fixture.changeUnit(scope, pipeline.ChangeUpdate, applied.PipelineID, "push", []byte("kind: Pipeline\nv: 2\n"), 1, fixture.receipt("pipeline.update", "push-update-1", contentHashA))
+	updateUnit.PushTriggers = testPushTriggers()
+	updated, err := fixture.pipelines.Change(ctx, updateUnit)
+	if err != nil {
+		t.Fatalf("initial push update: %v", err)
+	}
+
+	// Disable the referenced service after both commits succeeded.
+	if _, err := fixture.store.Execute(ctx, scope, store.Unit{
+		Writes: []store.Write{{
+			Table:         "services",
+			ID:            "svc-a",
+			ExpectVersion: 1,
+			Values:        map[string]any{"state": "disabled"},
+		}},
+	}); err != nil {
+		t.Fatalf("disable svc-a: %v", err)
+	}
+	before := fixture.commitCounts(t, scope)
+
+	replayedApply, err := fixture.pipelines.Change(ctx, applyUnit)
+	if err != nil {
+		t.Fatalf("replay apply after service disable: %v", err)
+	}
+	if !replayedApply.Replayed || replayedApply.PipelineID != applied.PipelineID || replayedApply.Version != applied.Version {
+		t.Fatalf("replayed apply = %+v; want replayed %+v", replayedApply, applied)
+	}
+
+	replayedUpdate, err := fixture.pipelines.Change(ctx, updateUnit)
+	if err != nil {
+		t.Fatalf("replay update after service disable: %v", err)
+	}
+	if !replayedUpdate.Replayed || replayedUpdate.PipelineID != updated.PipelineID || replayedUpdate.Version != updated.Version {
+		t.Fatalf("replayed update = %+v; want replayed %+v", replayedUpdate, updated)
+	}
+	fixture.requireUnchanged(t, scope, before)
+
+	// Changed content under the same key must still report changed_idempotency_content.
+	changed := applyUnit
+	changed.Receipt.ContentHash = contentHashB
+	_, err = fixture.pipelines.Change(ctx, changed)
+	mustClass(t, err, fault.ChangedIdempotencyContent)
+
+	// A fresh push apply against the now-disabled service must still be refused.
+	fresh := fixture.changeUnit(scope, pipeline.ChangeApply, "", "push-2", []byte("kind: Pipeline\nv: 3\n"), 0, fixture.receipt("pipeline.apply", "push-apply-fresh", contentHashA))
+	fresh.PushTriggers = testPushTriggers()
+	_, err = fixture.pipelines.Change(ctx, fresh)
+	mustClass(t, err, fault.InvalidInput)
+	fixture.requireUnchanged(t, scope, before)
 }

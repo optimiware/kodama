@@ -764,8 +764,8 @@ func validCleanupState(state string) bool {
 
 // validateNote checks an optional bounded UTF-8 decision note (reason/comment).
 func validateNote(note string) error {
-	if len(note) > MaxSubjectValueBytes {
-		return invalid("request note is %d bytes; at most %d are allowed", len(note), MaxSubjectValueBytes)
+	if len(note) > MaxNoteBytes {
+		return invalid("request note is %d bytes; at most %d are allowed", len(note), MaxNoteBytes)
 	}
 	if !utf8.ValidString(note) {
 		return invalid("request note is not valid UTF-8")

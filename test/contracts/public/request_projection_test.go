@@ -619,7 +619,7 @@ func TestExecutionRequestNoteAndProvenanceWireContract(t *testing.T) {
 	if _, err := resolveCodec.DecodeRequest([]byte(`{"decision":"fail","expected_action_version":2,"note":"Security checklist incomplete"}`)); err != nil {
 		t.Fatalf("execution.request.resolve refused valid note: %v", err)
 	}
-	tooLong := strings.Repeat("x", api.MaxSubjectValueBytes+1)
+	tooLong := strings.Repeat("x", api.MaxNoteBytes+1)
 	requireInvalid(t, (api.ExecutionRequestResolveRequest{
 		ExpectedActionVersion: 1,
 		Decision:              "fail",

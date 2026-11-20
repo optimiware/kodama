@@ -545,8 +545,8 @@ func (s *Service) Resolve(ctx context.Context, command ResolveCommand) (ResolveR
 	if !utf8.ValidString(command.Note) {
 		return ResolveResult{}, fault.New(fault.InvalidInput, "request note is not valid UTF-8")
 	}
-	if len(command.Note) > kernel.MaxOutputValueBytes {
-		return ResolveResult{}, fault.New(fault.InvalidInput, fmt.Sprintf("request note is %d bytes; at most %d are allowed", len(command.Note), kernel.MaxOutputValueBytes))
+	if len(command.Note) > kernel.MaxNoteBytes {
+		return ResolveResult{}, fault.New(fault.InvalidInput, fmt.Sprintf("request note is %d bytes; at most %d are allowed", len(command.Note), kernel.MaxNoteBytes))
 	}
 	op, err := s.authorizeOperation(ctx, command.Actor, operationResolve, command.Scope)
 	if err != nil {

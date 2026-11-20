@@ -522,24 +522,9 @@ func creationWrites(unit task.CreateUnit) ([]store.Write, []store.Lock, error) {
 	return writes, locks, nil
 }
 
-// committedReceipt reports whether a durable receipt with the unit's
-// idempotency identity already exists in the unit's scope. It is a pre-flight
-// read only: the executor still decides replay versus changed content
-// atomically, and a fresh start still carries every authority guard.
+// committedReceipt delegates to the shared pre-flight receipt lookup.
 func (adapter *Task) committedReceipt(ctx context.Context, scope tenancy.Scope, key receipt.Key) (bool, error) {
-	page, err := adapter.scanner.Query(ctx, scope, store.ScanQuery{
-		Table: "receipts",
-		Equals: map[string]any{
-			"principal_id": string(key.PrincipalID),
-			"operation":    key.Operation,
-			"caller_key":   key.CallerKey,
-		},
-		Limit: 1,
-	})
-	if err != nil {
-		return false, err
-	}
-	return len(page.Rows) > 0, nil
+	return committedReceipt(ctx, adapter.scanner, scope, key)
 }
 
 // Start applies one complete start/admission commit unit.
