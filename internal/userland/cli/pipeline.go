@@ -550,18 +550,39 @@ func emitActionProgress(errOut io.Writer, executionID string, actions []inspecte
 	}
 }
 
+// isFailedContainerAction reports whether action is a failed container action
+// whose retained stderr stream may be fetched for failure diagnostics.
+func isFailedContainerAction(action inspectedAction) bool {
+	if action.effectiveState() != "failed" {
+		return false
+	}
+	return action.Kind == "" || action.Kind == "container"
+}
+
+// hasFailedContainerAction reports whether any action in actions is a failed
+// container action.
+func hasFailedContainerAction(actions []inspectedAction) bool {
+	for _, action := range actions {
+		if isFailedContainerAction(action) {
+			return true
+		}
+	}
+	return false
+}
+
 // printFailedActionStderr fetches and prints a bounded stderr tail on ports.Err
 // for each failed container action, or prints a `kodema logs` hint when stderr
 // is empty or unavailable.
 func printFailedActionStderr(ctx context.Context, ports Ports, executionID string, actions []inspectedAction) error {
 	for _, action := range actions {
-		if action.Kind == "request" || action.effectiveState() != "failed" {
+		if !isFailedContainerAction(action) {
 			continue
 		}
 		label := actionDisplayName(action)
-		logHint := fmt.Sprintf("kodema logs %s --action %s --stream stderr", executionID, label)
+		stderrHint := fmt.Sprintf("kodema logs %s --action %s --stream stderr", executionID, label)
+		stdoutHint := fmt.Sprintf("kodema logs %s --action %s --stream stdout", executionID, label)
 		if action.ActionID == "" {
-			fmt.Fprintf(ports.Err, "hint: inspect logs with '%s'\n", logHint)
+			fmt.Fprintf(ports.Err, "hint: inspect logs with '%s'\n", stderrHint)
 			continue
 		}
 		logs := logStreamState{actionID: action.ActionID}
@@ -570,7 +591,7 @@ func printFailedActionStderr(ctx context.Context, ports Ports, executionID strin
 			if ctx.Err() != nil {
 				return err
 			}
-			fmt.Fprintf(ports.Err, "stderr (action %s) unavailable (%v); inspect with '%s'\n", label, err, logHint)
+			fmt.Fprintf(ports.Err, "stderr (action %s) unavailable (%v); inspect with '%s'\n", label, err, stderrHint)
 			continue
 		}
 		var combined strings.Builder
@@ -579,7 +600,7 @@ func printFailedActionStderr(ctx context.Context, ports Ports, executionID strin
 		}
 		raw := combined.String()
 		if strings.TrimSpace(raw) == "" {
-			fmt.Fprintf(ports.Err, "hint: no stderr captured for action %s; inspect logs with '%s'\n", label, logHint)
+			fmt.Fprintf(ports.Err, "hint: no stderr captured for action %s; inspect logs with '%s' or '%s'\n", label, stdoutHint, stderrHint)
 			continue
 		}
 		tail, localTruncated := boundStderrTail(raw, runFailureStderrMaxLines, runFailureStderrMaxBytes)
@@ -587,7 +608,7 @@ func printFailedActionStderr(ctx context.Context, ports Ports, executionID strin
 		fmt.Fprintln(ports.Err, tail)
 		fmt.Fprintln(ports.Err, "---")
 		if serverTruncated || localTruncated {
-			fmt.Fprintf(ports.Err, "stderr truncated; run '%s' for full logs\n", logHint)
+			fmt.Fprintf(ports.Err, "stderr truncated; run '%s' for full logs\n", stderrHint)
 		}
 	}
 	return nil

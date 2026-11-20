@@ -399,6 +399,416 @@ func TestRunDoesNotRequireServerURLForHelper(t *testing.T) {
 	}
 }
 
+// TestRunInspectFailedActionStderr pins that `kodema inspect` in table mode
+// surfaces the bounded stderr tail (or actionable `kodema logs` hint) for
+// failed container actions, degrades gracefully on log fetch errors, skips
+// non-container request actions, and keeps `--output json` pure JSON.
+func TestRunInspectFailedActionStderr(t *testing.T) {
+	failedContainerBody := `{
+		"execution_id":"exec-42",
+		"state":"failed",
+		"version":4,
+		"actions":[
+			{"action_id":"act-1","index":0,"name":"build","kind":"container","state":"failed","version":2},
+			{"action_id":"act-2","index":1,"name":"deploy","kind":"container","state":"cancelled","version":1}
+		],
+		"failure":{"kind":"runtime","reason":"workload_exited","detail":"workload exited with status 1"},
+		"cleanup":{"state":"complete"}
+	}`
+
+	t.Run("failed container surfaces bounded stderr tail and header", func(t *testing.T) {
+		var logCalls int
+		transport := &scriptedTransport{respond: func(_ context.Context, _ int, inv api.Invocation) (api.Result, error) {
+			switch inv.Operation {
+			case "execution.inspect":
+				return api.Result{Operation: inv.Operation, Body: json.RawMessage(failedContainerBody)}, nil
+			case "execution.logs.read":
+				logCalls++
+				var req api.ExecutionLogsReadRequest
+				if err := json.Unmarshal(inv.Request.Input, &req); err != nil {
+					t.Fatalf("unmarshal logs request: %v", err)
+				}
+				if req.ExecutionID != "exec-42" || req.ActionID != "act-1" || req.Stream != "stderr" {
+					t.Fatalf("logs request = %+v; want exec-42/act-1/stderr", req)
+				}
+				body, _ := json.Marshal(api.ExecutionLogsReadResult{
+					Chunks: []api.LogChunk{{
+						ActionID: "act-1",
+						Stream:   "stderr",
+						Offset:   0,
+						Sequence: 1,
+						Data:     []byte(numberedLines(80)),
+					}},
+				})
+				return api.Result{Operation: inv.Operation, Body: body}, nil
+			default:
+				t.Fatalf("unexpected operation %s", inv.Operation)
+				return api.Result{}, nil
+			}
+		}}
+		ports, out, errOut := testPorts(transport)
+		cfg := testConfig()
+		cfg.Output = cli.OutputTable
+		code := cli.Run(context.Background(), cfg, []string{"inspect", "exec-42"}, ports)
+		if code != cli.ExitSuccess {
+			t.Fatalf("exit code = %d; want %d (stderr: %s)", code, cli.ExitSuccess, errOut.String())
+		}
+		if logCalls != 1 {
+			t.Fatalf("logCalls = %d; want 1", logCalls)
+		}
+		if !strings.Contains(out.String(), "exec-42") || !strings.Contains(out.String(), "workload exited with status 1") {
+			t.Fatalf("stdout = %q; want inspect table summary", out.String())
+		}
+		if strings.Contains(out.String(), "--- stderr") {
+			t.Fatalf("stdout = %q; must not mix stderr tail into stdout", out.String())
+		}
+		for _, want := range []string{
+			"--- stderr (action build) ---\n",
+			"line 31\n",
+			"line 80\n",
+			"---\n",
+			"stderr truncated; run 'kodema logs exec-42 --action build --stream stderr' for full logs\n",
+		} {
+			if !strings.Contains(errOut.String(), want) {
+				t.Fatalf("stderr = %q; want %q", errOut.String(), want)
+			}
+		}
+		for _, unwanted := range []string{"line 30\n", "line 1\n"} {
+			if strings.Contains(errOut.String(), unwanted) {
+				t.Fatalf("stderr = %q; did not want %q", errOut.String(), unwanted)
+			}
+		}
+	})
+
+	t.Run("failed container with empty stderr prints stdout and stderr logs hint", func(t *testing.T) {
+		transport := &scriptedTransport{respond: func(_ context.Context, _ int, inv api.Invocation) (api.Result, error) {
+			switch inv.Operation {
+			case "execution.inspect":
+				return api.Result{Operation: inv.Operation, Body: json.RawMessage(failedContainerBody)}, nil
+			case "execution.logs.read":
+				body, _ := json.Marshal(api.ExecutionLogsReadResult{})
+				return api.Result{Operation: inv.Operation, Body: body}, nil
+			default:
+				t.Fatalf("unexpected operation %s", inv.Operation)
+				return api.Result{}, nil
+			}
+		}}
+		ports, out, errOut := testPorts(transport)
+		cfg := testConfig()
+		cfg.Output = cli.OutputTable
+		code := cli.Run(context.Background(), cfg, []string{"inspect", "exec-42"}, ports)
+		if code != cli.ExitSuccess {
+			t.Fatalf("exit code = %d; want %d (stderr: %s)", code, cli.ExitSuccess, errOut.String())
+		}
+		if !strings.Contains(out.String(), "exec-42") {
+			t.Fatalf("stdout = %q; want inspect table", out.String())
+		}
+		for _, want := range []string{
+			"no stderr captured for action build",
+			"kodema logs exec-42 --action build --stream stdout",
+			"kodema logs exec-42 --action build --stream stderr",
+		} {
+			if !strings.Contains(errOut.String(), want) {
+				t.Fatalf("stderr = %q; want %q", errOut.String(), want)
+			}
+		}
+	})
+
+	t.Run("output json stays pure valid JSON with no log fetch", func(t *testing.T) {
+		transport := &scriptedTransport{respond: func(_ context.Context, _ int, inv api.Invocation) (api.Result, error) {
+			if inv.Operation != "execution.inspect" {
+				t.Fatalf("unexpected operation %s in JSON mode", inv.Operation)
+			}
+			return api.Result{Operation: inv.Operation, Body: json.RawMessage(failedContainerBody)}, nil
+		}}
+		ports, out, errOut := testPorts(transport)
+		cfg := testConfig()
+		cfg.Output = cli.OutputTable
+		code := cli.Run(context.Background(), cfg, []string{"inspect", "exec-42", "--output", "json"}, ports)
+		if code != cli.ExitSuccess {
+			t.Fatalf("exit code = %d; want %d (stderr: %s)", code, cli.ExitSuccess, errOut.String())
+		}
+		if errOut.Len() != 0 {
+			t.Fatalf("stderr = %q; want empty in JSON mode", errOut.String())
+		}
+		var decoded map[string]any
+		if err := json.Unmarshal(out.Bytes(), &decoded); err != nil {
+			t.Fatalf("stdout is not valid JSON (%v): %q", err, out.String())
+		}
+		if decoded["execution_id"] != "exec-42" || decoded["state"] != "failed" {
+			t.Fatalf("decoded JSON = %+v; want exec-42 failed", decoded)
+		}
+		if got := len(transport.recorded()); got != 1 {
+			t.Fatalf("invocations = %d; want 1", got)
+		}
+	})
+
+	t.Run("log fetch failure degrades gracefully and inspect table still succeeds", func(t *testing.T) {
+		transport := &scriptedTransport{respond: func(_ context.Context, _ int, inv api.Invocation) (api.Result, error) {
+			switch inv.Operation {
+			case "execution.inspect":
+				return api.Result{Operation: inv.Operation, Body: json.RawMessage(failedContainerBody)}, nil
+			case "execution.logs.read":
+				return api.Result{}, fault.New(fault.DependencyUnavailable, "log store unreachable")
+			default:
+				t.Fatalf("unexpected operation %s", inv.Operation)
+				return api.Result{}, nil
+			}
+		}}
+		ports, out, errOut := testPorts(transport)
+		cfg := testConfig()
+		cfg.Output = cli.OutputTable
+		code := cli.Run(context.Background(), cfg, []string{"inspect", "exec-42"}, ports)
+		if code != cli.ExitSuccess {
+			t.Fatalf("exit code = %d; want %d (stderr: %s)", code, cli.ExitSuccess, errOut.String())
+		}
+		if !strings.Contains(out.String(), "exec-42") || !strings.Contains(out.String(), "build") {
+			t.Fatalf("stdout = %q; want complete inspect table", out.String())
+		}
+		for _, want := range []string{
+			"stderr (action build) unavailable",
+			"kodema logs exec-42 --action build --stream stderr",
+		} {
+			if !strings.Contains(errOut.String(), want) {
+				t.Fatalf("stderr = %q; want %q", errOut.String(), want)
+			}
+		}
+	})
+
+	t.Run("failed request action does not fetch container stderr", func(t *testing.T) {
+		failedRequestBody := `{
+			"execution_id":"exec-req-1",
+			"state":"failed",
+			"version":3,
+			"actions":[
+				{"action_id":"act-req","index":0,"name":"approve","kind":"request","state":"failed","version":2,"decision":"fail"}
+			],
+			"failure":{"kind":"request","reason":"rejected","detail":"request rejected"},
+			"cleanup":{"state":"not_needed"}
+		}`
+		transport := &scriptedTransport{respond: func(_ context.Context, _ int, inv api.Invocation) (api.Result, error) {
+			if inv.Operation != "execution.inspect" {
+				t.Fatalf("unexpected operation %s; must not fetch logs for request action", inv.Operation)
+			}
+			return api.Result{Operation: inv.Operation, Body: json.RawMessage(failedRequestBody)}, nil
+		}}
+		ports, out, errOut := testPorts(transport)
+		cfg := testConfig()
+		cfg.Output = cli.OutputTable
+		code := cli.Run(context.Background(), cfg, []string{"inspect", "exec-req-1"}, ports)
+		if code != cli.ExitSuccess {
+			t.Fatalf("exit code = %d; want %d (stderr: %s)", code, cli.ExitSuccess, errOut.String())
+		}
+		if !strings.Contains(out.String(), "exec-req-1") || !strings.Contains(out.String(), "request rejected") {
+			t.Fatalf("stdout = %q; want inspect table", out.String())
+		}
+		if errOut.Len() != 0 {
+			t.Fatalf("stderr = %q; want empty for failed request action", errOut.String())
+		}
+	})
+}
+
+// TestRunWatchFailedActionStderr pins that `kodema watch` in table mode
+// surfaces failed container stderr tails (waiting for cleanup settlement when
+// pending), handles empty stderr and log fetch errors gracefully, skips failed
+// request actions, and keeps `--output json` pure NDJSON.
+func TestRunWatchFailedActionStderr(t *testing.T) {
+	runningBody := `{"execution_id":"exec-42","state":"running","version":2,"actions":[{"action_id":"act-1","index":0,"name":"test","kind":"container","state":"running","version":1}],"cleanup":{"state":"not_needed"}}`
+	failedPendingCleanupBody := `{"execution_id":"exec-42","state":"failed","version":3,"actions":[{"action_id":"act-1","index":0,"name":"test","kind":"container","state":"failed","version":2}],"failure":{"kind":"runtime","reason":"workload_exited","detail":"workload exited with status 1"},"cleanup":{"state":"pending"}}`
+	failedCompleteBody := `{"execution_id":"exec-42","state":"failed","version":4,"actions":[{"action_id":"act-1","index":0,"name":"test","kind":"container","state":"failed","version":2}],"failure":{"kind":"runtime","reason":"workload_exited","detail":"workload exited with status 1"},"cleanup":{"state":"complete"}}`
+
+	t.Run("transitioning to failed prints stderr tail before watch failed error", func(t *testing.T) {
+		polls := []string{runningBody, failedPendingCleanupBody, failedCompleteBody}
+		inspectIdx := 0
+		transport := &scriptedTransport{respond: func(_ context.Context, _ int, inv api.Invocation) (api.Result, error) {
+			switch inv.Operation {
+			case "execution.inspect":
+				body := polls[min(inspectIdx, len(polls)-1)]
+				inspectIdx++
+				return api.Result{Operation: inv.Operation, Body: json.RawMessage(body)}, nil
+			case "execution.logs.read":
+				body, _ := json.Marshal(api.ExecutionLogsReadResult{
+					Chunks: []api.LogChunk{{
+						ActionID: "act-1",
+						Stream:   "stderr",
+						Offset:   0,
+						Sequence: 1,
+						Data:     []byte("FAIL: assertion failed\nexit status 1\n"),
+					}},
+				})
+				return api.Result{Operation: inv.Operation, Body: body}, nil
+			default:
+				t.Fatalf("unexpected operation %s", inv.Operation)
+				return api.Result{}, nil
+			}
+		}}
+		ports, out, errOut := testPorts(transport)
+		sleeps := 0
+		ports.Sleep = func(time.Duration) { sleeps++ }
+		cfg := testConfig()
+		cfg.Output = cli.OutputTable
+		code := cli.Run(context.Background(), cfg, []string{"watch", "exec-42"}, ports)
+		if code != cli.ExitFailure {
+			t.Fatalf("exit code = %d; want %d", code, cli.ExitFailure)
+		}
+		if sleeps != 2 {
+			t.Fatalf("sleeps = %d; want 2 (running + pending cleanup settle)", sleeps)
+		}
+		if !strings.Contains(out.String(), "exec-42") || !strings.Contains(out.String(), "workload exited with status 1") {
+			t.Fatalf("stdout = %q; want rendered watch table", out.String())
+		}
+		if strings.Contains(out.String(), "--- stderr") {
+			t.Fatalf("stdout = %q; must not mix stderr tail into stdout", out.String())
+		}
+		stderrStr := errOut.String()
+		for _, want := range []string{
+			"--- stderr (action test) ---\n",
+			"FAIL: assertion failed\nexit status 1\n",
+			"---\n",
+			"watch failed: execution status failed\n",
+		} {
+			if !strings.Contains(stderrStr, want) {
+				t.Fatalf("stderr = %q; want %q", stderrStr, want)
+			}
+		}
+		if strings.Index(stderrStr, "--- stderr (action test) ---") > strings.Index(stderrStr, "watch failed: execution status failed") {
+			t.Fatalf("stderr printed watch failed before stderr tail:\n%s", stderrStr)
+		}
+	})
+
+	t.Run("transitioning to failed with empty stderr prints stdout and stderr logs hint", func(t *testing.T) {
+		polls := []string{runningBody, failedCompleteBody}
+		inspectIdx := 0
+		transport := &scriptedTransport{respond: func(_ context.Context, _ int, inv api.Invocation) (api.Result, error) {
+			switch inv.Operation {
+			case "execution.inspect":
+				body := polls[min(inspectIdx, len(polls)-1)]
+				inspectIdx++
+				return api.Result{Operation: inv.Operation, Body: json.RawMessage(body)}, nil
+			case "execution.logs.read":
+				body, _ := json.Marshal(api.ExecutionLogsReadResult{})
+				return api.Result{Operation: inv.Operation, Body: body}, nil
+			default:
+				t.Fatalf("unexpected operation %s", inv.Operation)
+				return api.Result{}, nil
+			}
+		}}
+		ports, _, errOut := testPorts(transport)
+		cfg := testConfig()
+		cfg.Output = cli.OutputTable
+		code := cli.Run(context.Background(), cfg, []string{"watch", "exec-42"}, ports)
+		if code != cli.ExitFailure {
+			t.Fatalf("exit code = %d; want %d", code, cli.ExitFailure)
+		}
+		for _, want := range []string{
+			"no stderr captured for action test",
+			"kodema logs exec-42 --action test --stream stdout",
+			"kodema logs exec-42 --action test --stream stderr",
+			"watch failed: execution status failed\n",
+		} {
+			if !strings.Contains(errOut.String(), want) {
+				t.Fatalf("stderr = %q; want %q", errOut.String(), want)
+			}
+		}
+	})
+
+	t.Run("transitioning to failed with log fetch error degrades gracefully", func(t *testing.T) {
+		transport := &scriptedTransport{respond: func(_ context.Context, _ int, inv api.Invocation) (api.Result, error) {
+			switch inv.Operation {
+			case "execution.inspect":
+				return api.Result{Operation: inv.Operation, Body: json.RawMessage(failedCompleteBody)}, nil
+			case "execution.logs.read":
+				return api.Result{}, fault.New(fault.Forbidden, "logs denied")
+			default:
+				t.Fatalf("unexpected operation %s", inv.Operation)
+				return api.Result{}, nil
+			}
+		}}
+		ports, out, errOut := testPorts(transport)
+		cfg := testConfig()
+		cfg.Output = cli.OutputTable
+		code := cli.Run(context.Background(), cfg, []string{"watch", "exec-42"}, ports)
+		if code != cli.ExitFailure {
+			t.Fatalf("exit code = %d; want %d", code, cli.ExitFailure)
+		}
+		if !strings.Contains(out.String(), "exec-42") {
+			t.Fatalf("stdout = %q; want watch table", out.String())
+		}
+		for _, want := range []string{
+			"stderr (action test) unavailable",
+			"kodema logs exec-42 --action test --stream stderr",
+			"watch failed: execution status failed\n",
+		} {
+			if !strings.Contains(errOut.String(), want) {
+				t.Fatalf("stderr = %q; want %q", errOut.String(), want)
+			}
+		}
+	})
+
+	t.Run("output json stays pure NDJSON with no log fetch", func(t *testing.T) {
+		polls := []string{runningBody, failedCompleteBody}
+		inspectIdx := 0
+		transport := &scriptedTransport{respond: func(_ context.Context, _ int, inv api.Invocation) (api.Result, error) {
+			if inv.Operation != "execution.inspect" {
+				t.Fatalf("unexpected operation %s in JSON mode", inv.Operation)
+			}
+			body := polls[min(inspectIdx, len(polls)-1)]
+			inspectIdx++
+			return api.Result{Operation: inv.Operation, Body: json.RawMessage(body)}, nil
+		}}
+		ports, out, errOut := testPorts(transport)
+		cfg := testConfig()
+		cfg.Output = cli.OutputTable
+		code := cli.Run(context.Background(), cfg, []string{"watch", "exec-42", "--output", "json"}, ports)
+		if code != cli.ExitFailure {
+			t.Fatalf("exit code = %d; want %d", code, cli.ExitFailure)
+		}
+		lines := strings.Split(strings.TrimSpace(out.String()), "\n")
+		if len(lines) != 2 {
+			t.Fatalf("stdout lines = %d; want 2 NDJSON lines:\n%s", len(lines), out.String())
+		}
+		for i, line := range lines {
+			var decoded map[string]any
+			if err := json.Unmarshal([]byte(line), &decoded); err != nil {
+				t.Fatalf("stdout line %d is not valid JSON (%v): %q", i, err, line)
+			}
+		}
+		if errOut.String() != "watch failed: execution status failed\n" {
+			t.Fatalf("stderr = %q; want only watch failed line in JSON mode", errOut.String())
+		}
+	})
+
+	t.Run("failed request action does not fetch container stderr", func(t *testing.T) {
+		failedRequestBody := `{
+			"execution_id":"exec-req-2",
+			"state":"failed",
+			"version":3,
+			"actions":[{"action_id":"act-req","index":0,"name":"qa-gate","kind":"request","state":"failed","version":2,"decision":"fail"}],
+			"failure":{"kind":"request","reason":"timeout","detail":"request timed out"},
+			"cleanup":{"state":"not_needed"}
+		}`
+		transport := &scriptedTransport{respond: func(_ context.Context, _ int, inv api.Invocation) (api.Result, error) {
+			if inv.Operation != "execution.inspect" {
+				t.Fatalf("unexpected operation %s; must not fetch logs for request action", inv.Operation)
+			}
+			return api.Result{Operation: inv.Operation, Body: json.RawMessage(failedRequestBody)}, nil
+		}}
+		ports, out, errOut := testPorts(transport)
+		cfg := testConfig()
+		cfg.Output = cli.OutputTable
+		code := cli.Run(context.Background(), cfg, []string{"watch", "exec-req-2"}, ports)
+		if code != cli.ExitFailure {
+			t.Fatalf("exit code = %d; want %d", code, cli.ExitFailure)
+		}
+		if !strings.Contains(out.String(), "exec-req-2") {
+			t.Fatalf("stdout = %q; want watch table", out.String())
+		}
+		if errOut.String() != "watch failed: execution status failed\n" {
+			t.Fatalf("stderr = %q; want only watch failed line for request action", errOut.String())
+		}
+	})
+}
+
 // TestRunErrorIsNotAProcessExit is a compile-time reminder that Run returns an
 // exit code; the test process would terminate if Run called os.Exit.
 func TestRunErrorIsNotAProcessExit(t *testing.T) {

@@ -481,6 +481,7 @@ func TestRunFile(t *testing.T) {
 			wantCode: cli.ExitFailure,
 			wantOut:  "boom\n",
 			wantErr: []string{
+				"kodema logs exec-1 --action act-1 --stream stdout",
 				"kodema logs exec-1 --action act-1 --stream stderr",
 				"execution exec-1 failed: runtime: exit_code: container exited 3\n",
 			},
