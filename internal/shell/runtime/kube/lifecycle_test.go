@@ -10,8 +10,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/optimiware/kodema/internal/fault"
 	"github.com/optimiware/kodema/internal/id"
 	"github.com/optimiware/kodema/internal/kernel"
+	"github.com/optimiware/kodema/internal/kernel/definition"
 	"github.com/optimiware/kodema/internal/kernel/engine"
 )
 
@@ -895,4 +897,112 @@ func TestAdapterReconstructionUsesPersistedIdentity(t *testing.T) {
 	if fake.jobCount() != 1 {
 		t.Fatalf("reconstructed operations duplicated the job; cluster has %d", fake.jobCount())
 	}
+}
+
+func TestObserveSurfacesOOMKilledAndMemoryLimit(t *testing.T) {
+	t.Run("failed pod with OOMKilled reason and pod memory limit", func(t *testing.T) {
+		fake, _, adapter, request := setupStarted(t)
+		pod := testPod(request.Identity, "Failed")
+		pod.Containers = []ContainerStatus{{
+			Name:        workloadContainerName,
+			Terminated:  true,
+			ExitCode:    137,
+			Reason:      "OOMKilled",
+			MemoryLimit: "1Gi",
+		}}
+		fake.addPod(pod)
+
+		obs, err := adapter.Observe(context.Background(), engine.ObserveRequest{
+			Identity:    request.Identity,
+			WorkspaceID: request.WorkspaceID,
+		})
+		if err != nil {
+			t.Fatalf("Observe: %v", err)
+		}
+		if obs.Kind != kernel.ObservationExited || !obs.OOMKilled || !obs.StopConfirmed() {
+			t.Fatalf("observation = %+v; want exited OOMKilled with confirmed stop", obs)
+		}
+		if code, ok := obs.ExitStatus(); !ok || code != 137 {
+			t.Fatalf("exit status = %d (%v); want 137", code, ok)
+		}
+		if obs.MemoryLimit != "1Gi" {
+			t.Fatalf("memory limit = %q; want 1Gi", obs.MemoryLimit)
+		}
+		if !strings.Contains(obs.Stop.Detail, "OOMKilled") {
+			t.Fatalf("stop detail = %q; want OOMKilled", obs.Stop.Detail)
+		}
+	})
+
+	t.Run("terminating OOMKilled pod falls back to policy memory limit", func(t *testing.T) {
+		fake, _, adapter, request := setupStarted(t)
+		now := time.Date(2026, time.November, 4, 12, 5, 0, 0, time.UTC)
+		pod := testPod(request.Identity, "Running")
+		pod.DeletionTimestamp = &now
+		pod.Containers = []ContainerStatus{{
+			Name:       workloadContainerName,
+			Terminated: true,
+			ExitCode:   137,
+			Reason:     "OOMKilled",
+		}}
+		fake.addPod(pod)
+
+		obs, err := adapter.Observe(context.Background(), engine.ObserveRequest{
+			Identity:    request.Identity,
+			WorkspaceID: request.WorkspaceID,
+		})
+		if err != nil {
+			t.Fatalf("Observe: %v", err)
+		}
+		if !obs.OOMKilled || obs.MemoryLimit != adapter.policy.MemoryLimit {
+			t.Fatalf("observation = %+v; want OOMKilled with policy limit %q", obs, adapter.policy.MemoryLimit)
+		}
+	})
+}
+
+func TestPrepareAppliesBoundedResourcesAndEnforcesPolicyMaximum(t *testing.T) {
+	t.Run("applies per-action resources within Policy maximum and caps request <= limit", func(t *testing.T) {
+		fake, clock, _ := testSetup(t)
+		cfg := testConfig(fake, clock)
+		cfg.Policy.CPURequest = "500m"
+		cfg.Policy.CPULimit = "1"
+		cfg.Policy.MaxCPULimit = "4"
+		cfg.Policy.MemoryRequest = "512Mi"
+		cfg.Policy.MemoryLimit = "1Gi"
+		cfg.Policy.MaxMemoryLimit = "4Gi"
+		adapter, err := New(cfg)
+		if err != nil {
+			t.Fatalf("New: %v", err)
+		}
+		request := testPrepareRequest()
+		request.Container.Resources = &definition.Resources{Memory: "256Mi", CPU: "2"}
+		prepareTestWorkload(t, adapter, request)
+		startTestWorkload(t, adapter, request.Identity, request.WorkspaceID)
+
+		job := onlyJob(t, fake)
+		if job.Spec.Resources.MemoryLimit != "256Mi" || job.Spec.Resources.MemoryRequest != "256Mi" {
+			t.Fatalf("job memory = %+v; want request=256Mi limit=256Mi", job.Spec.Resources)
+		}
+		if job.Spec.Resources.CPULimit != "2" || job.Spec.Resources.CPURequest != "500m" {
+			t.Fatalf("job cpu = %+v; want request=500m limit=2", job.Spec.Resources)
+		}
+	})
+
+	t.Run("refuses per-action resources exceeding Policy maximum", func(t *testing.T) {
+		_, _, adapter := testSetup(t)
+		request := testPrepareRequest()
+		request.Container.Resources = &definition.Resources{Memory: "8Gi"}
+		_, err := adapter.Prepare(context.Background(), request)
+		if class, ok := fault.ClassOf(err); !ok || class != fault.InvalidInput {
+			t.Fatalf("Prepare oversized memory = %v; want invalid_input", err)
+		}
+		if !strings.Contains(err.Error(), "exceeds installation maximum") {
+			t.Fatalf("error = %v; want installation maximum diagnostic", err)
+		}
+
+		request.Container.Resources = &definition.Resources{CPU: "8"}
+		_, err = adapter.Prepare(context.Background(), request)
+		if class, ok := fault.ClassOf(err); !ok || class != fault.InvalidInput {
+			t.Fatalf("Prepare oversized cpu = %v; want invalid_input", err)
+		}
+	})
 }

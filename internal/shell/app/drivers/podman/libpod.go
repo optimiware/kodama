@@ -41,12 +41,11 @@ const (
 	DefaultStopTimeoutSeconds = 10
 	// maxLogFrameBytes bounds one multiplexed log frame.
 	maxLogFrameBytes = 1 << 20
-	// CPU and memory bounds applied to every container this client creates.
-	// The ContainerSpec carries no resource fields, so the driver pins
-	// the test-environment bound explicitly (1 CPU / 1 GiB).
-	DefaultCPUQuota  = 100000
+	// Default CPU and memory bounds applied when a ContainerSpec carries no
+	// explicit resource limits (2 CPUs / 2 GiB).
+	DefaultCPUQuota  = 200000
 	DefaultCPUPeriod = 100000
-	DefaultMemory    = int64(1 << 30)
+	DefaultMemory    = int64(2 << 30)
 )
 
 // ErrAmbiguous reports an external effect whose outcome cannot be classified:
@@ -637,9 +636,25 @@ type memoryLimit struct {
 }
 
 // createBody maps the ContainerSpec onto the libpod create request. A bind
-// mount and a tmpfs are `mounts` entries; a named volume is a `volumes` entry. The
-// resource bound is applied here because the spec cannot express it.
+// mount and a tmpfs are `mounts` entries; a named volume is a `volumes` entry.
+// Bounded CPU and memory limits are always applied, using the spec's explicit
+// values when set and falling back to the driver's defaults otherwise.
 func createBody(spec runtimepodman.ContainerSpec) (createSpec, error) {
+	if spec.Resources.MemoryBytes < 0 || spec.Resources.CPUQuota < 0 || spec.Resources.CPUPeriod < 0 {
+		return createSpec{}, fault.New(fault.InvalidInput, "podman resource limits must not be negative")
+	}
+	cpuQuota := spec.Resources.CPUQuota
+	if cpuQuota == 0 {
+		cpuQuota = DefaultCPUQuota
+	}
+	cpuPeriod := spec.Resources.CPUPeriod
+	if cpuPeriod == 0 {
+		cpuPeriod = DefaultCPUPeriod
+	}
+	memoryBytes := spec.Resources.MemoryBytes
+	if memoryBytes == 0 {
+		memoryBytes = DefaultMemory
+	}
 	body := createSpec{
 		Name:          spec.Name,
 		Image:         spec.Image,
@@ -648,8 +663,8 @@ func createBody(spec runtimepodman.ContainerSpec) (createSpec, error) {
 		WorkDir:       spec.WorkingDir,
 		RestartPolicy: spec.RestartPolicy,
 		ResourceLimits: &resourceLimits{
-			CPU:    &cpuLimit{Quota: DefaultCPUQuota, Period: DefaultCPUPeriod},
-			Memory: &memoryLimit{Limit: DefaultMemory},
+			CPU:    &cpuLimit{Quota: cpuQuota, Period: cpuPeriod},
+			Memory: &memoryLimit{Limit: memoryBytes},
 		},
 	}
 	if len(spec.Env) > 0 {
@@ -704,11 +719,15 @@ type inspectContainer struct {
 	State     struct {
 		Status     string    `json:"Status"`
 		Running    bool      `json:"Running"`
+		OOMKilled  bool      `json:"OOMKilled"`
 		Pid        int       `json:"Pid"`
 		ExitCode   int       `json:"ExitCode"`
 		StartedAt  time.Time `json:"StartedAt"`
 		FinishedAt time.Time `json:"FinishedAt"`
 	} `json:"State"`
+	HostConfig struct {
+		Memory int64 `json:"Memory"`
+	} `json:"HostConfig"`
 	Config struct {
 		Labels map[string]string `json:"Labels"`
 	} `json:"Config"`
@@ -728,15 +747,17 @@ func (inspected inspectContainer) state(fallbackName string) runtimepodman.Conta
 	wholeStopped := status == runtimepodman.ContainerStatusExited &&
 		!inspected.State.Running && inspected.State.Pid == 0 && !inspected.State.FinishedAt.IsZero()
 	return runtimepodman.ContainerState{
-		ID:           inspected.ID,
-		Name:         name,
-		Image:        image,
-		Status:       status,
-		Started:      started,
-		ExitCode:     inspected.State.ExitCode,
-		StartPending: false,
-		WholeStopped: wholeStopped,
-		Labels:       copyLabels(inspected.Config.Labels),
+		ID:               inspected.ID,
+		Name:             name,
+		Image:            image,
+		Status:           status,
+		Started:          started,
+		ExitCode:         inspected.State.ExitCode,
+		OOMKilled:        inspected.State.OOMKilled,
+		MemoryLimitBytes: inspected.HostConfig.Memory,
+		StartPending:     false,
+		WholeStopped:     wholeStopped,
+		Labels:           copyLabels(inspected.Config.Labels),
 	}
 }
 

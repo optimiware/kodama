@@ -31,6 +31,10 @@ const (
 
 	DefaultTenantID  = "tenant-local"
 	DefaultProjectID = "project-local"
+	// DefaultWorkloadMemory and DefaultWorkloadCPUs are the practical default
+	// container limits for local `kodema up` stacks (2 GiB / 2 CPUs).
+	DefaultWorkloadMemory = "2Gi"
+	DefaultWorkloadCPUs   = "2"
 	// KodemaImageRepository holds the released images, tagged by version.
 	KodemaImageRepository = "ghcr.io/optimiware/kodema/kodema"
 	DefaultPostgresImage  = "docker.io/library/postgres:18-alpine@sha256:300ebd02c6d4de9ee27ad7f6855d5d21b4d3a4a5117767c1197d284c635d9736"
@@ -65,6 +69,10 @@ type UpConfig struct {
 	KodemaImage           string
 	PostgresImage         string
 	NATSImage             string
+	WorkloadMemory        string
+	WorkloadCPUs          string
+	WorkloadMaxMemory     string
+	WorkloadMaxCPUs       string
 	Foreground            bool
 	// DenyProjectSecrets disables the local workload secret-name allow-list so
 	// the server runs deny-by-default. By default (false) and when AllowSecrets
@@ -673,6 +681,14 @@ func Up(ctx context.Context, cfg UpConfig, stdout io.Writer) (_ StackDescriptor,
 		"KODEMA_DISCOVERY_REVOCATION_ENDPOINT=" + disc.RevocationEndpoint,
 		"KODEMA_DISCOVERY_SCOPES=" + strings.Join(disc.Scopes, ","),
 		"KODEMA_DISCOVERY_API_URL=" + disc.APIURL,
+		"KODEMA_WORKLOAD_MEMORY_LIMIT=" + defaultIfEmpty(cfg.WorkloadMemory, DefaultWorkloadMemory),
+		"KODEMA_WORKLOAD_CPU_LIMIT=" + defaultIfEmpty(cfg.WorkloadCPUs, DefaultWorkloadCPUs),
+	}
+	if maxMemory := strings.TrimSpace(cfg.WorkloadMaxMemory); maxMemory != "" {
+		serverEnv = append(serverEnv, "KODEMA_WORKLOAD_MAX_MEMORY_LIMIT="+maxMemory)
+	}
+	if maxCPUs := strings.TrimSpace(cfg.WorkloadMaxCPUs); maxCPUs != "" {
+		serverEnv = append(serverEnv, "KODEMA_WORKLOAD_MAX_CPU_LIMIT="+maxCPUs)
 	}
 	if secretRulesPath != "" {
 		serverEnv = append(serverEnv, "KODEMA_SECRET_RULES_FILE="+secretRulesPath)

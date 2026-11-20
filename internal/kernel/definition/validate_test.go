@@ -696,6 +696,91 @@ func FuzzValidateActionName(f *testing.F) {
 	})
 }
 
+func TestValidateContainerResources(t *testing.T) {
+	t.Run("accepts valid memory and cpu declarations", func(t *testing.T) {
+		cases := []struct {
+			name      string
+			resources *Resources
+			wantMem   int64
+			wantCPU   int64
+		}{
+			{"memory and cpu", &Resources{Memory: "2Gi", CPU: "2"}, 2 << 30, 2000},
+			{"memory only binary Mi", &Resources{Memory: "512Mi"}, 512 << 20, 0},
+			{"memory decimal Gi", &Resources{Memory: "1.5Gi"}, (1 << 30) + (512 << 20), 0},
+			{"memory decimal SI", &Resources{Memory: "500M"}, 500_000_000, 0},
+			{"memory lower bound", &Resources{Memory: "16Mi"}, MinContainerMemoryBytes, 0},
+			{"memory upper bound", &Resources{Memory: "1Ti"}, MaxContainerMemoryBytes, 0},
+			{"cpu only millicores", &Resources{CPU: "250m"}, 0, 250},
+			{"cpu fractional cores", &Resources{CPU: "1.5"}, 0, 1500},
+			{"cpu lower bound", &Resources{CPU: "50m"}, 0, MinContainerCPUMillicores},
+			{"cpu upper bound", &Resources{CPU: "1024"}, 0, MaxContainerCPUMillicores},
+		}
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				action := k01ContainerAction("build")
+				action.Container.Resources = tc.resources
+				assertValidateOK(t, Pipeline{Actions: []Action{action}}, tc.name)
+				if tc.wantMem > 0 {
+					got, err := ParseMemoryQuantity(tc.resources.Memory)
+					if err != nil || got != tc.wantMem {
+						t.Fatalf("ParseMemoryQuantity(%q) = %d, %v; want %d", tc.resources.Memory, got, err, tc.wantMem)
+					}
+				}
+				if tc.wantCPU > 0 {
+					got, err := ParseCPUQuantity(tc.resources.CPU)
+					if err != nil || got != tc.wantCPU {
+						t.Fatalf("ParseCPUQuantity(%q) = %d, %v; want %d", tc.resources.CPU, got, err, tc.wantCPU)
+					}
+				}
+			})
+		}
+	})
+
+	t.Run("refuses invalid or unbounded resources", func(t *testing.T) {
+		cases := []struct {
+			name      string
+			resources *Resources
+		}{
+			{"empty resources object", &Resources{}},
+			{"negative memory", &Resources{Memory: "-1Gi"}},
+			{"zero memory", &Resources{Memory: "0Gi"}},
+			{"memory below minimum", &Resources{Memory: "8Mi"}},
+			{"memory above maximum", &Resources{Memory: "2Ti"}},
+			{"memory bad unit", &Resources{Memory: "2gb"}},
+			{"memory whitespace", &Resources{Memory: " 2Gi"}},
+			{"memory fractional bare bytes", &Resources{Memory: "100.5"}},
+			{"memory overflow", &Resources{Memory: "99999999999999999999999Gi"}},
+			{"negative cpu", &Resources{CPU: "-1"}},
+			{"zero cpu", &Resources{CPU: "0"}},
+			{"cpu below minimum", &Resources{CPU: "10m"}},
+			{"cpu above maximum", &Resources{CPU: "2048"}},
+			{"cpu bad unit", &Resources{CPU: "2cores"}},
+			{"cpu fractional millicores", &Resources{CPU: "1.5m"}},
+			{"cpu too many decimal places", &Resources{CPU: "0.1234"}},
+			{"cpu trailing dot", &Resources{CPU: "1."}},
+			{"cpu whitespace", &Resources{CPU: "2 "}},
+		}
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				action := k01ContainerAction("build")
+				action.Container.Resources = tc.resources
+				assertInvalidInput(t, Validate(Pipeline{Actions: []Action{action}}), tc.name)
+			})
+		}
+	})
+
+	t.Run("snapshot clone isolates container resources", func(t *testing.T) {
+		action := k01ContainerAction("build")
+		action.Container.Resources = &Resources{Memory: "2Gi", CPU: "2"}
+		snap := NewSnapshot(SnapshotInput{Pipeline: Pipeline{Actions: []Action{action}}})
+		action.Container.Resources.Memory = "16Gi"
+		got := snap.Pipeline().Actions[0].Container.Resources
+		if got == nil || got.Memory != "2Gi" || got.CPU != "2" {
+			t.Fatalf("cloned resources = %+v; want 2Gi/2", got)
+		}
+	})
+}
+
 // FuzzValidateUndeclaredInputReference asserts membership, not just syntax:
 // with no admitted inputs, no inputs.<key> reference may validate for any key.
 func FuzzValidateUndeclaredInputReference(f *testing.F) {

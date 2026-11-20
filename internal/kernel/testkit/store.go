@@ -418,7 +418,8 @@ func validateRetireCommit(primary kernel.Action, commit flow.Commit) error {
 // reducer and engine do: kind and proof must match exactly, and any exit status
 // or stop barrier must match too.
 func observationsEqual(recorded, candidate kernel.Observation) bool {
-	if recorded.Kind != candidate.Kind || recorded.Proof != candidate.Proof {
+	if recorded.Kind != candidate.Kind || recorded.Proof != candidate.Proof ||
+		recorded.OOMKilled != candidate.OOMKilled || recorded.MemoryLimit != candidate.MemoryLimit {
 		return false
 	}
 	if (recorded.ExitCode == nil) != (candidate.ExitCode == nil) {

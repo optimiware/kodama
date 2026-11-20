@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/optimiware/kodema/internal/installation"
+	"github.com/optimiware/kodema/internal/kernel/definition"
 	shellapp "github.com/optimiware/kodema/internal/shell/app"
 	natsdriver "github.com/optimiware/kodema/internal/shell/app/drivers/nats"
 	podmandriver "github.com/optimiware/kodema/internal/shell/app/drivers/podman"
@@ -177,6 +178,10 @@ func buildTestProfile(options serverOptions, getenv productionEnv) (productionBu
 	if err != nil {
 		return productionBuild{}, err
 	}
+	workloadResources, err := resolveTestWorkloadResources(options, getenv)
+	if err != nil {
+		return productionBuild{}, err
+	}
 	adapter, err := runtimepodman.New(runtimepodman.Config{
 		Libpod:         libpod,
 		Files:          files,
@@ -185,6 +190,7 @@ func buildTestProfile(options serverOptions, getenv productionEnv) (productionBu
 		WorkloadCAFile: workloadCAFile,
 		ToolboxFile:    toolboxFile,
 		GitURL:         options.WorkloadGitURL,
+		Resources:      workloadResources,
 		Cleanup:        runtimepodman.CleanupPolicy{Attempts: 3, Backoff: time.Second},
 	})
 	if err != nil {
@@ -347,6 +353,48 @@ func testBrokerTLS(getenv productionEnv) (*natsdriver.TLSConfig, error) {
 		}
 	}
 	return &natsdriver.TLSConfig{CAFile: caFile, CertFile: certFile, KeyFile: keyFile}, nil
+}
+
+// resolveTestWorkloadResources parses the optional test-profile default and
+// maximum workload memory/CPU settings. Unset settings remain zero so the
+// Podman runtime applies its bounded defaults.
+func resolveTestWorkloadResources(options serverOptions, getenv productionEnv) (runtimepodman.ResourcePolicy, error) {
+	pick := func(explicit, envName string) string {
+		if value := strings.TrimSpace(explicit); value != "" {
+			return value
+		}
+		return strings.TrimSpace(getenv(envName))
+	}
+	var policy runtimepodman.ResourcePolicy
+	if raw := pick(options.WorkloadMemory, "KODEMA_WORKLOAD_MEMORY_LIMIT"); raw != "" {
+		bytes, err := definition.ParseMemoryQuantity(raw)
+		if err != nil {
+			return runtimepodman.ResourcePolicy{}, fmt.Errorf("test profile workload memory (--workload-memory or KODEMA_WORKLOAD_MEMORY_LIMIT): %w", err)
+		}
+		policy.DefaultMemoryBytes = bytes
+	}
+	if raw := pick(options.WorkloadMaxMemory, "KODEMA_WORKLOAD_MAX_MEMORY_LIMIT"); raw != "" {
+		bytes, err := definition.ParseMemoryQuantity(raw)
+		if err != nil {
+			return runtimepodman.ResourcePolicy{}, fmt.Errorf("test profile workload max memory (--workload-max-memory or KODEMA_WORKLOAD_MAX_MEMORY_LIMIT): %w", err)
+		}
+		policy.MaxMemoryBytes = bytes
+	}
+	if raw := pick(options.WorkloadCPUs, "KODEMA_WORKLOAD_CPU_LIMIT"); raw != "" {
+		millicores, err := definition.ParseCPUQuantity(raw)
+		if err != nil {
+			return runtimepodman.ResourcePolicy{}, fmt.Errorf("test profile workload CPUs (--workload-cpus or KODEMA_WORKLOAD_CPU_LIMIT): %w", err)
+		}
+		policy.DefaultCPUMillicores = millicores
+	}
+	if raw := pick(options.WorkloadMaxCPUs, "KODEMA_WORKLOAD_MAX_CPU_LIMIT"); raw != "" {
+		millicores, err := definition.ParseCPUQuantity(raw)
+		if err != nil {
+			return runtimepodman.ResourcePolicy{}, fmt.Errorf("test profile workload max CPUs (--workload-max-cpus or KODEMA_WORKLOAD_MAX_CPU_LIMIT): %w", err)
+		}
+		policy.MaxCPUMillicores = millicores
+	}
+	return policy, nil
 }
 
 // resolveTestToolboxFile selects the kodema binary workloads mount at

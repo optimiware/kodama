@@ -492,13 +492,25 @@ func TestListPodsEncodesSelectorAndMapsEvidence(t *testing.T) {
 						"labels":            map[string]string{runtimekube.LabelWorkload: "workload-1"},
 						"deletionTimestamp": "2026-11-06T10:01:00Z",
 					},
-					"spec": map[string]any{"nodeName": "node-a"},
+					"spec": map[string]any{
+						"nodeName": "node-a",
+						"containers": []any{
+							map[string]any{
+								"name": "workload",
+								"resources": map[string]any{
+									"limits": map[string]string{"memory": "2Gi"},
+								},
+							},
+						},
+					},
 					"status": map[string]any{
 						"phase": "Failed",
 						"containerStatuses": []any{
 							map[string]any{
-								"name":  "workload",
-								"state": map[string]any{"terminated": map[string]any{"exitCode": 7}},
+								"name": "workload",
+								"state": map[string]any{
+									"terminated": map[string]any{"exitCode": 137, "reason": "OOMKilled"},
+								},
 							},
 						},
 					},
@@ -537,8 +549,9 @@ func TestListPodsEncodesSelectorAndMapsEvidence(t *testing.T) {
 		t.Fatalf("first pod deletion timestamp = %v", first.DeletionTimestamp)
 	}
 	if len(first.Containers) != 1 || first.Containers[0].Name != "workload" ||
-		!first.Containers[0].Terminated || first.Containers[0].ExitCode != 7 {
-		t.Fatalf("first pod containers = %+v; want the terminated workload exit 7", first.Containers)
+		!first.Containers[0].Terminated || first.Containers[0].ExitCode != 137 ||
+		first.Containers[0].Reason != "OOMKilled" || first.Containers[0].MemoryLimit != "2Gi" {
+		t.Fatalf("first pod containers = %+v; want the OOMKilled workload exit 137 with 2Gi limit", first.Containers)
 	}
 	if pods[1].Phase != "Pending" || len(pods[1].Containers) != 0 {
 		t.Fatalf("second pod = %+v; want pending with no container status", pods[1])

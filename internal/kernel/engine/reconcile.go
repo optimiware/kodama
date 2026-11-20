@@ -516,7 +516,8 @@ func pendingCancellations(execution kernel.Execution, primary id.ActionID) []flo
 }
 
 func observationsEqual(recorded, candidate kernel.Observation) bool {
-	if recorded.Kind != candidate.Kind || recorded.Proof != candidate.Proof {
+	if recorded.Kind != candidate.Kind || recorded.Proof != candidate.Proof ||
+		recorded.OOMKilled != candidate.OOMKilled || recorded.MemoryLimit != candidate.MemoryLimit {
 		return false
 	}
 	if (recorded.ExitCode == nil) != (candidate.ExitCode == nil) {

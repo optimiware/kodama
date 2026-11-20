@@ -326,6 +326,10 @@ func cloneContainer(container definition.Container) definition.Container {
 	cloned.Env = append([]definition.EnvVar(nil), container.Env...)
 	cloned.Secrets = append([]id.SecretName(nil), container.Secrets...)
 	cloned.Outputs = append([]id.OutputKey(nil), container.Outputs...)
+	if container.Resources != nil {
+		resources := *container.Resources
+		cloned.Resources = &resources
+	}
 	return cloned
 }
 

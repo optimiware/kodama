@@ -58,7 +58,7 @@ config:
   #   KODEMA_TENANT_NAMESPACE                  (production.go singleton only:
   #                                            defaults to kodema-tenant-<tenant>;
   #                                            refused with more than one tenant)
-  #   KODEMA_WORKLOAD_{CPU,MEMORY}_{REQUEST,LIMIT}
+  #   KODEMA_WORKLOAD_{CPU,MEMORY}_{REQUEST,LIMIT}, KODEMA_WORKLOAD_MAX_{CPU,MEMORY}_LIMIT
   #                                            (production.go runtime policy)
   #
   # A name the chart renders itself is refused (a duplicate env entry would

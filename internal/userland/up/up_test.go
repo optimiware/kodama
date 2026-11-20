@@ -982,6 +982,14 @@ func TestStackUpStatusAndDownWithMockEngine(t *testing.T) {
 		t.Fatalf("Up stdout missing %q:\n%s", wantLoginHint, out.String())
 	}
 
+	// The server container receives the practical workload resource defaults.
+	serverEnvText := fmt.Sprint(engine.env(t, "kodema-test-server"))
+	for _, want := range []string{"KODEMA_WORKLOAD_MEMORY_LIMIT=2Gi", "KODEMA_WORKLOAD_CPU_LIMIT=2"} {
+		if !strings.Contains(serverEnvText, want) {
+			t.Fatalf("server env = %s, want %q", serverEnvText, want)
+		}
+	}
+
 	// The server mounts the socket Podman reports for itself, which on a
 	// rootless Podman machine is not /run/podman/podman.sock.
 	serverBinds := fmt.Sprint(engine.hostConfig(t, "kodema-test-server")["Binds"])
@@ -1338,6 +1346,14 @@ type mockEngine struct {
 	// logs is the output every container reports.
 	logs   string
 	client *http.Client
+}
+
+// env returns the Env slice the named container was created with.
+func (engine *mockEngine) env(t *testing.T, name string) any {
+	t.Helper()
+	engine.mu.Lock()
+	defer engine.mu.Unlock()
+	return engine.created[name]["Env"]
 }
 
 // hostConfig returns the HostConfig the named container was created with.

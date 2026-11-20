@@ -56,6 +56,7 @@ var requiredPipelines = []string{
 	"service-response.yaml",
 	"push-test.yaml",
 	"build.yaml",
+	"oci-build.yaml",
 	"test.yaml",
 	"promote.yaml",
 	"rollback.yaml",
@@ -674,6 +675,40 @@ func TestReadinessExampleObservesTargetHealth(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("%s must declare a container action with the readiness output", rel)
+	}
+}
+
+// TestOCIBuildExampleIsUnprivilegedAndPublishesDigest verifies the shipped
+// unprivileged OCI container-build example: bounded resources, secret-name-only
+// registry auth, no host daemon socket or /dev/fuse requirement, and a
+// digest-pinned image output.
+func TestOCIBuildExampleIsUnprivilegedAndPublishesDigest(t *testing.T) {
+	const rel = "pipelines/oci-build.yaml"
+	decoded := decodeExample(t, rel)
+	assertKinds(t, rel, decoded, "container", "container")
+	for _, key := range []string{"repository", "ref", "destination"} {
+		if !hasInput(decoded, key) {
+			t.Fatalf("%s must declare input %q", rel, key)
+		}
+	}
+	build := decoded.Actions[1]
+	if !hasOutput(build, "image") {
+		t.Fatalf("%s build action must declare the image output", rel)
+	}
+	if build.Container.Resources == nil || build.Container.Resources.Memory == "" || build.Container.Resources.CPU == "" {
+		t.Fatalf("%s build action must declare bounded memory and cpu resources", rel)
+	}
+	if len(build.Container.Secrets) == 0 {
+		t.Fatalf("%s build action must declare a registry credential secret by name", rel)
+	}
+	commands := strings.Join(build.Container.Commands, "\n")
+	if !strings.Contains(commands, "/kaniko/executor") || !strings.Contains(commands, "--digest-file=") {
+		t.Fatalf("%s build action must invoke /kaniko/executor with --digest-file=", rel)
+	}
+	for _, privileged := range []string{"/var/run/docker.sock", "podman.sock", "/dev/fuse"} {
+		if strings.Contains(commands, privileged) {
+			t.Fatalf("%s build commands must not require %q", rel, privileged)
+		}
 	}
 }
 

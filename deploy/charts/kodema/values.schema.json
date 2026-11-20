@@ -87,7 +87,7 @@
           "description": "Optional extra server environment as name to literal string. Only the allowlisted OIDC, discovery and workload variables are accepted; a value must not contain URL userinfo (user:password@host). Secrets are never passed here.",
           "propertyNames": {
             "type": "string",
-            "pattern": "^(KODEMA_OIDC_(ISSUER|AUDIENCE|JWKS_URL|TENANT_CLAIM|SUBJECT_CLAIM|PROJECT_CLAIM|CA_FILE)|KODEMA_DISCOVERY_(ISSUER|CLIENT_ID|AUDIENCE|AUTHORIZATION_ENDPOINT|TOKEN_ENDPOINT|DEVICE_AUTHORIZATION_ENDPOINT|REVOCATION_ENDPOINT|SCOPES|API_URL)|KODEMA_TENANT_NAMESPACE|KODEMA_WORKLOAD_(CPU|MEMORY)_(REQUEST|LIMIT))$"
+            "pattern": "^(KODEMA_OIDC_(ISSUER|AUDIENCE|JWKS_URL|TENANT_CLAIM|SUBJECT_CLAIM|PROJECT_CLAIM|CA_FILE)|KODEMA_DISCOVERY_(ISSUER|CLIENT_ID|AUDIENCE|AUTHORIZATION_ENDPOINT|TOKEN_ENDPOINT|DEVICE_AUTHORIZATION_ENDPOINT|REVOCATION_ENDPOINT|SCOPES|API_URL)|KODEMA_TENANT_NAMESPACE|KODEMA_WORKLOAD_((CPU|MEMORY)_(REQUEST|LIMIT)|MAX_(CPU|MEMORY)_LIMIT))$"
           },
           "additionalProperties": {
             "type": "string",

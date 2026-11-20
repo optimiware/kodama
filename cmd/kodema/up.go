@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/kernel/definition"
 	"github.com/optimiware/kodema/internal/userland/up"
 )
 
@@ -33,6 +34,10 @@ func runUpEntry(ctx context.Context, args []string, stdout, stderr io.Writer) in
 	tenant := flags.String("tenant", envOr("KODEMA_UP_TENANT", up.DefaultTenantID), "bootstrap tenant identity")
 	project := flags.String("project", envOr("KODEMA_UP_PROJECT", up.DefaultProjectID), "bootstrap project identity")
 	image := flags.String("image", envOr("KODEMA_UP_IMAGE", up.KodemaImageRepository+":"+version), "kodema container image (default: the image of this binary's version)")
+	workloadMemory := flags.String("workload-memory", envOr("KODEMA_WORKLOAD_MEMORY_LIMIT", up.DefaultWorkloadMemory), "default memory limit for workload containers (e.g. 2Gi, 4Gi)")
+	workloadCPUs := flags.String("workload-cpus", envOr("KODEMA_WORKLOAD_CPU_LIMIT", up.DefaultWorkloadCPUs), "default CPU limit for workload containers (e.g. 2, 1500m, 4)")
+	workloadMaxMemory := flags.String("workload-max-memory", envOr("KODEMA_WORKLOAD_MAX_MEMORY_LIMIT", ""), "maximum memory limit a pipeline action may request (e.g. 4Gi, 8Gi)")
+	workloadMaxCPUs := flags.String("workload-max-cpus", envOr("KODEMA_WORKLOAD_MAX_CPU_LIMIT", ""), "maximum CPU limit a pipeline action may request (e.g. 4, 8)")
 	foreground := flags.Bool("foreground", false, "keep the single-origin TLS gateway in the foreground")
 	gatewayOnly := flags.Bool("gateway-only", false, "serve only the single-origin TLS gateway from an existing stack.json")
 	allowUnshared := flags.Bool("allow-unshared-state-dir", false, "allow --state-dir outside $HOME on macOS")
@@ -88,6 +93,49 @@ func runUpEntry(ctx context.Context, args []string, stdout, stderr io.Writer) in
 		usage(stderr, err.Error())
 		return 2
 	}
+	memVal := strings.TrimSpace(*workloadMemory)
+	maxMemVal := strings.TrimSpace(*workloadMaxMemory)
+	cpuVal := strings.TrimSpace(*workloadCPUs)
+	maxCPUVal := strings.TrimSpace(*workloadMaxCPUs)
+	var memBytes, cpuMillis int64
+	if memVal != "" {
+		parsed, err := definition.ParseMemoryQuantity(memVal)
+		if err != nil {
+			usage(stderr, fmt.Sprintf("invalid --workload-memory: %v", err))
+			return 2
+		}
+		memBytes = parsed
+	}
+	if maxMemVal != "" {
+		parsed, err := definition.ParseMemoryQuantity(maxMemVal)
+		if err != nil {
+			usage(stderr, fmt.Sprintf("invalid --workload-max-memory: %v", err))
+			return 2
+		}
+		if memBytes > 0 && memBytes > parsed {
+			usage(stderr, fmt.Sprintf("--workload-memory (%s) exceeds --workload-max-memory (%s)", memVal, maxMemVal))
+			return 2
+		}
+	}
+	if cpuVal != "" {
+		parsed, err := definition.ParseCPUQuantity(cpuVal)
+		if err != nil {
+			usage(stderr, fmt.Sprintf("invalid --workload-cpus: %v", err))
+			return 2
+		}
+		cpuMillis = parsed
+	}
+	if maxCPUVal != "" {
+		parsed, err := definition.ParseCPUQuantity(maxCPUVal)
+		if err != nil {
+			usage(stderr, fmt.Sprintf("invalid --workload-max-cpus: %v", err))
+			return 2
+		}
+		if cpuMillis > 0 && cpuMillis > parsed {
+			usage(stderr, fmt.Sprintf("--workload-cpus (%s) exceeds --workload-max-cpus (%s)", cpuVal, maxCPUVal))
+			return 2
+		}
+	}
 
 	_, err := runUpStack(ctx, up.UpConfig{
 		Instance:              *name,
@@ -98,6 +146,10 @@ func runUpEntry(ctx context.Context, args []string, stdout, stderr io.Writer) in
 		TenantID:              *tenant,
 		ProjectID:             *project,
 		KodemaImage:           *image,
+		WorkloadMemory:        memVal,
+		WorkloadCPUs:          cpuVal,
+		WorkloadMaxMemory:     maxMemVal,
+		WorkloadMaxCPUs:       maxCPUVal,
 		Foreground:            *foreground,
 		DenyProjectSecrets:    !*allowProjectSecrets,
 		AllowSecrets:          allowSecrets,

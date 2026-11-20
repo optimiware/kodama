@@ -74,6 +74,10 @@ func (a *Adapter) Prepare(ctx context.Context, request engine.PrepareRequest) (e
 	if strings.TrimSpace(request.Container.Image) == "" {
 		return engine.Preparation{}, fault.New(fault.InvalidInput, "container image is empty")
 	}
+	resources, err := a.resolveResources(request.Container.Resources)
+	if err != nil {
+		return engine.Preparation{}, err
+	}
 	for index, entry := range request.Container.Env {
 		if _, err := id.ParseEnvName(string(entry.Name)); err != nil {
 			return engine.Preparation{}, fault.Wrap(fault.InvalidInput,
@@ -206,6 +210,7 @@ func (a *Adapter) Prepare(ctx context.Context, request engine.PrepareRequest) (e
 		gitEnv:          gitEnv,
 		outputDir:       outputDir,
 		secretNames:     secretNames,
+		resources:       resources,
 	}
 	a.mu.Lock()
 	a.prepared[request.Identity.WorkloadID] = prepared
@@ -484,7 +489,19 @@ func (a *Adapter) Observe(ctx context.Context, request engine.ObserveRequest) (k
 	if err != nil {
 		return kernel.UnknownObservation(), fault.Wrap(fault.DependencyUnavailable, "pod state is unreachable", err)
 	}
-	return observationFor(jobFound, pods), nil
+	return observationFor(jobFound, pods, a.memoryLimitFor(request.Identity.WorkloadID)), nil
+}
+
+// memoryLimitFor returns the configured memory limit of one prepared workload,
+// falling back to the installation policy limit after a process restart.
+func (a *Adapter) memoryLimitFor(workload id.WorkloadID) string {
+	a.mu.Lock()
+	prepared, ok := a.prepared[workload]
+	a.mu.Unlock()
+	if ok && strings.TrimSpace(prepared.resources.MemoryLimit) != "" {
+		return prepared.resources.MemoryLimit
+	}
+	return a.policy.MemoryLimit
 }
 
 // Logs returns ordered, bounded and redacted chunks. It carries no lifecycle

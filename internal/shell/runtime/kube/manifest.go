@@ -16,6 +16,7 @@ import (
 
 	"github.com/optimiware/kodema/internal/fault"
 	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/kernel/definition"
 	"github.com/optimiware/kodema/internal/kernel/engine"
 	"github.com/optimiware/kodema/internal/kernel/script"
 	"github.com/optimiware/kodema/internal/shell/pipeline"
@@ -189,6 +190,11 @@ func (a *Adapter) preparationDigest(request engine.PrepareRequest, materializati
 		writeDigestString(digest, string(entry.Name))
 		writeDigestString(digest, entry.Value)
 	}
+	if request.Container.Resources != nil {
+		writeDigestString(digest, "resources:present")
+		writeDigestString(digest, request.Container.Resources.Memory)
+		writeDigestString(digest, request.Container.Resources.CPU)
+	}
 	writeDigestString(digest, a.kodemaURL)
 	writeDigestCount(digest, len(materialization.Files))
 	for _, file := range materialization.Files {
@@ -243,6 +249,74 @@ func (a *Adapter) credentialSecret(identity engine.EffectIdentity, workspaceID i
 		Labels:    a.labels(identity, workspaceID),
 		Data:      data,
 	}
+}
+
+// resolveResources validates any per-action resource hints against the
+// installation's Kubernetes Policy maximums and returns the concrete requests
+// and limits for the workload Job. When no per-action resources are declared,
+// the installation Policy values are used verbatim.
+func (a *Adapter) resolveResources(requested *definition.Resources) (Resources, error) {
+	resolved := Resources{
+		CPURequest:    a.policy.CPURequest,
+		CPULimit:      a.policy.CPULimit,
+		MemoryRequest: a.policy.MemoryRequest,
+		MemoryLimit:   a.policy.MemoryLimit,
+	}
+	if requested == nil {
+		return resolved, nil
+	}
+	if err := definition.ValidateResources(requested); err != nil {
+		return Resources{}, err
+	}
+	if requested.Memory != "" {
+		wantBytes, err := definition.ParseMemoryQuantity(requested.Memory)
+		if err != nil {
+			return Resources{}, err
+		}
+		maxRaw := strings.TrimSpace(a.policy.MaxMemoryLimit)
+		if maxRaw == "" {
+			maxRaw = strings.TrimSpace(a.policy.MemoryLimit)
+		}
+		maxBytes, err := definition.ParseMemoryQuantity(maxRaw)
+		if err != nil {
+			return Resources{}, fault.New(fault.InvalidInput,
+				fmt.Sprintf("kubernetes installation memory maximum %q is not a bounded quantity", maxRaw))
+		}
+		if wantBytes > maxBytes {
+			return Resources{}, fault.New(fault.InvalidInput, fmt.Sprintf(
+				"container memory limit %q (%s) exceeds installation maximum %q (%s)",
+				requested.Memory, definition.FormatMemoryBytes(wantBytes), maxRaw, definition.FormatMemoryBytes(maxBytes)))
+		}
+		resolved.MemoryLimit = requested.Memory
+		if reqBytes, err := definition.ParseMemoryQuantity(strings.TrimSpace(resolved.MemoryRequest)); err == nil && reqBytes > wantBytes {
+			resolved.MemoryRequest = requested.Memory
+		}
+	}
+	if requested.CPU != "" {
+		wantMillicores, err := definition.ParseCPUQuantity(requested.CPU)
+		if err != nil {
+			return Resources{}, err
+		}
+		maxRaw := strings.TrimSpace(a.policy.MaxCPULimit)
+		if maxRaw == "" {
+			maxRaw = strings.TrimSpace(a.policy.CPULimit)
+		}
+		maxMillicores, err := definition.ParseCPUQuantity(maxRaw)
+		if err != nil {
+			return Resources{}, fault.New(fault.InvalidInput,
+				fmt.Sprintf("kubernetes installation CPU maximum %q is not a bounded quantity", maxRaw))
+		}
+		if wantMillicores > maxMillicores {
+			return Resources{}, fault.New(fault.InvalidInput, fmt.Sprintf(
+				"container CPU limit %q (%s) exceeds installation maximum %q (%s)",
+				requested.CPU, definition.FormatCPUMillicores(wantMillicores), maxRaw, definition.FormatCPUMillicores(maxMillicores)))
+		}
+		resolved.CPULimit = requested.CPU
+		if reqMillicores, err := definition.ParseCPUQuantity(strings.TrimSpace(resolved.CPURequest)); err == nil && reqMillicores > wantMillicores {
+			resolved.CPURequest = requested.CPU
+		}
+	}
+	return resolved, nil
 }
 
 // jobManifest builds the pinned, fail-fast, non-replaying Job manifest.
@@ -355,6 +429,19 @@ func (a *Adapter) jobManifest(prepared preparedWorkload, identity engine.EffectI
 	if prepared.toolboxImage != "" {
 		command = workspace.Entrypoint(workloadScript, workspace.Launch{Toolbox: true, Outputs: prepared.outputDir != ""})
 	}
+	resources := prepared.resources
+	if resources.CPURequest == "" {
+		resources.CPURequest = a.policy.CPURequest
+	}
+	if resources.CPULimit == "" {
+		resources.CPULimit = a.policy.CPULimit
+	}
+	if resources.MemoryRequest == "" {
+		resources.MemoryRequest = a.policy.MemoryRequest
+	}
+	if resources.MemoryLimit == "" {
+		resources.MemoryLimit = a.policy.MemoryLimit
+	}
 	return Job{
 		Name:      prepared.job,
 		Namespace: a.namespace,
@@ -363,17 +450,12 @@ func (a *Adapter) jobManifest(prepared preparedWorkload, identity engine.EffectI
 			AnnotationIdempotencyKey: identity.IdempotencyKey,
 		},
 		Spec: JobSpec{
-			Image:        prepared.container.image,
-			Command:      command,
-			ToolboxImage: prepared.toolboxImage,
-			WorkingDir:   workingDir,
-			Env:          env,
-			Resources: Resources{
-				CPURequest:    a.policy.CPURequest,
-				CPULimit:      a.policy.CPULimit,
-				MemoryRequest: a.policy.MemoryRequest,
-				MemoryLimit:   a.policy.MemoryLimit,
-			},
+			Image:                        prepared.container.image,
+			Command:                      command,
+			ToolboxImage:                 prepared.toolboxImage,
+			WorkingDir:                   workingDir,
+			Env:                          env,
+			Resources:                    resources,
 			Volumes:                      volumes,
 			RestartPolicy:                "Never",
 			BackoffLimit:                 0,

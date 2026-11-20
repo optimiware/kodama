@@ -19,6 +19,7 @@ import (
 
 	"github.com/optimiware/kodema/internal/fault"
 	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/kernel/definition"
 	"github.com/optimiware/kodema/internal/kernel/engine"
 	"github.com/optimiware/kodema/internal/shell/runtime"
 )
@@ -123,13 +124,18 @@ type Config struct {
 	Clock Clock
 }
 
-// Policy is the admitted workload resource policy.
+// Policy is the admitted workload resource policy. MaxCPULimit and
+// MaxMemoryLimit optionally raise the per-action ceiling above CPULimit and
+// MemoryLimit; when empty, the default limits are also the installation
+// maximums so workloads cannot exceed tenant policy.
 type Policy struct {
-	CPURequest    string
-	CPULimit      string
-	MemoryRequest string
-	MemoryLimit   string
-	JobTTLSeconds int
+	CPURequest     string
+	CPULimit       string
+	MaxCPULimit    string
+	MemoryRequest  string
+	MemoryLimit    string
+	MaxMemoryLimit string
+	JobTTLSeconds  int
 }
 
 // CleanupPolicy bounds one Remove call.
@@ -254,9 +260,11 @@ type Job struct {
 
 // ContainerStatus is one pod container's observed status.
 type ContainerStatus struct {
-	Name       string
-	Terminated bool
-	ExitCode   int
+	Name        string
+	Terminated  bool
+	ExitCode    int
+	Reason      string
+	MemoryLimit string
 }
 
 // Pod is one observed workload pod.
@@ -373,6 +381,7 @@ type preparedWorkload struct {
 	caSecret        string
 	gitEnv          []string
 	outputDir       string
+	resources       Resources
 }
 
 // containerDeclaration is the subset of the admitted container declaration the
@@ -442,6 +451,24 @@ func New(config Config) (*Adapter, error) {
 	}
 	if config.Policy.JobTTLSeconds <= 0 {
 		return nil, fault.New(fault.InvalidInput, "kubernetes adapter requires a positive Job TTL")
+	}
+	if maxCPU := strings.TrimSpace(config.Policy.MaxCPULimit); maxCPU != "" {
+		maxParsed, err := definition.ParseCPUQuantity(maxCPU)
+		if err != nil {
+			return nil, fault.Wrap(fault.InvalidInput, "kubernetes adapter maximum CPU limit is invalid", err)
+		}
+		if defParsed, err := definition.ParseCPUQuantity(strings.TrimSpace(config.Policy.CPULimit)); err == nil && defParsed > maxParsed {
+			return nil, fault.New(fault.InvalidInput, "kubernetes adapter default CPU limit exceeds maximum CPU limit")
+		}
+	}
+	if maxMemory := strings.TrimSpace(config.Policy.MaxMemoryLimit); maxMemory != "" {
+		maxParsed, err := definition.ParseMemoryQuantity(maxMemory)
+		if err != nil {
+			return nil, fault.Wrap(fault.InvalidInput, "kubernetes adapter maximum memory limit is invalid", err)
+		}
+		if defParsed, err := definition.ParseMemoryQuantity(strings.TrimSpace(config.Policy.MemoryLimit)); err == nil && defParsed > maxParsed {
+			return nil, fault.New(fault.InvalidInput, "kubernetes adapter default memory limit exceeds maximum memory limit")
+		}
 	}
 	if config.Cleanup.Attempts < 1 {
 		return nil, fault.New(fault.InvalidInput, "kubernetes adapter requires at least one cleanup attempt")

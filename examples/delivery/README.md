@@ -20,7 +20,10 @@ recipe claims, but the registry owner remains authoritative for publication.
 The split recipes keep building separate from promotion:
 
 1. [build](../pipelines/build.yaml) publishes the image digest as the `image`
-   output.
+   output. For an unprivileged Kaniko `Containerfile` build recipe that runs
+   without a Docker/Podman socket or `/dev/fuse`, see
+   [oci-build](../pipelines/oci-build.yaml) and the
+   [unprivileged OCI builds guide](../../docs/runbooks/unprivileged-oci-builds.md).
 2. [test](../pipelines/test.yaml) consumes the forwarded `image` input and does
    not republish it.
 3. [promote](../pipelines/promote.yaml) writes a deploy-repository work-branch

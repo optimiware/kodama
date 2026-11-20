@@ -627,3 +627,80 @@ actions:
 	_, err := pipeline.Decode(document, limits)
 	requireFaultClass(t, err, fault.InvalidInput)
 }
+
+func TestDecodeContainerResources(t *testing.T) {
+	t.Run("accepts string and numeric cpu quantities", func(t *testing.T) {
+		document := []byte(`actions:
+  - name: build
+    image: registry.example.com/build:latest
+    resources:
+      memory: 2Gi
+      cpu: "2"
+    commands:
+      - make build
+  - name: lint
+    image: registry.example.com/build:latest
+    resources:
+      cpu: 1.5
+    commands:
+      - make lint
+`)
+		decoded, err := pipeline.Decode(document, pipeline.DefaultLimits)
+		if err != nil {
+			t.Fatalf("Decode: %v", err)
+		}
+		if got := decoded.Actions[0].Container.Resources; got == nil || got.Memory != "2Gi" || got.CPU != "2" {
+			t.Fatalf("build resources = %+v; want 2Gi/2", got)
+		}
+		if got := decoded.Actions[1].Container.Resources; got == nil || got.Memory != "" || got.CPU != "1.5" {
+			t.Fatalf("lint resources = %+v; want empty memory and 1.5 cpu", got)
+		}
+	})
+
+	t.Run("refuses malformed resources and request action resources", func(t *testing.T) {
+		cases := map[string]string{
+			"empty resources": `actions:
+  - name: build
+    image: registry.example.com/build:latest
+    resources: {}
+    commands: [echo ok]
+`,
+			"unknown resource field": `actions:
+  - name: build
+    image: registry.example.com/build:latest
+    resources:
+      memory: 2Gi
+      gpu: "1"
+    commands: [echo ok]
+`,
+			"invalid memory quantity": `actions:
+  - name: build
+    image: registry.example.com/build:latest
+    resources:
+      memory: 2gb
+    commands: [echo ok]
+`,
+			"invalid cpu quantity": `actions:
+  - name: build
+    image: registry.example.com/build:latest
+    resources:
+      cpu: true
+    commands: [echo ok]
+`,
+			"request action with resources": `actions:
+  - name: review
+    request: role/reviewer
+    resources:
+      memory: 2Gi
+    subject:
+      operation: deploy
+`,
+		}
+		for name, document := range cases {
+			t.Run(name, func(t *testing.T) {
+				_, err := pipeline.Decode([]byte(document), pipeline.DefaultLimits)
+				requireFaultClass(t, err, fault.InvalidInput)
+			})
+		}
+	})
+}

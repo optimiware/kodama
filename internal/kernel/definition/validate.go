@@ -174,7 +174,21 @@ func validateContainer(action Action) error {
 	if err := validateSecretNames(action.Name, container.Secrets); err != nil {
 		return err
 	}
+	if err := validateContainerResources(action.Name, container.Resources); err != nil {
+		return err
+	}
 	return validateOutputKeys(action.Name, container.Outputs)
+}
+
+func validateContainerResources(action id.ActionName, resources *Resources) error {
+	if err := ValidateResources(resources); err != nil {
+		detail, ok := fault.MessageOf(err)
+		if !ok {
+			detail = err.Error()
+		}
+		return fault.Wrap(fault.InvalidInput, fmt.Sprintf("action %q: %s", action, detail), err)
+	}
+	return nil
 }
 
 // validateRequest checks the supported request fields. Assignment stays an

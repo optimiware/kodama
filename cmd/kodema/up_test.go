@@ -76,6 +76,35 @@ func TestUpDownStatusCLICommands(t *testing.T) {
 	if !capturedDown.Purge || capturedDown.Instance != "demo" || capturedDown.Socket != "/env/podman.sock" {
 		t.Fatalf("capturedDown = %+v", capturedDown)
 	}
+
+	// Workload memory/CPU flags default to 2Gi / 2 and accept valid overrides;
+	// invalid quantities or default > max are rejected with exit 2.
+	if capturedUp.WorkloadMemory != up.DefaultWorkloadMemory || capturedUp.WorkloadCPUs != up.DefaultWorkloadCPUs {
+		t.Fatalf("default workload limits = %q/%q; want %q/%q",
+			capturedUp.WorkloadMemory, capturedUp.WorkloadCPUs, up.DefaultWorkloadMemory, up.DefaultWorkloadCPUs)
+	}
+	errBuf.Reset()
+	if code := runUpEntry(context.Background(), []string{
+		"--name", "demo",
+		"--workload-memory", "4Gi",
+		"--workload-cpus", "3",
+		"--workload-max-memory", "8Gi",
+		"--workload-max-cpus", "6",
+	}, &out, &errBuf); code != 0 {
+		t.Fatalf("runUpEntry with custom limits exit = %d: %s", code, errBuf.String())
+	}
+	if capturedUp.WorkloadMemory != "4Gi" || capturedUp.WorkloadCPUs != "3" ||
+		capturedUp.WorkloadMaxMemory != "8Gi" || capturedUp.WorkloadMaxCPUs != "6" {
+		t.Fatalf("captured custom workload limits = %+v", capturedUp)
+	}
+	errBuf.Reset()
+	if code := runUpEntry(context.Background(), []string{"--name", "demo", "--workload-memory", "bad"}, &out, &errBuf); code != 2 {
+		t.Fatalf("invalid --workload-memory exit = %d; want 2", code)
+	}
+	errBuf.Reset()
+	if code := runUpEntry(context.Background(), []string{"--name", "demo", "--workload-memory", "8Gi", "--workload-max-memory", "4Gi"}, &out, &errBuf); code != 2 {
+		t.Fatalf("default > max memory exit = %d; want 2", code)
+	}
 }
 
 func TestUpCLISecretRuleFlags(t *testing.T) {

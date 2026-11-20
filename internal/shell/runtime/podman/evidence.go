@@ -15,6 +15,7 @@ import (
 	"github.com/optimiware/kodema/internal/fault"
 	"github.com/optimiware/kodema/internal/id"
 	"github.com/optimiware/kodema/internal/kernel"
+	"github.com/optimiware/kodema/internal/kernel/definition"
 	"github.com/optimiware/kodema/internal/kernel/engine"
 	"github.com/optimiware/kodema/internal/shell/workspace"
 )
@@ -105,7 +106,7 @@ func checkExistingContainer(state ContainerState, identity engine.EffectIdentity
 // vocabulary. A created container is affirmative never-started proof only when
 // no start attempt was durably recorded and none is pending; an attempted start
 // whose outcome was lost stays uncertain.
-func observationFor(state ContainerState, attempted bool) kernel.Observation {
+func observationFor(state ContainerState, attempted bool, memoryLimitBytes int64) kernel.Observation {
 	switch state.Status {
 	case ContainerStatusCreated:
 		if attempted || state.Started || state.StartPending {
@@ -119,14 +120,26 @@ func observationFor(state ContainerState, attempted bool) kernel.Observation {
 	case ContainerStatusRunning:
 		return kernel.RunningObservation()
 	case ContainerStatusExited:
+		var stop kernel.StopEvidence
 		if state.WholeStopped {
-			return kernel.ExitedObservation(state.ExitCode, kernel.ConfirmedStop(fmt.Sprintf(
-				"container %q exited with code %d and every container process stopped",
-				state.Name, state.ExitCode)))
+			if state.OOMKilled {
+				stop = kernel.ConfirmedStop(fmt.Sprintf(
+					"container %q was OOMKilled (exit code %d) and every container process stopped",
+					state.Name, state.ExitCode))
+			} else {
+				stop = kernel.ConfirmedStop(fmt.Sprintf(
+					"container %q exited with code %d and every container process stopped",
+					state.Name, state.ExitCode))
+			}
+		} else {
+			stop = kernel.PendingStop(fmt.Sprintf(
+				"container %q exited with code %d without whole-container termination evidence",
+				state.Name, state.ExitCode))
 		}
-		return kernel.ExitedObservation(state.ExitCode, kernel.PendingStop(fmt.Sprintf(
-			"container %q exited with code %d without whole-container termination evidence",
-			state.Name, state.ExitCode)))
+		if state.OOMKilled {
+			return kernel.OOMKilledObservation(state.ExitCode, definition.FormatMemoryBytes(memoryLimitBytes), stop)
+		}
+		return kernel.ExitedObservation(state.ExitCode, stop)
 	default:
 		return kernel.UnknownObservation()
 	}

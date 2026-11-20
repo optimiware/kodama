@@ -40,6 +40,19 @@ const (
 	// EnvWorkloadCAFile exposes WorkloadCAPath in the container environment
 	// when Config.WorkloadCAFile is configured.
 	EnvWorkloadCAFile = workspace.EnvCAFile
+	// DefaultMemoryBytes is the default container memory limit for local Podman
+	// workloads (2 GiB), sufficient for standard Node/Next.js/Go builds.
+	DefaultMemoryBytes int64 = 2 << 30
+	// DefaultMaxMemoryBytes is the default installation ceiling for per-action
+	// memory requests (4 GiB) when no explicit maximum is configured.
+	DefaultMaxMemoryBytes int64 = 4 << 30
+	// DefaultCPUMillicores is the default container CPU limit (2 CPUs).
+	DefaultCPUMillicores int64 = 2000
+	// DefaultMaxCPUMillicores is the default installation ceiling for
+	// per-action CPU requests (4 CPUs) when no explicit maximum is configured.
+	DefaultMaxCPUMillicores int64 = 4000
+	// DefaultCPUPeriod is the CFS cgroup period in microseconds (100ms).
+	DefaultCPUPeriod int64 = 100000
 )
 
 // Container statuses the adapter interprets. Any other status stays unknown.
@@ -93,6 +106,17 @@ type CleanupPolicy struct {
 	Backoff time.Duration
 }
 
+// ResourcePolicy bounds container memory and CPU limits for one Podman
+// installation. Zero fields select the adapter defaults; installation maximums
+// are always enforced so a pipeline can never request unbounded host memory or
+// CPU.
+type ResourcePolicy struct {
+	DefaultMemoryBytes   int64
+	MaxMemoryBytes       int64
+	DefaultCPUMillicores int64
+	MaxCPUMillicores     int64
+}
+
 // Config binds one adapter instance to one adapter root.
 type Config struct {
 	// Libpod is the only container/volume effect surface.
@@ -116,6 +140,9 @@ type Config struct {
 	// as workloads reach it. It is exposed as KODEMA_GIT_URL and, with a
 	// toolbox, configures Git for that origin alone.
 	GitURL string
+	// Resources bounds default and maximum workload memory/CPU limits. Zero
+	// values select the practical defaults (2 GiB / 2 CPUs, max 4 GiB / 4 CPUs).
+	Resources ResourcePolicy
 	// Cleanup bounds cleanup attempts per Remove call.
 	Cleanup CleanupPolicy
 	// Clock is optional; nil means a real clock.
@@ -136,6 +163,14 @@ type Mount struct {
 	SizeBytes int64
 }
 
+// ContainerResources are the resolved cgroup memory and CPU bounds for one
+// container. Zero fields fall back to the libpod driver's defaults.
+type ContainerResources struct {
+	MemoryBytes int64
+	CPUQuota    int64
+	CPUPeriod   int64
+}
+
 // ContainerSpec is the complete requested container.
 type ContainerSpec struct {
 	Name  string
@@ -153,21 +188,25 @@ type ContainerSpec struct {
 	Mounts []Mount
 	// RestartPolicy is "no": the command is never replayed automatically.
 	RestartPolicy string
+	// Resources carries the bounded memory and CPU limits for the container.
+	Resources ContainerResources
 }
 
 // ContainerState is the observed container. It separates "a start was accepted"
 // from "a delayed start may still run" from affirmative whole-container stop
 // evidence so uncertainty never collapses into success.
 type ContainerState struct {
-	ID           string
-	Name         string
-	Image        string
-	Status       string
-	Started      bool
-	ExitCode     int
-	StartPending bool
-	WholeStopped bool
-	Labels       map[string]string
+	ID               string
+	Name             string
+	Image            string
+	Status           string
+	Started          bool
+	ExitCode         int
+	OOMKilled        bool
+	MemoryLimitBytes int64
+	StartPending     bool
+	WholeStopped     bool
+	Labels           map[string]string
 }
 
 // Volume is the retained named workspace volume.
@@ -233,6 +272,7 @@ type Adapter struct {
 	kodemaURL     string
 	workloadCAPEM []byte
 	gitURL        string
+	resources     ResourcePolicy
 	cleanup       CleanupPolicy
 	clock         Clock
 
@@ -294,6 +334,10 @@ func New(config Config) (*Adapter, error) {
 			return nil, err
 		}
 	}
+	resources, err := normalizeResourcePolicy(config.Resources)
+	if err != nil {
+		return nil, err
+	}
 	clock := config.Clock
 	if clock == nil {
 		clock = realClock{}
@@ -305,6 +349,7 @@ func New(config Config) (*Adapter, error) {
 		kodemaURL:     config.KodemaURL,
 		workloadCAPEM: workloadCAPEM,
 		gitURL:        gitURL,
+		resources:     resources,
 		toolboxFile:   toolboxFile,
 		toolboxDir:    toolboxDir,
 		cleanup:       config.Cleanup,
@@ -313,6 +358,42 @@ func New(config Config) (*Adapter, error) {
 
 		workspaceLocks: map[id.WorkspaceID]*sync.Mutex{},
 	}, nil
+}
+
+func normalizeResourcePolicy(policy ResourcePolicy) (ResourcePolicy, error) {
+	if policy.DefaultMemoryBytes < 0 || policy.MaxMemoryBytes < 0 {
+		return ResourcePolicy{}, fault.New(fault.InvalidInput, "podman adapter memory limit must not be negative")
+	}
+	if policy.DefaultCPUMillicores < 0 || policy.MaxCPUMillicores < 0 {
+		return ResourcePolicy{}, fault.New(fault.InvalidInput, "podman adapter CPU limit must not be negative")
+	}
+	if policy.DefaultMemoryBytes == 0 {
+		if policy.MaxMemoryBytes > 0 && policy.MaxMemoryBytes < DefaultMemoryBytes {
+			policy.DefaultMemoryBytes = policy.MaxMemoryBytes
+		} else {
+			policy.DefaultMemoryBytes = DefaultMemoryBytes
+		}
+	}
+	if policy.MaxMemoryBytes == 0 {
+		policy.MaxMemoryBytes = max(DefaultMaxMemoryBytes, policy.DefaultMemoryBytes)
+	}
+	if policy.DefaultMemoryBytes > policy.MaxMemoryBytes {
+		return ResourcePolicy{}, fault.New(fault.InvalidInput, "podman adapter default memory limit exceeds maximum memory limit")
+	}
+	if policy.DefaultCPUMillicores == 0 {
+		if policy.MaxCPUMillicores > 0 && policy.MaxCPUMillicores < DefaultCPUMillicores {
+			policy.DefaultCPUMillicores = policy.MaxCPUMillicores
+		} else {
+			policy.DefaultCPUMillicores = DefaultCPUMillicores
+		}
+	}
+	if policy.MaxCPUMillicores == 0 {
+		policy.MaxCPUMillicores = max(DefaultMaxCPUMillicores, policy.DefaultCPUMillicores)
+	}
+	if policy.DefaultCPUMillicores > policy.MaxCPUMillicores {
+		return ResourcePolicy{}, fault.New(fault.InvalidInput, "podman adapter default CPU limit exceeds maximum CPU limit")
+	}
+	return policy, nil
 }
 
 func loadWorkloadCAPEM(path string) ([]byte, error) {

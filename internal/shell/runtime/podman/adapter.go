@@ -337,6 +337,10 @@ func (a *Adapter) Prepare(ctx context.Context, request engine.PrepareRequest) (e
 	if err := validatePrepareContext(request.ActionName, request.TaskID); err != nil {
 		return engine.Preparation{}, err
 	}
+	memoryBytes, cpuMillicores, err := a.resolveResources(request.Container.Resources)
+	if err != nil {
+		return engine.Preparation{}, err
+	}
 	files, secrets, err := buildPreparationWithCA(request, a.workloadCAPEM)
 	if err != nil {
 		return engine.Preparation{}, err
@@ -388,11 +392,12 @@ func (a *Adapter) Prepare(ctx context.Context, request engine.PrepareRequest) (e
 	if err != nil {
 		return engine.Preparation{}, err
 	}
-	record := a.preparationRecordFor(request, files, secrets)
+	record := a.preparationRecordFor(request, files, secrets, memoryBytes, cpuMillicores)
 	if found {
 		// Compare the admitted request, not the version of the controller
 		// retrying it. Complete this preparation with its original launch settings.
 		record.Toolbox, record.GitURL, record.WorkingDir = existing.Toolbox, existing.GitURL, existing.WorkingDir
+		record.MemoryBytes, record.CPUMillicores = existing.MemoryBytes, existing.CPUMillicores
 		record.Outputs = existing.Toolbox != "" && len(request.Container.Outputs) > 0
 	}
 	recordBytes, err := encodePreparationRecord(record)
@@ -704,7 +709,16 @@ func (a *Adapter) Observe(ctx context.Context, request engine.ObserveRequest) (k
 			return kernel.UnknownObservation(), err
 		}
 	}
-	return observationFor(state, attempted), nil
+	memoryLimitBytes := state.MemoryLimitBytes
+	if state.Status == ContainerStatusExited && state.OOMKilled && memoryLimitBytes <= 0 {
+		if prepared, _, found, readErr := a.readPreparation(ctx, request.Identity.WorkloadID); readErr == nil && found && prepared.MemoryBytes > 0 {
+			memoryLimitBytes = prepared.MemoryBytes
+		}
+		if memoryLimitBytes <= 0 {
+			memoryLimitBytes = a.resources.DefaultMemoryBytes
+		}
+	}
+	return observationFor(state, attempted, memoryLimitBytes), nil
 }
 
 // observeAbsent classifies an absent container from the adapter's own durable

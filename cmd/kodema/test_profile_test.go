@@ -632,6 +632,52 @@ func TestBuildTestProfileWiresTheToolboxAndGitURL(t *testing.T) {
 	}
 }
 
+func TestBuildTestProfileWiresWorkloadResourceLimits(t *testing.T) {
+	fixture := newTestProfileFixture(t)
+	fixture.values["KODEMA_WORKLOAD_MEMORY_LIMIT"] = "3Gi"
+	fixture.values["KODEMA_WORKLOAD_MAX_MEMORY_LIMIT"] = "6Gi"
+	fixture.values["KODEMA_WORKLOAD_CPU_LIMIT"] = "2500m"
+	fixture.values["KODEMA_WORKLOAD_MAX_CPU_LIMIT"] = "4"
+
+	build, err := buildTestProfile(fixture.options, fixture.getenv)
+	if err != nil {
+		t.Fatalf("buildTestProfile: %v", err)
+	}
+	adapter, ok := build.Config.Test.Runtime.(*runtimepodman.Adapter)
+	if !ok {
+		t.Fatalf("Runtime = %T; want *runtimepodman.Adapter", build.Config.Test.Runtime)
+	}
+	resourcesField := unexportedField(t, adapter, "resources")
+	gotResources := runtimepodman.ResourcePolicy{
+		DefaultMemoryBytes:   resourcesField.FieldByName("DefaultMemoryBytes").Int(),
+		MaxMemoryBytes:       resourcesField.FieldByName("MaxMemoryBytes").Int(),
+		DefaultCPUMillicores: resourcesField.FieldByName("DefaultCPUMillicores").Int(),
+		MaxCPUMillicores:     resourcesField.FieldByName("MaxCPUMillicores").Int(),
+	}
+	wantResources := runtimepodman.ResourcePolicy{
+		DefaultMemoryBytes:   3 << 30,
+		MaxMemoryBytes:       6 << 30,
+		DefaultCPUMillicores: 2500,
+		MaxCPUMillicores:     4000,
+	}
+	if gotResources != wantResources {
+		t.Fatalf("adapter resources = %+v; want %+v", gotResources, wantResources)
+	}
+
+	bad := newTestProfileFixture(t)
+	bad.values["KODEMA_WORKLOAD_MEMORY_LIMIT"] = "not-a-size"
+	if _, err := buildTestProfile(bad.options, bad.getenv); err == nil || !strings.Contains(err.Error(), "KODEMA_WORKLOAD_MEMORY_LIMIT") {
+		t.Fatalf("invalid workload memory = %v; want refusal naming KODEMA_WORKLOAD_MEMORY_LIMIT", err)
+	}
+
+	over := newTestProfileFixture(t)
+	over.values["KODEMA_WORKLOAD_MEMORY_LIMIT"] = "8Gi"
+	over.values["KODEMA_WORKLOAD_MAX_MEMORY_LIMIT"] = "4Gi"
+	if _, err := buildTestProfile(over.options, over.getenv); err == nil || !strings.Contains(err.Error(), "exceeds maximum") {
+		t.Fatalf("default > max workload memory = %v; want refusal", err)
+	}
+}
+
 // TestResolveTestToolboxFile pins which binary workloads mount: an explicit
 // file, else the running executable on Linux; any other system must name one.
 func TestResolveTestToolboxFile(t *testing.T) {

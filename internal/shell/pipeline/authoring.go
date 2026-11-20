@@ -524,7 +524,7 @@ func parseAction(index int, node *yaml.Node) (definition.Action, error) {
 	if err != nil {
 		return definition.Action{}, err
 	}
-	var nameNode, imageNode, requestNode, subjectNode, commandsNode, envNode, secretsNode, timeoutNode, outputsNode *yaml.Node
+	var nameNode, imageNode, requestNode, subjectNode, commandsNode, envNode, secretsNode, timeoutNode, outputsNode, resourcesNode *yaml.Node
 	for _, entry := range entries {
 		switch entry.key {
 		case "name":
@@ -545,6 +545,8 @@ func parseAction(index int, node *yaml.Node) (definition.Action, error) {
 			timeoutNode = entry.value
 		case "outputs":
 			outputsNode = entry.value
+		case "resources":
+			resourcesNode = entry.value
 		default:
 			return definition.Action{}, invalidInputf("%s has unknown field %q", label, entry.key)
 		}
@@ -606,15 +608,23 @@ func parseAction(index int, node *yaml.Node) (definition.Action, error) {
 				return definition.Action{}, err
 			}
 		}
+		var resources *definition.Resources
+		if resourcesNode != nil {
+			resources, err = parseResources(resourcesNode, label)
+			if err != nil {
+				return definition.Action{}, err
+			}
+		}
 		action.Container = &definition.Container{
-			Image:    image,
-			Commands: commands,
-			Env:      env,
-			Secrets:  secrets,
-			Outputs:  outputs,
+			Image:     image,
+			Commands:  commands,
+			Env:       env,
+			Secrets:   secrets,
+			Outputs:   outputs,
+			Resources: resources,
 		}
 	} else {
-		if commandsNode != nil || envNode != nil || secretsNode != nil {
+		if commandsNode != nil || envNode != nil || secretsNode != nil || resourcesNode != nil {
 			return definition.Action{}, invalidInputf("%s request action declares container fields", label)
 		}
 		assignment, err := scalarValue(requestNode, label+" request")
@@ -655,6 +665,54 @@ func parseAction(index int, node *yaml.Node) (definition.Action, error) {
 		action.Timeout = duration
 	}
 	return action, nil
+}
+
+func parseResources(node *yaml.Node, label string) (*definition.Resources, error) {
+	entries, err := mappingEntries(node, label+" resources")
+	if err != nil {
+		return nil, err
+	}
+	if len(entries) == 0 {
+		return nil, invalidInputf("%s resources must specify at least one of memory or cpu", label)
+	}
+	resources := &definition.Resources{}
+	for _, entry := range entries {
+		switch entry.key {
+		case "memory":
+			value, err := scalarValue(entry.value, label+" resources.memory")
+			if err != nil {
+				return nil, err
+			}
+			resources.Memory = value
+		case "cpu":
+			value, err := resourceCPUValue(entry.value, label+" resources.cpu")
+			if err != nil {
+				return nil, err
+			}
+			resources.CPU = value
+		default:
+			return nil, invalidInputf("%s resources has unknown field %q", label, entry.key)
+		}
+	}
+	if err := definition.ValidateResources(resources); err != nil {
+		return nil, err
+	}
+	return resources, nil
+}
+
+// resourceCPUValue accepts a YAML string, integer or floating-point scalar for
+// cpu (for example "500m", "2", 2, or 1.5) and rejects booleans, nulls and
+// composite nodes.
+func resourceCPUValue(node *yaml.Node, label string) (string, error) {
+	if node == nil || node.Kind != yaml.ScalarNode {
+		return "", invalidInputf("%s must be a scalar value", label)
+	}
+	switch node.Tag {
+	case "!!str", "!!int", "!!float":
+		return node.Value, nil
+	default:
+		return "", invalidInputf("%s must be a string or numeric CPU quantity", label)
+	}
 }
 
 func parseSecrets(node *yaml.Node, label string) ([]id.SecretName, error) {

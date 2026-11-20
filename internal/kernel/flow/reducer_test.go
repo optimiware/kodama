@@ -17,6 +17,7 @@ package flow_test
 // wall clock, or performs any I/O.
 
 import (
+	"encoding/json"
 	"fmt"
 	"maps"
 	"reflect"
@@ -1954,6 +1955,7 @@ func TestReducerDoesNotAliasInputStorage(t *testing.T) {
 	}
 }
 
+<<<<<<< HEAD
 func TestAnswerNotePersistsAndPopulatesFailureDetail(t *testing.T) {
 	at := baseTime
 
@@ -2098,5 +2100,89 @@ func TestAnswerNotePersistsAndPopulatesFailureDetail(t *testing.T) {
 			},
 			At: at.Add(time.Minute),
 		}, fault.InvalidInput)
+	})
+}
+
+func TestObserveOOMKilledSurfacesDiagnosticAndMemoryLimit(t *testing.T) {
+	at := baseTime
+
+	t.Run("with configured memory limit", func(t *testing.T) {
+		exec := runningContainerExecution(containerAction("act-0", "build", 0, time.Hour))
+		obs := kernel.OOMKilledObservation(137, "2 GiB", kernel.ConfirmedStop("container was OOMKilled"))
+		next, commit := mustReduce(t, exec, flow.ObserveFact{
+			ExecutionID: exec.ID,
+			ActionID:    "act-0",
+			Observation: obs,
+			At:          at.Add(time.Minute),
+		})
+		if next.State != kernel.ExecutionFailed || next.Actions[0].State != kernel.ActionFailed {
+			t.Fatalf("settled state = %q/%q; want failed/failed", next.State, next.Actions[0].State)
+		}
+		if commit.Failure == nil || commit.Failure.Kind != kernel.FailureRuntime || commit.Failure.Reason != "oom_killed" {
+			t.Fatalf("failure = %+v; want runtime/oom_killed", commit.Failure)
+		}
+		wantDetail := "OOMKilled: workload exceeded its 2 GiB memory limit (exit 137)"
+		if commit.Failure.Detail != wantDetail {
+			t.Fatalf("failure detail = %q; want %q", commit.Failure.Detail, wantDetail)
+		}
+		// Identical duplicate observation converges; conflicting non-OOM exit 137 is refused.
+		if _, dup, err := flow.Reduce(next, flow.ObserveFact{
+			ExecutionID: exec.ID, ActionID: "act-0", Observation: obs, At: at.Add(2 * time.Minute),
+		}); err != nil || dup != nil {
+			t.Fatalf("duplicate OOM observation = (%v, %v); want no-op convergence", dup, err)
+		}
+		mustRefuse(t, next, flow.ObserveFact{
+			ExecutionID: exec.ID,
+			ActionID:    "act-0",
+			Observation: kernel.ExitedObservation(137, kernel.ConfirmedStop("container was OOMKilled")),
+			At:          at.Add(2 * time.Minute),
+		}, fault.ChangedIdempotencyContent)
+	})
+
+	t.Run("without memory limit", func(t *testing.T) {
+		exec := runningContainerExecution(containerAction("act-0", "build", 0, time.Hour))
+		obs := kernel.OOMKilledObservation(137, "", kernel.ConfirmedStop("container was OOMKilled"))
+		_, commit := mustReduce(t, exec, flow.ObserveFact{
+			ExecutionID: exec.ID,
+			ActionID:    "act-0",
+			Observation: obs,
+			At:          at.Add(time.Minute),
+		})
+		wantDetail := "OOMKilled: workload exceeded its memory limit (exit 137)"
+		if commit.Failure == nil || commit.Failure.Reason != "oom_killed" || commit.Failure.Detail != wantDetail {
+			t.Fatalf("failure = %+v; want oom_killed with %q", commit.Failure, wantDetail)
+		}
+	})
+
+	t.Run("observation JSON round-trip", func(t *testing.T) {
+		obs := kernel.OOMKilledObservation(137, "1 GiB", kernel.ConfirmedStop("oom"))
+		encoded, err := json.Marshal(obs)
+		if err != nil {
+			t.Fatalf("marshal OOM observation: %v", err)
+		}
+		var decoded kernel.Observation
+		if err := json.Unmarshal(encoded, &decoded); err != nil {
+			t.Fatalf("unmarshal OOM observation: %v", err)
+		}
+		if !decoded.OOMKilled || decoded.MemoryLimit != "1 GiB" {
+			t.Fatalf("decoded = %+v; want OOMKilled=true MemoryLimit=1 GiB", decoded)
+		}
+		plain := kernel.ExitedObservation(1, kernel.ConfirmedStop("exit 1"))
+		plainJSON, err := json.Marshal(plain)
+		if err != nil {
+			t.Fatalf("marshal plain observation: %v", err)
+		}
+		if strings.Contains(string(plainJSON), "oom_killed") || strings.Contains(string(plainJSON), "memory_limit") {
+			t.Fatalf("plain exited observation emitted OOM fields: %s", plainJSON)
+		}
+		for _, invalid := range []string{
+			`{"kind":"running","oom_killed":true}`,
+			`{"kind":"exited","exit_code":1,"stop":{"state":"confirmed"},"memory_limit":"2 GiB"}`,
+		} {
+			var bad kernel.Observation
+			if err := json.Unmarshal([]byte(invalid), &bad); err == nil {
+				t.Fatalf("unmarshal accepted inconsistent observation %s", invalid)
+			}
+		}
 	})
 }

@@ -211,8 +211,9 @@ The chart also has two optional blocks, off by default: `gitService` (one
 - `config.extraEnv` is a narrow pass-through for the server variables the Go
   composition reads: `KODEMA_OIDC_{ISSUER,AUDIENCE,JWKS_URL,TENANT_CLAIM,SUBJECT_CLAIM,PROJECT_CLAIM,CA_FILE}`,
   `KODEMA_DISCOVERY_{ISSUER,CLIENT_ID,AUDIENCE,AUTHORIZATION_ENDPOINT,TOKEN_ENDPOINT,DEVICE_AUTHORIZATION_ENDPOINT,REVOCATION_ENDPOINT,SCOPES,API_URL}`,
-  `KODEMA_TENANT_NAMESPACE` (singleton installations only) and
-  `KODEMA_WORKLOAD_{CPU,MEMORY}_{REQUEST,LIMIT}`. `values.schema.json`
+  `KODEMA_TENANT_NAMESPACE` (singleton installations only),
+  `KODEMA_WORKLOAD_{CPU,MEMORY}_{REQUEST,LIMIT}`, and
+  `KODEMA_WORKLOAD_MAX_{CPU,MEMORY}_LIMIT`. `values.schema.json`
   (`propertyNames`) and `templates/_extraenv.tpl` both enforce the allowlist;
   both refuse a name the chart renders itself (a duplicate env entry would
   override the production composition), `KODEMA_DEV_*` development tokens,

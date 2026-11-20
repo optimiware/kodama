@@ -66,25 +66,53 @@ func workloadSelector(identity engine.EffectIdentity) map[string]string {
 // workloadContainerName is the single workload container the adapter creates.
 const workloadContainerName = "workload"
 
-// terminatedExit returns the exit code of the workload container only when it
+// terminatedContainer returns the status of the workload container only when it
 // is affirmatively terminated. A pod phase alone is not termination evidence,
 // and a terminated sidecar must not confirm the workload's exit.
-func terminatedExit(pod Pod) (int, bool) {
+func terminatedContainer(pod Pod) (ContainerStatus, bool) {
 	for _, container := range pod.Containers {
 		if container.Name == workloadContainerName && container.Terminated {
-			return container.ExitCode, true
+			return container, true
 		}
 	}
 	// The seam may omit container names; accept the unambiguous single
 	// container case but never guess among several.
 	if len(pod.Containers) == 1 && pod.Containers[0].Name == "" && pod.Containers[0].Terminated {
-		return pod.Containers[0].ExitCode, true
+		return pod.Containers[0], true
 	}
-	return 0, false
+	return ContainerStatus{}, false
+}
+
+// terminatedExit returns the exit code of the workload container only when it
+// is affirmatively terminated.
+func terminatedExit(pod Pod) (int, bool) {
+	status, ok := terminatedContainer(pod)
+	return status.ExitCode, ok
+}
+
+// exitedObservationFor builds an exited or OOM-killed Kernel observation from
+// one affirmatively terminated workload container.
+func exitedObservationFor(podName string, status ContainerStatus, fallbackMemoryLimit string, terminating bool) kernel.Observation {
+	if status.Reason == "OOMKilled" {
+		memLimit := strings.TrimSpace(status.MemoryLimit)
+		if memLimit == "" {
+			memLimit = strings.TrimSpace(fallbackMemoryLimit)
+		}
+		detail := fmt.Sprintf("pod %q was OOMKilled (exit code %d)", podName, status.ExitCode)
+		if terminating {
+			detail = fmt.Sprintf("pod %q was OOMKilled (exit code %d) while terminating", podName, status.ExitCode)
+		}
+		return kernel.OOMKilledObservation(status.ExitCode, memLimit, kernel.ConfirmedStop(detail))
+	}
+	detail := fmt.Sprintf("pod %q terminated with exit code %d", podName, status.ExitCode)
+	if terminating {
+		detail = fmt.Sprintf("pod %q terminated with exit code %d while terminating", podName, status.ExitCode)
+	}
+	return kernel.ExitedObservation(status.ExitCode, kernel.ConfirmedStop(detail))
 }
 
 // observationFor maps Job and pod evidence to the declared Kernel vocabulary.
-func observationFor(jobFound bool, pods []Pod) kernel.Observation {
+func observationFor(jobFound bool, pods []Pod, fallbackMemoryLimit string) kernel.Observation {
 	switch {
 	case len(pods) == 0:
 		if jobFound {
@@ -103,10 +131,8 @@ func observationFor(jobFound bool, pods []Pod) kernel.Observation {
 		// A deletion request alone is not termination proof, but a pod that is
 		// terminating after its workload container affirmatively terminated
 		// (for example TTL cleanup of a finished Job) still reports that exit.
-		if code, ok := terminatedExit(pod); ok {
-			return kernel.ExitedObservation(code, kernel.ConfirmedStop(
-				fmt.Sprintf("pod %q terminated with exit code %d while terminating", pod.Name, code),
-			))
+		if status, ok := terminatedContainer(pod); ok {
+			return exitedObservationFor(pod.Name, status, fallbackMemoryLimit, true)
 		}
 		// Termination was requested but no container termination was observed:
 		// still running work.
@@ -116,10 +142,8 @@ func observationFor(jobFound bool, pods []Pod) kernel.Observation {
 	case "Running", "Pending":
 		return kernel.RunningObservation()
 	case "Succeeded", "Failed":
-		if code, ok := terminatedExit(pod); ok {
-			return kernel.ExitedObservation(code, kernel.ConfirmedStop(
-				fmt.Sprintf("pod %q terminated with exit code %d", pod.Name, code),
-			))
+		if status, ok := terminatedContainer(pod); ok {
+			return exitedObservationFor(pod.Name, status, fallbackMemoryLimit, false)
 		}
 		// A terminal phase without terminated-container evidence is not proof.
 		return kernel.UnknownObservation()
