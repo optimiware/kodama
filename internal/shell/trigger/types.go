@@ -29,6 +29,10 @@ type Selection struct {
 	EventID          id.EventID             `json:"event_id"`
 	YAML             []byte                 `json:"-"`
 	ServiceID        service.ServiceID      `json:"service_id"`
+	Repository       resource.ResourceID    `json:"repository,omitempty"`
+	Ref              string                 `json:"ref,omitempty"`
+	Commit           string                 `json:"commit,omitempty"`
+	PreviousCommit   string                 `json:"previous_commit,omitempty"`
 	Inputs           map[id.InputKey]string `json:"inputs,omitempty"`
 	EventContentHash [32]byte               `json:"event_content_hash"`
 }

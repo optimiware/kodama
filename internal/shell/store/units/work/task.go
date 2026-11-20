@@ -31,6 +31,8 @@ type executionPlan struct {
 	pipelineVersion uint64
 	taskID          id.TaskID
 	principal       id.PrincipalID
+	startedBy       id.PrincipalID
+	trigger         *snapshotdoc.TriggerMetadata
 	snapshot        pipeline.Snapshot
 	actions         []pipeline.AdmittedAction
 	at              time.Time
@@ -54,6 +56,8 @@ func (plan executionPlan) writes() ([]store.Write, error) {
 		PipelineVersion: plan.pipelineVersion,
 		Snapshot:        plan.snapshot,
 		Actions:         plan.actions,
+		StartedBy:       plan.startedBy,
+		Trigger:         plan.trigger,
 	})
 	if err != nil {
 		return nil, err
@@ -491,6 +495,7 @@ func creationWrites(unit task.CreateUnit) ([]store.Write, []store.Lock, error) {
 		pipelineVersion: start.ExpectedPipelineVersion,
 		taskID:          unit.TaskID,
 		principal:       start.ExecutionPrincipal,
+		startedBy:       start.Initiator,
 		snapshot:        start.Snapshot,
 		actions:         start.Actions,
 		at:              start.At,
@@ -578,6 +583,7 @@ func (adapter *Task) Start(ctx context.Context, unit task.StartUnit) (task.Start
 		pipelineVersion: unit.ExpectedPipelineVersion,
 		taskID:          unit.TaskID,
 		principal:       unit.ExecutionPrincipal,
+		startedBy:       unit.Initiator,
 		snapshot:        unit.Snapshot,
 		actions:         unit.Actions,
 		at:              unit.At,
@@ -839,6 +845,7 @@ func (adapter *Task) Reply(ctx context.Context, unit task.ReplyUnit) (task.Reply
 		pipelineVersion: unit.ExpectedPipelineVersion,
 		taskID:          unit.TaskID,
 		principal:       unit.ExecutionPrincipal,
+		startedBy:       unit.Initiator,
 		snapshot:        unit.Snapshot,
 		actions:         unit.Actions,
 		at:              unit.At,

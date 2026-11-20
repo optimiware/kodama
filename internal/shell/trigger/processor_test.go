@@ -1415,3 +1415,32 @@ func TestRunReturnsOnContextCancellation(t *testing.T) {
 		t.Fatalf("executions = %d; Run must process committed events before idling", fixture.start.executionCount())
 	}
 }
+
+// TestSelectionCarriesPushProvenanceMetadata proves that push-triggered
+// selections capture full repository/ref/commit/previous_commit provenance from
+// the verified report even when the pipeline declares only a subset of push
+// inputs.
+func TestSelectionCarriesPushProvenanceMetadata(t *testing.T) {
+	fixture := newPushFixture(t)
+	scope := testScope()
+	fixture.candidates.set(testCandidate(
+		testDefinition("pipeline-a", pushYAML("repo-1", "svc-a", []string{"refs/heads/work/ci"}, []string{"commit"}, ""), 1, "repo-1", "svc-a", []string{"refs/heads/work/ci"}),
+		testBinding(scope, "repo-1", "git-svc", 1),
+	))
+	fixture.events.setRows(pushEvent(1, "event-1", "repo-1", "git-svc", "refs/heads/work/ci", "base-111", "cand-222"))
+
+	result := fixture.process(t)
+	if len(result.Started) != 1 {
+		t.Fatalf("started = %v; want one execution", result.Started)
+	}
+	unit := fixture.start.call(0)
+	if unit.Selection.Repository != "repo-1" ||
+		unit.Selection.Ref != "refs/heads/work/ci" ||
+		unit.Selection.Commit != "cand-222" ||
+		unit.Selection.PreviousCommit != "base-111" {
+		t.Fatalf("selection provenance = %+v; want repo-1, refs/heads/work/ci, cand-222, base-111", unit.Selection)
+	}
+	if unit.Initiator != id.PrincipalID("svc-a") {
+		t.Fatalf("unit initiator = %q; want svc-a", unit.Initiator)
+	}
+}

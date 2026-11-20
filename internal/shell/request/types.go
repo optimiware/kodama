@@ -220,6 +220,7 @@ type ResolveUnit struct {
 	ExpectedActionVersion    uint64                    `json:"expected_action_version"`
 	Decision                 Decision                  `json:"decision"`
 	Response                 kernel.Outputs            `json:"response,omitempty"`
+	Note                     string                    `json:"note,omitempty"`
 	Actor                    id.PrincipalID            `json:"actor"`
 	Assignment               Assignment                `json:"assignment"`
 	At                       time.Time                 `json:"at"`
@@ -273,6 +274,9 @@ func (unit ResolveUnit) Validate() error {
 	}
 	if unit.Commit.Answer.Actor != unit.Actor {
 		return fault.New(fault.InvalidInput, fmt.Sprintf("kernel answer actor %q does not match resolve actor %q", unit.Commit.Answer.Actor, unit.Actor))
+	}
+	if unit.Commit.Answer.Note != unit.Note {
+		return fault.New(fault.InvalidInput, "kernel answer note does not match resolve note")
 	}
 	if unit.Commit.ExpectedExecutionVersion != unit.ExpectedExecutionVersion {
 		return fault.New(fault.InvalidInput, fmt.Sprintf("kernel answer commit expects execution version %d, not %d", unit.Commit.ExpectedExecutionVersion, unit.ExpectedExecutionVersion))

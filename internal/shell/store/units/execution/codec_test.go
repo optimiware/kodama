@@ -138,3 +138,43 @@ func TestDecodeStopRoundTripsEvidence(t *testing.T) {
 		t.Fatalf("zero stop = %v err=%v; want nil", absent, err)
 	}
 }
+
+func TestEncodeDecodeAnswerProvenanceRoundTrips(t *testing.T) {
+	cases := []struct {
+		name       string
+		note       string
+		provenance []byte
+		rawExact   bool
+	}{
+		{name: "empty", note: "", provenance: nil},
+		{name: "legacy raw bytes", note: "", provenance: []byte{0x00, 0x01, 0xfe}, rawExact: true},
+		{name: "note only", note: "Security checklist incomplete", provenance: nil},
+		{name: "note and provenance", note: "LGTM", provenance: []byte{0xde, 0xad, 0xbe, 0xef}},
+		{name: "raw bytes starting with magic prefix", note: "", provenance: append(append([]byte(nil), answerMetaMagic...), []byte("raw")...)},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			encoded, err := encodeAnswerProvenance(tc.note, tc.provenance)
+			if err != nil {
+				t.Fatalf("encodeAnswerProvenance: %v", err)
+			}
+			if tc.rawExact && string(encoded) != string(tc.provenance) {
+				t.Fatalf("encoded raw bytes = %v; want exact %v", encoded, tc.provenance)
+			}
+			note, prov, err := decodeAnswerProvenance(encoded)
+			if err != nil {
+				t.Fatalf("decodeAnswerProvenance: %v", err)
+			}
+			if note != tc.note || string(prov) != string(tc.provenance) {
+				t.Fatalf("decoded = (%q, %v); want (%q, %v)", note, prov, tc.note, tc.provenance)
+			}
+		})
+	}
+
+	malformed := append(append([]byte(nil), answerMetaMagic...), []byte("{not-json")...)
+	if _, _, err := decodeAnswerProvenance(malformed); err == nil {
+		t.Fatal("decodeAnswerProvenance accepted malformed envelope")
+	} else if class, ok := fault.ClassOf(err); !ok || class != fault.InternalFailure {
+		t.Fatalf("malformed envelope class = %v; want internal_failure", err)
+	}
+}

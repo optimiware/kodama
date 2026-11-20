@@ -17,6 +17,16 @@ import (
 // documentVersion is the only document schema this codec reads or writes.
 const documentVersion = 1
 
+// TriggerMetadata is the optional push-trigger provenance persisted inside the
+// immutable executions.snapshot document for automatically started executions.
+type TriggerMetadata struct {
+	EventID        id.EventID `json:"event_id"`
+	Repository     string     `json:"repository,omitempty"`
+	Ref            string     `json:"ref,omitempty"`
+	Commit         string     `json:"commit,omitempty"`
+	PreviousCommit string     `json:"previous_commit,omitempty"`
+}
+
 // document is the exact persisted executions.snapshot shape. See doc.go.
 type document struct {
 	Version         int                       `json:"version"`
@@ -25,17 +35,22 @@ type document struct {
 	Actions         []pipeline.AdmittedAction `json:"actions"`
 	PipelineID      pipeline.PipelineID       `json:"pipeline_id,omitempty"`
 	PipelineVersion uint64                    `json:"pipeline_version,omitempty"`
+	StartedBy       id.PrincipalID            `json:"started_by,omitempty"`
+	Trigger         *TriggerMetadata          `json:"trigger,omitempty"`
 }
 
 // Admitted is the minimal admitted input one start path owns: the immutable
-// snapshot, its ordered admitted actions and the pipeline revision they came
-// from. Encode and Decode both use it, so a writer and a reader agree on the
-// whole admitted set.
+// snapshot, its ordered admitted actions, the pipeline revision they came
+// from, and optional execution provenance (initiating principal and trigger).
+// Encode and Decode both use it, so a writer and a reader agree on the whole
+// admitted set.
 type Admitted struct {
 	PipelineID      pipeline.PipelineID
 	PipelineVersion uint64
 	Snapshot        pipeline.Snapshot
 	Actions         []pipeline.AdmittedAction
+	StartedBy       id.PrincipalID
+	Trigger         *TriggerMetadata
 }
 
 // Encode renders the authoritative executions.snapshot document. It validates
@@ -48,6 +63,11 @@ func Encode(admitted Admitted) ([]byte, error) {
 	if err := validateActions(admitted.Actions); err != nil {
 		return nil, err
 	}
+	var trigger *TriggerMetadata
+	if admitted.Trigger != nil {
+		copied := *admitted.Trigger
+		trigger = &copied
+	}
 	document := document{
 		Version:         documentVersion,
 		YAML:            admitted.Snapshot.YAMLBytes(),
@@ -55,6 +75,8 @@ func Encode(admitted Admitted) ([]byte, error) {
 		Actions:         append([]pipeline.AdmittedAction(nil), admitted.Actions...),
 		PipelineID:      admitted.PipelineID,
 		PipelineVersion: admitted.PipelineVersion,
+		StartedBy:       admitted.StartedBy,
+		Trigger:         trigger,
 	}
 	encoded, err := json.Marshal(document)
 	if err != nil {
@@ -98,11 +120,18 @@ func Decode(data []byte) (Admitted, error) {
 	if err := validateActions(document.Actions); err != nil {
 		return Admitted{}, fault.Wrap(fault.InternalFailure, "execution snapshot actions are malformed", err)
 	}
+	var trigger *TriggerMetadata
+	if document.Trigger != nil {
+		copied := *document.Trigger
+		trigger = &copied
+	}
 	return Admitted{
 		PipelineID:      document.PipelineID,
 		PipelineVersion: document.PipelineVersion,
 		Snapshot:        snapshot,
 		Actions:         append([]pipeline.AdmittedAction(nil), document.Actions...),
+		StartedBy:       document.StartedBy,
+		Trigger:         trigger,
 	}, nil
 }
 

@@ -3,6 +3,7 @@ package pipeline
 import (
 	"context"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/optimiware/kodema/internal/fault"
@@ -10,6 +11,7 @@ import (
 	"github.com/optimiware/kodema/internal/shell/authorize"
 	"github.com/optimiware/kodema/internal/shell/event"
 	"github.com/optimiware/kodema/internal/shell/receipt"
+	"github.com/optimiware/kodema/internal/shell/service"
 	"github.com/optimiware/kodema/internal/shell/tenancy"
 )
 
@@ -70,7 +72,9 @@ type ListCommand struct {
 }
 
 // ManagementConfig supplies every pipeline-management boundary. A nil
-// dependency is refused rather than defaulted.
+// required dependency is refused rather than defaulted. Services is optional;
+// when supplied, pipeline.apply and pipeline.update verify that any referenced
+// on.push service exists in scope, is enabled and holds the engineer role.
 type ManagementConfig struct {
 	Clock      Clock
 	IDs        IDSource
@@ -78,6 +82,7 @@ type ManagementConfig struct {
 	Authority  authorize.AuthorityReader
 	Changes    ChangePort
 	Reader     Reader
+	Services   service.ServiceReader
 }
 
 // Management orchestrates authorized pipeline authoring. Each mutation builds
@@ -90,6 +95,7 @@ type Management struct {
 	authority  authorize.AuthorityReader
 	changes    ChangePort
 	reader     Reader
+	services   service.ServiceReader
 }
 
 // NewManagement validates the management boundary dependencies.
@@ -104,6 +110,7 @@ func NewManagement(config ManagementConfig) (*Management, error) {
 		authority:  config.Authority,
 		changes:    config.Changes,
 		reader:     config.Reader,
+		services:   config.Services,
 	}, nil
 }
 
@@ -401,7 +408,49 @@ func (management *Management) commit(ctx context.Context, unit ChangeUnit) (Chan
 	if err := management.confirm(ctx, preCommitReads(unit.Authority)); err != nil {
 		return ChangeResult{}, err
 	}
+	if unit.Kind == ChangeApply || unit.Kind == ChangeUpdate {
+		for _, trigger := range unit.PushTriggers {
+			if err := management.validatePushService(ctx, unit.Owner, trigger.Service); err != nil {
+				return ChangeResult{}, err
+			}
+		}
+	}
 	return management.changes.Change(ctx, unit)
+}
+
+// validatePushService verifies that an on.push pipeline's automatic-start
+// service exists in project or tenant scope, is enabled and holds the engineer
+// role required to start executions on push. Failing fast here prevents silent
+// push-trigger drops at runtime.
+func (management *Management) validatePushService(ctx context.Context, scope tenancy.Scope, serviceID service.ServiceID) error {
+	if management.services == nil {
+		return nil
+	}
+	account, err := management.services.ReadService(ctx, service.ServiceReadRequest{
+		Scope:     scope,
+		ServiceID: serviceID,
+	})
+	if err != nil {
+		if class, ok := fault.ClassOf(err); ok && class == fault.NotFound && scope.ProjectScoped() {
+			account, err = management.services.ReadService(ctx, service.ServiceReadRequest{
+				Scope:     tenancy.Scope{TenantID: scope.TenantID},
+				ServiceID: serviceID,
+			})
+		}
+		if err != nil {
+			if class, ok := fault.ClassOf(err); ok && class == fault.NotFound {
+				return fault.New(fault.InvalidInput, fmt.Sprintf("on.push service %q does not exist in scope", serviceID))
+			}
+			return err
+		}
+	}
+	if account.State != service.StateEnabled {
+		return fault.New(fault.InvalidInput, fmt.Sprintf("on.push service %q is disabled; enable it before binding an on.push trigger", serviceID))
+	}
+	if !slices.Contains(tenancy.AssignableServiceRoles(account.Roles), tenancy.RoleEngineer) {
+		return fault.New(fault.InvalidInput, fmt.Sprintf("on.push service %q does not hold the %q role required to start executions on push", serviceID, tenancy.RoleEngineer))
+	}
+	return nil
 }
 
 // preCommitReads drops versioned reads that the change port must observe inside

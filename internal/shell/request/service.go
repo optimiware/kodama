@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"reflect"
 	"time"
+	"unicode/utf8"
 
 	"github.com/optimiware/kodema/internal/fault"
 	"github.com/optimiware/kodema/internal/id"
@@ -425,6 +426,7 @@ func (s *Service) Activate(ctx context.Context, command ActivateCommand) (Activa
 type resolveReceiptContent struct {
 	Decision string         `json:"decision"`
 	Response kernel.Outputs `json:"response"`
+	Note     string         `json:"note,omitempty"`
 }
 
 // assignmentAuthority builds the in-commit respondent-kind/assignment read.
@@ -540,6 +542,12 @@ func (s *Service) Resolve(ctx context.Context, command ResolveCommand) (ResolveR
 	if !command.Decision.Valid() {
 		return ResolveResult{}, fault.New(fault.InvalidInput, fmt.Sprintf("request decision %q is not supported", command.Decision))
 	}
+	if !utf8.ValidString(command.Note) {
+		return ResolveResult{}, fault.New(fault.InvalidInput, "request note is not valid UTF-8")
+	}
+	if len(command.Note) > kernel.MaxOutputValueBytes {
+		return ResolveResult{}, fault.New(fault.InvalidInput, fmt.Sprintf("request note is %d bytes; at most %d are allowed", len(command.Note), kernel.MaxOutputValueBytes))
+	}
 	op, err := s.authorizeOperation(ctx, command.Actor, operationResolve, command.Scope)
 	if err != nil {
 		return ResolveResult{}, err
@@ -625,6 +633,7 @@ func (s *Service) Resolve(ctx context.Context, command ResolveCommand) (ResolveR
 		Answer: kernel.Answer{
 			Decision: kernelDecision,
 			Outputs:  command.Response,
+			Note:     command.Note,
 			Actor:    command.Actor.ID,
 			At:       at,
 		},
@@ -637,7 +646,7 @@ func (s *Service) Resolve(ctx context.Context, command ResolveCommand) (ResolveR
 	if reduction != nil {
 		commit = *reduction
 	}
-	encoded, err := json.Marshal(resolveReceiptContent{Decision: string(command.Decision), Response: command.Response})
+	encoded, err := json.Marshal(resolveReceiptContent{Decision: string(command.Decision), Response: command.Response, Note: command.Note})
 	if err != nil {
 		return ResolveResult{}, fault.Wrap(fault.InternalFailure, "request receipt content could not be encoded", err)
 	}
@@ -683,6 +692,7 @@ func (s *Service) Resolve(ctx context.Context, command ResolveCommand) (ResolveR
 		ExpectedActionVersion:    command.ExpectedActionVersion,
 		Decision:                 command.Decision,
 		Response:                 command.Response,
+		Note:                     command.Note,
 		Actor:                    command.Actor.ID,
 		Assignment:               assignment,
 		At:                       at,

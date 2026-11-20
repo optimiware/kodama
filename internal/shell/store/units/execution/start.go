@@ -36,6 +36,7 @@ func (s *Store) Start(ctx context.Context, unit execution.StartUnit) (execution.
 		PipelineVersion: unit.ExpectedPipelineVersion,
 		Snapshot:        unit.Snapshot,
 		Actions:         unit.Actions,
+		StartedBy:       unit.Initiator,
 	})
 	if err != nil {
 		return execution.StartResult{}, err

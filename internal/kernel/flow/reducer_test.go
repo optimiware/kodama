@@ -1953,3 +1953,150 @@ func TestReducerDoesNotAliasInputStorage(t *testing.T) {
 		t.Fatal("next state aliases the input launch intent")
 	}
 }
+
+func TestAnswerNotePersistsAndPopulatesFailureDetail(t *testing.T) {
+	at := baseTime
+
+	t.Run("failing answer note becomes failure detail", func(t *testing.T) {
+		exec := runningRequestExecution(
+			requestAction("act-0", "review", 0, time.Hour, literalSubject(map[string]string{"operation": "review"})),
+		)
+		next, commit := mustReduce(t, exec, flow.AnswerFact{
+			ExecutionID: exec.ID,
+			ActionID:    "act-0",
+			Answer: kernel.Answer{
+				Decision: kernel.DecisionFail,
+				Note:     "Security checklist incomplete",
+				Actor:    "principal-reviewer",
+				At:       at.Add(time.Minute),
+			},
+			At: at.Add(time.Minute),
+		})
+		if commit.Failure == nil || commit.Failure.Reason != "answer_rejected" || commit.Failure.Detail != "Security checklist incomplete" {
+			t.Fatalf("failure = %+v; want reason=answer_rejected detail=%q", commit.Failure, "Security checklist incomplete")
+		}
+		if next.Failure == nil || next.Failure.Detail != "Security checklist incomplete" {
+			t.Fatalf("projected failure = %+v; want detail=%q", next.Failure, "Security checklist incomplete")
+		}
+		if next.Actions[0].Request.Answer == nil || next.Actions[0].Request.Answer.Note != "Security checklist incomplete" {
+			t.Fatalf("retained answer = %+v; want Note persisted", next.Actions[0].Request.Answer)
+		}
+
+		// Identical retry converges as no-op; retry with different note is refused.
+		converged, noCommit, err := flow.Reduce(next, flow.AnswerFact{
+			ExecutionID: exec.ID,
+			ActionID:    "act-0",
+			Answer: kernel.Answer{
+				Decision: kernel.DecisionFail,
+				Note:     "Security checklist incomplete",
+				Actor:    "principal-reviewer",
+				At:       at.Add(2 * time.Minute),
+			},
+			At: at.Add(2 * time.Minute),
+		})
+		if err != nil || noCommit != nil || converged.Version != next.Version {
+			t.Fatalf("identical retry = (v=%d, commit=%v, err=%v); want converged no-op", converged.Version, noCommit, err)
+		}
+		mustRefuse(t, next, flow.AnswerFact{
+			ExecutionID: exec.ID,
+			ActionID:    "act-0",
+			Answer: kernel.Answer{
+				Decision: kernel.DecisionFail,
+				Note:     "Different rejection reason",
+				Actor:    "principal-reviewer",
+				At:       at.Add(2 * time.Minute),
+			},
+			At: at.Add(2 * time.Minute),
+		}, fault.ChangedIdempotencyContent)
+	})
+
+	t.Run("failing answer falls back to declared reason output when note is absent", func(t *testing.T) {
+		exec := runningRequestExecution(
+			requestAction("act-0", "review", 0, time.Hour, literalSubject(map[string]string{"operation": "review"}), "reason"),
+		)
+		_, commit := mustReduce(t, exec, flow.AnswerFact{
+			ExecutionID: exec.ID,
+			ActionID:    "act-0",
+			Answer: kernel.Answer{
+				Decision: kernel.DecisionFail,
+				Outputs:  kernel.Outputs{id.OutputKey("reason"): "Missing sign-off"},
+				Actor:    "principal-reviewer",
+				At:       at.Add(time.Minute),
+			},
+			At: at.Add(time.Minute),
+		})
+		if commit.Failure == nil || commit.Failure.Detail != "Missing sign-off" {
+			t.Fatalf("failure = %+v; want detail from reason output", commit.Failure)
+		}
+	})
+
+	t.Run("failing answer without note or reason keeps default detail", func(t *testing.T) {
+		exec := runningRequestExecution(
+			requestAction("act-0", "review", 0, time.Hour, literalSubject(map[string]string{"operation": "review"})),
+		)
+		_, commit := mustReduce(t, exec, flow.AnswerFact{
+			ExecutionID: exec.ID,
+			ActionID:    "act-0",
+			Answer: kernel.Answer{
+				Decision: kernel.DecisionFail,
+				Actor:    "principal-reviewer",
+				At:       at.Add(time.Minute),
+			},
+			At: at.Add(time.Minute),
+		})
+		if commit.Failure == nil || commit.Failure.Detail != "request action was answered with a failing decision" {
+			t.Fatalf("failure = %+v; want default failure detail", commit.Failure)
+		}
+	})
+
+	t.Run("passing answer retains comment note", func(t *testing.T) {
+		exec := runningRequestExecution(
+			requestAction("act-0", "review", 0, time.Hour, literalSubject(map[string]string{"operation": "review"})),
+		)
+		next, commit := mustReduce(t, exec, flow.AnswerFact{
+			ExecutionID: exec.ID,
+			ActionID:    "act-0",
+			Answer: kernel.Answer{
+				Decision: kernel.DecisionPass,
+				Note:     "LGTM",
+				Actor:    "principal-reviewer",
+				At:       at.Add(time.Minute),
+			},
+			At: at.Add(time.Minute),
+		})
+		if commit.Answer == nil || commit.Answer.Note != "LGTM" {
+			t.Fatalf("commit answer = %+v; want Note=LGTM", commit.Answer)
+		}
+		if next.Actions[0].Request.Answer == nil || next.Actions[0].Request.Answer.Note != "LGTM" {
+			t.Fatalf("projected answer = %+v; want Note=LGTM", next.Actions[0].Request.Answer)
+		}
+	})
+
+	t.Run("invalid utf8 or oversized note refused", func(t *testing.T) {
+		exec := runningRequestExecution(
+			requestAction("act-0", "review", 0, time.Hour, literalSubject(map[string]string{"operation": "review"})),
+		)
+		mustRefuse(t, exec, flow.AnswerFact{
+			ExecutionID: exec.ID,
+			ActionID:    "act-0",
+			Answer: kernel.Answer{
+				Decision: kernel.DecisionFail,
+				Note:     string([]byte{0xff, 0xfe}),
+				Actor:    "principal-reviewer",
+				At:       at.Add(time.Minute),
+			},
+			At: at.Add(time.Minute),
+		}, fault.InvalidInput)
+		mustRefuse(t, exec, flow.AnswerFact{
+			ExecutionID: exec.ID,
+			ActionID:    "act-0",
+			Answer: kernel.Answer{
+				Decision: kernel.DecisionFail,
+				Note:     strings.Repeat("a", kernel.MaxOutputValueBytes+1),
+				Actor:    "principal-reviewer",
+				At:       at.Add(time.Minute),
+			},
+			At: at.Add(time.Minute),
+		}, fault.InvalidInput)
+	})
+}

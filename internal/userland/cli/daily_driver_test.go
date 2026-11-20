@@ -1238,13 +1238,13 @@ func TestMCPStdioAndInstall(t *testing.T) {
 				var req api.ExecutionRequestResolveRequest
 				_ = json.Unmarshal(inv.Request.Input, &req)
 				if resolveAttempts == 1 {
-					if req.Outputs["reason"] != "not ready" {
-						t.Fatalf("attempt 1 outputs = %v; want reason", req.Outputs)
+					if req.Outputs["reason"] != "not ready" || req.Note != "not ready" {
+						t.Fatalf("attempt 1 req = %+v; want outputs[reason] and note", req)
 					}
 					return api.Result{}, fault.New(fault.InvalidInput, `response key "reason" is not declared`)
 				}
-				if len(req.Outputs) != 0 || req.Decision != "fail" {
-					t.Fatalf("attempt 2 req = %+v; want empty outputs and decision fail", req)
+				if len(req.Outputs) != 0 || req.Decision != "fail" || req.Note != "not ready" {
+					t.Fatalf("attempt 2 req = %+v; want empty outputs, decision fail and preserved note", req)
 				}
 				body, _ := json.Marshal(api.ExecutionRequestResolveResult{ExecutionVersion: 2, ActionVersion: 2})
 				return api.Result{Operation: inv.Operation, Body: body}, nil
@@ -1276,6 +1276,100 @@ func TestMCPStdioAndInstall(t *testing.T) {
 		}
 		if !strings.Contains(out.String(), "PRINCIPAL") || !strings.Contains(out.String(), "oidc-1111") || !strings.Contains(out.String(), "admin,reviewer") {
 			t.Fatalf("member list stdout = %q", out.String())
+		}
+	})
+
+	t.Run("approve comment preserves note on undeclared output fallback and inspect renders reason and provenance", func(t *testing.T) {
+		approveAttempts := 0
+		inspectPayload := map[string]any{
+			"execution_id":   "exec-18",
+			"pipeline_id":    "pipe-ci",
+			"started_by":     "svc-ci",
+			"inputs":         map[string]string{"repository": "repo-1", "ref": "refs/heads/work/ci", "commit": "abc1234"},
+			"trigger":        map[string]string{"event_id": "evt-1", "repository": "repo-1", "ref": "refs/heads/work/ci", "commit": "abc1234"},
+			"created_at":     "2026-01-02T03:00:00Z",
+			"state":          "failed",
+			"version":        3,
+			"current_action": -1,
+			"actions": []map[string]any{{
+				"action_id":   "act-gate",
+				"index":       0,
+				"name":        "approve",
+				"kind":        "request",
+				"state":       "failed",
+				"version":     2,
+				"decision":    "fail",
+				"actor":       "prn-reviewer",
+				"answered_at": "2026-01-02T03:05:00Z",
+				"note":        "Security checklist incomplete",
+			}},
+			"failure": map[string]any{
+				"kind":   "runtime",
+				"reason": "answer_rejected",
+				"detail": "Security checklist incomplete",
+			},
+			"cleanup": map[string]any{"state": "complete"},
+		}
+		transport := &scriptedTransport{respond: func(_ context.Context, _ int, inv api.Invocation) (api.Result, error) {
+			switch inv.Operation {
+			case "execution.inspect":
+				if strings.Contains(string(inv.Request.Input), "exec-18") {
+					body, _ := json.Marshal(inspectPayload)
+					return api.Result{Operation: inv.Operation, Body: body}, nil
+				}
+				body, _ := json.Marshal(map[string]any{
+					"execution_id": "exec-approve",
+					"state":        "running",
+					"version":      1,
+					"actions":      []map[string]any{{"action_id": "act-a", "kind": "request", "state": "running", "version": 1}},
+				})
+				return api.Result{Operation: inv.Operation, Body: body}, nil
+			case "execution.request.resolve":
+				approveAttempts++
+				var req api.ExecutionRequestResolveRequest
+				_ = json.Unmarshal(inv.Request.Input, &req)
+				if approveAttempts == 1 {
+					if req.Outputs["comment"] != "LGTM" || req.Note != "LGTM" {
+						t.Fatalf("attempt 1 req = %+v; want comment output and note LGTM", req)
+					}
+					return api.Result{}, fault.New(fault.InvalidInput, `response key "comment" is not declared`)
+				}
+				if len(req.Outputs) != 0 || req.Decision != "pass" || req.Note != "LGTM" {
+					t.Fatalf("attempt 2 req = %+v; want empty outputs, decision pass and preserved note LGTM", req)
+				}
+				body, _ := json.Marshal(api.ExecutionRequestResolveResult{ExecutionVersion: 2, ActionVersion: 2})
+				return api.Result{Operation: inv.Operation, Body: body}, nil
+			default:
+				t.Fatalf("unexpected op %s", inv.Operation)
+				return api.Result{}, nil
+			}
+		}}
+		ports, out, errOut := testPorts(transport)
+		cfg := testConfig()
+		cfg.Output = cli.OutputTable
+		if code := cli.Run(context.Background(), cfg, []string{"approve", "exec-approve", "--comment", "LGTM"}, ports); code != cli.ExitSuccess {
+			t.Fatalf("approve fallback exit = %d; stderr=%q", code, errOut.String())
+		}
+		if approveAttempts != 2 {
+			t.Fatalf("approveAttempts = %d; want 2", approveAttempts)
+		}
+		if !strings.Contains(out.String(), `comment="LGTM"`) {
+			t.Fatalf("approve stdout = %q; want comment echoed", out.String())
+		}
+
+		// Inspect in both table and JSON output displays rejection reason and provenance.
+		for _, format := range []cli.OutputFormat{cli.OutputTable, cli.OutputJSON} {
+			out.Reset()
+			errOut.Reset()
+			cfg.Output = format
+			if code := cli.Run(context.Background(), cfg, []string{"inspect", "exec-18"}, ports); code != cli.ExitSuccess {
+				t.Fatalf("inspect (%s) exit = %d; stderr=%q", format, code, errOut.String())
+			}
+			for _, want := range []string{"Security checklist incomplete", "svc-ci", "abc1234", "evt-1"} {
+				if !strings.Contains(out.String(), want) {
+					t.Fatalf("inspect (%s) stdout missing %q:\n%s", format, want, out.String())
+				}
+			}
 		}
 	})
 }

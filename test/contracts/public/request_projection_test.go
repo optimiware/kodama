@@ -611,6 +611,83 @@ func TestExecutionActionSubjectStrictness(t *testing.T) {
 	}
 }
 
+// TestExecutionRequestNoteAndProvenanceWireContract pins the request decision
+// note and execution provenance fields across execution.request.resolve,
+// execution.inspect and execution.list.
+func TestExecutionRequestNoteAndProvenanceWireContract(t *testing.T) {
+	resolveCodec := frozenCodec(t, "execution.request.resolve")
+	if _, err := resolveCodec.DecodeRequest([]byte(`{"decision":"fail","expected_action_version":2,"note":"Security checklist incomplete"}`)); err != nil {
+		t.Fatalf("execution.request.resolve refused valid note: %v", err)
+	}
+	tooLong := strings.Repeat("x", api.MaxSubjectValueBytes+1)
+	requireInvalid(t, (api.ExecutionRequestResolveRequest{
+		ExpectedActionVersion: 1,
+		Decision:              "fail",
+		Note:                  tooLong,
+	}).Validate(), "oversized request resolve note")
+
+	inspectCodec := frozenCodec(t, "execution.inspect")
+	answered := time.Date(2026, 1, 2, 3, 10, 0, 0, time.UTC)
+	validInspect := api.ExecutionInspectResult{
+		ExecutionID:   "exe-1",
+		PipelineID:    "pipe-1",
+		StartedBy:     "svc-ci",
+		Inputs:        map[string]string{"repository": "repo-1", "ref": "refs/heads/work/ci", "commit": "abc1234"},
+		Trigger:       &api.ExecutionTrigger{EventID: "evt-1", Repository: "repo-1", Ref: "refs/heads/work/ci", Commit: "abc1234"},
+		CreatedAt:     &answered,
+		State:         "failed",
+		Version:       3,
+		CurrentAction: -1,
+		Actions: []api.ExecutionAction{{
+			ActionID:   "act-1",
+			Index:      0,
+			Name:       "review",
+			Kind:       "request",
+			State:      "failed",
+			Version:    2,
+			Decision:   "fail",
+			Actor:      "prn-1",
+			AnsweredAt: &answered,
+			Note:       "Security checklist incomplete",
+		}},
+		Failure: &api.ExecutionFailure{Kind: "runtime", Reason: "answer_rejected", Detail: "Security checklist incomplete"},
+		Cleanup: api.ExecutionCleanup{State: "complete"},
+	}
+	if err := validInspect.Validate(); err != nil {
+		t.Fatalf("valid inspect with note and provenance refused: %v", err)
+	}
+	encoded, err := inspectCodec.EncodeResult(validInspect)
+	if err != nil {
+		t.Fatalf("encode inspect: %v", err)
+	}
+	decoded, err := inspectCodec.DecodeResult(encoded)
+	if err != nil {
+		t.Fatalf("decode inspect: %v", err)
+	}
+	got := decoded.(api.ExecutionInspectResult)
+	if got.StartedBy != "svc-ci" || got.Inputs["commit"] != "abc1234" || got.Trigger == nil || got.Trigger.EventID != "evt-1" {
+		t.Fatalf("decoded provenance = %+v", got)
+	}
+	if got.Actions[0].Note != "Security checklist incomplete" {
+		t.Fatalf("decoded action note = %q; want Security checklist incomplete", got.Actions[0].Note)
+	}
+
+	// Note without decision is refused.
+	noDecision := validInspect.Actions[0]
+	noDecision.Decision = ""
+	noDecision.Actor = ""
+	noDecision.AnsweredAt = nil
+	requireInvalid(t, noDecision.Validate(), "action note without decision")
+
+	// Invalid trigger event_id and unknown trigger field are refused.
+	badTrigger := validInspect
+	badTrigger.Trigger = &api.ExecutionTrigger{EventID: "bad/id"}
+	requireInvalid(t, badTrigger.Validate(), "trigger with invalid event_id")
+	if _, err := inspectCodec.DecodeResult([]byte(`{"execution_id":"exe-1","state":"running","version":1,"current_action":-1,"actions":[],"trigger":{"event_id":"evt-1","extra":true},"cleanup":{"state":"none"}}`)); err == nil {
+		t.Fatal("execution.inspect accepted unknown member inside trigger")
+	}
+}
+
 // TestExecutionActionRefusesRequestFactsOnNonRequestKinds pins that only a
 // request action may carry the request-only subject and assignment, and that a
 // present assignment must satisfy the role/<role> or service/<id>

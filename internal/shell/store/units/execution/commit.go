@@ -574,8 +574,12 @@ func actionCommitValues(ctx context.Context, read CommitReader, commit flow.Comm
 		values["request_decision"] = string(commit.Answer.Decision)
 		values["request_actor"] = string(commit.Answer.Actor)
 		values["request_resolved_at"] = commit.Answer.At
-		if len(commit.Answer.Provenance) > 0 {
-			values["answer_provenance"] = append([]byte(nil), commit.Answer.Provenance...)
+		encodedProvenance, err := encodeAnswerProvenance(commit.Answer.Note, commit.Answer.Provenance)
+		if err != nil {
+			return nil, err
+		}
+		if len(encodedProvenance) > 0 {
+			values["answer_provenance"] = encodedProvenance
 		} else {
 			values["answer_provenance"] = nil
 		}

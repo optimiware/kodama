@@ -280,3 +280,74 @@ func TestInspectActionFailsClosedOnCorruptSubject(t *testing.T) {
 		t.Fatalf("pending request projection = %+v; want assignment and no subject", mapped)
 	}
 }
+
+// TestInspectResultProjectsProvenanceAndDecisionNote proves execution.inspect
+// exposes started_by, admitted non-secret inputs, push trigger metadata,
+// created_at and request decision note (both approval comment and rejection
+// reason), and that every projected value validates under the public wire rules.
+func TestInspectResultProjectsProvenanceAndDecisionNote(t *testing.T) {
+	created := time.Unix(1_700_000_000, 0).UTC()
+	answered := created.Add(5 * time.Minute)
+	view := execution.View{
+		ExecutionID: id.ExecutionID("exe-prov-1"),
+		PipelineID:  "pipe-ci",
+		StartedBy:   id.PrincipalID("svc-ci"),
+		Inputs:      map[id.InputKey]string{"repository": "repo-1", "ref": "refs/heads/work/ci", "commit": "abc1234"},
+		Trigger: &execution.TriggerView{
+			EventID:        id.EventID("evt-push-1"),
+			Repository:     "repo-1",
+			Ref:            "refs/heads/work/ci",
+			Commit:         "abc1234",
+			PreviousCommit: "def5678",
+		},
+		CreatedAt:     created,
+		State:         kernel.ExecutionFailed,
+		Version:       3,
+		CurrentAction: -1,
+		Actions: []execution.ActionView{{
+			ID:         id.ActionID("act-1"),
+			Index:      0,
+			Name:       id.ActionName("approve"),
+			Kind:       definition.ActionKindRequest,
+			State:      kernel.ActionFailed,
+			Version:    2,
+			Decision:   "fail",
+			Actor:      id.PrincipalID("prn-reviewer"),
+			AnsweredAt: answered,
+			Note:       "Security checklist incomplete",
+			Assignment: request.Assignment{Kind: request.AssignmentRole, Role: tenancy.RoleReviewer},
+		}},
+		Failure: &kernel.Failure{
+			Kind:   kernel.FailureRuntime,
+			Reason: "answer_rejected",
+			Detail: "Security checklist incomplete",
+		},
+		Cleanup: kernel.Cleanup{State: kernel.CleanupComplete},
+	}
+
+	mapped, err := inspectResult(view)
+	if err != nil {
+		t.Fatalf("inspectResult: %v", err)
+	}
+	if err := mapped.Validate(); err != nil {
+		t.Fatalf("mapped inspectResult refused: %v", err)
+	}
+	if mapped.StartedBy != "svc-ci" {
+		t.Fatalf("StartedBy = %q; want svc-ci", mapped.StartedBy)
+	}
+	if mapped.Inputs["commit"] != "abc1234" || mapped.Inputs["ref"] != "refs/heads/work/ci" {
+		t.Fatalf("Inputs = %+v; want admitted inputs", mapped.Inputs)
+	}
+	if mapped.Trigger == nil || mapped.Trigger.EventID != "evt-push-1" || mapped.Trigger.Commit != "abc1234" {
+		t.Fatalf("Trigger = %+v; want push trigger provenance", mapped.Trigger)
+	}
+	if mapped.CreatedAt == nil || !mapped.CreatedAt.Equal(created) {
+		t.Fatalf("CreatedAt = %v; want %v", mapped.CreatedAt, created)
+	}
+	if mapped.Actions[0].Note != "Security checklist incomplete" {
+		t.Fatalf("action Note = %q; want Security checklist incomplete", mapped.Actions[0].Note)
+	}
+	if mapped.Failure == nil || mapped.Failure.Detail != "Security checklist incomplete" {
+		t.Fatalf("Failure = %+v; want rejection detail", mapped.Failure)
+	}
+}

@@ -305,3 +305,55 @@ func TestResolveVersusCancelRaceHasOneWinner(t *testing.T) {
 		t.Fatalf("winners = %d; want exactly one of resolve/cancel", winners)
 	}
 }
+
+func TestResolvePersistsAnswerNoteAndInspectProjectsReasonAndOutputs(t *testing.T) {
+	clock := testNow
+	adapter, backend := newStoreWithClock(t, func() time.Time { return clock })
+	scope := projectScope()
+	action := startedRequestExecution(t, adapter, backend, scope, "exec-1")
+
+	unit := firstResolveUnit(t, adapter, scope, "exec-1", action, request.DecisionFail, kernel.Outputs{"decision": "no"}, "resolve-note-1", "e", testNow)
+	unit.Note = "Security checklist incomplete"
+	unit.Commit.Answer.Note = "Security checklist incomplete"
+	unit.Commit.Answer.Provenance = []byte{0x01, 0x02}
+	unit.Commit.Failure = &kernel.Failure{
+		Kind:   kernel.FailureRuntime,
+		Reason: "answer_rejected",
+		Detail: "Security checklist incomplete",
+	}
+
+	if _, err := adapter.Resolve(context.Background(), unit); err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	aggregate := loadExecution(t, adapter, scope, "exec-1")
+	settled := aggregate.Actions[0]
+	if settled.Outputs != nil {
+		t.Fatalf("failed answer promoted downstream outputs: %+v", settled.Outputs)
+	}
+	if settled.Request == nil || settled.Request.Answer == nil {
+		t.Fatalf("failed answer missing: %+v", settled.Request)
+	}
+	if settled.Request.Answer.Note != "Security checklist incomplete" {
+		t.Fatalf("answer Note = %q; want Security checklist incomplete", settled.Request.Answer.Note)
+	}
+	if string(settled.Request.Answer.Provenance) != string([]byte{0x01, 0x02}) {
+		t.Fatalf("answer Provenance = %v; want [1 2]", settled.Request.Answer.Provenance)
+	}
+
+	view, err := adapter.Inspect(context.Background(), scope, "exec-1")
+	if err != nil {
+		t.Fatalf("Inspect: %v", err)
+	}
+	if view.StartedBy == "" {
+		t.Fatal("Inspect omitted StartedBy")
+	}
+	if view.Failure == nil || view.Failure.Detail != "Security checklist incomplete" {
+		t.Fatalf("Inspect failure = %+v; want detail Security checklist incomplete", view.Failure)
+	}
+	if view.Actions[0].Note != "Security checklist incomplete" {
+		t.Fatalf("Inspect action Note = %q; want Security checklist incomplete", view.Actions[0].Note)
+	}
+	if view.Actions[0].Outputs["decision"] != "no" {
+		t.Fatalf("Inspect failed request outputs = %+v; want decision=no", view.Actions[0].Outputs)
+	}
+}

@@ -59,6 +59,7 @@ func TestSchemaPersistsKernelAndGatewayEvidence(t *testing.T) {
 
 		"kernel.Answer.Decision":   {{"actions", "request_decision"}},
 		"kernel.Answer.Outputs":    {{"actions", "outputs"}},
+		"kernel.Answer.Note":       {{"actions", "answer_provenance"}},
 		"kernel.Answer.Actor":      {{"actions", "request_actor"}},
 		"kernel.Answer.At":         {{"actions", "request_resolved_at"}},
 		"kernel.Answer.Provenance": {{"actions", "answer_provenance"}},
