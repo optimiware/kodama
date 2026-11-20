@@ -153,6 +153,9 @@ func TestGitServeWiresActorVerifierAndSharedHandles(t *testing.T) {
 	if config.Actors != admission {
 		t.Fatal("Config.Actors is not the constructed read verifier")
 	}
+	if config.Logger == nil {
+		t.Fatal("Config.Logger is nil; git serve hook refusals would not be logged")
+	}
 	if mappedRepository != "shop/web" || mappedResource != "resource-1" {
 		t.Fatalf("resource resolver = (%q, %q); want (shop/web, resource-1)", mappedRepository, mappedResource)
 	}

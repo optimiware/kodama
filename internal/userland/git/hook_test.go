@@ -8,6 +8,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/optimiware/kodema/internal/fault"
 	git "github.com/optimiware/kodema/internal/userland/git"
 )
 
@@ -631,4 +632,89 @@ func TestNewHookRequiresBoundaries(t *testing.T) {
 	if _, err := git.NewHook(git.HookConfig{}); err == nil {
 		t.Fatal("NewHook accepted an empty config")
 	}
+}
+
+func TestHookRefusalMessagesSurfaceSafeCategories(t *testing.T) {
+	t.Run("policy denied", func(t *testing.T) {
+		f := newHookFixture(t)
+		f.verifier.script(testCredential, humanScript("prn-view", "viewer"))
+		stdin := zeroObjectID + " " + hookA + " refs/heads/work/a\n"
+		result, err := f.hook.RunPreReceive(context.Background(), strings.NewReader(stdin))
+		if !errors.Is(err, git.ErrPolicyDenied) {
+			t.Fatalf("error = %v; want ErrPolicyDenied", err)
+		}
+		if want := "kodema git: update rejected: push denied by repository policy"; result.Message != want {
+			t.Fatalf("message = %q; want %q", result.Message, want)
+		}
+		var refusal *git.RefusalError
+		if !errors.As(err, &refusal) || refusal.ActorID != "prn-view" || refusal.Category != "policy_denied" {
+			t.Fatalf("refusal = %+v; want actor_id=prn-view category=policy_denied", refusal)
+		}
+	})
+
+	t.Run("protected ref approval required from server fault", func(t *testing.T) {
+		f := newHookFixture(t)
+		f.verifier.fail(fault.New(fault.Forbidden, "approval evidence requires an execution actor"))
+		stdin := zeroObjectID + " " + hookA + " refs/heads/main\n"
+		result, err := f.hook.RunPreReceive(context.Background(), strings.NewReader(stdin))
+		if !errors.Is(err, git.ErrApprovalRequired) {
+			t.Fatalf("error = %v; want ErrApprovalRequired", err)
+		}
+		if want := "kodema git: update rejected: protected ref requires role/reviewer approval"; result.Message != want {
+			t.Fatalf("message = %q; want %q", result.Message, want)
+		}
+	})
+
+	t.Run("protected ref approval mismatch from server fault", func(t *testing.T) {
+		f := newHookFixture(t)
+		f.verifier.fail(fault.New(fault.Forbidden, "no matching approval evidence"))
+		stdin := zeroObjectID + " " + hookA + " refs/heads/main\n"
+		result, err := f.hook.RunPreReceive(context.Background(), strings.NewReader(stdin))
+		if !errors.Is(err, git.ErrApprovalRequired) {
+			t.Fatalf("error = %v; want ErrApprovalRequired", err)
+		}
+		if want := "kodema git: update rejected: approval subject mismatch or missing role/reviewer approval"; result.Message != want {
+			t.Fatalf("message = %q; want %q", result.Message, want)
+		}
+	})
+
+	t.Run("stale base", func(t *testing.T) {
+		f := newHookFixture(t)
+		f.verifier.script(testCredential, executionScript("exe-1"))
+		f.executor.setRef("shop/web", testRef, hookMoved)
+		f.executor.setAncestor("shop/web", hookBase, hookCandidate, true)
+		stdin := hookBase + " " + hookCandidate + " " + testRef + "\n"
+		result, err := f.hook.RunPreReceive(context.Background(), strings.NewReader(stdin))
+		if !errors.Is(err, git.ErrStaleBase) {
+			t.Fatalf("error = %v; want ErrStaleBase", err)
+		}
+		if want := "kodema git: update rejected: observed ref does not match expected base"; result.Message != want {
+			t.Fatalf("message = %q; want %q", result.Message, want)
+		}
+	})
+
+	t.Run("delete unsupported", func(t *testing.T) {
+		f := newHookFixture(t)
+		stdin := hookBase + " " + zeroObjectID + " " + testRef + "\n"
+		result, err := f.hook.RunPreReceive(context.Background(), strings.NewReader(stdin))
+		if err == nil {
+			t.Fatal("delete was accepted")
+		}
+		if want := "kodema git: update rejected: ref deletion is not supported"; result.Message != want {
+			t.Fatalf("message = %q; want %q", result.Message, want)
+		}
+	})
+
+	t.Run("unknown dependency failure stays uniform", func(t *testing.T) {
+		f := newHookFixture(t)
+		f.verifier.fail(errors.New("secret-internal-backend-host:5432 connection refused"))
+		stdin := zeroObjectID + " " + hookA + " refs/heads/work/a\n"
+		result, err := f.hook.RunPreReceive(context.Background(), strings.NewReader(stdin))
+		if err == nil {
+			t.Fatal("dependency failure was accepted")
+		}
+		if want := "kodema git: update rejected"; result.Message != want {
+			t.Fatalf("message = %q; want uniform %q", result.Message, want)
+		}
+	})
 }

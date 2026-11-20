@@ -42,6 +42,37 @@ const (
 // carries no policy content.
 var ErrCommittedPolicyTooLarge = errors.New("committed admin policy exceeds the size limit")
 
+// errCommittedPolicyMissing reports that the policy blob is absent or
+// unreadable in the inspected commit.
+var errCommittedPolicyMissing = errors.New("committed admin policy blob is missing or unreadable")
+
+// PolicyValidationError reports a sanitized, client-safe validation refusal for
+// a proposed `admin/conf/git.conf` commit. Diagnostic never carries filesystem
+// paths, raw policy lines or credentials.
+type PolicyValidationError struct {
+	Diagnostic string
+	Cause      error
+}
+
+// Error returns the wrapped cause text for logs and internal callers.
+func (err *PolicyValidationError) Error() string {
+	if err == nil {
+		return ""
+	}
+	if err.Cause != nil {
+		return err.Cause.Error()
+	}
+	return err.Diagnostic
+}
+
+// Unwrap exposes the underlying validation cause.
+func (err *PolicyValidationError) Unwrap() error {
+	if err == nil {
+		return nil
+	}
+	return err.Cause
+}
+
 // CommittedPolicyConfig is the complete committed-policy source dependency set.
 type CommittedPolicyConfig struct {
 	// RepositoryPath is the resolved tenant-scoped `admin` repository path.
@@ -131,23 +162,41 @@ func (policy *CommittedPolicy) ValidateCommit(ctx context.Context, commit string
 	}
 	data, err := policy.readCommittedPolicy(ctx, commit)
 	if err != nil {
-		return err
+		switch {
+		case errors.Is(err, ErrCommittedPolicyTooLarge):
+			return &PolicyValidationError{
+				Diagnostic: fmt.Sprintf("%s exceeds the size limit", CommittedPolicyFile),
+				Cause:      err,
+			}
+		case errors.Is(err, errCommittedPolicyMissing):
+			return &PolicyValidationError{
+				Diagnostic: fmt.Sprintf("%s is missing or unreadable in the proposed commit", CommittedPolicyFile),
+				Cause:      err,
+			}
+		default:
+			return err
+		}
 	}
 	config, err := git.ParseConfig(data)
 	if err != nil {
-		return fmt.Errorf("proposed admin policy %s: %w", CommittedPolicyFile, err)
-	}
-	// The service refuses every request for a repository whose `option
-	// resource` contradicts its static pin, so accepting such a policy for
-	// the admin repository would also refuse the push that corrects it.
-	for repository, pinned := range policy.resourceIDs {
-		pinned = strings.TrimSpace(pinned)
-		proposed, _ := config.Policy(strings.TrimSpace(repository))
-		if pinned != "" && proposed.ResourceID != "" && proposed.ResourceID != pinned {
-			return fmt.Errorf("proposed admin policy %s declares a resource for the %q repository that disagrees with its configured resource id", CommittedPolicyFile, repository)
+		return &PolicyValidationError{
+			Diagnostic: fmt.Sprintf("%s: %v", CommittedPolicyFile, err),
+			Cause:      fmt.Errorf("proposed admin policy %s: %w", CommittedPolicyFile, err),
 		}
 	}
-	return requireAdminWriteOfPolicyRef(config)
+	if err := requireAdminWriteOfPolicyRef(config); err != nil {
+		return err
+	}
+	// Every non-admin repository without a static `--resource` pin must declare
+	// `option resource = <resource-id>`, and no repository may contradict its
+	// static pin.
+	if err := config.ValidateResourceBindings(policy.resourceIDs); err != nil {
+		return &PolicyValidationError{
+			Diagnostic: fmt.Sprintf("%s: %v", CommittedPolicyFile, err),
+			Cause:      fmt.Errorf("proposed admin policy %s: %w", CommittedPolicyFile, err),
+		}
+	}
+	return nil
 }
 
 // requireAdminWriteOfPolicyRef refuses a parsed policy that would leave the
@@ -176,7 +225,11 @@ func (policy *CommittedPolicy) ValidateCommit(ctx context.Context, commit string
 func requireAdminWriteOfPolicyRef(config git.Config) error {
 	repository, ok := config.Policy(AdminRepository)
 	if !ok {
-		return fmt.Errorf("proposed admin policy %s does not declare the %q repository", CommittedPolicyFile, AdminRepository)
+		diagnostic := fmt.Sprintf("%s does not declare the %q repository", CommittedPolicyFile, AdminRepository)
+		return &PolicyValidationError{
+			Diagnostic: diagnostic,
+			Cause:      fmt.Errorf("proposed admin policy %s", diagnostic),
+		}
 	}
 	decision, err := repository.Authorize(git.AccessRequest{
 		Identity: git.Identity{Roles: []string{"admin"}},
@@ -187,10 +240,18 @@ func requireAdminWriteOfPolicyRef(config git.Config) error {
 		return fmt.Errorf("proposed admin policy %s could not be evaluated for the admin role: %w", CommittedPolicyFile, err)
 	}
 	if decision != git.DecisionAllow {
-		return fmt.Errorf("proposed admin policy %s does not allow the admin role to fast-forward %s of the %q repository", CommittedPolicyFile, CommittedPolicyRef, AdminRepository)
+		diagnostic := fmt.Sprintf("%s does not allow the admin role to fast-forward %s of the %q repository", CommittedPolicyFile, CommittedPolicyRef, AdminRepository)
+		return &PolicyValidationError{
+			Diagnostic: diagnostic,
+			Cause:      fmt.Errorf("proposed admin policy %s", diagnostic),
+		}
 	}
 	if _, guarded := repository.ApprovalFor(CommittedPolicyRef); guarded {
-		return fmt.Errorf("proposed admin policy %s requires approval for %s of the %q repository, which no human push can satisfy", CommittedPolicyFile, CommittedPolicyRef, AdminRepository)
+		diagnostic := fmt.Sprintf("%s requires approval for %s of the %q repository, which no human push can satisfy", CommittedPolicyFile, CommittedPolicyRef, AdminRepository)
+		return &PolicyValidationError{
+			Diagnostic: diagnostic,
+			Cause:      fmt.Errorf("proposed admin policy %s", diagnostic),
+		}
 	}
 	return nil
 }
@@ -318,7 +379,7 @@ func (policy *CommittedPolicy) readCommittedPolicy(ctx context.Context, commit s
 		return nil, err
 	}
 	if result.ExitCode != 0 {
-		return nil, fmt.Errorf("trusted admin policy %s is missing or unreadable in commit %s", CommittedPolicyFile, commit)
+		return nil, fmt.Errorf("%w: %s in commit %s", errCommittedPolicyMissing, CommittedPolicyFile, commit)
 	}
 	if len(result.Stdout) > MaxCommittedPolicyBytes {
 		return nil, fmt.Errorf("%w: %d bytes exceeds %d", ErrCommittedPolicyTooLarge, len(result.Stdout), MaxCommittedPolicyBytes)

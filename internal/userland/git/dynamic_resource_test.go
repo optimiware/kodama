@@ -199,3 +199,56 @@ repo brand-new
 		t.Fatalf("ResolveResourceID(brand-new) = %q, %v; want res-brand-new", got, err)
 	}
 }
+
+func TestValidateResourceBindingsRequiresOptionResourceForNonAdminRepos(t *testing.T) {
+	t.Run("accepts admin without option resource and non-admin with option resource", func(t *testing.T) {
+		parsed, err := git.ParseConfig([]byte("repo admin\n    RW = @admin\n\nrepo my-app\n    option resource = git-my-app\n    R = @all\n"))
+		if err != nil {
+			t.Fatalf("ParseConfig: %v", err)
+		}
+		if policy, ok := parsed.Policy("my-app"); !ok || policy.Line != 4 {
+			t.Fatalf("my-app policy = %+v (ok=%v); want line 4", policy, ok)
+		}
+		if err := parsed.ValidateResourceBindings(map[string]string{"admin": "git-admin"}); err != nil {
+			t.Fatalf("ValidateResourceBindings: %v", err)
+		}
+	})
+
+	t.Run("accepts non-admin covered by static resource pin", func(t *testing.T) {
+		parsed, err := git.ParseConfig([]byte("repo admin\n    RW = @admin\n\nrepo shop/web\n    R = @all\n"))
+		if err != nil {
+			t.Fatalf("ParseConfig: %v", err)
+		}
+		if err := parsed.ValidateResourceBindings(map[string]string{"admin": "git-admin", "shop/web": "res-web"}); err != nil {
+			t.Fatalf("ValidateResourceBindings: %v", err)
+		}
+	})
+
+	t.Run("refuses non-admin repo missing option resource with line number", func(t *testing.T) {
+		parsed, err := git.ParseConfig([]byte("repo admin\n    RW = @admin\n\nrepo uc08-deploy\n    R = @operator @execution\n"))
+		if err != nil {
+			t.Fatalf("ParseConfig: %v", err)
+		}
+		err = parsed.ValidateResourceBindings(map[string]string{"admin": "git-admin"})
+		if err == nil {
+			t.Fatal("ValidateResourceBindings accepted non-admin repo without option resource")
+		}
+		if !strings.Contains(err.Error(), "line 4:") || !strings.Contains(err.Error(), "uc08-deploy") || !strings.Contains(err.Error(), "option resource") {
+			t.Fatalf("error = %q; want line 4 + repo name + option resource hint", err.Error())
+		}
+	})
+
+	t.Run("refuses option resource contradicting static pin with line number", func(t *testing.T) {
+		parsed, err := git.ParseConfig([]byte("repo admin\n    option resource = git-wrong\n    RW = @admin\n"))
+		if err != nil {
+			t.Fatalf("ParseConfig: %v", err)
+		}
+		err = parsed.ValidateResourceBindings(map[string]string{"admin": "git-admin"})
+		if err == nil {
+			t.Fatal("ValidateResourceBindings accepted conflicting static pin")
+		}
+		if !strings.Contains(err.Error(), "line 1:") || !strings.Contains(err.Error(), `"admin"`) {
+			t.Fatalf("error = %q; want line 1 conflict for admin", err.Error())
+		}
+	})
+}

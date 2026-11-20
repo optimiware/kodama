@@ -2,18 +2,22 @@ package native
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/optimiware/kodema/internal/userland/git"
 )
 
-// RejectionMessage is the single sanitized diagnostic every hook refusal
-// prints. Every refusal, including an unknown, forged or expired handle, is
-// identical so the callback is not an oracle.
+// RejectionMessage is the uniform sanitized diagnostic prefix for hook
+// refusals. Authentication failures (including unknown, forged, or expired
+// handles), malformed requests, timeouts, and internal/dependency failures
+// return RejectionMessage verbatim so the callback is not an oracle, while
+// safe policy/validation/approval refusals may append a single-line detail.
 const RejectionMessage = "kodema git: update rejected"
 
 // Handler handles one decoded hook callback request.
@@ -114,11 +118,11 @@ func (handler *HookHandler) Handle(ctx context.Context, request Request) Respons
 		ctx = context.Background()
 	}
 	if err := request.Validate(); err != nil {
-		handler.logRejection(request, err)
+		handler.logRejection(request, "malformed_request", err)
 		return rejectResponse()
 	}
 	if _, err := handler.actors.ResolveActor(ctx, request.ActorRef); err != nil {
-		handler.logRejection(request, err)
+		handler.logRejection(request, "unauthenticated", err)
 		return rejectResponse()
 	}
 	// Every phase, including post-receive and a duplicate delivery of an
@@ -128,20 +132,20 @@ func (handler *HookHandler) Handle(ctx context.Context, request Request) Respons
 	// delegated adapter can settle anything.
 	policy, err := handler.policy.Current(ctx)
 	if err != nil {
-		handler.logRejection(request, err)
+		handler.logRejection(request, "policy_unavailable", err)
 		return rejectResponse()
 	}
 	repoPolicy, ok := policy.Policy(request.Repository)
 	if !ok {
-		handler.logRejection(request, fmt.Errorf("repository %q is not declared by the committed policy", request.Repository))
+		handler.logRejection(request, "repository_unknown", fmt.Errorf("repository %q is not declared by the committed policy", request.Repository))
 		return rejectResponse()
 	}
 	if err := handler.service.VerifyResourceBinding(request.Repository, request.ResourceID, repoPolicy); err != nil {
-		handler.logRejection(request, err)
+		handler.logRejection(request, "resource_mismatch", err)
 		return rejectResponse()
 	}
 	if err := handler.validateObjectEnvironment(request); err != nil {
-		handler.logRejection(request, err)
+		handler.logRejection(request, "malformed_request", err)
 		return rejectResponse()
 	}
 	ctx = WithCommandEnvironment(ctx, request.ObjectEnvironment)
@@ -150,7 +154,11 @@ func (handler *HookHandler) Handle(ctx context.Context, request Request) Respons
 		// candidate commit here, while the objects are still quarantined and
 		// receive-pack has not moved any ref.
 		if err := handler.validatePolicyProposal(ctx, request); err != nil {
-			handler.logRejection(request, err)
+			handler.logRejection(request, "invalid_policy", err)
+			var policyErr *PolicyValidationError
+			if errors.As(err, &policyErr) && policyErr.Diagnostic != "" {
+				return rejectResponseWithDetail(policyErr.Diagnostic)
+			}
 			return rejectResponse()
 		}
 	}
@@ -176,6 +184,7 @@ func (handler *HookHandler) Handle(ctx context.Context, request Request) Respons
 		MaxBatch:     handler.maxBatch,
 	})
 	if err != nil {
+		handler.logRejection(request, "internal_error", err)
 		return rejectResponse()
 	}
 	var result git.HookResult
@@ -187,32 +196,91 @@ func (handler *HookHandler) Handle(ctx context.Context, request Request) Respons
 	case PhasePostReceive:
 		result, err = hook.RunPostReceive(ctx, request.LinesReader())
 	default:
-		handler.logRejection(request, fmt.Errorf("unknown phase %q", request.Phase))
+		handler.logRejection(request, "malformed_request", fmt.Errorf("unknown phase %q", request.Phase))
 		return rejectResponse()
 	}
 	if err != nil {
-		handler.logRejection(request, err)
-		return rejectResponse()
+		handler.logRejection(request, refusalReasonCategory(err), err)
+		return rejectResponseFromHook(result)
 	}
 	if !result.Accepted() {
-		handler.logRejection(request, fmt.Errorf("decision %q exit %d", result.Decision, result.ExitCode))
-		return rejectResponse()
+		handler.logRejection(request, "rejected", fmt.Errorf("decision %q exit %d", result.Decision, result.ExitCode))
+		return rejectResponseFromHook(result)
 	}
 	return Response{ExitCode: 0}
 }
 
 // logRejection records one sanitized cause. It never receives the request's
 // actor reference value or any credential.
-func (handler *HookHandler) logRejection(request Request, cause error) {
+func (handler *HookHandler) logRejection(request Request, reason string, cause error) {
 	if handler.logger == nil {
 		return
 	}
-	handler.logger.Warn("git hook callback refused",
+	ref := requestRefSummary(request)
+	actorID := ""
+	var refusal *git.RefusalError
+	if errors.As(cause, &refusal) {
+		if refusal.Ref != "" {
+			ref = refusal.Ref
+		}
+		if refusal.ActorID != "" {
+			actorID = refusal.ActorID
+		}
+	}
+	attrs := []any{
 		"phase", string(request.Phase),
 		"repository", request.Repository,
-		"ref", request.Ref,
-		"cause", cause.Error(),
-	)
+		"ref", ref,
+		"reason", reason,
+	}
+	if actorID != "" {
+		attrs = append(attrs, "actor_id", actorID)
+	}
+	if cause != nil {
+		attrs = append(attrs, "cause", cause.Error())
+	}
+	handler.logger.Warn("git hook callback refused", attrs...)
+}
+
+// refusalReasonCategory maps a hook refusal error to a stable log category.
+func refusalReasonCategory(cause error) string {
+	var refusal *git.RefusalError
+	if errors.As(cause, &refusal) && refusal.Category != "" {
+		return refusal.Category
+	}
+	switch {
+	case errors.Is(cause, git.ErrApprovalRequired):
+		return "approval_required"
+	case errors.Is(cause, git.ErrPolicyDenied):
+		return "policy_denied"
+	case errors.Is(cause, git.ErrStaleBase):
+		return "stale_base"
+	case errors.Is(cause, git.ErrResourceMismatch):
+		return "resource_mismatch"
+	case errors.Is(cause, git.ErrUncertain):
+		return "uncertain"
+	default:
+		return "rejected"
+	}
+}
+
+// requestRefSummary returns the target ref(s) of a hook request for structured
+// logs. Batch phases pass updates via Lines rather than Ref.
+func requestRefSummary(request Request) string {
+	if request.Ref != "" {
+		return request.Ref
+	}
+	if len(request.Lines) == 0 {
+		return ""
+	}
+	refs := make([]string, 0, len(request.Lines))
+	for _, line := range request.Lines {
+		fields := strings.Fields(line)
+		if len(fields) == 3 {
+			refs = append(refs, fields[2])
+		}
+	}
+	return strings.Join(refs, ",")
 }
 
 // validatePolicyProposal checks every proposed update of the trusted policy
@@ -332,4 +400,48 @@ func cleanAbsolute(value string) (string, error) {
 
 func rejectResponse() Response {
 	return Response{ExitCode: 1, Message: RejectionMessage}
+}
+
+func rejectResponseWithDetail(detail string) Response {
+	sanitized := sanitizeResponseLine(detail)
+	if sanitized == "" {
+		return rejectResponse()
+	}
+	return Response{ExitCode: 1, Message: truncateUTF8(RejectionMessage+": "+sanitized, DefaultMaxMessageBytes)}
+}
+
+func rejectResponseFromHook(result git.HookResult) Response {
+	message := sanitizeResponseLine(result.Message)
+	if message == "" || !strings.HasPrefix(message, RejectionMessage) {
+		return rejectResponse()
+	}
+	return Response{ExitCode: 1, Message: truncateUTF8(message, DefaultMaxMessageBytes)}
+}
+
+func truncateUTF8(value string, maxBytes int) string {
+	if len(value) <= maxBytes {
+		return value
+	}
+	limit := maxBytes
+	for limit > 0 && !utf8.RuneStart(value[limit]) {
+		limit--
+	}
+	return value[:limit]
+}
+
+func sanitizeResponseLine(value string) string {
+	var builder strings.Builder
+	builder.Grow(len(value))
+	for index := 0; index < len(value); index++ {
+		character := value[index]
+		if character == '\r' || character == '\n' || character == '\t' {
+			builder.WriteByte(' ')
+			continue
+		}
+		if character < 0x20 || character == 0x7f {
+			continue
+		}
+		builder.WriteByte(character)
+	}
+	return strings.TrimSpace(builder.String())
 }

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 
@@ -1011,6 +1012,91 @@ func TestVerifyNeverForwardsTheCredential(t *testing.T) {
 	}
 	if h.principals.count() != 1 {
 		t.Errorf("credential resolutions = %d, want 1", h.principals.count())
+	}
+}
+
+// TestVerifyGitRefUpdateUnbornExpectedBaseEquivalence asserts that initial
+// creation of a protected ref succeeds whether the approved git.ref.update
+// subject specifies expected_base "" or Git's 40-zero / 64-zero null OID, while
+// non-unborn updates still enforce exact SHA equality.
+func TestVerifyGitRefUpdateUnbornExpectedBaseEquivalence(t *testing.T) {
+	zero40 := strings.Repeat("0", 40)
+	zero64 := strings.Repeat("0", 64)
+
+	acceptCases := []struct {
+		name         string
+		requiredBase string
+		recordedBase string
+	}{
+		{"empty required matches empty recorded", "", ""},
+		{"empty required matches 40-zero recorded", "", zero40},
+		{"empty required matches 64-zero recorded", "", zero64},
+		{"40-zero required matches empty recorded", zero40, ""},
+		{"40-zero required matches 40-zero recorded", zero40, zero40},
+		{"non-unborn exact SHA match", "sha-base-exact", "sha-base-exact"},
+	}
+	for _, tc := range acceptCases {
+		t.Run("accept/"+tc.name, func(t *testing.T) {
+			h := newHarness(t)
+			input := attempt()
+			input.Subject = verify.Subject{Fields: []verify.SubjectField{
+				{Name: "ref", Kind: verify.KindString, Value: "refs/heads/main"},
+				{Name: "expected_base", Kind: verify.KindString, Value: tc.requiredBase},
+				{Name: "candidate", Kind: verify.KindString, Value: "sha-candidate"},
+			}}
+			ev := passingEvidence()
+			ev.Subject = verify.Subject{Fields: []verify.SubjectField{
+				{Name: "ref", Kind: verify.KindString, Value: "refs/heads/main"},
+				{Name: "expected_base", Kind: verify.KindString, Value: tc.recordedBase},
+				{Name: "candidate", Kind: verify.KindString, Value: "sha-candidate"},
+			}}
+			h.evidence.set([]verify.Evidence{ev}, nil)
+
+			record, err := h.verifier.Verify(context.Background(), input)
+			if err != nil {
+				t.Fatalf("Verify: %v", err)
+			}
+			if !record.Approved || record.Result != verify.ResultApproved {
+				t.Fatalf("record = %+v; want approved", record)
+			}
+		})
+	}
+
+	refuseCases := []struct {
+		name         string
+		requiredBase string
+		recordedBase string
+		recordedKind verify.ValueKind
+		recordedCand string
+	}{
+		{"non-unborn required refuses empty recorded", "sha-base", "", verify.KindString, "sha-candidate"},
+		{"non-unborn required refuses 40-zero recorded", "sha-base", zero40, verify.KindString, "sha-candidate"},
+		{"empty required refuses non-unborn recorded", "", "sha-base", verify.KindString, "sha-candidate"},
+		{"empty required refuses partial zero recorded", "", "0000", verify.KindString, "sha-candidate"},
+		{"empty required refuses non-string null kind", "", "", verify.KindNull, "sha-candidate"},
+		{"unborn with mismatched candidate refuses", "", zero40, verify.KindString, "sha-other"},
+		{"non-unborn mismatched SHA refuses", "sha-base-1", "sha-base-2", verify.KindString, "sha-candidate"},
+	}
+	for _, tc := range refuseCases {
+		t.Run("refuse/"+tc.name, func(t *testing.T) {
+			h := newHarness(t)
+			input := attempt()
+			input.Subject = verify.Subject{Fields: []verify.SubjectField{
+				{Name: "ref", Kind: verify.KindString, Value: "refs/heads/main"},
+				{Name: "expected_base", Kind: verify.KindString, Value: tc.requiredBase},
+				{Name: "candidate", Kind: verify.KindString, Value: "sha-candidate"},
+			}}
+			ev := passingEvidence()
+			ev.Subject = verify.Subject{Fields: []verify.SubjectField{
+				{Name: "ref", Kind: verify.KindString, Value: "refs/heads/main"},
+				{Name: "expected_base", Kind: tc.recordedKind, Value: tc.recordedBase},
+				{Name: "candidate", Kind: verify.KindString, Value: tc.recordedCand},
+			}}
+			h.evidence.set([]verify.Evidence{ev}, nil)
+
+			record, err := h.verifier.Verify(context.Background(), input)
+			assertRefusedRecord(t, h, record, err)
+		})
 	}
 }
 

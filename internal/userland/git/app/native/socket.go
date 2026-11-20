@@ -299,8 +299,13 @@ func (server *SocketServer) handle(connection *net.UnixConn) {
 	ctx, cancel := context.WithTimeout(context.Background(), server.timeout)
 	defer cancel()
 	response := server.handler.Handle(ctx, request)
-	if ctx.Err() != nil || response.ExitCode != 0 {
+	if ctx.Err() != nil {
 		response = rejectResponse()
+	} else if response.ExitCode != 0 {
+		response.ExitCode = 1
+		if strings.TrimSpace(response.Message) == "" {
+			response.Message = RejectionMessage
+		}
 	}
 	server.writeResponse(connection, response)
 }

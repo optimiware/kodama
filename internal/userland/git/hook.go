@@ -253,8 +253,8 @@ func parseHookUpdate(ref, old, new string) (hookUpdate, error) {
 	if !validObjectID(old) || !validObjectID(new) {
 		return hookUpdate{}, errMalformedHook
 	}
-	oldZero := isZeroObjectID(old)
-	newZero := isZeroObjectID(new)
+	oldZero := isNullObjectID(old)
+	newZero := isNullObjectID(new)
 	if oldZero && newZero {
 		return hookUpdate{}, errMalformedHook
 	}
@@ -301,10 +301,6 @@ func validObjectID(value string) bool {
 		}
 	}
 	return true
-}
-
-func isZeroObjectID(value string) bool {
-	return strings.Trim(value, "0") == ""
 }
 
 // parsePreReceive reads one bounded `<old> <new> <ref>` line per update.
@@ -442,10 +438,63 @@ func acceptHook() (HookResult, error) {
 
 // rejectHook returns a sanitized one-line rejection. The cause is returned for
 // internal diagnostics; callers must send Message, never cause, to the Git
-// client.
+// client. Known safe refusal categories append a concise, credential-free
+// reason to hookRejectionMessage; unknown, malformed, authentication and
+// internal failures keep the exact uniform hookRejectionMessage.
 func rejectHook(cause error) (HookResult, error) {
 	if cause == nil {
 		cause = ErrPolicyDenied
 	}
-	return HookResult{Decision: DecisionDeny, ExitCode: 1, Message: hookRejectionMessage}, cause
+	return HookResult{Decision: DecisionDeny, ExitCode: 1, Message: formatHookRejectionMessage(cause)}, cause
+}
+
+// formatHookRejectionMessage builds a safe, single-line client diagnostic.
+func formatHookRejectionMessage(cause error) string {
+	detail := hookRejectionDetail(cause)
+	if detail == "" {
+		return hookRejectionMessage
+	}
+	return hookRejectionMessage + ": " + detail
+}
+
+// hookRejectionDetail returns a safe, credential-free reason category for
+// known refusal causes, or "" for failures that must stay uniform.
+func hookRejectionDetail(cause error) string {
+	var refusal *RefusalError
+	if errors.As(cause, &refusal) && refusal.ClientMessage != "" {
+		return sanitizeHookDiagnostic(refusal.ClientMessage)
+	}
+	switch {
+	case errors.Is(cause, ErrApprovalRequired):
+		return "protected ref requires approval"
+	case errors.Is(cause, ErrPolicyDenied):
+		return "push denied by repository policy"
+	case errors.Is(cause, ErrStaleBase):
+		return "observed ref does not match expected base"
+	case errors.Is(cause, errDeleteUnsupported):
+		return "ref deletion is not supported"
+	case errors.Is(cause, ErrResourceMismatch):
+		return "repository resource binding mismatch"
+	default:
+		return ""
+	}
+}
+
+// sanitizeHookDiagnostic keeps a client-facing reason single-line and free of
+// control characters.
+func sanitizeHookDiagnostic(value string) string {
+	var builder strings.Builder
+	builder.Grow(len(value))
+	for index := 0; index < len(value); index++ {
+		character := value[index]
+		if character == '\r' || character == '\n' || character == '\t' {
+			builder.WriteByte(' ')
+			continue
+		}
+		if character < 0x20 || character == 0x7f {
+			continue
+		}
+		builder.WriteByte(character)
+	}
+	return strings.TrimSpace(builder.String())
 }

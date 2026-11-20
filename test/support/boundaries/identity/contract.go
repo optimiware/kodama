@@ -282,6 +282,14 @@ func (server *ContractServer) QueueReportFailure(failure Failure) {
 	server.reportFailures = append(server.reportFailures, failure)
 }
 
+// AddApproval appends one same-execution human-role approval fact to the
+// fixture contract server.
+func (server *ContractServer) AddApproval(fact ApprovalFact) {
+	server.mu.Lock()
+	defer server.mu.Unlock()
+	server.approvals = append(server.approvals, fact)
+}
+
 // Recorded returns safe records of every contract request.
 func (server *ContractServer) Recorded() []RecordedRequest {
 	server.mu.Lock()
@@ -674,7 +682,7 @@ func (server *ContractServer) approvalMatches(executionID string, request api.Ve
 			fact.Decision != "pass" {
 			continue
 		}
-		if subjectSatisfies(request.Subject, fact.Subject) {
+		if subjectSatisfiesForOperation(request.Operation, request.Subject, fact.Subject) {
 			return true
 		}
 	}
@@ -716,7 +724,7 @@ func reportFingerprint(request api.ReportRequest) (string, error) {
 	return hex.EncodeToString(sum[:]), nil
 }
 
-func subjectSatisfies(required, recorded api.Subject) bool {
+func subjectSatisfiesForOperation(operation string, required, recorded api.Subject) bool {
 	recordedFields, ok := subjectFieldMap(recorded)
 	if !ok {
 		return false
@@ -725,13 +733,27 @@ func subjectSatisfies(required, recorded api.Subject) bool {
 	if !ok {
 		return false
 	}
+	gitRefUpdate := operation == string(api.ResourceOperationGitRefUpdate)
 	for name, want := range requiredFields {
 		got, present := recordedFields[name]
-		if !present || got.Kind != want.Kind || got.Value != want.Value {
+		if !present || got.Kind != want.Kind {
 			return false
 		}
+		if got.Value == want.Value {
+			continue
+		}
+		if gitRefUpdate && name == "expected_base" && want.Kind == "string" && isUnbornGitBase(want.Value) && isUnbornGitBase(got.Value) {
+			continue
+		}
+		return false
 	}
 	return true
+}
+
+func isUnbornGitBase(value string) bool {
+	return value == "" ||
+		value == "0000000000000000000000000000000000000000" ||
+		value == "0000000000000000000000000000000000000000000000000000000000000000"
 }
 
 func subjectsEqual(left, right api.Subject) bool {

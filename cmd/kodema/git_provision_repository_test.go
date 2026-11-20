@@ -133,9 +133,12 @@ func TestGitProvisionRepositoryInvokesProvisioner(t *testing.T) {
 		t.Fatalf("repository = %q; want shop/web", received.Repository)
 	}
 	want := "--resource shop/web=res-1\n" +
-		"restart kodema git serve with the new --resource mapping\n"
+		"option resource = res-1 committed to admin/conf/git.conf; kodema git serve picks it up dynamically without a restart\n"
 	if stdout.String() != want {
 		t.Fatalf("stdout = %q; want %q", stdout.String(), want)
+	}
+	if strings.Contains(stdout.String(), "restart kodema git serve") {
+		t.Fatalf("stdout still instructs operator to restart kodema git serve: %q", stdout.String())
 	}
 }
 

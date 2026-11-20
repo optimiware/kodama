@@ -37,6 +37,45 @@ var (
 	ErrResourceMismatch = errors.New("repository resource id disagrees with policy")
 )
 
+// RefusalError carries sanitized, credential-free refusal diagnostics for
+// structured server logs and safe one-line Git client messages while
+// preserving errors.Is matching against Cause.
+type RefusalError struct {
+	// Category is a stable machine-readable refusal category for logs.
+	Category string
+	// ClientMessage is a sanitized one-line reason suffix safe for the Git client.
+	ClientMessage string
+	// ActorID is the verified principal id when verification succeeded; it is
+	// never a credential or actor handle.
+	ActorID string
+	// Ref is the target ref associated with the refusal when known.
+	Ref string
+	// Cause is the underlying sentinel or wrapped error.
+	Cause error
+}
+
+// Error returns a sanitized description of the refusal.
+func (err *RefusalError) Error() string {
+	if err == nil {
+		return ""
+	}
+	if err.ClientMessage != "" && err.Cause != nil {
+		return fmt.Sprintf("%s: %v", err.ClientMessage, err.Cause)
+	}
+	if err.Cause != nil {
+		return err.Cause.Error()
+	}
+	return err.ClientMessage
+}
+
+// Unwrap exposes the underlying cause for errors.Is / errors.As.
+func (err *RefusalError) Unwrap() error {
+	if err == nil {
+		return nil
+	}
+	return err.Cause
+}
+
 // PolicySource supplies the current parsed tenant git.conf. The service reads
 // it for every attempt and never caches the rules, so an accepted admin push
 // changes the next attempt.
@@ -378,6 +417,7 @@ func (service *Service) Provision(ctx context.Context, repository string) (Repos
 // entry. It performs no ref effect. A permanent refusal after verification is
 // recorded as a `refused` entry and returned with its sentinel error.
 func (service *Service) Prepare(ctx context.Context, request UpdateRequest) (JournalEntry, error) {
+	request = normalizeUpdateRequest(request)
 	if err := validateUpdateRequest(request); err != nil {
 		return JournalEntry{}, err
 	}
@@ -405,7 +445,7 @@ func (service *Service) prepareLocked(ctx context.Context, request UpdateRequest
 		return JournalEntry{}, err
 	}
 	approvalRole, guarded := policy.ApprovalFor(request.Ref)
-	identity, verificationID, approved, err := service.verifyActor(ctx, request, approvalRole, guarded)
+	identity, actorID, verificationID, approved, err := service.verifyActor(ctx, request, approvalRole, guarded)
 	if err != nil {
 		return JournalEntry{}, err
 	}
@@ -417,7 +457,13 @@ func (service *Service) prepareLocked(ctx context.Context, request UpdateRequest
 	if decision, err := policy.Authorize(preliminary); err != nil {
 		return JournalEntry{}, err
 	} else if decision != DecisionAllow {
-		return service.refuse(ctx, request, verificationID, ErrPolicyDenied)
+		return service.refuse(ctx, request, verificationID, &RefusalError{
+			Category:      "policy_denied",
+			ClientMessage: "push denied by repository policy",
+			ActorID:       actorID,
+			Ref:           request.Ref,
+			Cause:         ErrPolicyDenied,
+		})
 	}
 
 	path, err := service.repositoryPath(request.Repository)
@@ -432,10 +478,28 @@ func (service *Service) prepareLocked(ctx context.Context, request UpdateRequest
 	if decision, err := policy.Authorize(exact); err != nil {
 		return JournalEntry{}, err
 	} else if decision != DecisionAllow {
-		return service.refuse(ctx, request, verificationID, ErrPolicyDenied)
+		return service.refuse(ctx, request, verificationID, &RefusalError{
+			Category:      "policy_denied",
+			ClientMessage: "push denied by repository policy",
+			ActorID:       actorID,
+			Ref:           request.Ref,
+			Cause:         ErrPolicyDenied,
+		})
 	}
 	if guarded && (!identity.Execution || !approved) {
-		return service.refuse(ctx, request, verificationID, ErrApprovalRequired)
+		category := "approval_mismatch"
+		clientMessage := fmt.Sprintf("approval subject mismatch or missing role/%s approval", approvalRole)
+		if !identity.Execution {
+			category = "approval_required"
+			clientMessage = fmt.Sprintf("protected ref requires role/%s approval", approvalRole)
+		}
+		return service.refuse(ctx, request, verificationID, &RefusalError{
+			Category:      category,
+			ClientMessage: clientMessage,
+			ActorID:       actorID,
+			Ref:           request.Ref,
+			Cause:         ErrApprovalRequired,
+		})
 	}
 
 	entry := service.entryFor(request, verificationID, JournalIntended)
@@ -456,8 +520,10 @@ func (service *Service) prepareLocked(ctx context.Context, request UpdateRequest
 // permanent refusal or an unobservable duplicate rejects the whole batch before
 // any effect.
 func (service *Service) prepareBatch(ctx context.Context, requests []UpdateRequest) ([]JournalEntry, []JournalEntry, error) {
+	normalized := make([]UpdateRequest, len(requests))
 	seen := make(map[string]bool, len(requests))
-	for _, request := range requests {
+	for index, request := range requests {
+		request = normalizeUpdateRequest(request)
 		if err := validateUpdateRequest(request); err != nil {
 			return nil, nil, err
 		}
@@ -465,10 +531,11 @@ func (service *Service) prepareBatch(ctx context.Context, requests []UpdateReque
 			return nil, nil, fmt.Errorf("batch repeats source event id %q", request.SourceEventID)
 		}
 		seen[request.SourceEventID] = true
+		normalized[index] = request
 	}
-	entries := make([]JournalEntry, 0, len(requests))
-	fresh := make([]JournalEntry, 0, len(requests))
-	for _, request := range requests {
+	entries := make([]JournalEntry, 0, len(normalized))
+	fresh := make([]JournalEntry, 0, len(normalized))
+	for _, request := range normalized {
 		entry, createdIntended, err := service.prepareBatchEntry(ctx, request)
 		if err != nil {
 			service.refuseBatchEntries(ctx, fresh)
@@ -680,6 +747,7 @@ func (service *Service) reportLocked(ctx context.Context, entry JournalEntry) (J
 // and the supplied credential was never checked, so the stored compare-and-swap
 // is never applied.
 func (service *Service) Update(ctx context.Context, request UpdateRequest) (UpdateResult, error) {
+	request = normalizeUpdateRequest(request)
 	if err := validateUpdateRequest(request); err != nil {
 		return UpdateResult{}, err
 	}
@@ -834,7 +902,7 @@ func (service *Service) recoverLocked(ctx context.Context, sourceEventID string)
 // verifyActor verifies the exact canonical `git.ref.update` subject and turns
 // the verified principal into the local rule identity. The forwarded actor
 // credential is the only credential used and is never retained.
-func (service *Service) verifyActor(ctx context.Context, request UpdateRequest, approvalRole string, guarded bool) (Identity, string, bool, error) {
+func (service *Service) verifyActor(ctx context.Context, request UpdateRequest, approvalRole string, guarded bool) (Identity, string, string, bool, error) {
 	verify := api.VerifyRequest{
 		ActorCredential: request.ActorCredential,
 		ResourceID:      request.ResourceID,
@@ -851,20 +919,54 @@ func (service *Service) verifyActor(ctx context.Context, request UpdateRequest, 
 		verify.Approval = "role/" + approvalRole
 	}
 	if err := verify.Validate(); err != nil {
-		return Identity{}, "", false, err
+		return Identity{}, "", "", false, err
 	}
 	response, err := service.verify.Verify(ctx, verify)
 	if err != nil {
-		return Identity{}, "", false, err
+		if guarded {
+			if classified := classifyApprovalVerifyError(request.Ref, approvalRole, err); classified != nil {
+				return Identity{}, "", "", false, classified
+			}
+		}
+		return Identity{}, "", "", false, err
 	}
 	if err := response.Validate(); err != nil {
-		return Identity{}, "", false, err
+		return Identity{}, "", "", false, err
 	}
 	identity, err := identityFromVerified(response.Principal, response.Roles)
 	if err != nil {
-		return Identity{}, "", false, err
+		return Identity{}, "", "", false, err
 	}
-	return identity, response.VerificationID, response.Approval, nil
+	return identity, response.Principal.ID, response.VerificationID, response.Approval, nil
+}
+
+// classifyApprovalVerifyError maps known server-side approval refusals on a
+// guarded ref to a safe RefusalError that preserves ErrApprovalRequired and
+// the original fault for errors.Is / fault.ClassOf callers.
+func classifyApprovalVerifyError(ref, approvalRole string, err error) error {
+	class, ok := fault.ClassOf(err)
+	if !ok || class != fault.Forbidden {
+		return nil
+	}
+	message, _ := fault.MessageOf(err)
+	switch message {
+	case "approval evidence requires an execution actor":
+		return &RefusalError{
+			Category:      "approval_required",
+			ClientMessage: fmt.Sprintf("protected ref requires role/%s approval", approvalRole),
+			Ref:           ref,
+			Cause:         fmt.Errorf("%w: %w", ErrApprovalRequired, err),
+		}
+	case "no matching approval evidence":
+		return &RefusalError{
+			Category:      "approval_mismatch",
+			ClientMessage: fmt.Sprintf("approval subject mismatch or missing role/%s approval", approvalRole),
+			Ref:           ref,
+			Cause:         fmt.Errorf("%w: %w", ErrApprovalRequired, err),
+		}
+	default:
+		return nil
+	}
 }
 
 // identityFromVerified maps one verified principal to the local rule identity.
@@ -1019,6 +1121,31 @@ func (service *Service) recordRefused(ctx context.Context, entry JournalEntry, c
 		return refused, err
 	}
 	return refused, cause
+}
+
+// normalizeUpdateRequest canonicalizes Git's 40-zero (SHA-1) or 64-zero
+// (SHA-256) null object ID in ExpectedBase to the empty string used for unborn
+// ref creation. Non-null bases are preserved unchanged so exact SHA equality
+// continues to apply.
+func normalizeUpdateRequest(request UpdateRequest) UpdateRequest {
+	if isNullObjectID(request.ExpectedBase) {
+		request.ExpectedBase = ""
+	}
+	return request
+}
+
+// isNullObjectID reports whether value is Git's standard all-zero null object
+// ID (40 zeros for SHA-1 or 64 zeros for SHA-256).
+func isNullObjectID(value string) bool {
+	if len(value) != 40 && len(value) != 64 {
+		return false
+	}
+	for index := 0; index < len(value); index++ {
+		if value[index] != '0' {
+			return false
+		}
+	}
+	return true
 }
 
 // validateUpdateRequest checks the bounded request before any verification or

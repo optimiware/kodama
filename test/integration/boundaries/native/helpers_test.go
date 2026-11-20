@@ -3,6 +3,7 @@
 package native_test
 
 import (
+	"bytes"
 	"context"
 	"log/slog"
 	"net/http"
@@ -17,6 +18,31 @@ import (
 	"github.com/optimiware/kodema/internal/userland/git"
 	nativefix "github.com/optimiware/kodema/test/support/boundaries/native"
 )
+
+// lockedLogBuffer is a race-safe buffer for capturing structured Git server
+// logs across concurrent hook callback goroutines.
+type lockedLogBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *lockedLogBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *lockedLogBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
+
+func (b *lockedLogBuffer) Reset() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.buf.Reset()
+}
 
 func newHarness(t *testing.T, options nativefix.Options) *nativefix.Harness {
 	t.Helper()

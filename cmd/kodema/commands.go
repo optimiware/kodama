@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"strconv"
@@ -160,6 +161,10 @@ func runGitServeEntry(ctx context.Context, args []string, stdout, stderr io.Writ
 		return 1
 	}
 	defer func() { _ = registry.Close() }()
+	logOutput := stderr
+	if logOutput == nil {
+		logOutput = io.Discard
+	}
 	config := gitapp.Config{
 		TenantID:         id.TenantID(*tenant),
 		ListenAddress:    *listen,
@@ -171,6 +176,7 @@ func runGitServeEntry(ctx context.Context, args []string, stdout, stderr io.Writ
 		MaxBodyBytes:     *maxBodyBytes,
 		MaxResponseBytes: *maxResponseBytes,
 		Timeout:          *timeout,
+		Logger:           slog.New(slog.NewTextHandler(logOutput, nil)),
 		Transport:        transport,
 		Verify:           verification,
 		Actors:           readVerifier,

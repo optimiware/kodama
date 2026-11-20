@@ -17,9 +17,10 @@ var provisionRepository = gitapp.ProvisionRepository
 
 // runGitProvisionRepositoryEntry runs `kodema git provision-repository`. It
 // dispatches independently of `git serve`: it starts no listener and no hooks
-// server. The printed --resource mapping is the flag the operator adds to the
-// next `git serve` invocation; a running service does not pick up a new
-// repository without that restart.
+// server. The provisioned repository's default stanza in `admin/conf/git.conf`
+// includes `option resource = <resource>`, which a running `kodema git serve`
+// picks up dynamically without a restart; the printed `--resource` flag is
+// only needed if an operator pins the mapping statically on `git serve`.
 func runGitProvisionRepositoryEntry(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("git provision-repository", flag.ContinueOnError)
 	flags.SetOutput(stderr)
@@ -67,7 +68,7 @@ func runGitProvisionRepositoryEntry(ctx context.Context, args []string, stdout, 
 	}
 	mapping := "--resource " + name + "=" + *resource
 	fmt.Fprintln(stdout, mapping)
-	fmt.Fprintln(stdout, "restart kodema git serve with the new --resource mapping")
+	fmt.Fprintf(stdout, "option resource = %s committed to admin/conf/git.conf; kodema git serve picks it up dynamically without a restart\n", *resource)
 	return 0
 }
 

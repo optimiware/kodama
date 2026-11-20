@@ -264,6 +264,7 @@ type ApprovalRule struct {
 // RepositoryPolicy is one repository's ordered rules, optional resource
 // binding and approval options.
 type RepositoryPolicy struct {
+	Line       int            `json:"line,omitempty"`
 	Name       string         `json:"name"`
 	ResourceID string         `json:"resource_id,omitempty"`
 	Rules      []Rule         `json:"rules"`

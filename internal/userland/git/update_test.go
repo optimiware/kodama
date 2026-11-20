@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/fault"
 	git "github.com/optimiware/kodema/internal/userland/git"
 )
 
@@ -822,4 +823,68 @@ func TestUpdateReadsCurrentPolicy(t *testing.T) {
 	if f.executor.commit("shop/web", "refs/heads/work/b") != "" {
 		t.Fatal("denied update created a ref")
 	}
+}
+
+// TestUpdateNormalizesNullOIDExpectedBaseForUnbornRef pins that Git's 40-zero
+// (SHA-1) and 64-zero (SHA-256) null OIDs in ExpectedBase are normalized to ""
+// for unborn ref creation while non-null values still enforce exact SHA match.
+func TestUpdateNormalizesNullOIDExpectedBaseForUnbornRef(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		expectedBase string
+	}{
+		{"empty expected_base", ""},
+		{"40-zero SHA-1 null OID", strings.Repeat("0", 40)},
+		{"64-zero SHA-256 null OID", strings.Repeat("0", 64)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newFixture(t)
+			f.verifier.script(testCredential, executionScript("exe-1"))
+			request := updateRequestFor("shop/web", testRef, tc.expectedBase, testCandidate, testSourceEventID)
+
+			result, err := f.service.Update(context.Background(), request)
+			if err != nil {
+				t.Fatalf("Update: %v", err)
+			}
+			if result.Entry.State != git.JournalReported {
+				t.Fatalf("state = %q; want reported", result.Entry.State)
+			}
+			if result.Entry.ExpectedBase != "" {
+				t.Fatalf("journal ExpectedBase = %q; want canonical empty string", result.Entry.ExpectedBase)
+			}
+			if got := f.executor.commit("shop/web", testRef); got != testCandidate {
+				t.Fatalf("ref = %q; want %q", got, testCandidate)
+			}
+			verifications := f.verifier.verifyRequests()
+			if len(verifications) != 1 {
+				t.Fatalf("verification calls = %d; want 1", len(verifications))
+			}
+			assertCanonicalSubject(t, verifications[0].Subject, testResourceID, testRef, "", testCandidate)
+		})
+	}
+
+	t.Run("partial zero expected_base is not normalized", func(t *testing.T) {
+		f := newFixture(t)
+		f.verifier.script(testCredential, executionScript("exe-1"))
+		f.executor.setAncestor("shop/web", "0000", testCandidate, true)
+		request := updateRequestFor("shop/web", testRef, "0000", testCandidate, testSourceEventID)
+		_, err := f.service.Update(context.Background(), request)
+		if !errors.Is(err, git.ErrStaleBase) {
+			t.Fatalf("Update(partial zeros) error = %v; want ErrStaleBase", err)
+		}
+	})
+
+	t.Run("server approval fault classifies as ErrApprovalRequired", func(t *testing.T) {
+		f := newFixture(t)
+		f.verifier.fail(fault.New(fault.Forbidden, "no matching approval evidence"))
+		request := updateRequestFor("shop/web", testRef, "", testCandidate, testSourceEventID)
+		_, err := f.service.Update(context.Background(), request)
+		if !errors.Is(err, git.ErrApprovalRequired) {
+			t.Fatalf("Update error = %v; want ErrApprovalRequired", err)
+		}
+		var refusal *git.RefusalError
+		if !errors.As(err, &refusal) || refusal.Category != "approval_mismatch" {
+			t.Fatalf("refusal = %+v; want category=approval_mismatch", refusal)
+		}
+	})
 }

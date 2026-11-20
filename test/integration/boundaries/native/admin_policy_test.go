@@ -3,6 +3,7 @@
 package native_test
 
 import (
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -626,5 +627,100 @@ func TestAdminPolicyMissingTrustedRefFailsClosed(t *testing.T) {
 	requireFailure(t, stderr, code)
 	if observed := harness.RemoteRef(t, nativefix.Repository, "refs/heads/main"); observed != base {
 		t.Fatalf("refused push moved main to %q; want %q (candidate %q)", observed, base, commit)
+	}
+}
+
+// TestAdminPolicyInvalidPushesSurfaceDiagnosticsAndLogReason verifies that
+// pushing an invalid admin/conf/git.conf (duplicate repo, missing repo admin,
+// or non-admin repo missing option resource) returns a clear line-numbered
+// error to the Git client and logs the structured refusal reason on the Git
+// server without leaking credentials.
+func TestAdminPolicyInvalidPushesSurfaceDiagnosticsAndLogReason(t *testing.T) {
+	var logs lockedLogBuffer
+	logger := slog.New(slog.NewTextHandler(&logs, nil))
+	harness := newAdminHarness(t, nativefix.Options{Logger: logger})
+	admin := cloneAdmin(t, harness, "admin-diagnostics")
+	accepted := harness.RemoteRef(t, nativefix.AdminRepository, "refs/heads/main")
+
+	cases := []struct {
+		name           string
+		policy         string
+		wantClientText []string
+		wantLogText    []string
+	}{
+		{
+			name: "duplicate repo",
+			policy: strings.Join([]string{
+				"repo admin",
+				"    RW = @admin",
+				"repo dup-app",
+				"    option resource = git-dup-app",
+				"    R = @all",
+				"repo dup-app",
+				"    option resource = git-dup-app-2",
+				"    R = @all",
+				"",
+			}, "\n"),
+			wantClientText: []string{"kodema git: update rejected", "conf/git.conf", "line 6:", `repository "dup-app" is declared twice`},
+			wantLogText:    []string{"phase=pre-receive", "repository=admin", "ref=refs/heads/main", "reason=invalid_policy", "dup-app"},
+		},
+		{
+			name: "missing repo admin",
+			policy: strings.Join([]string{
+				"repo my-app",
+				"    option resource = git-my-app",
+				"    R = @all",
+				"",
+			}, "\n"),
+			wantClientText: []string{"kodema git: update rejected", "conf/git.conf", `"admin"`},
+			wantLogText:    []string{"phase=pre-receive", "repository=admin", "ref=refs/heads/main", "reason=invalid_policy", "admin"},
+		},
+		{
+			name: "non-admin repo missing option resource",
+			policy: strings.Join([]string{
+				"repo admin",
+				"    RW = @admin",
+				"",
+				"repo uc08-deploy",
+				"    R = @operator @execution",
+				"    RW refs/heads/main = @execution",
+				"    option approve.refs/heads/main = operator",
+				"",
+			}, "\n"),
+			wantClientText: []string{"kodema git: update rejected", "conf/git.conf", "line 4:", `repository "uc08-deploy" must declare option resource`},
+			wantLogText:    []string{"phase=pre-receive", "repository=admin", "ref=refs/heads/main", "reason=invalid_policy", "uc08-deploy"},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			logs.Reset()
+			if _, stderr, code := harness.GitIn(t, admin, "reset", "--hard", "origin/main"); code != 0 {
+				t.Fatalf("reset admin: %s", stderr)
+			}
+			writeAdminPolicy(t, admin, tc.policy)
+			commitAdminPolicy(t, harness, admin, "invalid: "+tc.name)
+			stderr, code := pushAdmin(t, harness, admin, "HEAD:refs/heads/main")
+			requireFailure(t, stderr, code)
+			for _, want := range tc.wantClientText {
+				if !strings.Contains(stderr, want) {
+					t.Fatalf("client stderr = %q; want substring %q", stderr, want)
+				}
+			}
+			logged := logs.String()
+			for _, want := range tc.wantLogText {
+				if !strings.Contains(logged, want) {
+					t.Fatalf("server logs = %q; want substring %q", logged, want)
+				}
+			}
+			for _, secret := range []string{harness.AdminToken, harness.HumanToken, nativefix.ExecutionToken, nativefix.ServiceToken} {
+				if strings.Contains(stderr, secret) || strings.Contains(logged, secret) {
+					t.Fatalf("secret leaked in refusal output or logs")
+				}
+			}
+			if observed := harness.RemoteRef(t, nativefix.AdminRepository, "refs/heads/main"); observed != accepted {
+				t.Fatalf("invalid policy moved admin main to %q; want %q", observed, accepted)
+			}
+		})
 	}
 }
