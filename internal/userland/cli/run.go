@@ -413,6 +413,14 @@ func runInspect(ctx context.Context, config Config, args []string, ports Ports) 
 		if err := renderExecutionInspectTable(ports.Out, result); err != nil {
 			return failure(ports.Err, err)
 		}
+		var inspected inspectedExecution
+		if len(result.Body) > 0 && json.Unmarshal(result.Body, &inspected) == nil && inspected.effectiveState() == "failed" {
+			executionID := inspected.ExecutionID
+			if executionID == "" {
+				executionID = strings.TrimSpace(positionals[0])
+			}
+			_ = printFailedActionStderr(ctx, ports, executionID, inspected.Actions)
+		}
 		return ExitSuccess
 	}
 	if err := renderResult(ports.Out, OutputJSON, result); err != nil {
@@ -452,6 +460,7 @@ func runWatch(ctx context.Context, config Config, args []string, ports Ports) in
 	var (
 		lastFingerprint string
 		rendered        bool
+		settling        int
 	)
 	for {
 		if ctx.Err() != nil {
@@ -488,7 +497,26 @@ func runWatch(ctx context.Context, config Config, args []string, ports Ports) in
 		switch status {
 		case "succeeded":
 			return ExitSuccess
-		case "failed", "cancelled":
+		case "failed":
+			if format == OutputTable {
+				var inspected inspectedExecution
+				if len(result.Body) > 0 && json.Unmarshal(result.Body, &inspected) == nil {
+					if hasFailedContainerAction(inspected.Actions) && logsSettling(inspected, &settling) {
+						ports.Sleep(watchInterval)
+						continue
+					}
+					executionID := inspected.ExecutionID
+					if executionID == "" {
+						executionID = strings.TrimSpace(positionals[0])
+					}
+					if err := printFailedActionStderr(ctx, ports, executionID, inspected.Actions); err != nil && ctx.Err() != nil {
+						return watchCanceled(ports.Err)
+					}
+				}
+			}
+			fmt.Fprintf(ports.Err, "watch failed: execution status %s\n", status)
+			return ExitFailure
+		case "cancelled":
 			fmt.Fprintf(ports.Err, "watch failed: execution status %s\n", status)
 			return ExitFailure
 		case "queued", "running":
