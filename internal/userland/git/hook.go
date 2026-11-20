@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/optimiware/kodema/api"
@@ -29,6 +30,15 @@ const (
 	// smart-HTTP handler. It is required: without a fresh identity an identical
 	// later push could settle a stale journal entry instead of verifying again.
 	EnvSourceEvent = "KODEMA_SOURCE_EVENT"
+	// EnvPushOptionCount is Git's count of push options passed to pre-receive.
+	EnvPushOptionCount = "GIT_PUSH_OPTION_COUNT"
+	// EnvPushOptionPrefix is Git's indexed push option variable prefix.
+	EnvPushOptionPrefix = "GIT_PUSH_OPTION_"
+	// PushOptionApprovedBase names the approved base commit OID push option.
+	PushOptionApprovedBase = "kodema.approved_base"
+	// PushOptionApprovedCandidate names the approved candidate commit OID push
+	// option.
+	PushOptionApprovedCandidate = "kodema.approved_candidate"
 )
 
 // ActorSource resolves the opaque backend handle to the forwarded actor
@@ -82,6 +92,7 @@ var (
 const (
 	defaultHookMaxLineBytes = 4096
 	defaultHookMaxBatch     = 256
+	maxHookPushOptions      = 64
 	hookRejectionMessage    = "kodema git: update rejected"
 )
 
@@ -365,19 +376,94 @@ func (hook *Hook) buildRequests(ctx context.Context, updates []hookUpdate) ([]Up
 	if err != nil || credential == "" || len(credential) > api.MaxCredentialBytes {
 		return nil, errMalformedHook
 	}
+	approvedBase, approvedCandidate, err := hook.parsePushOptions()
+	if err != nil {
+		return nil, err
+	}
 	requests := make([]UpdateRequest, 0, len(updates))
 	for _, update := range updates {
 		requests = append(requests, UpdateRequest{
-			ResourceID:      resourceID,
-			Repository:      repository,
-			Ref:             update.ref,
-			ExpectedBase:    update.old,
-			Candidate:       update.new,
-			ActorCredential: credential,
-			SourceEventID:   hook.sourceEventID(pushID, repository, update),
+			ResourceID:        resourceID,
+			Repository:        repository,
+			Ref:               update.ref,
+			ExpectedBase:      update.old,
+			Candidate:         update.new,
+			ApprovedBase:      approvedBase,
+			ApprovedCandidate: approvedCandidate,
+			ActorCredential:   credential,
+			SourceEventID:     hook.sourceEventID(pushID, repository, update),
 		})
 	}
 	return requests, nil
+}
+
+// parsePushOptions reads Git's GIT_PUSH_OPTION_COUNT and GIT_PUSH_OPTION_<i>
+// environment variables and extracts the optional kodema.approved_base and
+// kodema.approved_candidate commit OIDs. Non-kodema push options are ignored.
+// Duplicate, unknown, half-specified, or malformed kodema push options fail
+// closed with a sanitized RefusalError.
+func (hook *Hook) parsePushOptions() (string, string, error) {
+	rawCount, ok := hook.lookup(EnvPushOptionCount)
+	if !ok || rawCount == "" {
+		return "", "", nil
+	}
+	count, err := strconv.Atoi(rawCount)
+	if err != nil || count < 0 || count > maxHookPushOptions || strconv.Itoa(count) != rawCount {
+		return "", "", invalidPushOptionError("invalid push option count")
+	}
+	var (
+		approvedBase      string
+		approvedCandidate string
+		seenBase          bool
+		seenCandidate     bool
+	)
+	for index := 0; index < count; index++ {
+		option, exists := hook.lookup(EnvPushOptionPrefix + strconv.Itoa(index))
+		if !exists {
+			return "", "", invalidPushOptionError("missing push option entry")
+		}
+		if !strings.HasPrefix(option, "kodema.") {
+			continue
+		}
+		key, value, hasEq := strings.Cut(option, "=")
+		if !hasEq {
+			return "", "", invalidPushOptionError("malformed kodema push option")
+		}
+		switch key {
+		case PushOptionApprovedBase:
+			if seenBase {
+				return "", "", invalidPushOptionError("duplicate push option kodema.approved_base")
+			}
+			if !validStrictCommitOID(value) {
+				return "", "", invalidPushOptionError("kodema.approved_base must be a 40-hex commit oid")
+			}
+			seenBase = true
+			approvedBase = value
+		case PushOptionApprovedCandidate:
+			if seenCandidate {
+				return "", "", invalidPushOptionError("duplicate push option kodema.approved_candidate")
+			}
+			if !validStrictCommitOID(value) {
+				return "", "", invalidPushOptionError("kodema.approved_candidate must be a 40-hex commit oid")
+			}
+			seenCandidate = true
+			approvedCandidate = value
+		default:
+			return "", "", invalidPushOptionError("unknown kodema push option")
+		}
+	}
+	if seenBase != seenCandidate {
+		return "", "", invalidPushOptionError("kodema.approved_base and kodema.approved_candidate must be provided together")
+	}
+	return approvedBase, approvedCandidate, nil
+}
+
+func invalidPushOptionError(detail string) error {
+	return &RefusalError{
+		Category:      "invalid_push_option",
+		ClientMessage: detail,
+		Cause:         errMalformedHook,
+	}
 }
 
 func (hook *Hook) lookup(key string) (string, bool) {

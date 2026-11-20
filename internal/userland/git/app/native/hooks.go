@@ -256,6 +256,7 @@ func InitBareRepository(ctx context.Context, config BareRepositoryConfig) error 
 		{"init", "--bare", "--quiet", path},
 		{"-C", path, "symbolic-ref", "HEAD", "refs/heads/main"},
 		{"-C", path, "config", "receive.advertiseAtomic", "true"},
+		{"-C", path, "config", "receive.advertisePushOptions", "true"},
 		{"-C", path, "config", "http.receivepack", "true"},
 	}
 	for _, args := range commands {

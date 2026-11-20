@@ -59,6 +59,9 @@ const (
 	DefaultMaxRequestBytes = 64 << 10
 	// DefaultMaxLines bounds one pre/post-receive batch.
 	DefaultMaxLines = 256
+	// DefaultMaxPushOptions bounds the number of Git push options forwarded on
+	// one hook callback.
+	DefaultMaxPushOptions = 64
 	// DefaultMaxLineBytes bounds one stdin line.
 	DefaultMaxLineBytes = 4096
 	// DefaultMaxMessageBytes bounds the returned client diagnostic.
@@ -105,6 +108,9 @@ type Request struct {
 	// directories so the in-process ancestry check can see the pushed objects.
 	// It is not a credential.
 	ObjectEnvironment []string `json:"object_environment,omitempty"`
+	// PushOptions carries the Git push options (GIT_PUSH_OPTION_0..N-1)
+	// supplied by the client on pre-receive. They are non-secret push metadata.
+	PushOptions []string `json:"push_options,omitempty"`
 }
 
 // Response is one hook callback decision. ExitCode is 0 to accept and 1 to
@@ -160,6 +166,14 @@ func (request Request) Validate() error {
 		key, value, ok := strings.Cut(entry, "=")
 		if !ok || !hookObjectEnvironmentKeys[key] || value == "" || len(value) > DefaultMaxLineBytes {
 			return fmt.Errorf("%w: object environment entry is not allowed", ErrMalformedRequest)
+		}
+	}
+	if len(request.PushOptions) > DefaultMaxPushOptions {
+		return fmt.Errorf("%w: push options count is out of bounds", ErrMalformedRequest)
+	}
+	for _, option := range request.PushOptions {
+		if len(option) == 0 || len(option) > DefaultMaxLineBytes || strings.ContainsAny(option, "\x00\r\n") {
+			return fmt.Errorf("%w: push option is empty, over-bound or contains control characters", ErrMalformedRequest)
 		}
 	}
 	return nil

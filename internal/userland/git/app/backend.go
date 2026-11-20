@@ -141,6 +141,9 @@ func (backend *HTTPBackend) Serve(ctx context.Context, request git.GitBackendReq
 
 	environment := append([]string(nil), backend.env...)
 	environment = append(environment, request.Environment...)
+	if request.Service == "git-receive-pack" {
+		environment = appendGitConfigEnv(environment, "receive.advertisePushOptions", "true")
+	}
 	environment = append(environment,
 		"GIT_PROJECT_ROOT="+filepath.Dir(request.Path),
 		"PATH_INFO="+pathInfo,
@@ -449,6 +452,35 @@ func writeCGIResponse(response git.GitResponseWriter, data []byte) error {
 		}
 	}
 	return nil
+}
+
+// appendGitConfigEnv appends one Git runtime configuration key/value pair to an
+// environment slice using Git's GIT_CONFIG_COUNT / GIT_CONFIG_KEY_<i> /
+// GIT_CONFIG_VALUE_<i> mechanism, preserving any existing GIT_CONFIG_* entries.
+func appendGitConfigEnv(environment []string, key, value string) []string {
+	count := 0
+	countIdx := -1
+	for idx, entry := range environment {
+		name, raw, ok := strings.Cut(entry, "=")
+		if !ok || name != "GIT_CONFIG_COUNT" {
+			continue
+		}
+		parsed, err := strconv.Atoi(raw)
+		if err == nil && parsed >= 0 {
+			count = parsed
+			countIdx = idx
+		}
+	}
+	next := count + 1
+	if countIdx >= 0 {
+		environment[countIdx] = "GIT_CONFIG_COUNT=" + strconv.Itoa(next)
+	} else {
+		environment = append(environment, "GIT_CONFIG_COUNT="+strconv.Itoa(next))
+	}
+	return append(environment,
+		"GIT_CONFIG_KEY_"+strconv.Itoa(count)+"="+key,
+		"GIT_CONFIG_VALUE_"+strconv.Itoa(count)+"="+value,
+	)
 }
 
 // splitCGIResponse splits a CGI response into its header block and body. A nil

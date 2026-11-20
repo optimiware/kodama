@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -172,7 +173,19 @@ func (handler *HookHandler) Handle(ctx context.Context, request Request) Respons
 			return request.ResourceID, true
 		case git.EnvSourceEvent:
 			return request.SourceEvent, true
+		case git.EnvPushOptionCount:
+			if len(request.PushOptions) == 0 {
+				return "", false
+			}
+			return strconv.Itoa(len(request.PushOptions)), true
 		default:
+			if len(request.PushOptions) > 0 && strings.HasPrefix(key, git.EnvPushOptionPrefix) {
+				rawIdx := strings.TrimPrefix(key, git.EnvPushOptionPrefix)
+				idx, err := strconv.Atoi(rawIdx)
+				if err == nil && idx >= 0 && idx < len(request.PushOptions) && strconv.Itoa(idx) == rawIdx {
+					return request.PushOptions[idx], true
+				}
+			}
 			return "", false
 		}
 	}

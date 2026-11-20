@@ -6,11 +6,14 @@ import (
 )
 
 // ParseConfig parses one tenant `admin/conf/git.conf`. The format is ordered
-// rules per repository plus `option resource = <resource-id>` and
-// `option approve.<ref> = <role>` lines. Comments and blank lines are
+// rules per repository plus `option resource = <resource-id>`,
+// `option approve.<ref> = <role>` and optional
+// `option approve-rebase.<ref> = disjoint` lines. Comments and blank lines are
 // insignificant. Unknown permissions, principals, malformed lines, glob or
-// unanchored refs and duplicate repositories or duplicate `option resource`
-// declarations refuse.
+// unanchored refs, duplicate repositories, duplicate `option resource` or
+// `option approve-rebase.<ref>` declarations, unknown approve-rebase modes, and
+// dangling `option approve-rebase.<ref>` without a covering
+// `option approve.<ref>` rule refuse.
 func ParseConfig(data []byte) (Config, error) {
 	config := Config{policies: make(map[string]RepositoryPolicy)}
 	resources := make(map[string]string)
@@ -61,6 +64,14 @@ func ParseConfig(data []byte) (Config, error) {
 			policy := config.policies[current]
 			policy.Rules = append(policy.Rules, rule)
 			config.policies[current] = policy
+		}
+	}
+	for _, name := range config.order {
+		policy := config.policies[name]
+		for _, rebaseRule := range policy.ApproveRebases {
+			if !policy.hasApprovalCovering(rebaseRule.Ref) {
+				return Config{}, fmt.Errorf("line %d: repository %q declares option approve-rebase.%s without a matching option approve rule", rebaseRule.Line, name, rebaseRule.Ref)
+			}
 		}
 	}
 	return config, nil
@@ -146,8 +157,8 @@ func parseRule(lineNumber int, line string) (Rule, error) {
 	return Rule{Line: lineNumber, Permission: permission, Ref: ref, Principals: principals}, nil
 }
 
-// applyOption parses one `resource = <resource-id>` or `approve.<ref> = <role>`
-// option body and updates policy in place.
+// applyOption parses one `resource = <resource-id>`, `approve.<ref> = <role>`
+// or `approve-rebase.<ref> = <mode>` option body and updates policy in place.
 func applyOption(lineNumber int, repository, body string, policy *RepositoryPolicy) error {
 	parts := strings.Split(body, "=")
 	if len(parts) != 2 {
@@ -169,12 +180,51 @@ func applyOption(lineNumber int, repository, body string, policy *RepositoryPoli
 		policy.ResourceID = resourceID
 		return nil
 	}
+	if strings.HasPrefix(left[0], "approve-rebase.") {
+		rebaseRule, err := parseApproveRebase(lineNumber, body)
+		if err != nil {
+			return err
+		}
+		for _, existing := range policy.ApproveRebases {
+			if existing.Ref == rebaseRule.Ref {
+				return fmt.Errorf("line %d: repository %q declares option approve-rebase.%s twice", lineNumber, repository, rebaseRule.Ref)
+			}
+		}
+		policy.ApproveRebases = append(policy.ApproveRebases, rebaseRule)
+		return nil
+	}
 	approval, err := parseApproval(lineNumber, body)
 	if err != nil {
 		return err
 	}
 	policy.Approvals = append(policy.Approvals, approval)
 	return nil
+}
+
+// parseApproveRebase parses one `approve-rebase.<ref> = <mode>` option body.
+func parseApproveRebase(lineNumber int, body string) (ApproveRebaseRule, error) {
+	parts := strings.Split(body, "=")
+	if len(parts) != 2 {
+		return ApproveRebaseRule{}, fmt.Errorf("line %d: approve-rebase option must contain exactly one '='", lineNumber)
+	}
+	left := strings.Fields(parts[0])
+	right := strings.Fields(parts[1])
+	if len(left) != 1 || len(right) != 1 {
+		return ApproveRebaseRule{}, fmt.Errorf("line %d: approve-rebase option needs one ref and one mode", lineNumber)
+	}
+	const prefix = "approve-rebase."
+	if !strings.HasPrefix(left[0], prefix) {
+		return ApproveRebaseRule{}, fmt.Errorf("line %d: approve-rebase option must start with %q", lineNumber, prefix)
+	}
+	ref := strings.TrimPrefix(left[0], prefix)
+	if !validRef(ref) {
+		return ApproveRebaseRule{}, fmt.Errorf("line %d: invalid approve-rebase ref %q", lineNumber, ref)
+	}
+	mode := ApproveRebaseMode(right[0])
+	if !mode.Valid() {
+		return ApproveRebaseRule{}, fmt.Errorf("line %d: unknown approve-rebase mode %q (want %q)", lineNumber, right[0], ApproveRebaseDisjoint)
+	}
+	return ApproveRebaseRule{Line: lineNumber, Ref: ref, Mode: mode}, nil
 }
 
 // parseApproval parses one `approve.<ref> = <role>` option body.
@@ -304,6 +354,29 @@ func (policy RepositoryPolicy) ApprovalFor(ref string) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+// ApproveRebaseFor returns the configured rebase-approval mode for ref, if an
+// `option approve-rebase.<ref>` matches exactly or by a ref prefix ending in
+// "/".
+func (policy RepositoryPolicy) ApproveRebaseFor(ref string) (ApproveRebaseMode, bool) {
+	for _, rule := range policy.ApproveRebases {
+		if ruleMatchesRef(rule.Ref, ref) {
+			return rule.Mode, true
+		}
+	}
+	return "", false
+}
+
+// hasApprovalCovering reports whether some `option approve.<ref>` rule covers
+// every concrete ref matched by rebaseRef (exact or prefix).
+func (policy RepositoryPolicy) hasApprovalCovering(rebaseRef string) bool {
+	for _, approval := range policy.Approvals {
+		if ruleMatchesRef(approval.Ref, rebaseRef) {
+			return true
+		}
+	}
+	return false
 }
 
 // ruleMatchesRef reports whether a rule ref covers the attempt ref. An empty

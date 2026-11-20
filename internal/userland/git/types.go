@@ -261,14 +261,40 @@ type ApprovalRule struct {
 	Role string `json:"role"`
 }
 
+// ApproveRebaseMode is one opt-in rebase-approval mode for an approval-guarded
+// ref.
+type ApproveRebaseMode string
+
+const (
+	// ApproveRebaseDisjoint allows an execution holding a passed approval for
+	// `(approved_base, approved_candidate)` to fast-forward a guarded ref after
+	// a linear rebase onto a moved target ref when the rebased commits carry
+	// identical patches and touch only paths disjoint from changes on the
+	// target ref since `approved_base`.
+	ApproveRebaseDisjoint ApproveRebaseMode = "disjoint"
+)
+
+// Valid reports whether mode is a declared approve-rebase mode.
+func (mode ApproveRebaseMode) Valid() bool {
+	return mode == ApproveRebaseDisjoint
+}
+
+// ApproveRebaseRule is one `option approve-rebase.<ref> = <mode>` setting.
+type ApproveRebaseRule struct {
+	Line int               `json:"line"`
+	Ref  string            `json:"ref"`
+	Mode ApproveRebaseMode `json:"mode"`
+}
+
 // RepositoryPolicy is one repository's ordered rules, optional resource
 // binding and approval options.
 type RepositoryPolicy struct {
-	Line       int            `json:"line,omitempty"`
-	Name       string         `json:"name"`
-	ResourceID string         `json:"resource_id,omitempty"`
-	Rules      []Rule         `json:"rules"`
-	Approvals  []ApprovalRule `json:"approvals,omitempty"`
+	Line           int                 `json:"line,omitempty"`
+	Name           string              `json:"name"`
+	ResourceID     string              `json:"resource_id,omitempty"`
+	Rules          []Rule              `json:"rules"`
+	Approvals      []ApprovalRule      `json:"approvals,omitempty"`
+	ApproveRebases []ApproveRebaseRule `json:"approve_rebases,omitempty"`
 }
 
 // Config is one parsed tenant git.conf.
@@ -298,5 +324,6 @@ func clonePolicy(policy RepositoryPolicy) RepositoryPolicy {
 		policy.Rules[index].Principals = append([]PrincipalRef(nil), policy.Rules[index].Principals...)
 	}
 	policy.Approvals = append([]ApprovalRule(nil), policy.Approvals...)
+	policy.ApproveRebases = append([]ApproveRebaseRule(nil), policy.ApproveRebases...)
 	return policy
 }
