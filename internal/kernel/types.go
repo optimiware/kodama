@@ -324,6 +324,9 @@ func (o Observation) MarshalJSON() ([]byte, error) {
 		if o.ExitCode == nil || o.Stop == nil || !o.Stop.State.Valid() {
 			return nil, fmt.Errorf("kernel: exited observation requires exit status and valid stop evidence")
 		}
+		if !o.OOMKilled && o.MemoryLimit != "" {
+			return nil, fmt.Errorf("kernel: exited observation cannot set memory limit without OOMKilled")
+		}
 		return json.Marshal(struct {
 			Kind        ObservationKind `json:"kind"`
 			ExitCode    int             `json:"exit_code"`

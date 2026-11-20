@@ -702,8 +702,8 @@ func TestOCIBuildExampleIsUnprivilegedAndPublishesDigest(t *testing.T) {
 		t.Fatalf("%s build action must declare a registry credential secret by name", rel)
 	}
 	commands := strings.Join(build.Container.Commands, "\n")
-	if !strings.Contains(commands, "/kaniko/executor") || !strings.Contains(commands, "--digest-file=") {
-		t.Fatalf("%s build action must invoke /kaniko/executor with --digest-file=", rel)
+	if !strings.Contains(commands, "/kaniko/executor") || !strings.Contains(commands, "--image-name-with-digest-file=") {
+		t.Fatalf("%s build action must invoke /kaniko/executor with --image-name-with-digest-file=", rel)
 	}
 	for _, privileged := range []string{"/var/run/docker.sock", "podman.sock", "/dev/fuse"} {
 		if strings.Contains(commands, privileged) {

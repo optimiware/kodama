@@ -1005,4 +1005,52 @@ func TestPrepareAppliesBoundedResourcesAndEnforcesPolicyMaximum(t *testing.T) {
 			t.Fatalf("Prepare oversized cpu = %v; want invalid_input", err)
 		}
 	})
+
+	t.Run("New refuses unparseable default limits when Policy maximum is set", func(t *testing.T) {
+		cases := []struct {
+			name   string
+			mutate func(*Policy)
+		}{
+			{
+				name: "invalid default CPU limit with MaxCPULimit",
+				mutate: func(p *Policy) {
+					p.CPULimit = "not-a-cpu"
+					p.MaxCPULimit = "4"
+				},
+			},
+			{
+				name: "invalid default memory limit with MaxMemoryLimit",
+				mutate: func(p *Policy) {
+					p.MemoryLimit = "not-a-memory"
+					p.MaxMemoryLimit = "4Gi"
+				},
+			},
+			{
+				name: "default CPU limit exceeds MaxCPULimit",
+				mutate: func(p *Policy) {
+					p.CPULimit = "8"
+					p.MaxCPULimit = "4"
+				},
+			},
+			{
+				name: "default memory limit exceeds MaxMemoryLimit",
+				mutate: func(p *Policy) {
+					p.MemoryLimit = "8Gi"
+					p.MaxMemoryLimit = "4Gi"
+				},
+			},
+		}
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				fake, clock, _ := testSetup(t)
+				cfg := testConfig(fake, clock)
+				tc.mutate(&cfg.Policy)
+				if _, err := New(cfg); err == nil {
+					t.Fatalf("New(%s) = nil; want invalid_input", tc.name)
+				} else if class, ok := fault.ClassOf(err); !ok || class != fault.InvalidInput {
+					t.Fatalf("New(%s) = %v; want invalid_input", tc.name, err)
+				}
+			})
+		}
+	})
 }

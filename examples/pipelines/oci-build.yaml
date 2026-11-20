@@ -1,10 +1,14 @@
 # Unprivileged OCI container image build with Kaniko.
 #
 # Kodema workloads run unprivileged with no Docker socket, no Podman socket, and
-# no /dev/fuse. This example builds a Containerfile in userspace with Kaniko
-# (for example a digest-pinned mirror of gcr.io/kaniko-project/executor:debug),
-# authenticates to the external registry through a declared secret, and
-# publishes the immutable digest-pinned image reference as the `image` output.
+# no /dev/fuse, and always launch container actions with /bin/sh. Upstream
+# gcr.io/kaniko-project/executor:debug only ships /busybox/sh (not /bin/sh), so
+# `kaniko-executor` below is a digest-pinned wrapper image that exposes /bin/sh
+# alongside /kaniko/executor (see docs/runbooks/unprivileged-oci-builds.md).
+#
+# This example builds a Containerfile in userspace with Kaniko, authenticates to
+# the external registry through a declared secret, and publishes the tagless
+# digest-pinned image reference (`<repo>@sha256:<digest>`) as the `image` output.
 inputs:
   - repository
   - ref
@@ -35,5 +39,5 @@ actions:
       - mkdir -p /kaniko/.docker
       - cp /kodema/secrets/REGISTRY_AUTH_CONFIG /kaniko/.docker/config.json
       - destination="$(cat /kodema/inputs/destination)"
-      - /kaniko/executor --context=dir:///workspace/src --dockerfile=/workspace/src/Containerfile --destination="$destination" --digest-file=/workspace/image.digest --snapshot-mode=redo --use-new-run
-      - printf '%s@%s\n' "$destination" "$(cat /workspace/image.digest)" > /kodema/outputs/build-image/image
+      - /kaniko/executor --context=dir:///workspace/src --dockerfile=/workspace/src/Containerfile --destination="$destination" --image-name-with-digest-file=/workspace/image.ref --snapshot-mode=redo --use-new-run
+      - cat /workspace/image.ref > /kodema/outputs/build-image/image

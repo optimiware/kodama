@@ -681,18 +681,11 @@ func Up(ctx context.Context, cfg UpConfig, stdout io.Writer) (_ StackDescriptor,
 		"KODEMA_DISCOVERY_REVOCATION_ENDPOINT=" + disc.RevocationEndpoint,
 		"KODEMA_DISCOVERY_SCOPES=" + strings.Join(disc.Scopes, ","),
 		"KODEMA_DISCOVERY_API_URL=" + disc.APIURL,
-		"KODEMA_WORKLOAD_MEMORY_LIMIT=" + defaultIfEmpty(cfg.WorkloadMemory, DefaultWorkloadMemory),
-		"KODEMA_WORKLOAD_CPU_LIMIT=" + defaultIfEmpty(cfg.WorkloadCPUs, DefaultWorkloadCPUs),
-	}
-	if maxMemory := strings.TrimSpace(cfg.WorkloadMaxMemory); maxMemory != "" {
-		serverEnv = append(serverEnv, "KODEMA_WORKLOAD_MAX_MEMORY_LIMIT="+maxMemory)
-	}
-	if maxCPUs := strings.TrimSpace(cfg.WorkloadMaxCPUs); maxCPUs != "" {
-		serverEnv = append(serverEnv, "KODEMA_WORKLOAD_MAX_CPU_LIMIT="+maxCPUs)
 	}
 	if secretRulesPath != "" {
 		serverEnv = append(serverEnv, "KODEMA_SECRET_RULES_FILE="+secretRulesPath)
 	}
+	serverEnv = append(serverEnv, workloadResourceEnv(cfg)...)
 
 	fmt.Fprintf(stderr, "starting kodema server (%s)...\n", serverContainer)
 	gitDir := filepath.Join(stateDir, "git")
@@ -1084,6 +1077,32 @@ func ensureSecretHex(path string, numBytes int) (string, error) {
 		return "", err
 	}
 	return val, nil
+}
+
+// workloadResourceEnv builds the KODEMA_WORKLOAD_* environment entries for the
+// server container. When a default limit is omitted and no maximum is set, it
+// supplies the practical local default (2Gi / 2). When only a maximum is set,
+// it omits the default limit so the Podman adapter's normalizeResourcePolicy
+// clamps the default cleanly down to the maximum instead of failing default > max.
+func workloadResourceEnv(cfg UpConfig) []string {
+	var env []string
+	if memory := strings.TrimSpace(cfg.WorkloadMemory); memory != "" {
+		env = append(env, "KODEMA_WORKLOAD_MEMORY_LIMIT="+memory)
+	} else if strings.TrimSpace(cfg.WorkloadMaxMemory) == "" {
+		env = append(env, "KODEMA_WORKLOAD_MEMORY_LIMIT="+DefaultWorkloadMemory)
+	}
+	if cpus := strings.TrimSpace(cfg.WorkloadCPUs); cpus != "" {
+		env = append(env, "KODEMA_WORKLOAD_CPU_LIMIT="+cpus)
+	} else if strings.TrimSpace(cfg.WorkloadMaxCPUs) == "" {
+		env = append(env, "KODEMA_WORKLOAD_CPU_LIMIT="+DefaultWorkloadCPUs)
+	}
+	if maxMemory := strings.TrimSpace(cfg.WorkloadMaxMemory); maxMemory != "" {
+		env = append(env, "KODEMA_WORKLOAD_MAX_MEMORY_LIMIT="+maxMemory)
+	}
+	if maxCPUs := strings.TrimSpace(cfg.WorkloadMaxCPUs); maxCPUs != "" {
+		env = append(env, "KODEMA_WORKLOAD_MAX_CPU_LIMIT="+maxCPUs)
+	}
+	return env
 }
 
 func waitPostgresReady(ctx context.Context, engine *EngineClient, containerName string) error {

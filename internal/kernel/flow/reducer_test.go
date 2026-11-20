@@ -1955,7 +1955,6 @@ func TestReducerDoesNotAliasInputStorage(t *testing.T) {
 	}
 }
 
-<<<<<<< HEAD
 func TestAnswerNotePersistsAndPopulatesFailureDetail(t *testing.T) {
 	at := baseTime
 
@@ -2183,6 +2182,11 @@ func TestObserveOOMKilledSurfacesDiagnosticAndMemoryLimit(t *testing.T) {
 			if err := json.Unmarshal([]byte(invalid), &bad); err == nil {
 				t.Fatalf("unmarshal accepted inconsistent observation %s", invalid)
 			}
+		}
+		inconsistent := kernel.ExitedObservation(1, kernel.ConfirmedStop("exit 1"))
+		inconsistent.MemoryLimit = "2 GiB"
+		if _, err := json.Marshal(inconsistent); err == nil {
+			t.Fatal("marshal accepted exited observation with MemoryLimit and OOMKilled=false")
 		}
 	})
 }

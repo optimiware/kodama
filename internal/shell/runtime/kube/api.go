@@ -457,7 +457,11 @@ func New(config Config) (*Adapter, error) {
 		if err != nil {
 			return nil, fault.Wrap(fault.InvalidInput, "kubernetes adapter maximum CPU limit is invalid", err)
 		}
-		if defParsed, err := definition.ParseCPUQuantity(strings.TrimSpace(config.Policy.CPULimit)); err == nil && defParsed > maxParsed {
+		defParsed, err := definition.ParseCPUQuantity(strings.TrimSpace(config.Policy.CPULimit))
+		if err != nil {
+			return nil, fault.Wrap(fault.InvalidInput, "kubernetes adapter default CPU limit is invalid", err)
+		}
+		if defParsed > maxParsed {
 			return nil, fault.New(fault.InvalidInput, "kubernetes adapter default CPU limit exceeds maximum CPU limit")
 		}
 	}
@@ -466,7 +470,11 @@ func New(config Config) (*Adapter, error) {
 		if err != nil {
 			return nil, fault.Wrap(fault.InvalidInput, "kubernetes adapter maximum memory limit is invalid", err)
 		}
-		if defParsed, err := definition.ParseMemoryQuantity(strings.TrimSpace(config.Policy.MemoryLimit)); err == nil && defParsed > maxParsed {
+		defParsed, err := definition.ParseMemoryQuantity(strings.TrimSpace(config.Policy.MemoryLimit))
+		if err != nil {
+			return nil, fault.Wrap(fault.InvalidInput, "kubernetes adapter default memory limit is invalid", err)
+		}
+		if defParsed > maxParsed {
 			return nil, fault.New(fault.InvalidInput, "kubernetes adapter default memory limit exceeds maximum memory limit")
 		}
 	}

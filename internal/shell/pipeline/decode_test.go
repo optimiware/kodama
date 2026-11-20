@@ -629,7 +629,7 @@ actions:
 }
 
 func TestDecodeContainerResources(t *testing.T) {
-	t.Run("accepts string and numeric cpu quantities", func(t *testing.T) {
+	t.Run("accepts string and numeric memory and cpu quantities", func(t *testing.T) {
 		document := []byte(`actions:
   - name: build
     image: registry.example.com/build:latest
@@ -641,6 +641,7 @@ func TestDecodeContainerResources(t *testing.T) {
   - name: lint
     image: registry.example.com/build:latest
     resources:
+      memory: 268435456
       cpu: 1.5
     commands:
       - make lint
@@ -652,8 +653,8 @@ func TestDecodeContainerResources(t *testing.T) {
 		if got := decoded.Actions[0].Container.Resources; got == nil || got.Memory != "2Gi" || got.CPU != "2" {
 			t.Fatalf("build resources = %+v; want 2Gi/2", got)
 		}
-		if got := decoded.Actions[1].Container.Resources; got == nil || got.Memory != "" || got.CPU != "1.5" {
-			t.Fatalf("lint resources = %+v; want empty memory and 1.5 cpu", got)
+		if got := decoded.Actions[1].Container.Resources; got == nil || got.Memory != "268435456" || got.CPU != "1.5" {
+			t.Fatalf("lint resources = %+v; want 268435456/1.5", got)
 		}
 	})
 
@@ -663,6 +664,29 @@ func TestDecodeContainerResources(t *testing.T) {
   - name: build
     image: registry.example.com/build:latest
     resources: {}
+    commands: [echo ok]
+`,
+			"explicit empty memory with valid cpu": `actions:
+  - name: build
+    image: registry.example.com/build:latest
+    resources:
+      memory: ""
+      cpu: "2"
+    commands: [echo ok]
+`,
+			"explicit empty cpu with valid memory": `actions:
+  - name: build
+    image: registry.example.com/build:latest
+    resources:
+      memory: 2Gi
+      cpu: ""
+    commands: [echo ok]
+`,
+			"float memory scalar": `actions:
+  - name: build
+    image: registry.example.com/build:latest
+    resources:
+      memory: 268435456.5
     commands: [echo ok]
 `,
 			"unknown resource field": `actions:

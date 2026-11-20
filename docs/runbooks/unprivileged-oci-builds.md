@@ -10,30 +10,64 @@ a Node, Hono, Next.js, or Go service), use a userspace OCI builder inside an
 ordinary pinned container action and publish the resulting digest-pinned
 reference as an action output.
 
+## Workload image prerequisite: `/bin/sh`
+
+Kodema always launches container workload actions through `/bin/sh` (overriding
+the container entrypoint to run `/bin/sh` on the action's rendered script).
+Because of that requirement:
+
+- **Distroless** upstream images (such as `ghcr.io/ko-build/ko` and
+  `gcr.io/go-containerregistry/crane`) have no `/bin/sh` or POSIX coreutils and
+  cannot be used directly as a Kodema action image.
+- Images whose shell lives only at a non-standard path (such as upstream
+  `gcr.io/kaniko-project/executor:debug`, which ships `/busybox/sh` and not
+  `/bin/sh`) also fail to start unless wrapped so `/bin/sh` exists.
+
+For any distroless or busybox-only builder, publish and digest-pin a thin
+wrapper image in your registry that provides `/bin/sh` (and any required build
+tools such as `go`).
+
 ## Recommended unprivileged OCI builders
 
-| Builder | Best for | Requires daemon or `/dev/fuse`? |
-|---|---|---|
-| **Kaniko (`executor:debug`)** | Standard `Containerfile` / `Dockerfile` builds for Node, Next.js, Python, Rust, or multi-stage images | No |
-| **`ko`** | Fast, zero-`Dockerfile` OCI builds for Go binaries | No |
-| **Rootless `buildah` (`vfs`)** | Full `Containerfile` compatibility when Kaniko is not an option | No (with `--storage-driver=vfs`) |
-| **`crane`** | Inspecting, copying, re-tagging, or assembling OCI tarballs/layouts | No |
+| Builder | Best for | Requires daemon or `/dev/fuse`? | Kodema image note |
+|---|---|---|---|
+| **Kaniko (with `/bin/sh` wrapper)** | Standard `Containerfile` / `Dockerfile` builds for Node, Next.js, Python, Rust, or multi-stage images | No | Wrap `gcr.io/kaniko-project/executor:debug` to expose `/bin/sh` |
+| **`ko` (in a Go + shell image)** | Fast, zero-`Dockerfile` OCI builds for Go binaries | No | Install `ko` into a `golang:<ver>-alpine` builder image |
+| **Rootless `buildah` (`vfs`)** | Full `Containerfile` compatibility when Kaniko is not an option | No (with `--storage-driver=vfs`) | Standard `buildah` images include `/bin/sh` |
+| **`crane` (with `/bin/sh` wrapper)** | Inspecting, copying, re-tagging, or assembling OCI tarballs/layouts | No | Wrap `gcr.io/go-containerregistry/crane` so `/bin/sh` is present |
 
 ### 1. Kaniko (general `Containerfile` / `Dockerfile` builds)
 
 See the verified example pipeline at
 [`examples/pipelines/oci-build.yaml`](../../examples/pipelines/oci-build.yaml).
 
+Upstream `gcr.io/kaniko-project/executor:debug` ships `/busybox/sh` (with
+busybox utilities in `/busybox`), not `/bin/sh`. Build and mirror a thin
+wrapper image that provides `/bin/sh`, then reference it by digest:
+
+```dockerfile
+# Option A: symlink /busybox/sh to /bin/sh on top of Kaniko's debug image.
+FROM gcr.io/kaniko-project/executor:debug@sha256:<pinned-upstream-digest>
+SHELL ["/busybox/sh", "-c"]
+RUN /busybox/mkdir -p /bin && /busybox/ln -sf /busybox/sh /bin/sh
+```
+
+Alternatively (Option B), copy `/kaniko/executor` and `/kaniko/ssl/certs` from
+the pinned Kaniko image onto a minimal shell base image such as `alpine` that
+already ships `/bin/sh` and POSIX utilities.
+
 Key points:
 
-- Use a digest-pinned Kaniko `debug` image (which ships `/busybox/sh` alongside
-  `/kaniko/executor`, so Kodema's shell entrypoint can run).
+- Reference your digest-pinned Kaniko wrapper image (which provides `/bin/sh`
+  alongside `/kaniko/executor`) in the action's `image` field.
 - Mount your Docker/OCI registry configuration as a declared project secret
   (e.g. `REGISTRY_AUTH_CONFIG`) and copy `/kodema/secrets/REGISTRY_AUTH_CONFIG`
   to `/kaniko/.docker/config.json` before invoking `/kaniko/executor`. Never
   inline registry credentials in YAML or print them to logs.
-- Pass `--digest-file=/workspace/image.digest` and write
-  `<destination>@<digest>` to `/kodema/outputs/<action>/image` so downstream
+- Pass `--image-name-with-digest-file=/workspace/image.ref` and copy
+  `/workspace/image.ref` to `/kodema/outputs/<action>/image` so Kaniko writes
+  the canonical tagless `<repo>@sha256:<digest>` reference cleanly (even when
+  `destination` includes a tag) and downstream
   [test](../../examples/pipelines/test.yaml),
   [promote](../../examples/pipelines/promote.yaml), and
   [rollback](../../examples/pipelines/rollback.yaml) pipelines consume the
@@ -42,12 +76,24 @@ Key points:
 ### 2. `ko` (Go services without a `Dockerfile`)
 
 For Go services, `ko` compiles Go packages directly into distroless OCI images
-and pushes them to an external registry in pure userspace:
+and pushes them to an external registry in pure userspace.
+
+Upstream `ghcr.io/ko-build/ko` is distroless — it does not include `/bin/sh`,
+POSIX coreutils, or the `go` toolchain needed to compile Go code. Build and
+digest-pin a `golang:<ver>-alpine`-derived builder image with `ko` installed:
+
+```dockerfile
+FROM ghcr.io/ko-build/ko@sha256:<pinned-ko-digest> AS ko
+FROM docker.io/library/golang:1.24-alpine@sha256:<pinned-golang-digest>
+COPY --from=ko /ko-app/ko /usr/local/bin/ko
+```
+
+Then run `ko build` inside a Kodema container action:
 
 ```yaml
 actions:
   - name: build-go-image
-    image: ghcr.io/ko-build/ko@sha256:<pinned-digest>
+    image: registry.example.com/kodema/ko-builder@sha256:<pinned-digest>
     timeout: 10m
     resources:
       memory: 2Gi
@@ -80,9 +126,14 @@ disk space and is slower than Kaniko or `ko`.
 ### 4. `crane` (OCI layout assembly and registry operations)
 
 For static assets, pre-built binaries, or moving digests between registries,
-`crane` (`gcr.io/go-containerregistry/crane`) operates directly over the OCI
-HTTP registry API with zero host privileges (`crane append`, `crane copy`,
-`crane digest`).
+`crane` operates directly over the OCI HTTP registry API with zero host
+privileges (`crane append`, `crane copy`, `crane digest`).
+
+Upstream `gcr.io/go-containerregistry/crane` is distroless (and
+`gcr.io/go-containerregistry/crane:debug` ships only `/busybox/sh`), so like
+Kaniko and `ko` it requires a thin `/bin/sh` wrapper image for Kodema actions
+(for example copying `/ko-app/crane` onto `alpine`, or symlinking `/busybox/sh`
+to `/bin/sh` on top of `crane:debug`).
 
 ## Workload memory and CPU limits
 

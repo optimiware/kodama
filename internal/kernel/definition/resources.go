@@ -57,7 +57,7 @@ func ValidateResources(resources *Resources) error {
 // Supported forms:
 //   - bare positive integer bytes (e.g. "268435456")
 //   - binary IEC units Ki, Mi, Gi, Ti (e.g. "512Mi", "2Gi", "1.5Gi")
-//   - decimal SI units k, K, M, G, T (e.g. "512M", "2G")
+//   - decimal SI units k, M, G, T (e.g. "512M", "2G")
 func ParseMemoryQuantity(raw string) (int64, error) {
 	if raw == "" || strings.TrimSpace(raw) != raw {
 		return 0, fault.New(fault.InvalidInput, fmt.Sprintf("memory quantity %q must not be empty or have surrounding whitespace", raw))
@@ -189,7 +189,7 @@ func memoryMultiplier(suffix string) (int64, bool) {
 		return 1 << 30, true
 	case "Ti":
 		return 1 << 40, true
-	case "k", "K":
+	case "k":
 		return 1_000, true
 	case "M":
 		return 1_000_000, true

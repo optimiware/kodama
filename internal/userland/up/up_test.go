@@ -1260,6 +1260,39 @@ func TestUpSecretRulesConfiguration(t *testing.T) {
 	})
 }
 
+func TestWorkloadResourceEnv(t *testing.T) {
+	if got := workloadResourceEnv(UpConfig{}); !slices.Equal(got, []string{
+		"KODEMA_WORKLOAD_MEMORY_LIMIT=" + DefaultWorkloadMemory,
+		"KODEMA_WORKLOAD_CPU_LIMIT=" + DefaultWorkloadCPUs,
+	}) {
+		t.Fatalf("default env = %v", got)
+	}
+	// Setting only max limits below defaults omits the default limit vars so the
+	// runtime's normalizeResourcePolicy clamps the default down cleanly.
+	if got := workloadResourceEnv(UpConfig{
+		WorkloadMaxMemory: "1Gi",
+		WorkloadMaxCPUs:   "1",
+	}); !slices.Equal(got, []string{
+		"KODEMA_WORKLOAD_MAX_MEMORY_LIMIT=1Gi",
+		"KODEMA_WORKLOAD_MAX_CPU_LIMIT=1",
+	}) {
+		t.Fatalf("max-only env = %v", got)
+	}
+	if got := workloadResourceEnv(UpConfig{
+		WorkloadMemory:    "4Gi",
+		WorkloadCPUs:      "3",
+		WorkloadMaxMemory: "8Gi",
+		WorkloadMaxCPUs:   "6",
+	}); !slices.Equal(got, []string{
+		"KODEMA_WORKLOAD_MEMORY_LIMIT=4Gi",
+		"KODEMA_WORKLOAD_CPU_LIMIT=3",
+		"KODEMA_WORKLOAD_MAX_MEMORY_LIMIT=8Gi",
+		"KODEMA_WORKLOAD_MAX_CPU_LIMIT=6",
+	}) {
+		t.Fatalf("explicit env = %v", got)
+	}
+}
+
 // TestProvisionCreatesWhatIsMissingAndRenewsTheGitCredential drives provision
 // against a public API that already holds the project (a repeated `kodema up`)
 // and has no Git credential yet.

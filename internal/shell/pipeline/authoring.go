@@ -679,15 +679,21 @@ func parseResources(node *yaml.Node, label string) (*definition.Resources, error
 	for _, entry := range entries {
 		switch entry.key {
 		case "memory":
-			value, err := scalarValue(entry.value, label+" resources.memory")
+			value, err := resourceMemoryValue(entry.value, label+" resources.memory")
 			if err != nil {
 				return nil, err
+			}
+			if value == "" {
+				return nil, invalidInputf("%s resources.memory must not be empty", label)
 			}
 			resources.Memory = value
 		case "cpu":
 			value, err := resourceCPUValue(entry.value, label+" resources.cpu")
 			if err != nil {
 				return nil, err
+			}
+			if value == "" {
+				return nil, invalidInputf("%s resources.cpu must not be empty", label)
 			}
 			resources.CPU = value
 		default:
@@ -698,6 +704,21 @@ func parseResources(node *yaml.Node, label string) (*definition.Resources, error
 		return nil, err
 	}
 	return resources, nil
+}
+
+// resourceMemoryValue accepts a YAML string or integer scalar for memory (for
+// example "2Gi", "512Mi", or 268435456) and rejects floats, booleans, nulls and
+// composite nodes.
+func resourceMemoryValue(node *yaml.Node, label string) (string, error) {
+	if node == nil || node.Kind != yaml.ScalarNode {
+		return "", invalidInputf("%s must be a scalar value", label)
+	}
+	switch node.Tag {
+	case "!!str", "!!int":
+		return node.Value, nil
+	default:
+		return "", invalidInputf("%s must be a string or integer memory quantity", label)
+	}
 }
 
 // resourceCPUValue accepts a YAML string, integer or floating-point scalar for
