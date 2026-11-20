@@ -564,7 +564,9 @@ func (handler *llmProxyHandler) recordUsage(
 	if err != nil {
 		return
 	}
-	_, _ = handler.store.Execute(context.WithoutCancel(ctx), scope, unit)
+	usageCtx, cancelUsage := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancelUsage()
+	_, _ = handler.store.Execute(usageCtx, scope, unit)
 }
 
 func (handler *llmProxyHandler) authenticateAndAuthorize(

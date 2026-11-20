@@ -773,7 +773,9 @@ func (options serverOptions) gatewayConfigurations(profile shellapp.Profile) (*s
 			models = &shellapp.ModelsConfig{}
 		}
 		models.Providers = append(models.Providers, extra...)
-		models.SecretRules = append(models.SecretRules, extraRules...)
+		if len(models.SecretRules) > 0 || len(models.Models) > 0 {
+			models.SecretRules = append(models.SecretRules, extraRules...)
+		}
 		if err := models.Validate(profile); err != nil {
 			return nil, nil, fmt.Errorf("LLM provider configuration is invalid: %w", err)
 		}

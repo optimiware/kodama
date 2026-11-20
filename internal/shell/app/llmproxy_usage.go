@@ -227,7 +227,9 @@ func (t *llmProxyUsageTracker) applyCounts(counts *llmUsageCounts) {
 			in += *ptr
 		}
 		if valid {
-			t.inputTokens = in
+			if in > 0 || !t.hasUsage {
+				t.inputTokens = in
+			}
 			t.hasUsage = true
 		}
 	}

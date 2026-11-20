@@ -1220,3 +1220,20 @@ func TestLLMProxyStrictSecretIsolationAndUsageAttributionInInspect(t *testing.T)
 		t.Fatalf("MCP execution_inspect body missing attributed model_usage:\n%s", mcpRec.Body.String())
 	}
 }
+
+func TestLLMProxyUsageTrackerPreservesInputTokensAcrossZeroDelta(t *testing.T) {
+	tracker := newLLMProxyUsageTracker("text/event-stream")
+	tracker.Observe([]byte("event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"model\":\"claude-sonnet-4-6\",\"usage\":{\"input_tokens\":120,\"output_tokens\":1}}}\n\n"))
+	tracker.Observe([]byte("event: message_delta\ndata: {\"type\":\"message_delta\",\"usage\":{\"input_tokens\":0,\"output_tokens\":45}}\n\n"))
+
+	model, usage, known := tracker.Finish()
+	if !known {
+		t.Fatal("expected known usage")
+	}
+	if model != "claude-sonnet-4-6" {
+		t.Fatalf("model = %q; want claude-sonnet-4-6", model)
+	}
+	if usage.PromptTokens != 120 || usage.CompletionTokens != 45 || usage.TotalTokens != 165 {
+		t.Fatalf("usage = %+v; want prompt=120 completion=45 total=165", usage)
+	}
+}

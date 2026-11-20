@@ -377,4 +377,38 @@ func TestServerModelsFileAndLLMProviderFlags(t *testing.T) {
 	if built.Config.Models == nil || len(built.Config.Models.Providers) != 1 || built.Config.Models.Providers[0].Name != "openrouter" {
 		t.Fatalf("production models = %+v", built.Config.Models)
 	}
+
+	// Combining a providers-only --models-file (omitting secret_rules) with
+	// --llm-provider must keep SecretRules empty so llmProxySecretRules derives
+	// gateway rules for BOTH file-declared and CLI-declared providers.
+	providersOnlyPath := writeGatewaySettingsFile(t, "providers-only.json", `{
+  "providers": [
+    {
+      "tenant_id": "tenant-1",
+      "name": "openai",
+      "base_url": "https://api.openai.com",
+      "secret_name": "OPENAI_API_KEY"
+    }
+  ]
+}`)
+	options, code = parseServerOptions([]string{
+		"--profile", "development",
+		"--data-dir", t.TempDir(),
+		"--dev-token", "dev-token",
+		"--models-file", providersOnlyPath,
+		"--llm-provider", "opencode=https://opencode.ai/inference/openai/v1",
+	}, &stderr)
+	if code != 0 {
+		t.Fatalf("parseServerOptions(providers-only + --llm-provider) exited %d: %s", code, stderr.String())
+	}
+	mergedCfg, err := options.config()
+	if err != nil {
+		t.Fatalf("options.config(providers-only + --llm-provider): %v", err)
+	}
+	if mergedCfg.Models == nil || len(mergedCfg.Models.Providers) != 2 {
+		t.Fatalf("mergedCfg.Models = %+v; want 2 providers", mergedCfg.Models)
+	}
+	if len(mergedCfg.Models.SecretRules) != 0 {
+		t.Fatalf("mergedCfg.Models.SecretRules = %+v; want empty so gateway rules derive for all providers", mergedCfg.Models.SecretRules)
+	}
 }
