@@ -61,8 +61,9 @@
 //   - AskUnit carries no asked-by identity or time; the adapter uses the
 //     receipt's principal and commit time for tasks.question_asked_by/at.
 //   - task_messages has an id column but task.Message has no identity;
-//     comment edits, asks and replies map the message row id to their receipt
-//     id.
+//     comment edits, asks and replies derive bounded, version-prefixed message
+//     row ids from their committed content/lifecycle version and receipt id so
+//     equal-timestamp messages stay in causal order in (at, id) scans.
 //   - actions has no created_at, so an inbox request item's At is the action
 //     deadline (zero when unset).
 //   - A new pipeline apply carries no identity; the adapter injects one.

@@ -437,3 +437,107 @@ func TestTaskReplyPreservesLegacyWaitingQuestionWithoutPriorMessage(t *testing.T
 		t.Fatalf("legacy answer message = %+v", got.Messages[1])
 	}
 }
+
+// TestTaskMessagesKeepCausalOrderAtEqualTimestamp proves task.ask followed by
+// task.reply (and consecutive task.comment edits) stay in causal order in both
+// task.read and task.history when commits share the exact same timestamp, even
+// when the later commit carries a lexicographically smaller receipt id.
+func TestTaskMessagesKeepCausalOrderAtEqualTimestamp(t *testing.T) {
+	fixture := newFixture(t)
+	scope := testScope()
+	fixture.seedPipeline(t, scope, testPipeline, "build", []byte("kind: Pipeline\n"), 1)
+	fixture.createTask(t, scope, testTask)
+	fixture.startTask(t, scope, testTask, 1, testExecution)
+
+	// Reversed receipt ids at the identical timestamp testNow:
+	// "rcpt-zzzz..." > "rcpt-0000..." lexicographically.
+	askReceipt := fixture.receipt("task.ask", "ask-same-ts", contentHashA)
+	askReceipt.ID = "rcpt-zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"
+	askReceipt.At = testNow
+	ask := fixture.askUnit(t, scope, testTask, 2, askReceipt)
+	ask.References = []string{"commit=abcdef123456"}
+	if _, err := fixture.task.Ask(context.Background(), ask); err != nil {
+		t.Fatalf("Ask: %v", err)
+	}
+
+	replyReceipt := fixture.receipt("task.reply", "reply-same-ts", contentHashA)
+	replyReceipt.ID = "rcpt-00000000000000000000000000000000"
+	replyReceipt.At = testNow
+	reply := fixture.replyUnit(scope, testTask, "execution-2", 3, 1, 1, replyReceipt)
+	reply.At = testNow
+	if _, err := fixture.task.Reply(context.Background(), reply); err != nil {
+		t.Fatalf("Reply: %v", err)
+	}
+
+	got, err := fixture.task.Get(context.Background(), scope, testTask)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if len(got.Messages) != 2 || got.Messages[0].Body != ask.Question || got.Messages[1].Body != reply.Answer {
+		t.Fatalf("task.Get messages = %+v; want [question, answer] in causal order", got.Messages)
+	}
+
+	page, err := fixture.task.History(context.Background(), scope, testTask, task.HistoryQuery{Limit: 10})
+	if err != nil {
+		t.Fatalf("History: %v", err)
+	}
+	var historyMessages []task.Message
+	for _, entry := range page.Entries {
+		if entry.Kind == task.HistoryMessage && entry.Message != nil {
+			historyMessages = append(historyMessages, *entry.Message)
+		}
+	}
+	if len(historyMessages) != 2 || historyMessages[0].Body != ask.Question || historyMessages[1].Body != reply.Answer {
+		t.Fatalf("task.History messages = %+v; want [question, answer] in causal order", historyMessages)
+	}
+
+	// Consecutive task.comment edits at the same timestamp with reversed
+	// receipt ids also preserve causal content_version order.
+	firstCommentReceipt := fixture.receipt("task.comment", "comment-same-ts-1", contentHashA)
+	firstCommentReceipt.ID = "rcpt-yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy"
+	firstCommentReceipt.At = testNow.Add(time.Second)
+	if _, err := fixture.task.Edit(context.Background(), task.EditUnit{
+		Owner:                  scope,
+		TaskID:                 testTask,
+		Kind:                   task.EditComment,
+		ExpectedContentVersion: 1,
+		Message: &task.Message{
+			Author: testPrincipal,
+			At:     testNow.Add(time.Second),
+			Body:   "first comment",
+		},
+		Receipt: firstCommentReceipt,
+		Audit:   []event.Audit{fixture.audit(scope, "task.comment")},
+	}); err != nil {
+		t.Fatalf("first Edit comment: %v", err)
+	}
+
+	secondCommentReceipt := fixture.receipt("task.comment", "comment-same-ts-2", contentHashB)
+	secondCommentReceipt.ID = "rcpt-11111111111111111111111111111111"
+	secondCommentReceipt.At = testNow.Add(time.Second)
+	if _, err := fixture.task.Edit(context.Background(), task.EditUnit{
+		Owner:                  scope,
+		TaskID:                 testTask,
+		Kind:                   task.EditComment,
+		ExpectedContentVersion: 2,
+		Message: &task.Message{
+			Author: testPrincipal,
+			At:     testNow.Add(time.Second),
+			Body:   "second comment",
+		},
+		Receipt: secondCommentReceipt,
+		Audit:   []event.Audit{fixture.audit(scope, "task.comment")},
+	}); err != nil {
+		t.Fatalf("second Edit comment: %v", err)
+	}
+
+	gotAfterComments, err := fixture.task.Get(context.Background(), scope, testTask)
+	if err != nil {
+		t.Fatalf("Get after comments: %v", err)
+	}
+	if len(gotAfterComments.Messages) != 4 ||
+		gotAfterComments.Messages[2].Body != "first comment" ||
+		gotAfterComments.Messages[3].Body != "second comment" {
+		t.Fatalf("task.Get messages after comments = %+v; want [question, answer, first comment, second comment]", gotAfterComments.Messages)
+	}
+}

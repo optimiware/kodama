@@ -535,8 +535,8 @@ func TestRealTaskLifecycleOnPostgreSQL(t *testing.T) {
 	}
 	taskGolden("waiting", 3, string(started.ExecutionID), true,
 		`["`+string(started.ExecutionID)+`"]`)
-	env.shard.RequireGoldenRow(t, ctx, env.runtime, env.scope, "task_messages", map[string]any{"id": "receipt-4"}, map[string]any{
-		"id": "receipt-4", "task_id": string(created.TaskID), "tenant_id": "tenant-1",
+	env.shard.RequireGoldenRow(t, ctx, env.runtime, env.scope, "task_messages", map[string]any{"id": "msg-l00000000000000000003-52339aa445a5a3fa796a82ab032b4753"}, map[string]any{
+		"id": "msg-l00000000000000000003-52339aa445a5a3fa796a82ab032b4753", "task_id": string(created.TaskID), "tenant_id": "tenant-1",
 		"project_id": "project-1", "author_id": "principal-1", "at": pgtest.FixtureTime,
 		"body": "Which branch?", "refs": pgtest.NullValue,
 	})
@@ -628,8 +628,8 @@ func TestRealTaskLifecycleOnPostgreSQL(t *testing.T) {
 	}
 	taskGolden("open", 4, string(replied.ExecutionID), false,
 		`["`+string(started.ExecutionID)+`","`+string(replied.ExecutionID)+`"]`)
-	env.shard.RequireGoldenRow(t, ctx, env.runtime, env.scope, "task_messages", map[string]any{"id": "receipt-5"}, map[string]any{
-		"id": "receipt-5", "task_id": string(created.TaskID), "tenant_id": "tenant-1",
+	env.shard.RequireGoldenRow(t, ctx, env.runtime, env.scope, "task_messages", map[string]any{"id": "msg-l00000000000000000004-b53c608b5e2f7e17301b1f294e8b3906"}, map[string]any{
+		"id": "msg-l00000000000000000004-b53c608b5e2f7e17301b1f294e8b3906", "task_id": string(created.TaskID), "tenant_id": "tenant-1",
 		"project_id": "project-1", "author_id": "principal-1", "at": pgtest.FixtureTime,
 		"body": "main", "refs": pgtest.NullValue,
 	})
@@ -881,7 +881,7 @@ func TestTaskCreateAndEditsPersistOnPostgreSQL(t *testing.T) {
 		"actor": "principal-1", "operation": "task.comment", "at": pgtest.FixtureTime, "detail": pgtest.NullValue,
 	})
 	shardGolden("task_messages", map[string]any{"task_id": string(created.TaskID)}, map[string]any{
-		"id": "receipt-4", "task_id": string(created.TaskID),
+		"id": "msg-c00000000000000000003-538edf2adc040db97f71b12ba54e46b6", "task_id": string(created.TaskID),
 		"tenant_id": "tenant-1", "project_id": "project-1", "author_id": "principal-1",
 		"at": pgtest.FixtureTime, "body": "Comment body", "refs": `["ref-1"]`,
 	})
