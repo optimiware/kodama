@@ -128,6 +128,23 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer, deps cliD
 	if flags.Arg(0) == "help" && !flagSet(flags, "ca-file") && !flagSet(flags, "config") {
 		return deps.runCLI(ctx, cli.Config{}, flags.Args(), cli.Ports{Out: stdout, Err: stderr}, cli.CommandDeps{})
 	}
+	if isOfflineDocsOrContextCommand(flags.Args()) && !flagSet(flags, "ca-file") && !flagSet(flags, "config") {
+		offlineConfig := cli.Config{Output: cli.OutputFormat(*output)}
+		if offlineConfig.Output == "" && !flagSet(flags, "output") && !envSet("KODEMA_OUTPUT") {
+			if cfgPath := strings.TrimSpace(*configFile); cfgPath != "" {
+				if data, err := os.ReadFile(cfgPath); err == nil {
+					if loaded, parseErr := cli.ParseConfig(data); parseErr == nil {
+						offlineConfig.Output = loaded.Output
+					}
+				}
+			}
+		}
+		return deps.runCLI(ctx, offlineConfig, flags.Args(), cli.Ports{
+			Files: userlandfs.FileSystem{},
+			Out:   stdout,
+			Err:   stderr,
+		}, cli.CommandDeps{HomeDir: deps.homeDir})
+	}
 
 	homeDir := deps.homeDir
 	if homeDir == nil {
@@ -226,7 +243,43 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer, deps cliD
 		ExplicitCredentialFile: flagSet(flags, "credential-file"),
 		ExplicitSessionFile:    flagSet(flags, "session") || flagSet(flags, "session-file"),
 		GitConfig:              runSystemGitConfig,
+		GitRun:                 runSystemGit,
+		Env:                    environment,
 	})
+}
+
+func isOfflineDocsOrContextCommand(args []string) bool {
+	if len(args) == 0 {
+		return false
+	}
+	if args[0] == "docs" {
+		return true
+	}
+	return args[0] == "context" && len(args) >= 2 && (args[1] == "list" || args[1] == "show")
+}
+
+// runSystemGit invokes `git <args...>` without a shell in dir (when non-empty)
+// with GIT_TERMINAL_PROMPT=0 and returns stdout on success (keeping stderr
+// warnings out of stdout while surfacing stderr diagnostics on failure).
+func runSystemGit(ctx context.Context, dir string, args []string) (string, error) {
+	command := exec.CommandContext(ctx, "git", args...)
+	if strings.TrimSpace(dir) != "" {
+		command.Dir = dir
+	}
+	command.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
+	var stdout, stderr bytes.Buffer
+	command.Stdout = &stdout
+	command.Stderr = &stderr
+	if err := command.Run(); err != nil {
+		if msg := strings.TrimSpace(stderr.String()); msg != "" {
+			return "", fmt.Errorf("%s", msg)
+		}
+		if msg := strings.TrimSpace(stdout.String()); msg != "" {
+			return "", fmt.Errorf("%s", msg)
+		}
+		return "", err
+	}
+	return stdout.String(), nil
 }
 
 // runSystemGitConfig invokes `git <args...>` without a shell to apply local or

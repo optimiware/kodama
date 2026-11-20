@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -22,40 +23,96 @@ type DirSource struct {
 // pins an open handle to the directory. An empty root, a missing root, a
 // symlinked component or a non-directory root is refused.
 func NewDirSource(root string) (*DirSource, error) {
+	opened, absolute, err := OpenConfinedRoot(root)
+	if err != nil {
+		return nil, err
+	}
+	return &DirSource{root: opened, path: absolute}, nil
+}
+
+// OpenConfinedRoot resolves root to a clean absolute path, Lstat's every
+// component to refuse symlinks, pins an open *os.Root handle, and verifies
+// inode identity so a directory replaced between check and open is refused.
+func OpenConfinedRoot(root string) (*os.Root, string, error) {
 	if root == "" {
-		return nil, fmt.Errorf("skill root is empty")
+		return nil, "", fmt.Errorf("skill root is empty")
 	}
 	absolute, err := filepath.Abs(root)
 	if err != nil {
-		return nil, fmt.Errorf("resolve skill root %q: %w", root, err)
+		return nil, "", fmt.Errorf("resolve skill root %q: %w", root, err)
 	}
 	absolute = filepath.Clean(absolute)
 	if err := checkNoSymlinkComponents(absolute); err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	info, err := os.Lstat(absolute)
 	if err != nil {
-		return nil, fmt.Errorf("stat skill root %q: %w", absolute, err)
+		return nil, "", fmt.Errorf("stat skill root %q: %w", absolute, err)
 	}
 	if !info.IsDir() {
-		return nil, fmt.Errorf("skill root %q is not a directory", absolute)
+		return nil, "", fmt.Errorf("skill root %q is not a directory", absolute)
 	}
 	opened, err := os.OpenRoot(absolute)
 	if err != nil {
-		return nil, fmt.Errorf("open skill root %q: %w", absolute, err)
+		return nil, "", fmt.Errorf("open skill root %q: %w", absolute, err)
 	}
 	// The handle must still name the directory that was inspected; a path
 	// replaced between the check and the open is refused rather than pinned.
 	openedInfo, err := opened.Stat(".")
 	if err != nil {
 		_ = opened.Close()
-		return nil, fmt.Errorf("stat open skill root %q: %w", absolute, err)
+		return nil, "", fmt.Errorf("stat open skill root %q: %w", absolute, err)
 	}
 	if !os.SameFile(info, openedInfo) {
 		_ = opened.Close()
-		return nil, fmt.Errorf("skill root %q changed while it was opened", absolute)
+		return nil, "", fmt.Errorf("skill root %q changed while it was opened", absolute)
 	}
-	return &DirSource{root: opened, path: absolute}, nil
+	return opened, absolute, nil
+}
+
+// ReadConfinedFile reads one regular file under a pinned *os.Root without
+// following symlinks, verifying inode identity between Lstat and OpenFile and
+// bounding the body to MaxBodyBytes. It returns the file contents and mode.
+func ReadConfinedFile(root *os.Root, relPath string) ([]byte, fs.FileMode, error) {
+	info, err := root.Lstat(relPath)
+	if err != nil {
+		return nil, 0, fmt.Errorf("stat %q: %w", relPath, err)
+	}
+	if !info.Mode().IsRegular() {
+		return nil, 0, fmt.Errorf("%q is not a regular file", relPath)
+	}
+	if info.Size() > MaxBodyBytes {
+		return nil, 0, fmt.Errorf("%q is %d bytes; at most %d are allowed", relPath, info.Size(), MaxBodyBytes)
+	}
+
+	file, err := root.OpenFile(relPath, os.O_RDONLY, 0)
+	if err != nil {
+		return nil, 0, fmt.Errorf("open %q: %w", relPath, err)
+	}
+	defer func() { _ = file.Close() }()
+
+	// The opened inode must be the one just inspected. Root.OpenFile confines
+	// the path, and this identity check refuses a leaf swapped for a symlink
+	// between the stat and the open instead of following it.
+	opened, err := file.Stat()
+	if err != nil {
+		return nil, 0, fmt.Errorf("stat open %q: %w", relPath, err)
+	}
+	if !opened.Mode().IsRegular() {
+		return nil, 0, fmt.Errorf("%q is not a regular file", relPath)
+	}
+	if !os.SameFile(info, opened) {
+		return nil, 0, fmt.Errorf("%q changed while it was opened", relPath)
+	}
+
+	body, err := io.ReadAll(io.LimitReader(file, MaxBodyBytes+1))
+	if err != nil {
+		return nil, 0, fmt.Errorf("read %q: %w", relPath, err)
+	}
+	if len(body) > MaxBodyBytes {
+		return nil, 0, fmt.Errorf("%q is larger than %d bytes", relPath, MaxBodyBytes)
+	}
+	return body, opened.Mode(), nil
 }
 
 // Close releases the pinned root handle. A closed source refuses every read.
@@ -102,46 +159,11 @@ func (source *DirSource) Read(ctx context.Context, name Name) (Skill, error) {
 		return Skill{}, err
 	}
 	fileName := string(parsed) + ".md"
-
-	info, err := source.root.Lstat(fileName)
+	body, _, err := ReadConfinedFile(source.root, fileName)
 	if err != nil {
-		return Skill{}, fmt.Errorf("stat skill %q: %w", parsed, err)
+		return Skill{}, fmt.Errorf("skill %q: %w", parsed, err)
 	}
-	if !info.Mode().IsRegular() {
-		return Skill{}, fmt.Errorf("skill %q is not a regular file", parsed)
-	}
-	if info.Size() > MaxBodyBytes {
-		return Skill{}, fmt.Errorf("skill %q is %d bytes; at most %d are allowed", parsed, info.Size(), MaxBodyBytes)
-	}
-
-	file, err := source.root.OpenFile(fileName, os.O_RDONLY, 0)
-	if err != nil {
-		return Skill{}, fmt.Errorf("open skill %q: %w", parsed, err)
-	}
-	defer func() { _ = file.Close() }()
-
-	// The opened inode must be the one just inspected. Root.OpenFile confines
-	// the path, and this identity check refuses a leaf swapped for a symlink
-	// between the stat and the open instead of following it.
-	opened, err := file.Stat()
-	if err != nil {
-		return Skill{}, fmt.Errorf("stat open skill %q: %w", parsed, err)
-	}
-	if !opened.Mode().IsRegular() {
-		return Skill{}, fmt.Errorf("skill %q is not a regular file", parsed)
-	}
-	if !os.SameFile(info, opened) {
-		return Skill{}, fmt.Errorf("skill %q changed while it was opened", parsed)
-	}
-
-	body, err := io.ReadAll(io.LimitReader(file, MaxBodyBytes+1))
-	if err != nil {
-		return Skill{}, fmt.Errorf("read skill %q: %w", parsed, err)
-	}
-	if len(body) > MaxBodyBytes {
-		return Skill{}, fmt.Errorf("skill %q is larger than %d bytes", parsed, MaxBodyBytes)
-	}
-	return Skill{Name: parsed, Path: string(parsed) + ".md", Body: body}, nil
+	return Skill{Name: parsed, Path: fileName, Body: body}, nil
 }
 
 // List reports the names of regular .md files whose stem parses as a Name. It

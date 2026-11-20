@@ -1,13 +1,15 @@
 // Package mcp is the thin MCP JSON-RPC 2.0 edge over the single operation
 // router.
 //
-// It supports the initialize handshake, ping, the tools/list catalog and
-// tools/call. Every other method refuses with the stable invalid_input mapping.
-// When Principals is configured, initialize and tools/list authenticate the
-// presented credential before returning server metadata or tool schemas, while
-// never dispatching an operation; tools/call names one registry operation and
-// passes either the canonical api.Request envelope or flat top-level arguments
-// to the router with the presented credential.
+// It supports the initialize handshake (with embedded Kodema instructions),
+// ping, tools/list, tools/call, resources/list, resources/templates/list,
+// resources/read, prompts/list, and prompts/get. Every other method refuses
+// with the stable invalid_input mapping. When Principals is configured,
+// initialize, tools/list, resources/*, and prompts/* authenticate the presented
+// credential before returning server metadata, tool schemas, or embedded
+// documentation, while never dispatching an operation; tools/call names one
+// registry operation and passes either the canonical api.Request envelope or
+// flat top-level arguments to the router with the presented credential.
 //
 // A success result is an MCP CallToolResult carrying the JSON api.Result.
 // Domain, authorization and operational refusals from tools/call return an MCP
@@ -26,6 +28,7 @@ import (
 	"strings"
 
 	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/docs"
 	"github.com/optimiware/kodema/internal/fault"
 	"github.com/optimiware/kodema/internal/shell/authorize"
 	"github.com/optimiware/kodema/internal/shell/transport/ops"
@@ -113,6 +116,16 @@ func (edge *Edge) Handle(ctx context.Context, credential string, body []byte) []
 		return encodeResult(request.ID, json.RawMessage(`{}`))
 	case api.MCPMethodToolsList:
 		return edge.handleToolsList(ctx, credential, request)
+	case api.MCPMethodResourcesList:
+		return edge.handleResourcesList(ctx, credential, request)
+	case api.MCPMethodResourcesTemplatesList:
+		return edge.handleResourcesTemplatesList(ctx, credential, request)
+	case api.MCPMethodResourcesRead:
+		return edge.handleResourcesRead(ctx, credential, request)
+	case api.MCPMethodPromptsList:
+		return edge.handlePromptsList(ctx, credential, request)
+	case api.MCPMethodPromptsGet:
+		return edge.handlePromptsGet(ctx, credential, request)
 	default:
 		return encodeError(request.ID, api.CodeInvalidInput,
 			fmt.Sprintf("unsupported MCP method %q", request.Method))
@@ -158,8 +171,9 @@ func (edge *Edge) handleInitialize(ctx context.Context, credential string, reque
 	}
 	result := api.MCPInitializeResult{
 		ProtocolVersion: version,
-		Capabilities:    json.RawMessage(`{"tools":{}}`),
+		Capabilities:    json.RawMessage(`{"tools":{},"resources":{},"prompts":{}}`),
 		ServerInfo:      edge.serverInfo,
+		Instructions:    docs.MCPInstructions(),
 	}
 	encoded, err := json.Marshal(result)
 	if err != nil {
@@ -181,6 +195,107 @@ func (edge *Edge) handleToolsList(ctx context.Context, credential string, reques
 		return encodeError(request.ID, api.CodeInternalFailure, "internal failure")
 	}
 	encoded, err := json.Marshal(api.MCPToolsListResult{Tools: ToolCatalog()})
+	if err != nil {
+		return encodeError(request.ID, api.CodeInternalFailure, "internal failure")
+	}
+	return encodeResult(request.ID, encoded)
+}
+
+// handleResourcesList returns the embedded Kodema documentation resources.
+// When Principals is wired, listing authenticates the presented credential
+// while never dispatching an operation.
+func (edge *Edge) handleResourcesList(ctx context.Context, credential string, request api.MCPRequest) []byte {
+	if refusal := edge.authenticate(ctx, credential, request.ID); refusal != nil {
+		return refusal
+	}
+	cursor, err := decodeOptionalCursor(request.Params)
+	if err != nil {
+		return encodeError(request.ID, api.CodeInvalidInput, "resources/list params are invalid")
+	}
+	if cursor != "" {
+		return encodeError(request.ID, api.CodeInvalidInput, fmt.Sprintf("unknown resources/list cursor %q", cursor))
+	}
+	encoded, err := json.Marshal(api.MCPResourcesListResult{Resources: ResourceCatalog()})
+	if err != nil {
+		return encodeError(request.ID, api.CodeInternalFailure, "internal failure")
+	}
+	return encodeResult(request.ID, encoded)
+}
+
+// handleResourcesTemplatesList returns the (empty) list of parameterized
+// resource templates so clients probing resources/templates/list after seeing
+// the resources capability succeed cleanly.
+func (edge *Edge) handleResourcesTemplatesList(ctx context.Context, credential string, request api.MCPRequest) []byte {
+	if refusal := edge.authenticate(ctx, credential, request.ID); refusal != nil {
+		return refusal
+	}
+	cursor, err := decodeOptionalCursor(request.Params)
+	if err != nil {
+		return encodeError(request.ID, api.CodeInvalidInput, "resources/templates/list params are invalid")
+	}
+	if cursor != "" {
+		return encodeError(request.ID, api.CodeInvalidInput, fmt.Sprintf("unknown resources/templates/list cursor %q", cursor))
+	}
+	encoded, err := json.Marshal(api.MCPResourcesTemplatesListResult{ResourceTemplates: []api.MCPResourceTemplate{}})
+	if err != nil {
+		return encodeError(request.ID, api.CodeInternalFailure, "internal failure")
+	}
+	return encodeResult(request.ID, encoded)
+}
+
+// handleResourcesRead returns one embedded Kodema documentation resource by URI.
+func (edge *Edge) handleResourcesRead(ctx context.Context, credential string, request api.MCPRequest) []byte {
+	if refusal := edge.authenticate(ctx, credential, request.ID); refusal != nil {
+		return refusal
+	}
+	var params api.MCPResourcesReadParams
+	if err := json.Unmarshal(request.Params, &params); err != nil {
+		return encodeError(request.ID, api.CodeInvalidInput, "resources/read params are invalid")
+	}
+	result, ok := readDocResource(params.URI)
+	if !ok {
+		return encodeErrorNumber(request.ID, api.MCPCodeResourceNotFound, api.CodeNotFound, fmt.Sprintf("unknown MCP resource %q", params.URI))
+	}
+	encoded, err := json.Marshal(result)
+	if err != nil {
+		return encodeError(request.ID, api.CodeInternalFailure, "internal failure")
+	}
+	return encodeResult(request.ID, encoded)
+}
+
+// handlePromptsList returns the embedded Kodema documentation prompts.
+func (edge *Edge) handlePromptsList(ctx context.Context, credential string, request api.MCPRequest) []byte {
+	if refusal := edge.authenticate(ctx, credential, request.ID); refusal != nil {
+		return refusal
+	}
+	cursor, err := decodeOptionalCursor(request.Params)
+	if err != nil {
+		return encodeError(request.ID, api.CodeInvalidInput, "prompts/list params are invalid")
+	}
+	if cursor != "" {
+		return encodeError(request.ID, api.CodeInvalidInput, fmt.Sprintf("unknown prompts/list cursor %q", cursor))
+	}
+	encoded, err := json.Marshal(api.MCPPromptsListResult{Prompts: PromptCatalog()})
+	if err != nil {
+		return encodeError(request.ID, api.CodeInternalFailure, "internal failure")
+	}
+	return encodeResult(request.ID, encoded)
+}
+
+// handlePromptsGet renders one embedded Kodema documentation prompt.
+func (edge *Edge) handlePromptsGet(ctx context.Context, credential string, request api.MCPRequest) []byte {
+	if refusal := edge.authenticate(ctx, credential, request.ID); refusal != nil {
+		return refusal
+	}
+	var params api.MCPPromptsGetParams
+	if err := json.Unmarshal(request.Params, &params); err != nil {
+		return encodeError(request.ID, api.CodeInvalidInput, "prompts/get params are invalid")
+	}
+	result, errCode, errMsg := getDocPrompt(params.Name, params.Arguments)
+	if errCode != "" {
+		return encodeError(request.ID, errCode, errMsg)
+	}
+	encoded, err := json.Marshal(result)
 	if err != nil {
 		return encodeError(request.ID, api.CodeInternalFailure, "internal failure")
 	}
@@ -248,14 +363,18 @@ func encodeResult(id json.RawMessage, result json.RawMessage) []byte {
 // encodeError renders one public refusal. The MCP code is the declared mapping
 // of the public code and the data body carries the stable api.Error.
 func encodeError(id json.RawMessage, code string, message string) []byte {
-	if message == "" {
-		message = code
-	}
 	number, ok := api.MCPErrorCode(code)
 	if !ok {
 		code = api.CodeInternalFailure
 		message = "internal failure"
 		number, _ = api.MCPErrorCode(code)
+	}
+	return encodeErrorNumber(id, number, code, message)
+}
+
+func encodeErrorNumber(id json.RawMessage, number int, code string, message string) []byte {
+	if message == "" {
+		message = code
 	}
 	data, err := api.EncodeMCPErrorData(api.Error{Code: code, Message: message})
 	if err != nil {

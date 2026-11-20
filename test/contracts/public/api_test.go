@@ -595,7 +595,7 @@ func TestMCPOperationMapping(t *testing.T) {
 
 	refusals := []string{
 		`{"jsonrpc":"1.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"kodema-test","version":"1.0.0"}}}`,
-		`{"jsonrpc":"2.0","id":1,"method":"prompts/list","params":{}}`,
+		`{"jsonrpc":"2.0","id":1,"method":"sampling/createMessage","params":{}}`,
 		`{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{"cursor":"next"}}`,
 		`{"jsonrpc":"2.0","id":1,"method":"notifications/initialized","params":{}}`,
 		`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"task.unknown"}}`,
@@ -850,6 +850,34 @@ func TestMCPHandshakeAndResult(t *testing.T) {
 	}
 	if _, err := api.DecodeMCPOperationArguments("task_read", []byte(`{"input":{"task_id":"task-1"},"task_id":"task-2"}`)); err == nil {
 		t.Fatal("DecodeMCPOperationArguments accepted mixed wrapped and flat fields")
+	}
+
+	// Resources and prompts discovery/read/get method envelopes.
+	for _, valid := range []string{
+		`{"jsonrpc":"2.0","id":10,"method":"resources/list"}`,
+		`{"jsonrpc":"2.0","id":11,"method":"resources/list","params":{}}`,
+		`{"jsonrpc":"2.0","id":16,"method":"resources/templates/list"}`,
+		`{"jsonrpc":"2.0","id":17,"method":"resources/templates/list","params":{}}`,
+		`{"jsonrpc":"2.0","id":12,"method":"resources/read","params":{"uri":"kodema://docs/overview"}}`,
+		`{"jsonrpc":"2.0","id":13,"method":"prompts/list"}`,
+		`{"jsonrpc":"2.0","id":14,"method":"prompts/list","params":{}}`,
+		`{"jsonrpc":"2.0","id":15,"method":"prompts/get","params":{"name":"kodema-docs","arguments":{"topic":"workload"}}}`,
+	} {
+		if _, err := api.DecodeMCPRequest([]byte(valid)); err != nil {
+			t.Errorf("valid MCP docs request %s refused: %v", valid, err)
+		}
+	}
+	for _, invalid := range []string{
+		`{"jsonrpc":"2.0","id":20,"method":"resources/read","params":{}}`,
+		`{"jsonrpc":"2.0","id":21,"method":"resources/read","params":{"uri":"kodema://docs/overview","extra":1}}`,
+		`{"jsonrpc":"2.0","id":22,"method":"prompts/get","params":{}}`,
+		`{"jsonrpc":"2.0","id":23,"method":"prompts/get","params":{"name":"kodema-docs","arguments":{"topic":123}}}`,
+		`{"jsonrpc":"2.0","id":24,"method":"resources/list","params":{"unknown":true}}`,
+		`{"jsonrpc":"2.0","id":25,"method":"prompts/list","params":{"unknown":true}}`,
+	} {
+		if _, err := api.DecodeMCPRequest([]byte(invalid)); err == nil {
+			t.Errorf("invalid MCP docs request %s was accepted", invalid)
+		}
 	}
 }
 
