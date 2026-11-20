@@ -43,6 +43,7 @@ func TestE2E_AC21V06Capabilities(t *testing.T) {
 		BaseURL:      instance.config.APIURL,
 		RoundTripper: rt,
 		Source:       staticCredentialSource{token: engineer, expiry: time.Now().UTC().Add(time.Hour)},
+		Retry:        client.RetryPolicy{MaxAttempts: 3, BaseDelay: 100 * time.Millisecond, MaxDelay: time.Second},
 	}
 	projRes, err := tr.Invoke(ctx, api.Invocation{
 		Operation: "project.list",
