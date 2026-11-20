@@ -193,9 +193,9 @@ identity provider; the release smoke test runs on it. It installs the released
 image (Podman 5, `git` 2.44, `jq`, `openssl`, `curl`, `socat`):
 
 ```sh
-git clone --branch v0.4.0 https://github.com/optimiware/kodema && cd kodema
-podman pull ghcr.io/optimiware/kodema/kodema:0.4.0
-KODEMA_LOCAL_KODEMA_IMAGE=ghcr.io/optimiware/kodema/kodema:0.4.0 ./deploy/podman/install.sh
+git clone --branch v0.5.0 https://github.com/optimiware/kodema && cd kodema
+podman pull ghcr.io/optimiware/kodema/kodema:0.5.0
+KODEMA_LOCAL_KODEMA_IMAGE=ghcr.io/optimiware/kodema/kodema:0.5.0 ./deploy/podman/install.sh
 ```
 
 Then follow the [Podman bundle runbook](docs/runbooks/podman-quickstart.md) to
