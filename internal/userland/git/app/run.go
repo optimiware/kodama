@@ -46,13 +46,15 @@ type Config struct {
 	JournalDirectory string
 	// The access policy is read only from the committed conf/git.conf of the
 	// tenant's provisioned admin repository. There is no policy-file option.
-	BaseURL          string
-	CredentialFile   string
-	ResourceIDs      map[string]string
-	MaxBodyBytes     int64
-	MaxResponseBytes int64
-	Timeout          time.Duration
-	Logger           *slog.Logger
+	BaseURL            string
+	CredentialFile     string
+	ProvisionTokenFile string
+	ProvisionToken     func() (string, error)
+	ResourceIDs        map[string]string
+	MaxBodyBytes       int64
+	MaxResponseBytes   int64
+	Timeout            time.Duration
+	Logger             *slog.Logger
 
 	// HookBinary is the absolute kodema binary the installed bare-repository
 	// hooks exec. A zero value uses the running executable.
@@ -403,6 +405,17 @@ func newServer(ctx context.Context, config Config) (*Server, error) {
 			return nil, err
 		}
 	}
+	provisionToken := config.ProvisionToken
+	if provisionToken == nil && strings.TrimSpace(config.ProvisionTokenFile) != "" {
+		tokenFile := strings.TrimSpace(config.ProvisionTokenFile)
+		provisionToken = func() (string, error) {
+			data, err := os.ReadFile(tokenFile)
+			if err != nil {
+				return "", err
+			}
+			return strings.TrimSpace(string(data)), nil
+		}
+	}
 	smartHTTP, err := git.NewSmartHTTP(git.SmartHTTPConfig{
 		Service:           service,
 		Backend:           backend,
@@ -410,6 +423,8 @@ func newServer(ctx context.Context, config Config) (*Server, error) {
 		ActorHandles:      config.ActorHandles,
 		ResourceIDContext: server.prepareServedRepository,
 		SourceEvent:       sourceEvent,
+		Provisioner:       server.provisionRepositoryHTTP,
+		ProvisionToken:    provisionToken,
 		MaxBodyBytes:      config.MaxBodyBytes,
 		Timeout:           config.Timeout,
 	})
@@ -446,6 +461,56 @@ func (server *Server) prepareServedRepository(ctx context.Context, repository st
 		return "", err
 	}
 	return resourceID, nil
+}
+
+// provisionRepositoryHTTP handles an authorized POST /_kodema/repositories
+// request by idempotently initializing the bare repository, installing its
+// managed hooks and committing its default stanza with `option resource` into
+// `admin/conf/git.conf`.
+func (server *Server) provisionRepositoryHTTP(ctx context.Context, req git.ProvisionHTTPRequest) (git.ProvisionHTTPResponse, error) {
+	if staticID := server.staticResourceIDs[req.Repository]; staticID != "" && staticID != req.ResourceID {
+		return git.ProvisionHTTPResponse{}, git.ErrResourceMismatch
+	}
+	for otherRepo, otherID := range server.staticResourceIDs {
+		if otherRepo != req.Repository && otherID == req.ResourceID {
+			return git.ProvisionHTTPResponse{}, git.ErrResourceMismatch
+		}
+	}
+	repositoryPath, err := server.storage.RepositoryPath(server.tenant, req.Repository)
+	if err != nil {
+		return git.ProvisionHTTPResponse{}, err
+	}
+	if err := requireJournalOutsidePaths(server.journalDirectory, map[string]string{req.Repository: repositoryPath}); err != nil {
+		return git.ProvisionHTTPResponse{}, fault.Wrap(fault.Forbidden, "repository path conflicts with service journal", err)
+	}
+	adminPath, err := server.storage.RepositoryPath(server.tenant, native.AdminRepository)
+	if err != nil {
+		return git.ProvisionHTTPResponse{}, err
+	}
+	lock := server.repositoryProvisionLock(req.Repository)
+	lock.Lock()
+	defer lock.Unlock()
+
+	result, err := native.ProvisionRepository(ctx, native.RepositoryProvisionConfig{
+		TenantID:            server.tenant,
+		TenantDirectory:     filepath.Join(server.storageRoot, string(server.tenant)),
+		RepositoryPath:      repositoryPath,
+		AdminRepositoryPath: adminPath,
+		ResourceID:          req.ResourceID,
+		DefaultBranch:       req.DefaultBranch,
+		HookBinaryPath:      server.hookBinary,
+		Executor:            server.executor,
+	})
+	if err != nil {
+		return git.ProvisionHTTPResponse{}, err
+	}
+	server.markDynamicReady(result.Repository)
+	return git.ProvisionHTTPResponse{
+		Repository:    result.Repository,
+		ResourceID:    req.ResourceID,
+		DefaultBranch: req.DefaultBranch,
+		Created:       result.Created,
+	}, nil
 }
 
 func (server *Server) repositoryProvisionLock(repository string) *sync.Mutex {

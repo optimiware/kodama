@@ -12,7 +12,7 @@ import (
 )
 
 // TestHumanGrantMatrixAllowsExactlyTheDeclaredRoles walks the whole declared
-// 59-operation registry and asserts that a verified human holding exactly one
+// 61-operation registry and asserts that a verified human holding exactly one
 // role is allowed exactly when that role appears in the operation's human grant
 // set. Admin and Reviewer therefore never imply each other, and operations with
 // no human grant admit no human.
@@ -21,8 +21,8 @@ func TestHumanGrantMatrixAllowsExactlyTheDeclaredRoles(t *testing.T) {
 	ctx := context.Background()
 
 	operations := authorize.Operations()
-	if len(operations) != 59 {
-		t.Fatalf("registry has %d operations; want the declared 59", len(operations))
+	if len(operations) != 61 {
+		t.Fatalf("registry has %d operations; want the declared 61", len(operations))
 	}
 
 	for _, operation := range operations {

@@ -23,6 +23,7 @@ func Bindings(deps Dependencies) ([]ops.Binding, error) {
 	for _, family := range []func(Dependencies) map[authorizeOperation]ops.Handler{
 		tenancyHandlers,
 		resourceHandlers,
+		repositoryHandlers,
 		pipelineHandlers,
 		secretHandlers,
 		serviceHandlers,

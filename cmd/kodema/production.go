@@ -241,6 +241,10 @@ func buildProduction(options serverOptions, getenv productionEnv, kube driverkub
 			AccessMode:   values["KODEMA_WORKSPACE_PVC_ACCESS_MODE"],
 		}
 	}
+	gitCompanion, err := resolveGitCompanionConfig(getenv)
+	if err != nil {
+		return productionBuild{}, err
+	}
 	config := shellapp.Config{
 		Profile:        shellapp.ProfileProduction,
 		Installation:   installationConfig,
@@ -250,6 +254,7 @@ func buildProduction(options serverOptions, getenv productionEnv, kube driverkub
 		ServerVersion:  version,
 		LoopInterval:   loopInterval,
 		GitStorageRoot: gitStorageRoot,
+		GitCompanion:   gitCompanion,
 		SecretRules:    secretRules,
 		Models:         models,
 		ToolProxy:      toolProxy,
@@ -476,6 +481,39 @@ func resolveGitStorageRoot(options serverOptions, getenv productionEnv) (string,
 			shellapp.ErrKeepRefsConfiguration)
 	}
 	return root, nil
+}
+
+// resolveGitCompanionConfig reads the optional Git companion HTTP boundary
+// settings from the process environment. Leaving KODEMA_GIT_ADMIN_URL empty
+// keeps repository.create disabled without failing startup.
+func resolveGitCompanionConfig(getenv productionEnv) (*shellapp.GitCompanionConfig, error) {
+	adminURL := strings.TrimSpace(getenv("KODEMA_GIT_ADMIN_URL"))
+	tokenFile := strings.TrimSpace(getenv("KODEMA_GIT_PROVISION_TOKEN_FILE"))
+	if adminURL == "" && tokenFile == "" {
+		return nil, nil
+	}
+	if adminURL == "" {
+		return nil, fmt.Errorf("KODEMA_GIT_PROVISION_TOKEN_FILE requires KODEMA_GIT_ADMIN_URL")
+	}
+	if tokenFile == "" {
+		return nil, fmt.Errorf("KODEMA_GIT_ADMIN_URL requires KODEMA_GIT_PROVISION_TOKEN_FILE")
+	}
+	var trustedOrigins []string
+	if rawOrigins := strings.TrimSpace(getenv("KODEMA_GIT_TRUSTED_ORIGINS")); rawOrigins != "" {
+		for _, part := range strings.Split(rawOrigins, ",") {
+			if trimmed := strings.TrimSpace(part); trimmed != "" {
+				trustedOrigins = append(trustedOrigins, trimmed)
+			}
+		}
+	}
+	return &shellapp.GitCompanionConfig{
+		AdminURL:       adminURL,
+		PublicGitURL:   strings.TrimSpace(getenv("KODEMA_GIT_PUBLIC_URL")),
+		ServiceID:      strings.TrimSpace(getenv("KODEMA_GIT_SERVICE_ID")),
+		TrustedOrigins: trustedOrigins,
+		TokenFile:      tokenFile,
+		CAFile:         strings.TrimSpace(getenv("KODEMA_GIT_CA_FILE")),
+	}, nil
 }
 
 func envOrGetenv(getenv productionEnv, name, fallback string) string {

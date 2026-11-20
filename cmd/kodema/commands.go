@@ -74,6 +74,7 @@ func runGitServeEntry(ctx context.Context, args []string, stdout, stderr io.Writ
 	// an unknown-flag usage error.
 	baseURL := flags.String("base-url", envOr("KODEMA_BASE_URL", ""), "public base URL")
 	credentialFile := flags.String("credential-file", envOr("KODEMA_CREDENTIAL_FILE", ""), "mounted service credential file")
+	provisionTokenFile := flags.String("provision-token-file", envOr("KODEMA_GIT_PROVISION_TOKEN_FILE", ""), "optional mounted bearer token file for HTTP repository provisioning")
 	defaultMaxBodyBytes, maxBodyEnvErr := envInt64Strict("KODEMA_GIT_MAX_BODY_BYTES", 0)
 	defaultMaxResponseBytes, maxResponseEnvErr := envInt64Strict("KODEMA_GIT_MAX_RESPONSE_BYTES", 0)
 	maxBodyBytes := flags.Int64("max-body-bytes", defaultMaxBodyBytes, "maximum smart-HTTP request body bytes")
@@ -166,22 +167,23 @@ func runGitServeEntry(ctx context.Context, args []string, stdout, stderr io.Writ
 		logOutput = io.Discard
 	}
 	config := gitapp.Config{
-		TenantID:         id.TenantID(*tenant),
-		ListenAddress:    *listen,
-		StorageRoot:      *storageRoot,
-		JournalDirectory: *journalDirectory,
-		BaseURL:          *baseURL,
-		CredentialFile:   *credentialFile,
-		ResourceIDs:      resourceIDs,
-		MaxBodyBytes:     *maxBodyBytes,
-		MaxResponseBytes: *maxResponseBytes,
-		Timeout:          *timeout,
-		Logger:           slog.New(slog.NewTextHandler(logOutput, nil)),
-		Transport:        transport,
-		Verify:           verification,
-		Actors:           readVerifier,
-		ActorHandles:     registry,
-		HookActors:       registry,
+		TenantID:           id.TenantID(*tenant),
+		ListenAddress:      *listen,
+		StorageRoot:        *storageRoot,
+		JournalDirectory:   *journalDirectory,
+		BaseURL:            *baseURL,
+		CredentialFile:     *credentialFile,
+		ProvisionTokenFile: *provisionTokenFile,
+		ResourceIDs:        resourceIDs,
+		MaxBodyBytes:       *maxBodyBytes,
+		MaxResponseBytes:   *maxResponseBytes,
+		Timeout:            *timeout,
+		Logger:             slog.New(slog.NewTextHandler(logOutput, nil)),
+		Transport:          transport,
+		Verify:             verification,
+		Actors:             readVerifier,
+		ActorHandles:       registry,
+		HookActors:         registry,
 	}
 	if err := runGitApp(ctx, config); err != nil {
 		fmt.Fprintf(stderr, "kodema: %v\n", err)

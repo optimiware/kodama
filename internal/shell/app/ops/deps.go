@@ -93,6 +93,11 @@ type Dependencies struct {
 	Models ModelInvocation
 	// Tools is the real optional external MCP tool proxy.
 	Tools ToolInvocation
+	// Repositories is the optional HTTP boundary to the independent Userland
+	// Git companion for repository.create and clone URL derivation in
+	// repository.list. When nil, repository.create fails closed with
+	// dependency_unavailable while repository.list still lists Git bindings.
+	Repositories RepositoryProvisioner
 	// IDs allocates the identities the handlers themselves must mint: the
 	// execution principal of a task-free start and a verification identity.
 	IDs IdentitySource
@@ -250,6 +255,36 @@ type ModelInvocation interface {
 // authenticated principal and resolved tool name.
 type ToolInvocation interface {
 	Call(context.Context, authorize.Principal, id.ProjectID, string, json.RawMessage) (mcpproxy.CallResult, error)
+}
+
+// RepositoryProvisionRequest asks the independent Userland Git companion to
+// initialize a bare repository and commit its default access rules with
+// `option resource = <resource_id>`.
+type RepositoryProvisionRequest struct {
+	TenantID      id.TenantID
+	ProjectID     id.ProjectID
+	Repository    string
+	ResourceID    string
+	DefaultBranch string
+}
+
+// RepositoryProvisionResult reports the Git companion's provisioning outcome.
+type RepositoryProvisionResult struct {
+	Repository    string
+	DefaultBranch string
+	CloneURL      string
+	Created       bool
+}
+
+// RepositoryProvisioner is the optional HTTP boundary to the independent
+// Userland Git service. Shell keeps Git storage and access-rule ownership in
+// Userland and coordinates only provisioning and the corresponding resource
+// binding.
+type RepositoryProvisioner interface {
+	DefaultServiceID() string
+	DefaultTrustedOrigins() []string
+	CloneURL(repository string) string
+	ProvisionRepository(context.Context, RepositoryProvisionRequest) (RepositoryProvisionResult, error)
 }
 
 // IdentitySource mints the handler-owned identities.

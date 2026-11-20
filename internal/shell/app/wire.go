@@ -595,6 +595,14 @@ func wireApp(ctx context.Context, builder *builder, environment *environment) (*
 			KeyVersion:     environment.keyVersion,
 		},
 	}
+	var repositoryProvisioner opsapp.RepositoryProvisioner
+	if cfg.GitCompanion != nil {
+		provisioner, err := newHTTPRepositoryProvisioner(cfg)
+		if err != nil {
+			return nil, err
+		}
+		repositoryProvisioner = provisioner
+	}
 	bindings, err := opsapp.Bindings(opsapp.Dependencies{
 		Tenancy:        tenancyAdmin,
 		Bindings:       bindingService,
@@ -619,6 +627,7 @@ func wireApp(ctx context.Context, builder *builder, environment *environment) (*
 		EventSubscribe: eventSubscriber,
 		Models:         modelInvocation,
 		Tools:          toolInvocation,
+		Repositories:   repositoryProvisioner,
 		IDs:            identitySource{IDs: ids},
 		TenantKeys:     tenantKeys,
 		ActionTimeout:  cfg.DefaultActionTimeout,

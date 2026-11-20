@@ -106,6 +106,10 @@ func RunWithDeps(ctx context.Context, config Config, args []string, ports Ports,
 		return runWhoami(ctx, config, args[1:], ports, deps)
 	case "member":
 		return runMember(ctx, config, args[1:], ports, deps)
+	case "project":
+		return runProject(ctx, config, args[1:], ports, deps)
+	case "repo", "repository":
+		return runRepo(ctx, config, args[1:], ports, deps)
 	case "mcp":
 		return runMCP(ctx, config, args[1:], ports, deps)
 	case "docs":

@@ -240,8 +240,8 @@ func TestDecodeRouteRequestRequiresRegisteredBinding(t *testing.T) {
 		t.Fatal("the registry has no pipeline.start route")
 	}
 	alternates := api.AlternateRoutes()
-	if len(alternates) != 1 {
-		t.Fatalf("AlternateRoutes() has %d rows; want the one pipeline.start alternate", len(alternates))
+	if len(alternates) != 3 {
+		t.Fatalf("AlternateRoutes() has %d rows; want 3 alternates", len(alternates))
 	}
 	alternate := alternates[0]
 
@@ -380,14 +380,14 @@ func TestYAMLOperationsAndRoutesReturnCopies(t *testing.T) {
 	}
 
 	canonical := api.Routes()
-	if len(canonical) != 59 {
-		t.Fatalf("Routes() has %d rows; want 59", len(canonical))
+	if len(canonical) != 61 {
+		t.Fatalf("Routes() has %d rows; want 61", len(canonical))
 	}
 	canonical[0].Operation = "mutated"
 	_ = append(canonical, api.Route{Operation: "mutated"})
 	again := api.Routes()
-	if len(again) != 59 {
-		t.Errorf("Routes() after caller append has %d rows; want the unchanged 59", len(again))
+	if len(again) != 61 {
+		t.Errorf("Routes() after caller append has %d rows; want the unchanged 61", len(again))
 	}
 	if again[0].Operation != "tenant.create" {
 		t.Errorf("Routes()[0] after caller mutation = %q; want tenant.create", again[0].Operation)
@@ -397,14 +397,14 @@ func TestYAMLOperationsAndRoutesReturnCopies(t *testing.T) {
 	}
 
 	alternates := api.AlternateRoutes()
-	if len(alternates) != 1 {
-		t.Fatalf("AlternateRoutes() has %d rows; want the one alternate", len(alternates))
+	if len(alternates) != 3 {
+		t.Fatalf("AlternateRoutes() has %d rows; want 3 alternates", len(alternates))
 	}
 	alternates[0].Operation = "mutated"
 	_ = append(alternates, api.Route{Operation: "mutated"})
 	againAlternates := api.AlternateRoutes()
-	if len(againAlternates) != 1 || againAlternates[0].Operation != "pipeline.start" {
-		t.Errorf("AlternateRoutes() after caller mutation = %+v; want the unchanged pipeline.start row", againAlternates)
+	if len(againAlternates) != 3 || againAlternates[0].Operation != "pipeline.start" {
+		t.Errorf("AlternateRoutes() after caller mutation = %+v; want the unchanged alternates", againAlternates)
 	}
 }
 

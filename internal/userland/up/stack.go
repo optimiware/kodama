@@ -448,6 +448,10 @@ func Up(ctx context.Context, cfg UpConfig, stdout io.Writer) (_ StackDescriptor,
 	if err != nil {
 		return StackDescriptor{}, err
 	}
+	gitProvisionTokenPath := filepath.Join(secretsDir, "git-provision-token")
+	if _, err := ensureSecretHex(gitProvisionTokenPath, 24); err != nil {
+		return StackDescriptor{}, err
+	}
 
 	initSQLPath := filepath.Join(secretsDir, "init-admin.sql")
 	initSQL := fmt.Sprintf(
@@ -711,6 +715,9 @@ func Up(ctx context.Context, cfg UpConfig, stdout io.Writer) (_ StackDescriptor,
 		"KODEMA_WORKLOAD_URL=" + workloadOrigin,
 		// The gateway serves Git under /git/ of the same origin.
 		"KODEMA_WORKLOAD_GIT_URL=" + workloadOrigin + "/git",
+		"KODEMA_GIT_ADMIN_URL=http://" + gitContainer + ":8081",
+		"KODEMA_GIT_PROVISION_TOKEN_FILE=" + gitProvisionTokenPath,
+		"KODEMA_GIT_PUBLIC_URL=" + publicURL + "/git",
 		"KODEMA_ADDRESS=0.0.0.0:8443",
 		"KODEMA_DISCOVERY_ISSUER=" + disc.Issuer,
 		"KODEMA_DISCOVERY_CLIENT_ID=" + disc.ClientID,
@@ -818,16 +825,18 @@ func Up(ctx context.Context, cfg UpConfig, stdout io.Writer) (_ StackDescriptor,
 			"--journal-dir", filepath.Join(stateDir, "git", "journal"),
 			"--base-url", "https://" + serverContainer + ":8443",
 			"--credential-file", gitTokenPath,
+			"--provision-token-file", gitProvisionTokenPath,
 			"--resource", "admin=git-admin",
 		},
 		Env: []string{
 			"SSL_CERT_FILE=" + tlsBundle.CACertPath,
 		},
 		// Git serves pushed content, so it sees only its repositories, its
-		// credential and the CA, never the installation's keys.
+		// credentials and the CA, never the installation's keys.
 		Mounts: []MountBind{
 			{Source: gitDir, Target: gitDir},
 			{Source: gitTokenPath, Target: gitTokenPath, ReadOnly: true},
+			{Source: gitProvisionTokenPath, Target: gitProvisionTokenPath, ReadOnly: true},
 			{Source: tlsBundle.CACertPath, Target: tlsBundle.CACertPath, ReadOnly: true},
 		},
 		SecurityOpt: hostMountSecurityOpt,

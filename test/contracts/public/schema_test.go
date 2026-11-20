@@ -115,8 +115,8 @@ func inputSchemaFor(t *testing.T, operation string) (map[string]any, map[string]
 // frozen title and the typed input member.
 func TestOperationInputSchemaIsFieldLevel(t *testing.T) {
 	routes := api.Routes()
-	if len(routes) != 59 {
-		t.Fatalf("api.Routes() has %d routes; want 59", len(routes))
+	if len(routes) != 61 {
+		t.Fatalf("api.Routes() has %d routes; want 61", len(routes))
 	}
 	for _, route := range routes {
 		t.Run(route.Operation, func(t *testing.T) {

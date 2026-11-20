@@ -77,12 +77,14 @@ var operationCodecSpecs = map[string]operationCodecSpec{
 	"membership.list":   newOperationSpec[MembershipListRequest, MembershipListResult](false),
 	"principal.whoami":  newOperationSpec[PrincipalWhoamiRequest, PrincipalWhoamiResult](false),
 
-	// Resource bindings.
+	// Resource bindings and managed Git repositories.
 	"resource.binding.register": newOperationSpec[ResourceBindingRegisterRequest, ResourceBindingRegisterResult](true),
 	"resource.binding.update":   newOperationSpec[ResourceBindingUpdateRequest, ResourceBindingUpdateResult](true),
 	"resource.binding.delete":   newOperationSpec[ResourceBindingDeleteRequest, ResourceBindingDeleteResult](true),
 	"resource.binding.read":     newOperationSpec[ResourceBindingReadRequest, ResourceBindingReadResult](false),
 	"resource.binding.list":     newOperationSpec[ResourceBindingListRequest, ResourceBindingListResult](false),
+	"repository.create":         newOperationSpec[RepositoryCreateRequest, RepositoryCreateResult](true),
+	"repository.list":           newOperationSpec[RepositoryListRequest, RepositoryListResult](false),
 
 	// Pipelines and immutable execution start.
 	"pipeline.apply":  newOperationSpec[PipelineApplyRequest, PipelineApplyResult](true),
@@ -228,11 +230,14 @@ func newOperationCodec(route Route, spec operationCodecSpec) OperationCodec {
 }
 
 // mcpRouteParamOverrides restricts the MCP-required route fields of an
-// operation whose input can select a task-free alternate binding. A stored
-// pipeline selection still needs pipeline_id, but that is enforced by the DTO's
-// exclusive-selection validation rather than by the MCP route requirement.
+// operation whose input can default a route field from caller scope or select
+// a task-free alternate binding. A stored pipeline selection still needs
+// pipeline_id, enforced by the DTO's exclusive-selection validation; project
+// creation/listing default tenant_id from the authenticated caller's tenant.
 var mcpRouteParamOverrides = map[string][]string{
 	"pipeline.start": {"project"},
+	"project.create": {},
+	"project.list":   {},
 }
 
 // mcpRouteParamsFor returns the route fields an MCP caller must supply for one

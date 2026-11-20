@@ -74,17 +74,24 @@ func (result TenantRotateKeyResult) Validate() error {
 	return nil
 }
 
-// ProjectCreateRequest is the project.create input. The tenant is carried
-// explicitly for MCP callers and is optional for REST callers whose route
-// supplies it.
+// ProjectCreateRequest is the project.create input. The tenant is optional for
+// REST and MCP callers (defaulting to the authenticated principal's tenant).
+// CopyMembersFrom optionally copies project-scoped memberships from an existing
+// project in the same tenant, and CreatorRoles optionally overrides the roles
+// granted to the authenticated creator in the new project (defaulting to all
+// human roles when omitted and not copied; an explicit empty slice skips
+// auto-granting the creator).
 type ProjectCreateRequest struct {
-	TenantID  string `json:"tenant_id,omitempty" schema:"id"`
-	ProjectID string `json:"project_id" schema:"id"`
-	Name      string `json:"name"`
+	TenantID        string    `json:"tenant_id,omitempty" schema:"id"`
+	ProjectID       string    `json:"project_id" schema:"id"`
+	Name            string    `json:"name"`
+	CopyMembersFrom string    `json:"copy_members_from,omitempty" schema:"id"`
+	CreatorRoles    *[]string `json:"creator_roles,omitempty"`
 }
 
-// Validate checks the optional tenant identity, bounded project identity and
-// non-empty name.
+// Validate checks the optional tenant identity, bounded project identity,
+// non-empty name, optional source project for membership copy and optional
+// creator role set.
 func (request ProjectCreateRequest) Validate() error {
 	if request.TenantID != "" && !validID(request.TenantID) {
 		return invalid("tenant_id is invalid")
@@ -94,6 +101,26 @@ func (request ProjectCreateRequest) Validate() error {
 	}
 	if request.Name == "" {
 		return invalid("project name is empty")
+	}
+	if request.CopyMembersFrom != "" {
+		if !validID(request.CopyMembersFrom) {
+			return invalid("copy_members_from is invalid")
+		}
+		if request.CopyMembersFrom == request.ProjectID {
+			return invalid("copy_members_from cannot equal project_id")
+		}
+	}
+	if request.CreatorRoles != nil {
+		seen := make(map[string]bool, len(*request.CreatorRoles))
+		for _, role := range *request.CreatorRoles {
+			if !validHumanRole(role) {
+				return invalid("unknown creator role %q", role)
+			}
+			if seen[role] {
+				return invalid("duplicate creator role %q", role)
+			}
+			seen[role] = true
+		}
 	}
 	return nil
 }

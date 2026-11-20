@@ -327,6 +327,27 @@ func (service *Service) AuthorizeRead(ctx context.Context, repository string, id
 	return policy.AuthorizeRead(ReadRequest{Identity: identity})
 }
 
+// AuthorizeAdminProvision reports whether identity is a human administrator
+// permitted to update the tenant's committed policy ref (`refs/heads/main` of
+// the `admin` repository). Service and execution identities are always denied.
+func (service *Service) AuthorizeAdminProvision(ctx context.Context, identity Identity) (Decision, error) {
+	if err := identity.Validate(); err != nil {
+		return DecisionDeny, err
+	}
+	if len(identity.Roles) == 0 || identity.Execution || identity.ServiceID != "" {
+		return DecisionDeny, nil
+	}
+	policy, err := service.currentPolicy(ctx, "admin")
+	if err != nil {
+		return DecisionDeny, err
+	}
+	return policy.Authorize(AccessRequest{
+		Identity: identity,
+		Ref:      "refs/heads/main",
+		Update:   UpdateFastForward,
+	})
+}
+
 // ReadVerifier is the smart-HTTP read actor verifier. It resolves the
 // requested repository's registered resource identity and verifies the
 // forwarded credential through the public VerificationClient.Verify with the

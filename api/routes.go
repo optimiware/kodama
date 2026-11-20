@@ -14,7 +14,7 @@ type routeSpec struct {
 	path      string
 }
 
-// routeSpecs is the route inventory: exactly the 59 registered operations,
+// routeSpecs is the route inventory: exactly the 61 registered operations,
 // one method/path and one MCP tool each. The six product-fixed S08 endpoints
 // appear verbatim.
 var routeSpecs = []routeSpec{
@@ -29,12 +29,14 @@ var routeSpecs = []routeSpec{
 	{"membership.list", MethodGet, "/api/v1/projects/{project}/memberships"},
 	{"principal.whoami", MethodGet, "/api/v1/whoami"},
 
-	// Resource bindings.
+	// Resource bindings and managed Git repositories.
 	{"resource.binding.register", MethodPost, "/api/v1/projects/{project}/bindings"},
 	{"resource.binding.update", MethodPatch, "/api/v1/bindings/{binding}"},
 	{"resource.binding.delete", MethodDelete, "/api/v1/bindings/{binding}"},
 	{"resource.binding.read", MethodGet, "/api/v1/bindings/{binding}"},
 	{"resource.binding.list", MethodGet, "/api/v1/projects/{project}/bindings"},
+	{"repository.create", MethodPost, "/api/v1/projects/{project}/repositories"},
+	{"repository.list", MethodGet, "/api/v1/projects/{project}/repositories"},
 
 	// Pipelines and immutable execution start.
 	{"pipeline.apply", MethodPut, "/api/v1/projects/{project}/pipelines/{pipeline}"},
@@ -101,11 +103,15 @@ var routeSpecs = []routeSpec{
 // alternateRouteSpecs is the additive second REST binding of an operation. An
 // alternate is a second binding, never a second operation: it keeps the
 // operation name, MCP tool and schema names, and api.Routes() stays exactly the
-// 59 canonical operations.
+// 61 canonical operations.
 var alternateRouteSpecs = []routeSpec{
 	// pipeline.start accepts inline YAML on a task-free executions route; the
 	// canonical stored-pipeline route is unchanged.
 	{"pipeline.start", MethodPost, "/api/v1/projects/{project}/executions"},
+	// project.create and project.list default tenant_id from the authenticated
+	// caller when invoked without a tenant path segment.
+	{"project.create", MethodPost, "/api/v1/projects"},
+	{"project.list", MethodGet, "/api/v1/projects"},
 }
 
 // routes is the derived immutable canonical route table.

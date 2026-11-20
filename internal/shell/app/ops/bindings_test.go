@@ -18,8 +18,8 @@ import (
 func TestEveryRegistryOperationHasARealBinding(t *testing.T) {
 	h := newHarness(t)
 	operations := authorize.Operations()
-	if len(operations) != 59 {
-		t.Fatalf("registry operations = %d; want 59", len(operations))
+	if len(operations) != 61 {
+		t.Fatalf("registry operations = %d; want 61", len(operations))
 	}
 	if len(h.bindingsTable) != len(operations) {
 		t.Fatalf("bindings = %d; want %d", len(h.bindingsTable), len(operations))

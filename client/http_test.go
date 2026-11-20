@@ -242,13 +242,13 @@ func routeInput(route api.Route) (json.RawMessage, string) {
 	return data, "/" + strings.Join(expanded, "/")
 }
 
-// TestHTTPTransportBindsAllRoutes pins all 59 route bindings: method,
+// TestHTTPTransportBindsAllRoutes pins all 61 route bindings: method,
 // concrete path from the input parameters, one JSON api.Request body including
 // GET/DELETE, expected version, idempotency key and the bearer header.
 func TestHTTPTransportBindsAllRoutes(t *testing.T) {
 	routes := api.Routes()
-	if len(routes) != 59 {
-		t.Fatalf("api.Routes() length = %d; want 59", len(routes))
+	if len(routes) != 61 {
+		t.Fatalf("api.Routes() length = %d; want 61", len(routes))
 	}
 	for _, route := range routes {
 		t.Run(route.Operation, func(t *testing.T) {
@@ -388,6 +388,7 @@ func TestHTTPTransportRefusesInvalidCanonicalRouteFields(t *testing.T) {
 		}
 		for _, param := range codec.RouteParams {
 			t.Run(codec.Operation+"/"+param.Name, func(t *testing.T) {
+				optionalTenantRoute := (codec.Operation == "project.create" || codec.Operation == "project.list") && param.Name == "tenant"
 				cases := []struct {
 					name  string
 					input func() json.RawMessage
@@ -409,6 +410,9 @@ func TestHTTPTransportRefusesInvalidCanonicalRouteFields(t *testing.T) {
 					}},
 				}
 				for _, testCase := range cases {
+					if optionalTenantRoute && testCase.name == "missing" {
+						continue
+					}
 					t.Run(testCase.name, func(t *testing.T) {
 						roundTripper := &recordingRoundTripper{respond: func(_ *http.Request, _ int) (*http.Response, error) {
 							return resultResponse(codec.Operation, `{}`), nil
@@ -608,14 +612,28 @@ func TestHTTPTransportRefusesUnsafePathParameters(t *testing.T) {
 		t.Fatalf("missing parameter error = %q; want JSON field name pipeline_id", err.Error())
 	}
 	_, err = transport.Invoke(context.Background(), api.Invocation{
-		Operation: "project.list",
-		Request:   api.Request{Input: json.RawMessage(`{}`)},
+		Operation: "tenant.rotate_key",
+		Request:   api.Request{Input: json.RawMessage(`{"name":"Tenant"}`), IdempotencyKey: "k1"},
 	})
 	if err == nil || !strings.Contains(err.Error(), "tenant_id") {
 		t.Fatalf("missing tenant parameter error = %v; want JSON field name tenant_id", err)
 	}
 	if got := len(roundTripper.recorded()); got != 0 {
 		t.Fatalf("requests = %d; want 0", got)
+	}
+	// project.list defaults tenant_id via its alternate /api/v1/projects route.
+	projRT := &recordingRoundTripper{respond: func(_ *http.Request, _ int) (*http.Response, error) {
+		return resultResponse("project.list", `{"projects":[]}`), nil
+	}}
+	projTransport := newTransport(projRT, &fakeSource{credentials: []client.Credential{validCredential()}})
+	if _, err := projTransport.Invoke(context.Background(), api.Invocation{
+		Operation: "project.list",
+		Request:   api.Request{Input: json.RawMessage(`{}`)},
+	}); err != nil {
+		t.Fatalf("project.list without tenant_id refused: %v", err)
+	}
+	if got := projRT.recorded()[0].url.Path; got != "/api/v1/projects" {
+		t.Fatalf("project.list without tenant_id path = %q; want /api/v1/projects", got)
 	}
 }
 

@@ -200,4 +200,21 @@ func TestGlobalFlagsAcceptedAfterSubcommand(t *testing.T) {
 	if strings.Join(gotArgs, "|") != strings.Join(wantApproveArgs, "|") {
 		t.Fatalf("approve args = %v; want %v", gotArgs, wantApproveArgs)
 	}
+
+	// On repo create, `--trusted-origin` stays with repo create while `--project` is hoisted.
+	stdout.Reset()
+	stderr.Reset()
+	code = run(context.Background(), []string{
+		"repo", "create", "shop/web", "--project", "proj-repo", "--trusted-origin", "https://git.example",
+	}, &stdout, &stderr, deps)
+	if code != 0 {
+		t.Fatalf("repo create exit = %d; stderr=%s", code, stderr.String())
+	}
+	if gotConfig.Project != "proj-repo" || len(gotConfig.TrustedOrigins) != 0 {
+		t.Fatalf("repo create config = %+v; want project=proj-repo and no hoisted trusted origins", gotConfig)
+	}
+	wantRepoArgs := []string{"repo", "create", "shop/web", "--trusted-origin", "https://git.example"}
+	if strings.Join(gotArgs, "|") != strings.Join(wantRepoArgs, "|") {
+		t.Fatalf("repo create args = %v; want %v", gotArgs, wantRepoArgs)
+	}
 }

@@ -39,10 +39,10 @@ type pipelineApplyRecord struct {
 	Version    uint64 `json:"version,omitempty"`
 }
 
-// runPipeline dispatches `kodema pipeline <apply|list>`.
+// runPipeline dispatches `kodema pipeline <apply|list|show|delete>`.
 func runPipeline(ctx context.Context, config Config, args []string, ports Ports, deps CommandDeps) int {
 	if len(args) == 0 {
-		return usage(ports.Err, "pipeline requires a subcommand (apply|list)")
+		return usage(ports.Err, "pipeline requires a subcommand (apply|list|show|delete)")
 	}
 	if args[0] == "-h" || args[0] == "--help" || args[0] == "help" {
 		return runHelp(ports.Out, ports.Err, append([]string{"pipeline"}, args[1:]...))
@@ -52,8 +52,12 @@ func runPipeline(ctx context.Context, config Config, args []string, ports Ports,
 		return runPipelineApply(ctx, config, args[1:], ports, deps)
 	case "list", "ls":
 		return runPipelineList(ctx, config, args[1:], ports, deps)
+	case "show", "get", "read":
+		return runPipelineShow(ctx, config, args[1:], ports, deps)
+	case "delete", "rm":
+		return runPipelineDelete(ctx, config, args[1:], ports, deps)
 	default:
-		return usage(ports.Err, fmt.Sprintf("unknown pipeline subcommand %q (want apply or list)", args[0]))
+		return usage(ports.Err, fmt.Sprintf("unknown pipeline subcommand %q (want apply, list, show, or delete)", args[0]))
 	}
 }
 
@@ -340,6 +344,297 @@ func resolvePipelineIDByName(ctx context.Context, ports Ports, projectID, target
 		}
 	}
 	return "", false, nil
+}
+
+// resolvePipelineSummary searches pipeline.list in projectID for a stored
+// pipeline whose ID or name matches target. Exact pipeline_id matches take
+// precedence over name matches.
+func resolvePipelineSummary(ctx context.Context, ports Ports, projectID, target string) (api.PipelineSummaryView, bool, error) {
+	pipelines, _, _, err := fetchAllPipelines(ctx, ports, projectID)
+	if err != nil {
+		return api.PipelineSummaryView{}, false, err
+	}
+	for _, p := range pipelines {
+		if p.PipelineID == target {
+			return p, true, nil
+		}
+	}
+	for _, p := range pipelines {
+		if p.Name == target {
+			return p, true, nil
+		}
+	}
+	return api.PipelineSummaryView{}, false, nil
+}
+
+func runPipelineShow(ctx context.Context, config Config, args []string, ports Ports, deps CommandDeps) int {
+	if hasHelpFlag(args) {
+		return runHelp(ports.Out, ports.Err, []string{"pipeline", "show"})
+	}
+	var (
+		projectFlag string
+		outputFlag  string
+		yamlOnly    bool
+	)
+	spec := newArgSpec()
+	spec.stringFlag(&projectFlag, "--project", "-p")
+	spec.stringFlag(&outputFlag, "--output")
+	spec.boolFlag(&yamlOnly, "--yaml")
+	positionals, _, err := spec.parse(args)
+	if err != nil {
+		return usage(ports.Err, err.Error())
+	}
+	if len(positionals) != 1 || strings.TrimSpace(positionals[0]) == "" {
+		return usage(ports.Err, "pipeline show requires <name|id>")
+	}
+	format, err := resolveOutputFormat(outputFlag, config)
+	if err != nil {
+		return usage(ports.Err, err.Error())
+	}
+	if yamlOnly && format == OutputJSON {
+		return usage(ports.Err, "cannot combine --yaml with --output json")
+	}
+	if err := config.Validate(); err != nil {
+		return usage(ports.Err, err.Error())
+	}
+	projectID := resolveProject(projectFlag, config, deps)
+	if projectID == "" {
+		return usage(ports.Err, "pipeline show requires --project <id> or KODEMA_PROJECT")
+	}
+	if ports.Client == nil {
+		return failure(ports.Err, fmt.Errorf("no public client is configured"))
+	}
+
+	target := strings.TrimSpace(positionals[0])
+	resolvedByName := false
+	if strings.Contains(target, ".") {
+		resolved, found, lookupErr := resolvePipelineIDByName(ctx, ports, projectID, target)
+		if lookupErr != nil {
+			return failure(ports.Err, lookupErr)
+		}
+		if !found {
+			return failure(ports.Err, fmt.Errorf("pipeline %q not found in project %q", target, projectID))
+		}
+		target = resolved
+		resolvedByName = true
+	}
+
+	invokeRead := func(pipelineID string) (api.Result, int, error) {
+		req := api.PipelineReadRequest{
+			ProjectID:  projectID,
+			PipelineID: pipelineID,
+		}
+		if err := req.Validate(); err != nil {
+			return api.Result{}, usage(ports.Err, publicMessage(err)), nil
+		}
+		input, err := json.Marshal(req)
+		if err != nil {
+			return api.Result{}, failure(ports.Err, err), nil
+		}
+		inv := api.Invocation{
+			Operation: "pipeline.read",
+			Request:   api.Request{Input: input},
+		}
+		if err := inv.Validate(); err != nil {
+			return api.Result{}, usage(ports.Err, publicMessage(err)), nil
+		}
+		res, callErr := ports.Client.Invoke(ctx, inv)
+		return res, ExitSuccess, callErr
+	}
+
+	result, status, err := invokeRead(target)
+	if status != ExitSuccess {
+		return status
+	}
+	if err != nil && !resolvedByName && isNotFoundError(err) {
+		if resolved, found, lookupErr := resolvePipelineIDByName(ctx, ports, projectID, target); lookupErr == nil && found && resolved != target {
+			result, status, err = invokeRead(resolved)
+			if status != ExitSuccess {
+				return status
+			}
+		}
+	}
+	if err != nil {
+		return failure(ports.Err, err)
+	}
+	if format == OutputJSON {
+		if err := renderResult(ports.Out, OutputJSON, result); err != nil {
+			return failure(ports.Err, err)
+		}
+		return ExitSuccess
+	}
+
+	var readRes api.PipelineReadResult
+	if err := json.Unmarshal(result.Body, &readRes); err != nil {
+		return failure(ports.Err, fmt.Errorf("invalid pipeline.read response: %w", err))
+	}
+	if yamlOnly {
+		if _, err := ports.Out.Write(readRes.YAML); err != nil {
+			return failure(ports.Err, err)
+		}
+		if len(readRes.YAML) > 0 && readRes.YAML[len(readRes.YAML)-1] != '\n' {
+			fmt.Fprintln(ports.Out)
+		}
+		return ExitSuccess
+	}
+
+	fmt.Fprintf(ports.Out, "pipeline_id\t%s\nname\t%s\nversion\t%d\n",
+		orDash(readRes.PipelineID), orDash(readRes.Name), readRes.Version)
+	if len(readRes.YAML) > 0 {
+		fmt.Fprintln(ports.Out)
+		if _, err := ports.Out.Write(readRes.YAML); err != nil {
+			return failure(ports.Err, err)
+		}
+		if readRes.YAML[len(readRes.YAML)-1] != '\n' {
+			fmt.Fprintln(ports.Out)
+		}
+	}
+	return ExitSuccess
+}
+
+func runPipelineDelete(ctx context.Context, config Config, args []string, ports Ports, deps CommandDeps) int {
+	if hasHelpFlag(args) {
+		return runHelp(ports.Out, ports.Err, []string{"pipeline", "delete"})
+	}
+	var (
+		projectFlag        string
+		expectedVerRaw     string
+		idempotencyKeyFlag string
+		outputFlag         string
+	)
+	spec := newArgSpec()
+	spec.stringFlag(&projectFlag, "--project", "-p")
+	spec.stringFlag(&expectedVerRaw, "--expected-version")
+	spec.stringFlag(&idempotencyKeyFlag, "--idempotency-key")
+	spec.stringFlag(&outputFlag, "--output")
+	positionals, _, err := spec.parse(args)
+	if err != nil {
+		return usage(ports.Err, err.Error())
+	}
+	if len(positionals) != 1 || strings.TrimSpace(positionals[0]) == "" {
+		return usage(ports.Err, "pipeline delete requires <name|id>")
+	}
+	format, err := resolveOutputFormat(outputFlag, config)
+	if err != nil {
+		return usage(ports.Err, err.Error())
+	}
+	expectedVer, err := parsePositiveVersion(expectedVerRaw, "--expected-version")
+	if err != nil {
+		return usage(ports.Err, err.Error())
+	}
+	if err := config.Validate(); err != nil {
+		return usage(ports.Err, err.Error())
+	}
+	projectID := resolveProject(projectFlag, config, deps)
+	if projectID == "" {
+		return usage(ports.Err, "pipeline delete requires --project <id> or KODEMA_PROJECT")
+	}
+	if ports.Client == nil {
+		return failure(ports.Err, fmt.Errorf("no public client is configured"))
+	}
+
+	target := strings.TrimSpace(positionals[0])
+	pipelineID := target
+	pipelineName := ""
+	resolvedViaList := false
+
+	if expectedVer == nil {
+		summary, found, lookupErr := resolvePipelineSummary(ctx, ports, projectID, target)
+		if lookupErr != nil {
+			return failure(ports.Err, lookupErr)
+		}
+		if !found {
+			return failure(ports.Err, fmt.Errorf("pipeline %q not found in project %q", target, projectID))
+		}
+		pipelineID = summary.PipelineID
+		pipelineName = summary.Name
+		ver := summary.Version
+		expectedVer = &ver
+		resolvedViaList = true
+	} else if strings.Contains(target, ".") {
+		summary, found, lookupErr := resolvePipelineSummary(ctx, ports, projectID, target)
+		if lookupErr != nil {
+			return failure(ports.Err, lookupErr)
+		}
+		if !found {
+			return failure(ports.Err, fmt.Errorf("pipeline %q not found in project %q", target, projectID))
+		}
+		pipelineID = summary.PipelineID
+		pipelineName = summary.Name
+		resolvedViaList = true
+	}
+
+	invokeDelete := func(id string) (api.Result, int, error) {
+		req := api.PipelineDeleteRequest{
+			ProjectID:  projectID,
+			PipelineID: id,
+		}
+		if err := req.Validate(); err != nil {
+			return api.Result{}, usage(ports.Err, publicMessage(err)), nil
+		}
+		input, err := json.Marshal(req)
+		if err != nil {
+			return api.Result{}, failure(ports.Err, err), nil
+		}
+		key, err := makeIdempotencyKey(idempotencyKeyFlag, "pipeline.delete", deps.Login.Random)
+		if err != nil {
+			return api.Result{}, failure(ports.Err, err), nil
+		}
+		inv := api.Invocation{
+			Operation: "pipeline.delete",
+			Request: api.Request{
+				Input:           input,
+				ExpectedVersion: expectedVer,
+				IdempotencyKey:  key,
+			},
+		}
+		if err := inv.Validate(); err != nil {
+			return api.Result{}, usage(ports.Err, publicMessage(err)), nil
+		}
+		res, callErr := ports.Client.Invoke(ctx, inv)
+		return res, ExitSuccess, callErr
+	}
+
+	result, status, err := invokeDelete(pipelineID)
+	if status != ExitSuccess {
+		return status
+	}
+	if err != nil && !resolvedViaList && isNotFoundError(err) {
+		if summary, found, lookupErr := resolvePipelineSummary(ctx, ports, projectID, target); lookupErr == nil && found && summary.PipelineID != pipelineID {
+			pipelineID = summary.PipelineID
+			pipelineName = summary.Name
+			result, status, err = invokeDelete(pipelineID)
+			if status != ExitSuccess {
+				return status
+			}
+		}
+	}
+	if err != nil {
+		return failure(ports.Err, err)
+	}
+	var deleted api.PipelineDeleteResult
+	_ = json.Unmarshal(result.Body, &deleted)
+
+	if format == OutputJSON {
+		out := map[string]any{
+			"pipeline_id": pipelineID,
+			"project_id":  projectID,
+			"version":     deleted.Version,
+		}
+		if pipelineName != "" {
+			out["name"] = pipelineName
+		}
+		if err := json.NewEncoder(ports.Out).Encode(out); err != nil {
+			return failure(ports.Err, err)
+		}
+		return ExitSuccess
+	}
+	if pipelineName != "" {
+		fmt.Fprintf(ports.Out, "deleted pipeline %s (pipeline_id=%s, version=%d)\n", pipelineName, pipelineID, deleted.Version)
+	} else {
+		fmt.Fprintf(ports.Out, "deleted pipeline %s (version=%d)\n", pipelineID, deleted.Version)
+	}
+	return ExitSuccess
 }
 
 // runRun starts one local pipeline file inline through pipeline.start and

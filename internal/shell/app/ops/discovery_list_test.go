@@ -59,9 +59,10 @@ func TestPrincipalWhoamiAcrossPrincipalKindsAndZeroMembershipOIDC(t *testing.T) 
 		t.Fatalf("project.create: %v", err)
 	}
 
-	// Grant admin-1 an explicit project membership in project-a so whoami
-	// returns both tenant-wide roles and visible project memberships.
-	if _, err := h.invokeKey(t, "token-admin", "membership.grant", `{"roles":["engineer","reviewer"]}`, "grant-admin-proj", map[string]string{
+	// project.create initializes the creator's project membership at version 1;
+	// replace admin-1's project roles at expected_version=1 so whoami returns
+	// both tenant-wide roles and the updated project membership.
+	if _, err := h.invokeVersion(t, "token-admin", "membership.grant", `{"roles":["engineer","reviewer"]}`, 1, map[string]string{
 		"project":   testProject,
 		"principal": testAdmin,
 	}); err != nil {

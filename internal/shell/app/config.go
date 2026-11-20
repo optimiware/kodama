@@ -348,6 +348,12 @@ type Config struct {
 	GitStorageRoot  string
 	GitRepositories []string
 
+	// GitCompanion optionally configures the HTTP boundary to the independent
+	// Userland Git companion (`kodema git serve`) used by repository.create and
+	// clone URL derivation in repository.list. A nil value keeps
+	// repository.create disabled (dependency_unavailable).
+	GitCompanion *GitCompanionConfig
+
 	// Discovery is the optional public login discovery document served at
 	// api.DiscoveryPath. It is validated at construction; a nil value keeps the
 	// route a clean 404 so kodema login reports that the login configuration
@@ -573,6 +579,9 @@ func (config Config) validate() error {
 	// AllowAll rules; invalid scopes, empty rules or reserved names fail before
 	// any adapter is constructed.
 	if err := validateWorkloadSecretRules(config.SecretRules, config.Profile); err != nil {
+		return err
+	}
+	if err := config.GitCompanion.validate(); err != nil {
 		return err
 	}
 	return nil

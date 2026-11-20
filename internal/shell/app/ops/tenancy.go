@@ -2,11 +2,17 @@ package opsapp
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"sort"
 
 	"github.com/optimiware/kodema/api"
 	"github.com/optimiware/kodema/internal/fault"
 	"github.com/optimiware/kodema/internal/id"
 	"github.com/optimiware/kodema/internal/shell/authorize"
+	"github.com/optimiware/kodema/internal/shell/identity"
+	"github.com/optimiware/kodema/internal/shell/receipt"
 	"github.com/optimiware/kodema/internal/shell/store"
 	"github.com/optimiware/kodema/internal/shell/tenancy"
 	tenancyadmin "github.com/optimiware/kodema/internal/shell/tenancy/admin"
@@ -76,15 +82,66 @@ func tenancyHandlers(deps Dependencies) map[authorize.OperationName]ops.Handler 
 			if err != nil {
 				return api.Result{}, err
 			}
+			if request.TenantID == "" {
+				request.TenantID = string(call.Scope.TenantID)
+			}
+			if request.CreatorRoles != nil && *request.CreatorRoles == nil {
+				empty := []string{}
+				request.CreatorRoles = &empty
+			}
+			content := receiptContent(call, request)
+			var (
+				copiedMembers []tenancy.Membership
+				skipInitCopy  bool
+			)
+			if request.CopyMembersFrom != "" {
+				if err := confirmReadAuthority(ctx, deps, call, call.Scope); err != nil {
+					return api.Result{}, err
+				}
+				replayed, err := projectCreateReceiptMatches(ctx, deps, call, content)
+				if err != nil {
+					return api.Result{}, err
+				}
+				if replayed {
+					skipInitCopy, err = shouldSkipReplayMemberCopy(ctx, deps, call, id.ProjectID(request.ProjectID), request)
+					if err != nil {
+						return api.Result{}, err
+					}
+				}
+				if !skipInitCopy {
+					if deps.Scanner != nil {
+						foundSource, err := projectExistsInTenant(ctx, deps.Scanner, call.Scope, request.CopyMembersFrom)
+						if err != nil {
+							return api.Result{}, err
+						}
+						if !foundSource {
+							return api.Result{}, fault.New(fault.NotFound, "source project to copy members from was not found")
+						}
+					}
+					sourceScope := tenancy.Scope{
+						TenantID:  call.Scope.TenantID,
+						ProjectID: id.ProjectID(request.CopyMembersFrom),
+					}
+					copiedMembers, err = listAllProjectMemberships(ctx, deps.Tenancy, call.Principal, sourceScope)
+					if err != nil {
+						return api.Result{}, err
+					}
+				}
+			}
 			committed, err := deps.Tenancy.CreateProject(ctx, tenancyadmin.ProjectCreateCommand{
 				Actor:     call.Principal,
 				ProjectID: id.ProjectID(request.ProjectID),
 				Name:      request.Name,
 				CallerKey: call.Request.IdempotencyKey,
-				Content:   receiptContent(call, request),
+				Content:   content,
 			})
 			if err != nil {
 				return api.Result{}, err
+			}
+			if !skipInitCopy {
+				if err := grantInitialProjectMemberships(ctx, deps, call, committed.ProjectID, request, copiedMembers, committed.Replayed); err != nil {
+					return api.Result{}, err
+				}
 			}
 			return respond(call, api.ProjectCreateResult{ProjectID: string(committed.ProjectID), Version: committed.Version})
 		}),
@@ -306,4 +363,230 @@ func roleNames(roles []tenancy.Role) []string {
 		names[index] = string(role)
 	}
 	return names
+}
+
+// defaultCreatorProjectRoles is the initial project role set granted to the
+// authenticated tenant-admin creator of a new project when neither copied
+// memberships nor explicit creator_roles override it.
+var defaultCreatorProjectRoles = []tenancy.Role{
+	tenancy.RoleAdmin,
+	tenancy.RoleEngineer,
+	tenancy.RoleReviewer,
+	tenancy.RoleOperator,
+	tenancy.RoleViewer,
+}
+
+func projectExistsInTenant(ctx context.Context, scanner store.Scanner, tenantScope tenancy.Scope, projectID string) (bool, error) {
+	page, err := scanner.Query(ctx, tenantScope, store.ScanQuery{
+		Table:   "projects",
+		Equals:  map[string]any{"id": projectID},
+		OrderBy: []store.Order{{Column: "id"}},
+		Limit:   1,
+	})
+	if err != nil {
+		return false, err
+	}
+	return len(page.Rows) > 0, nil
+}
+
+func listAllProjectMemberships(
+	ctx context.Context,
+	tenancyService TenancyAdmin,
+	actor authorize.Principal,
+	scope tenancy.Scope,
+) ([]tenancy.Membership, error) {
+	var all []tenancy.Membership
+	cursor := ""
+	for {
+		page, err := tenancyService.ListMemberships(ctx, tenancyadmin.MembershipListCommand{
+			Actor:  actor,
+			Scope:  scope,
+			Cursor: cursor,
+			Limit:  tenancyadmin.MaxMembershipPageSize,
+		})
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, page.Memberships...)
+		if page.NextCursor == "" {
+			break
+		}
+		cursor = page.NextCursor
+	}
+	return all, nil
+}
+
+// grantInitialProjectMemberships initializes project-scoped memberships for a
+// newly created project: any memberships copied from copy_members_from, plus
+// the authenticated creator's membership (defaulting to all human roles unless
+// already copied or overridden via creator_roles). Every grant goes through
+// TenancyAdmin.GrantMembership with deterministic derived caller keys so
+// authority is re-checked in-commit and retries converge cleanly. The creator's
+// own membership is granted last so its receipt serves as a durable completion
+// sentinel on idempotent replay.
+func grantInitialProjectMemberships(
+	ctx context.Context,
+	deps Dependencies,
+	call ops.AuthorizedCall,
+	projectID id.ProjectID,
+	request api.ProjectCreateRequest,
+	copied []tenancy.Membership,
+	replayed bool,
+) error {
+	grants := make(map[id.PrincipalID][]tenancy.Role, len(copied)+1)
+	for _, membership := range copied {
+		if len(membership.Roles) == 0 {
+			continue
+		}
+		grants[membership.PrincipalID] = append([]tenancy.Role(nil), membership.Roles...)
+	}
+	if call.Principal.Kind == identity.KindHuman && call.Principal.ID != "" {
+		switch {
+		case request.CreatorRoles != nil:
+			if len(*request.CreatorRoles) > 0 {
+				grants[call.Principal.ID] = rolesOf(*request.CreatorRoles)
+			}
+		default:
+			if _, exists := grants[call.Principal.ID]; !exists {
+				grants[call.Principal.ID] = append([]tenancy.Role(nil), defaultCreatorProjectRoles...)
+			}
+		}
+	}
+	if len(grants) == 0 {
+		return nil
+	}
+
+	principals := make([]string, 0, len(grants))
+	grantCreatorLast := false
+	for principalID := range grants {
+		if call.Principal.Kind == identity.KindHuman && principalID == call.Principal.ID {
+			grantCreatorLast = true
+			continue
+		}
+		principals = append(principals, string(principalID))
+	}
+	sort.Strings(principals)
+	if grantCreatorLast {
+		principals = append(principals, string(call.Principal.ID))
+	}
+
+	projectScope := tenancy.Scope{TenantID: call.Scope.TenantID, ProjectID: projectID}
+	for _, principal := range principals {
+		principalID := id.PrincipalID(principal)
+		if replayed {
+			exists, err := projectInitMemberReceiptExists(ctx, deps, call, projectID, principalID)
+			if err != nil {
+				return err
+			}
+			if exists {
+				continue
+			}
+		}
+		roles := grants[principalID]
+		grantRequest := api.MembershipGrantRequest{
+			ProjectID:   string(projectID),
+			PrincipalID: principal,
+			Roles:       roleNames(roles),
+		}
+		encoded, err := json.Marshal(struct {
+			Request api.MembershipGrantRequest `json:"request"`
+		}{Request: grantRequest})
+		if err != nil {
+			encoded = []byte(`{"request":null}`)
+		}
+		_, err = deps.Tenancy.GrantMembership(ctx, tenancyadmin.MembershipGrantCommand{
+			Actor: call.Principal,
+			Membership: tenancy.Membership{
+				Scope:       projectScope,
+				PrincipalID: principalID,
+				Roles:       roles,
+			},
+			ExpectedVersion: 0,
+			CallerKey:       projectInitMemberKey(call.Request.IdempotencyKey, projectID, principalID),
+			Content:         receipt.Content{MediaType: api.MediaType, Bytes: encoded},
+		})
+		if err != nil {
+			if class, ok := fault.ClassOf(err); ok && class == fault.VersionConflict {
+				continue
+			}
+			return err
+		}
+	}
+	return nil
+}
+
+func projectCreateReceiptMatches(
+	ctx context.Context,
+	deps Dependencies,
+	call ops.AuthorizedCall,
+	content receipt.Content,
+) (bool, error) {
+	if deps.Receipts == nil || call.Request.IdempotencyKey == "" {
+		return false, nil
+	}
+	key := receipt.Key{
+		TenantID:    call.Scope.TenantID,
+		ProjectID:   call.Scope.ProjectID,
+		PrincipalID: call.Principal.ID,
+		Operation:   string(call.Operation.Name),
+		CallerKey:   call.Request.IdempotencyKey,
+	}
+	record, found, err := deps.Receipts.Lookup(ctx, key)
+	if err != nil || !found {
+		return false, err
+	}
+	fingerprint, err := receipt.Fingerprint(content)
+	if err != nil {
+		return false, err
+	}
+	outcome, err := receipt.Match(&record, receipt.Record{Key: key, ContentHash: fingerprint})
+	if err != nil {
+		return false, err
+	}
+	return outcome == receipt.OutcomeReplay, nil
+}
+
+func shouldSkipReplayMemberCopy(
+	ctx context.Context,
+	deps Dependencies,
+	call ops.AuthorizedCall,
+	projectID id.ProjectID,
+	request api.ProjectCreateRequest,
+) (bool, error) {
+	expectsCreatorGrant := call.Principal.Kind == identity.KindHuman &&
+		call.Principal.ID != "" &&
+		(request.CreatorRoles == nil || len(*request.CreatorRoles) > 0)
+	if !expectsCreatorGrant {
+		return true, nil
+	}
+	return projectInitMemberReceiptExists(ctx, deps, call, projectID, call.Principal.ID)
+}
+
+func projectInitMemberReceiptExists(
+	ctx context.Context,
+	deps Dependencies,
+	call ops.AuthorizedCall,
+	projectID id.ProjectID,
+	targetPrincipal id.PrincipalID,
+) (bool, error) {
+	if deps.Receipts == nil || call.Request.IdempotencyKey == "" {
+		return false, nil
+	}
+	key := receipt.Key{
+		TenantID:    call.Scope.TenantID,
+		ProjectID:   projectID,
+		PrincipalID: call.Principal.ID,
+		Operation:   "membership.grant",
+		CallerKey:   projectInitMemberKey(call.Request.IdempotencyKey, projectID, targetPrincipal),
+	}
+	_, found, err := deps.Receipts.Lookup(ctx, key)
+	if err != nil {
+		return false, err
+	}
+	return found, nil
+}
+
+func projectInitMemberKey(callerKey string, projectID id.ProjectID, principalID id.PrincipalID) string {
+	sum := sha256.Sum256([]byte(callerKey + "\x00" + string(projectID) + "\x00" + string(principalID)))
+	return "project-init-member-" + hex.EncodeToString(sum[:16])
 }
