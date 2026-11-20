@@ -244,3 +244,45 @@ func TestUpDownStatusHelpUsesDoubleDashFlags(t *testing.T) {
 		})
 	}
 }
+
+func TestUpCLILLMProxyFlags(t *testing.T) {
+	origUp := runUpStack
+	t.Cleanup(func() { runUpStack = origUp })
+
+	var captured up.UpConfig
+	runUpStack = func(_ context.Context, cfg up.UpConfig, _ io.Writer) (up.StackDescriptor, error) {
+		captured = cfg
+		return up.StackDescriptor{Instance: cfg.Instance}, nil
+	}
+
+	var out, errBuf bytes.Buffer
+	if code := runUpEntry(context.Background(), []string{
+		"--name", "demo",
+		"--llm-provider", "openrouter=https://openrouter.ai/api/v1",
+		"--llm-provider", "local-vllm=http://host.containers.internal:8000/v1,secret=VLLM_KEY",
+	}, &out, &errBuf); code != 0 {
+		t.Fatalf("runUpEntry(--llm-provider) exit = %d: %s", code, errBuf.String())
+	}
+	if captured.DisableLLMProxy || len(captured.LLMProviders) != 2 ||
+		captured.LLMProviders[0].Name != "openrouter" || captured.LLMProviders[0].SecretName != "OPENROUTER_API_KEY" ||
+		captured.LLMProviders[1].Name != "local-vllm" || captured.LLMProviders[1].SecretName != "VLLM_KEY" {
+		t.Fatalf("captured LLM config = %+v", captured)
+	}
+
+	errBuf.Reset()
+	if code := runUpEntry(context.Background(), []string{"--name", "demo", "--llm-proxy=false"}, &out, &errBuf); code != 0 || !captured.DisableLLMProxy {
+		t.Fatalf("--llm-proxy=false: exit=%d disable=%t err=%s", code, captured.DisableLLMProxy, errBuf.String())
+	}
+
+	for _, args := range [][]string{
+		{"--llm-proxy=false", "--llm-provider", "openrouter=https://openrouter.ai/api/v1"},
+		{"--models-file", "/tmp/models.json", "--llm-provider", "openrouter=https://openrouter.ai/api/v1"},
+		{"--llm-provider", "openrouter=https://openrouter.ai/api/v1", "--llm-provider", "openrouter=https://other.invalid/v1"},
+		{"--llm-provider", "bad-spec"},
+	} {
+		errBuf.Reset()
+		if code := runUpEntry(context.Background(), args, &out, &errBuf); code != 2 {
+			t.Fatalf("runUpEntry(%v) exit = %d; want 2 (stderr: %s)", args, code, errBuf.String())
+		}
+	}
+}

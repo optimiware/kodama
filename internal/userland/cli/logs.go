@@ -42,20 +42,21 @@ func (action inspectedAction) effectiveState() string {
 
 // inspectedExecution is a lenient projection of api.ExecutionInspectResult.
 type inspectedExecution struct {
-	ExecutionID   string                `json:"execution_id"`
-	TaskID        string                `json:"task_id,omitempty"`
-	PipelineID    string                `json:"pipeline_id,omitempty"`
-	StartedBy     string                `json:"started_by,omitempty"`
-	Inputs        map[string]string     `json:"inputs,omitempty"`
-	Trigger       *api.ExecutionTrigger `json:"trigger,omitempty"`
-	CreatedAt     *time.Time            `json:"created_at,omitempty"`
-	State         string                `json:"state"`
-	Status        string                `json:"status"`
-	Version       uint64                `json:"version"`
-	CurrentAction int                   `json:"current_action"`
-	Actions       []inspectedAction     `json:"actions"`
-	Failure       *api.ExecutionFailure `json:"failure,omitempty"`
-	Cleanup       api.ExecutionCleanup  `json:"cleanup"`
+	ExecutionID   string                   `json:"execution_id"`
+	TaskID        string                   `json:"task_id,omitempty"`
+	PipelineID    string                   `json:"pipeline_id,omitempty"`
+	StartedBy     string                   `json:"started_by,omitempty"`
+	Inputs        map[string]string        `json:"inputs,omitempty"`
+	Trigger       *api.ExecutionTrigger    `json:"trigger,omitempty"`
+	CreatedAt     *time.Time               `json:"created_at,omitempty"`
+	State         string                   `json:"state"`
+	Status        string                   `json:"status"`
+	Version       uint64                   `json:"version"`
+	CurrentAction int                      `json:"current_action"`
+	Actions       []inspectedAction        `json:"actions"`
+	ModelUsage    *api.ExecutionModelUsage `json:"model_usage,omitempty"`
+	Failure       *api.ExecutionFailure    `json:"failure,omitempty"`
+	Cleanup       api.ExecutionCleanup     `json:"cleanup"`
 }
 
 func (execution inspectedExecution) effectiveState() string {

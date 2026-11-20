@@ -77,6 +77,11 @@ func runUpEntry(ctx context.Context, args []string, stdout, stderr io.Writer) in
 	allowProjectSecrets := flags.Bool("allow-project-secrets", defaultAllowProjectSecrets, "allow project-stored workload secrets in the local stack (env KODEMA_UP_ALLOW_PROJECT_SECRETS)")
 	var allowSecrets stringList
 	flags.Var(&allowSecrets, "allow-secret", "allow only this exact workload secret name in the local project (repeatable; overrides allow-all)")
+	defaultLLMProxy, llmProxyEnvErr := envBoolStrict("KODEMA_UP_LLM_PROXY", true)
+	llmProxy := flags.Bool("llm-proxy", defaultLLMProxy, "enable the built-in credential-injecting LLM proxy for openai, anthropic, and opencode (env KODEMA_UP_LLM_PROXY)")
+	modelsFile := flags.String("models-file", envOr("KODEMA_UP_MODELS_FILE", ""), "custom models.json file for the local LLM proxy (env KODEMA_UP_MODELS_FILE)")
+	var llmProvidersRaw stringList
+	flags.Var(&llmProvidersRaw, "llm-provider", "add or override an LLM proxy provider: <name>=<base_url>[,secret=<NAME>][,auth=<Authorization|x-api-key>] (repeatable)")
 	configureDoubleDashUsage(flags, args, stdout, stderr, "kodema up [flags]", "Start a local Kodema installation on Podman")
 	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -103,8 +108,20 @@ func runUpEntry(ctx context.Context, args []string, stdout, stderr io.Writer) in
 		usage(stderr, allowSecretsEnvErr.Error())
 		return 2
 	}
+	if llmProxyEnvErr != nil {
+		usage(stderr, llmProxyEnvErr.Error())
+		return 2
+	}
 	if !*allowProjectSecrets && len(allowSecrets) > 0 {
 		usage(stderr, "up: cannot combine --allow-project-secrets=false with --allow-secret")
+		return 2
+	}
+	if !*llmProxy && (strings.TrimSpace(*modelsFile) != "" || len(llmProvidersRaw) > 0) {
+		usage(stderr, "up: cannot combine --llm-proxy=false with --models-file or --llm-provider")
+		return 2
+	}
+	if strings.TrimSpace(*modelsFile) != "" && len(llmProvidersRaw) > 0 {
+		usage(stderr, "up: cannot combine --models-file with --llm-provider")
 		return 2
 	}
 	for _, entry := range allowSecrets {
@@ -112,6 +129,21 @@ func runUpEntry(ctx context.Context, args []string, stdout, stderr io.Writer) in
 			usage(stderr, fmt.Sprintf("invalid --allow-secret %q: %v", entry, err))
 			return 2
 		}
+	}
+	var llmProviders []up.LLMProviderSpec
+	seenProviders := make(map[string]bool, len(llmProvidersRaw))
+	for _, raw := range llmProvidersRaw {
+		parsed, err := up.ParseLLMProviderSpec(raw)
+		if err != nil {
+			usage(stderr, err.Error())
+			return 2
+		}
+		if seenProviders[parsed.Name] {
+			usage(stderr, fmt.Sprintf("duplicate --llm-provider %q", parsed.Name))
+			return 2
+		}
+		seenProviders[parsed.Name] = true
+		llmProviders = append(llmProviders, parsed)
 	}
 	if err := up.ValidateInstanceName(*name); err != nil {
 		usage(stderr, err.Error())
@@ -204,6 +236,9 @@ func runUpEntry(ctx context.Context, args []string, stdout, stderr io.Writer) in
 		Foreground:            *foreground,
 		DenyProjectSecrets:    !*allowProjectSecrets,
 		AllowSecrets:          allowSecrets,
+		DisableLLMProxy:       !*llmProxy,
+		ModelsFile:            strings.TrimSpace(*modelsFile),
+		LLMProviders:          llmProviders,
 		Stderr:                stderr,
 	}, stdout)
 	if err != nil {

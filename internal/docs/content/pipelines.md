@@ -58,7 +58,7 @@ actions:
 - Required: `name`, `image`, `commands`.
 - Optional: `env` (string literals only; action values override pipeline-level `env`), `secrets` (declared secret names resolved at activation), `outputs` (declared UTF-8 keys; up to 8 keys, 4 KiB max each at submission), `timeout`, `resources` (`memory`, `cpu`).
 - Exit code `0` succeeds; nonzero fails. Commands run in `/workspace` with `/kodema/bin` appended to `PATH`.
-- `KODEMA_URL`, `KODEMA_EXECUTION`, `KODEMA_ACTION`, `KODEMA_TASK` and secret name `KODEMA_TOKEN` are reserved and refused at apply. Runtime-supplied `KODEMA_CA_FILE`, `KODEMA_GIT_URL`, `KODEMA_LLM_ANTHROPIC_BASE_URL`, `KODEMA_LLM_OPENAI_BASE_URL`, and `GIT_CONFIG_COUNT` / `GIT_CONFIG_KEY_*` / `GIT_CONFIG_VALUE_*` cannot be shadowed when configured by the installation.
+- `KODEMA_URL`, `KODEMA_EXECUTION`, `KODEMA_ACTION`, `KODEMA_TASK` and secret name `KODEMA_TOKEN` are reserved and refused at apply. Runtime-supplied `KODEMA_CA_FILE`, `KODEMA_GIT_URL`, `KODEMA_LLM_<PROVIDER>_BASE_URL` (such as `KODEMA_LLM_OPENAI_BASE_URL`, `KODEMA_LLM_ANTHROPIC_BASE_URL`, `KODEMA_LLM_OPENCODE_BASE_URL`, and custom providers), and `GIT_CONFIG_COUNT` / `GIT_CONFIG_KEY_*` / `GIT_CONFIG_VALUE_*` cannot be shadowed when configured by the installation. Secrets owned by configured LLM proxy providers cannot be mounted into containers via `secrets: [...]`; workloads authenticate to `/llm/<provider>/*` with `/kodema/secrets/KODEMA_TOKEN`.
 
 ## Request actions
 

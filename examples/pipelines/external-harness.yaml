@@ -1,11 +1,15 @@
-# External coding-agent harness recipe (Claude Code, Codex, OpenCode, Pi).
+# External coding-agent harness recipe (OpenCode, Claude Code, Codex, Pi).
 #
-# Raw provider credentials (ANTHROPIC_API_KEY, OPENAI_API_KEY) are never mounted
-# into the workload container. Instead, the harness authenticates to Kodema's
-# streaming LLM proxy (/llm/{provider}/*) by reading the mounted execution
-# credential from /kodema/secrets/KODEMA_TOKEN into ANTHROPIC_API_KEY and
-# OPENAI_API_KEY while pointing ANTHROPIC_BASE_URL at ${KODEMA_URL}/llm/anthropic
-# and OPENAI_BASE_URL at ${KODEMA_URL}/llm/openai/v1.
+# Raw provider credentials (OPENCODE_API_KEY, ANTHROPIC_API_KEY, OPENAI_API_KEY,
+# or custom provider keys) are stored as project secrets (`kodema secret set ...`)
+# and are NEVER mounted into workload containers. Even in local `kodema up` stacks,
+# Kodema refuses to mount LLM-proxy-managed provider secrets via `secrets: [...]`.
+#
+# Instead, the harness authenticates to Kodema's streaming LLM proxy
+# (`/llm/{provider}/*`) by reading the mounted execution credential from
+# `/kodema/secrets/KODEMA_TOKEN` into the harness API-key variables while pointing
+# at the injected `KODEMA_LLM_<PROVIDER>_BASE_URL` environment variables and
+# trusting `$KODEMA_CA_FILE`.
 actions:
   - name: prepare
     image: registry.example.com/kodema/base@sha256:cae662172fd450bb0cd710a769079c05bfc5d8e35efa6576edc7d0377afdd4a2
@@ -17,10 +21,12 @@ actions:
       - |
         export ANTHROPIC_BASE_URL="${KODEMA_LLM_ANTHROPIC_BASE_URL:-${KODEMA_URL}/llm/anthropic}"
         export OPENAI_BASE_URL="${KODEMA_LLM_OPENAI_BASE_URL:-${KODEMA_URL}/llm/openai/v1}"
+        export OPENCODE_BASE_URL="${KODEMA_LLM_OPENCODE_BASE_URL:-${KODEMA_URL}/llm/opencode/v1}"
         # The credential file has no trailing newline, so read assigns it and reports EOF.
         IFS= read -r ANTHROPIC_API_KEY < /kodema/secrets/KODEMA_TOKEN || [ -n "$ANTHROPIC_API_KEY" ]
         IFS= read -r OPENAI_API_KEY < /kodema/secrets/KODEMA_TOKEN || [ -n "$OPENAI_API_KEY" ]
-        export ANTHROPIC_API_KEY OPENAI_API_KEY
+        IFS= read -r OPENCODE_API_KEY < /kodema/secrets/KODEMA_TOKEN || [ -n "$OPENCODE_API_KEY" ]
+        export ANTHROPIC_API_KEY OPENAI_API_KEY OPENCODE_API_KEY
         if [ -n "${KODEMA_CA_FILE:-}" ]; then
           export NODE_EXTRA_CA_CERTS="${KODEMA_CA_FILE}"
           export SSL_CERT_FILE="${KODEMA_CA_FILE}"

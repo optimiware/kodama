@@ -112,9 +112,10 @@ func wireApp(ctx context.Context, builder *builder, environment *environment) (*
 	if err != nil {
 		return nil, err
 	}
+	activationPolicy := newProxyOwnedSecretPolicy(workloadPolicy, cfg.Models)
 	activationSecrets, err := secret.NewResolver(secret.ResolverConfig{
 		InstallationID: cfg.InstallationID,
-		Policy:         workloadPolicy,
+		Policy:         activationPolicy,
 		Lookup:         secretLookup,
 		Cipher:         environment.cipher,
 	})
@@ -519,6 +520,8 @@ func wireApp(ctx context.Context, builder *builder, environment *environment) (*
 		Authority:      identityAdapter,
 		Lookup:         secretLookup,
 		Cipher:         environment.cipher,
+		Store:          environment.store,
+		NewUsageID:     ids.NewUsageID,
 		Clock:          clock,
 		Transport:      sharedModelTransport,
 	})

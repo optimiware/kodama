@@ -55,6 +55,7 @@ const activationCredentialOperation = "execution.credential.activate"
 const (
 	EnvLLMOpenAIBaseURL    = "KODEMA_LLM_OPENAI_BASE_URL"
 	EnvLLMAnthropicBaseURL = "KODEMA_LLM_ANTHROPIC_BASE_URL"
+	EnvLLMOpenCodeBaseURL  = "KODEMA_LLM_OPENCODE_BASE_URL"
 )
 
 // activationMaterializer builds the secret values and the current execution
@@ -181,29 +182,58 @@ func (materializer *activationMaterializer) prepare(ctx context.Context, request
 	}
 	request.Credential = credential
 	if materializer.models != nil && materializer.models.enabledForScope(scope) && materializer.workloadURL != "" {
-		request.Container.Env = injectModelProxyEnv(request.Container.Env, materializer.workloadURL)
+		request.Container.Env = injectModelProxyEnv(
+			request.Container.Env,
+			materializer.workloadURL,
+			materializer.models.providersForScope(scope),
+		)
 	}
 	return request, nil
 }
 
-func injectModelProxyEnv(existing []kerneldefinition.EnvVar, baseURL string) []kerneldefinition.EnvVar {
-	filtered := make([]kerneldefinition.EnvVar, 0, len(existing)+2)
+func injectModelProxyEnv(existing []kerneldefinition.EnvVar, baseURL string, providers []ModelProviderConfig) []kerneldefinition.EnvVar {
+	base := strings.TrimRight(strings.TrimSpace(baseURL), "/")
+	if base == "" {
+		return existing
+	}
+
+	var injected []kerneldefinition.EnvVar
+	if len(providers) > 0 {
+		seen := make(map[id.EnvName]bool, len(providers))
+		injected = make([]kerneldefinition.EnvVar, 0, len(providers))
+		for _, provider := range providers {
+			envName, ok := EnvLLMProviderBaseURL(provider.Name)
+			if !ok || seen[envName] {
+				continue
+			}
+			seen[envName] = true
+			injected = append(injected, kerneldefinition.EnvVar{
+				Name:  envName,
+				Value: proxyBaseURLForProvider(base, provider),
+			})
+		}
+	} else {
+		injected = []kerneldefinition.EnvVar{
+			{
+				Name:  id.EnvName(EnvLLMOpenAIBaseURL),
+				Value: base + "/llm/openai/v1",
+			},
+			{
+				Name:  id.EnvName(EnvLLMAnthropicBaseURL),
+				Value: base + "/llm/anthropic",
+			},
+		}
+	}
+
+	filtered := make([]kerneldefinition.EnvVar, 0, len(existing)+len(injected))
 	for _, entry := range existing {
-		if string(entry.Name) == EnvLLMOpenAIBaseURL || string(entry.Name) == EnvLLMAnthropicBaseURL {
+		name := string(entry.Name)
+		if strings.HasPrefix(name, "KODEMA_LLM_") && strings.HasSuffix(name, "_BASE_URL") {
 			continue
 		}
 		filtered = append(filtered, entry)
 	}
-	return append(filtered,
-		kerneldefinition.EnvVar{
-			Name:  id.EnvName(EnvLLMOpenAIBaseURL),
-			Value: baseURL + "/llm/openai/v1",
-		},
-		kerneldefinition.EnvVar{
-			Name:  id.EnvName(EnvLLMAnthropicBaseURL),
-			Value: baseURL + "/llm/anthropic",
-		},
-	)
+	return append(filtered, injected...)
 }
 
 // credential returns the committed execution credential, reconstructing it

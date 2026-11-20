@@ -22,6 +22,7 @@ import (
 	"github.com/optimiware/kodema/internal/shell/identity"
 	"github.com/optimiware/kodema/internal/shell/secret"
 	"github.com/optimiware/kodema/internal/shell/tenancy"
+	"github.com/optimiware/kodema/internal/userland/up"
 )
 
 // serverApp is the constructed Shell composition surface the entrypoint drives.
@@ -116,6 +117,7 @@ type serverOptions struct {
 	// secret-name allow-list. An empty path keeps that surface disabled (or
 	// deny-by-default for workload secrets); a named file is never defaulted.
 	ModelsFile      string
+	LLMProviders    []string
 	ToolProxyFile   string
 	SecretRulesFile string
 }
@@ -310,6 +312,7 @@ type serverFile struct {
 	DevExpiry         string               `json:"dev_expiry"`
 	Discovery         *serverDiscoveryFile `json:"discovery"`
 	ModelsFile        string               `json:"models_file"`
+	LLMProviders      []string             `json:"llm_providers"`
 	ToolProxyFile     string               `json:"tool_proxy_file"`
 	SecretRulesFile   string               `json:"secret_rules_file"`
 }
@@ -382,6 +385,9 @@ func parseServerOptions(args []string, stderr io.Writer) (serverOptions, int) {
 	flags.StringVar(&options.MCPPath, "mcp-path", options.MCPPath, "MCP JSON-RPC path")
 	flags.DurationVar(&options.LoopInterval, "loop-interval", options.LoopInterval, "durable profiles' background scan interval (default 1s, 100ms to 1m)")
 	flags.StringVar(&options.GitStorageRoot, "git-storage-root", options.GitStorageRoot, "mounted tenant Git storage root for retained-commit keep refs")
+	flags.StringVar(&options.ModelsFile, "models-file", options.ModelsFile, "trusted JSON file configuring model gateway and LLM proxy providers")
+	llmProviders := stringList(options.LLMProviders)
+	flags.Var(&llmProviders, "llm-provider", "streaming LLM proxy provider: <name>=<base_url>[,secret=<NAME>][,auth=<Authorization|x-api-key>][,tenant=<TENANT>][,project=<PROJECT>] (repeatable)")
 	flags.StringVar(&options.SecretRulesFile, "secret-rules-file", options.SecretRulesFile, "trusted JSON file configuring workload secret-name allow-list rules")
 	flags.Var(&tokens, "dev-token", "development bearer token (repeatable)")
 	flags.StringVar(&options.DevPrincipal, "dev-principal", options.DevPrincipal, "development principal identity")
@@ -407,6 +413,7 @@ func parseServerOptions(args []string, stderr io.Writer) (serverOptions, int) {
 		return serverOptions{}, 2
 	}
 	options.DevTokens = tokens
+	options.LLMProviders = llmProviders
 	options.Discovery.Scopes = discoveryScopes
 	return options, 0
 }
@@ -520,6 +527,9 @@ func mergeServerFile(file serverFile, options serverOptions) (serverOptions, err
 	}
 	if file.ModelsFile != "" {
 		options.ModelsFile = file.ModelsFile
+	}
+	if len(file.LLMProviders) > 0 {
+		options.LLMProviders = append([]string(nil), file.LLMProviders...)
 	}
 	if file.ToolProxyFile != "" {
 		options.ToolProxyFile = file.ToolProxyFile
@@ -750,6 +760,24 @@ func (options serverOptions) gatewayConfigurations(profile shellapp.Profile) (*s
 		}
 		models = loaded
 	}
+	if len(options.LLMProviders) > 0 {
+		defaultTenant := ""
+		if profile == shellapp.ProfileDevelopment {
+			defaultTenant = strings.TrimSpace(options.DevTenant)
+		}
+		extra, extraRules, err := parseServerLLMProviders(options.LLMProviders, defaultTenant)
+		if err != nil {
+			return nil, nil, err
+		}
+		if models == nil {
+			models = &shellapp.ModelsConfig{}
+		}
+		models.Providers = append(models.Providers, extra...)
+		models.SecretRules = append(models.SecretRules, extraRules...)
+		if err := models.Validate(profile); err != nil {
+			return nil, nil, fmt.Errorf("LLM provider configuration is invalid: %w", err)
+		}
+	}
 	if path := strings.TrimSpace(options.ToolProxyFile); path != "" {
 		loaded, err := shellapp.LoadToolProxyConfigFile(path)
 		if err != nil {
@@ -758,6 +786,79 @@ func (options serverOptions) gatewayConfigurations(profile shellapp.Profile) (*s
 		toolProxy = loaded
 	}
 	return models, toolProxy, nil
+}
+
+// parseServerLLMProviders parses repeatable `--llm-provider` entries for
+// `kodema serve`. Each entry accepts the same `<name>=<base_url>[,secret=...]
+// [,auth=...]` grammar as `kodema up` plus optional `tenant=<id>` and
+// `project=<id>` scope selectors.
+func parseServerLLMProviders(rawEntries []string, defaultTenant string) ([]shellapp.ModelProviderConfig, []secret.NameRule, error) {
+	providers := make([]shellapp.ModelProviderConfig, 0, len(rawEntries))
+	rules := make([]secret.NameRule, 0, len(rawEntries))
+	for _, raw := range rawEntries {
+		trimmed := strings.TrimSpace(raw)
+		if trimmed == "" {
+			return nil, nil, fmt.Errorf("invalid --llm-provider: value is empty")
+		}
+		parts := strings.Split(trimmed, ",")
+		var (
+			baseParts []string
+			tenantID  string
+			projectID string
+		)
+		baseParts = append(baseParts, parts[0])
+		for _, option := range parts[1:] {
+			opt := strings.TrimSpace(option)
+			key, val, ok := strings.Cut(opt, "=")
+			if ok {
+				switch strings.ToLower(strings.TrimSpace(key)) {
+				case "tenant", "tenant_id":
+					if tenantID != "" {
+						return nil, nil, fmt.Errorf("invalid --llm-provider %q: duplicate tenant option", raw)
+					}
+					tenantID = strings.TrimSpace(val)
+					continue
+				case "project", "project_id":
+					if projectID != "" {
+						return nil, nil, fmt.Errorf("invalid --llm-provider %q: duplicate project option", raw)
+					}
+					projectID = strings.TrimSpace(val)
+					continue
+				}
+			}
+			baseParts = append(baseParts, option)
+		}
+		spec, err := up.ParseLLMProviderSpec(strings.Join(baseParts, ","))
+		if err != nil {
+			return nil, nil, err
+		}
+		if tenantID == "" {
+			tenantID = defaultTenant
+		}
+		if tenantID == "" {
+			return nil, nil, fmt.Errorf("invalid --llm-provider %q: tenant=<tenant-id> is required for this profile", raw)
+		}
+		scope := tenancy.Scope{
+			TenantID:  id.TenantID(tenantID),
+			ProjectID: id.ProjectID(projectID),
+		}
+		if err := scope.Validate(); err != nil {
+			return nil, nil, fmt.Errorf("invalid --llm-provider %q scope: %w", raw, err)
+		}
+		secretName := id.SecretName(spec.SecretName)
+		providers = append(providers, shellapp.ModelProviderConfig{
+			Scope:      scope,
+			Name:       spec.Name,
+			BaseURL:    spec.BaseURL,
+			SecretName: secretName,
+			AuthHeader: spec.AuthHeader,
+		})
+		rules = append(rules, secret.NameRule{
+			Scope: scope,
+			Names: []id.SecretName{secretName},
+		})
+	}
+	return providers, rules, nil
 }
 
 // secretRulesConfiguration loads the optional trusted workload secret-name

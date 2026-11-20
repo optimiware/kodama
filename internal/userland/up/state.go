@@ -192,6 +192,7 @@ func PurgeInstanceStateDir(stateDir, instanceName string) error {
 	knownFiles := []string{
 		"stack.json",
 		"secret-rules.json",
+		"models.json",
 		"env.sh",
 		"admin-token",
 		"tenant-admin-token",

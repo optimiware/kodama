@@ -9,9 +9,11 @@ package app
 // not_found refusal and constructs no dependency.
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/url"
+	"sort"
 	"strings"
 	"time"
 
@@ -100,6 +102,11 @@ type providerScopeKey struct {
 	name  string
 }
 
+// Validate checks the complete trusted configuration before any adapter exists.
+func (config *ModelsConfig) Validate(profile Profile) error {
+	return config.validate(profile)
+}
+
 // validate checks the complete trusted configuration before any adapter exists.
 // Every ambiguity is a refusal: last-entry-wins and a silently dropped or
 // weakened endpoint are never resolved.
@@ -175,6 +182,192 @@ func (config *ModelsConfig) enabledForScope(scope tenancy.Scope) bool {
 		}
 	}
 	return false
+}
+
+// providersForScope returns the effective LLM proxy providers enabled for
+// scope, sorted deterministically by provider name. A project-scoped entry
+// overrides a tenant-wide entry of the same name.
+func (config *ModelsConfig) providersForScope(scope tenancy.Scope) []ModelProviderConfig {
+	if config == nil || len(config.Providers) == 0 {
+		return nil
+	}
+	byName := make(map[string]ModelProviderConfig, len(config.Providers))
+	for _, provider := range config.Providers {
+		if provider.Scope.TenantID == scope.TenantID && provider.Scope.ProjectID == "" {
+			byName[provider.Name] = provider
+		}
+	}
+	if scope.ProjectScoped() {
+		for _, provider := range config.Providers {
+			if provider.Scope == scope {
+				byName[provider.Name] = provider
+			}
+		}
+	}
+	if len(byName) == 0 {
+		return nil
+	}
+	providers := make([]ModelProviderConfig, 0, len(byName))
+	for _, provider := range byName {
+		providers = append(providers, provider)
+	}
+	sort.Slice(providers, func(i, j int) bool {
+		return providers[i].Name < providers[j].Name
+	})
+	return providers
+}
+
+// EnvLLMProviderBaseURL returns the sanitized workload environment variable
+// name for one LLM proxy provider: KODEMA_LLM_<NORMALIZED_PROVIDER>_BASE_URL.
+// Non-alphanumeric characters are collapsed to single underscores and uppercased.
+// Empty, oversized, invalid, or standard KODEMA_* runtime names return false.
+func EnvLLMProviderBaseURL(providerName string) (id.EnvName, bool) {
+	segment := normalizeProviderEnvSegment(providerName)
+	if segment == "" {
+		return "", false
+	}
+	candidate := "KODEMA_LLM_" + segment + "_BASE_URL"
+	parsed, err := id.ParseEnvName(candidate)
+	if err != nil {
+		return "", false
+	}
+	switch string(parsed) {
+	case id.EnvURL, id.EnvExecution, id.EnvAction, id.EnvTask, id.SecretTokenName, "KODEMA_CA_FILE", "KODEMA_GIT_URL":
+		return "", false
+	}
+	return parsed, true
+}
+
+func normalizeProviderEnvSegment(raw string) string {
+	var b strings.Builder
+	b.Grow(len(raw))
+	lastUnderscore := true
+	for i := 0; i < len(raw); i++ {
+		ch := raw[i]
+		switch {
+		case ch >= 'a' && ch <= 'z':
+			b.WriteByte(ch - ('a' - 'A'))
+			lastUnderscore = false
+		case (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9'):
+			b.WriteByte(ch)
+			lastUnderscore = false
+		default:
+			if !lastUnderscore {
+				b.WriteByte('_')
+				lastUnderscore = true
+			}
+		}
+	}
+	return strings.Trim(b.String(), "_")
+}
+
+// proxyBaseURLForProvider returns the container-facing base URL exposed in
+// KODEMA_LLM_<PROVIDER>_BASE_URL. Anthropic-style providers (x-api-key) omit
+// /v1 because Anthropic SDKs append /v1/messages; OpenAI-compatible providers
+// include /v1 because OpenAI SDKs append /chat/completions or /responses.
+func proxyBaseURLForProvider(workloadBaseURL string, provider ModelProviderConfig) string {
+	base := strings.TrimRight(strings.TrimSpace(workloadBaseURL), "/")
+	parsed, err := deriveProviderBaseURL(provider.BaseURL, provider.Endpoint)
+	if err == nil && providerUsesXAPIKey(provider, parsed) {
+		return base + "/llm/" + provider.Name
+	}
+	return base + "/llm/" + provider.Name + "/v1"
+}
+
+// llmProxySecretRules returns the gateway-consumer secret-name rules for the
+// streaming LLM proxy. Explicit ModelsConfig.SecretRules are preserved as-is;
+// when omitted on a provider configuration, exact ConsumerGateway rules are
+// derived strictly from the trusted provider declarations so the proxy can
+// resolve its configured provider secrets without widening workload policies.
+func llmProxySecretRules(config *ModelsConfig) []secret.NameRule {
+	if config == nil {
+		return nil
+	}
+	if len(config.SecretRules) > 0 {
+		return config.SecretRules
+	}
+	if len(config.Providers) == 0 {
+		return nil
+	}
+	byScope := make(map[tenancy.Scope]map[id.SecretName]struct{}, len(config.Providers))
+	scopes := make([]tenancy.Scope, 0, len(config.Providers))
+	for _, provider := range config.Providers {
+		names, ok := byScope[provider.Scope]
+		if !ok {
+			names = make(map[id.SecretName]struct{})
+			byScope[provider.Scope] = names
+			scopes = append(scopes, provider.Scope)
+		}
+		names[provider.SecretName] = struct{}{}
+	}
+	rules := make([]secret.NameRule, 0, len(scopes))
+	for _, scope := range scopes {
+		nameSet := byScope[scope]
+		names := make([]id.SecretName, 0, len(nameSet))
+		for name := range nameSet {
+			names = append(names, name)
+		}
+		sort.Slice(names, func(i, j int) bool { return names[i] < names[j] })
+		rules = append(rules, secret.NameRule{Scope: scope, Names: names})
+	}
+	return rules
+}
+
+type ownedSecretKey struct {
+	scope tenancy.Scope
+	name  id.SecretName
+}
+
+// proxyOwnedSecretPolicy wraps the workload secret NamePolicy to prevent
+// container workloads from materializing raw provider credentials owned by
+// configured LLM proxy providers or configured models in the same scope, even
+// when workload SecretRules includes allow_all.
+type proxyOwnedSecretPolicy struct {
+	inner   secret.NamePolicy
+	blocked map[ownedSecretKey]struct{}
+}
+
+var _ secret.NamePolicy = (*proxyOwnedSecretPolicy)(nil)
+
+func newProxyOwnedSecretPolicy(inner secret.NamePolicy, models *ModelsConfig) secret.NamePolicy {
+	if models == nil || (len(models.Providers) == 0 && len(models.Models) == 0) {
+		return inner
+	}
+	blocked := make(map[ownedSecretKey]struct{}, len(models.Providers)+len(models.Models))
+	for _, provider := range models.Providers {
+		if provider.SecretName != "" {
+			blocked[ownedSecretKey{scope: provider.Scope, name: provider.SecretName}] = struct{}{}
+		}
+	}
+	for _, model := range models.Models {
+		if model.SecretName != "" {
+			blocked[ownedSecretKey{scope: model.Scope, name: model.SecretName}] = struct{}{}
+		}
+	}
+	if len(blocked) == 0 {
+		return inner
+	}
+	return &proxyOwnedSecretPolicy{inner: inner, blocked: blocked}
+}
+
+func (policy *proxyOwnedSecretPolicy) Check(ctx context.Context, scope tenancy.Scope, name id.SecretName) error {
+	if policy != nil {
+		if _, reserved := policy.blocked[ownedSecretKey{scope: scope, name: name}]; reserved {
+			return fault.New(fault.Forbidden,
+				fmt.Sprintf("secret %q is managed by the LLM proxy and cannot be mounted into workload containers", name))
+		}
+		if scope.ProjectScoped() {
+			tenantScope := tenancy.Scope{TenantID: scope.TenantID}
+			if _, reserved := policy.blocked[ownedSecretKey{scope: tenantScope, name: name}]; reserved {
+				return fault.New(fault.Forbidden,
+					fmt.Sprintf("secret %q is managed by the LLM proxy and cannot be mounted into workload containers", name))
+			}
+		}
+	}
+	if policy == nil || policy.inner == nil {
+		return fault.New(fault.Forbidden, fmt.Sprintf("secret %q is not authorized by server secret rules", name))
+	}
+	return policy.inner.Check(ctx, scope, name)
 }
 
 func (provider ModelProviderConfig) validate(index int) error {

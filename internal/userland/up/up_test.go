@@ -2251,3 +2251,175 @@ func TestProvisionIdempotencyKeysAreProjectScopedAndBounded(t *testing.T) {
 		t.Fatal("provisionIdempotencyKey is not deterministic for long project IDs")
 	}
 }
+
+func TestUpLLMProxyConfiguration(t *testing.T) {
+	runMockUp := func(t *testing.T, home string, cfg UpConfig) (StackDescriptor, *mockEngine, string, error) {
+		t.Helper()
+		engine := newMockEngine(t)
+		port, err := allocateLoopbackPort()
+		if err != nil {
+			t.Fatal(err)
+		}
+		gwCtx, stopGW := context.WithCancel(context.Background())
+		t.Cleanup(stopGW)
+		cfg.Instance = "llm"
+		cfg.ListenAddr = fmt.Sprintf("127.0.0.1:%d", port)
+		cfg.GOOS = "darwin"
+		cfg.HomeDir = home
+		cfg.DetectOpts = &DetectOptions{
+			ExplicitSocket: "/mock/podman.sock",
+			GOOS:           "darwin",
+			HomeDir:        home,
+			StatSocket:     func(string) bool { return true },
+			PingSocket:     func(context.Context, string) (RuntimeKind, error) { return KindPodman, nil },
+		}
+		cfg.EngineHTTP = engine.client
+		cfg.SpawnGateway = func(stateDir string) (int, error) {
+			go func() { _ = ServeStackGateway(gwCtx, stateDir) }()
+			return os.Getpid(), nil
+		}
+		cfg.Provision = func(context.Context, provisionConfig) (string, error) { return "kodsvc.llm", nil }
+		var out strings.Builder
+		desc, err := Up(context.Background(), cfg, &out)
+		return desc, engine, out.String(), err
+	}
+
+	t.Run("default writes built-in openai anthropic opencode models.json and sets KODEMA_MODELS_FILE", func(t *testing.T) {
+		home := t.TempDir()
+		desc, engine, stdout, err := runMockUp(t, home, UpConfig{})
+		if err != nil {
+			t.Fatalf("Up: %v", err)
+		}
+		modelsPath := filepath.Join(desc.StateDir, modelsFileName)
+		if info, err := os.Stat(modelsPath); err != nil || info.Mode().Perm() != 0o600 {
+			t.Fatalf("models.json stat/mode = %v, %v; want 0600", info, err)
+		}
+		env := engine.containerEnv(t, "kodema-llm-server")
+		if !slices.Contains(env, "KODEMA_MODELS_FILE="+modelsPath) {
+			t.Fatalf("server env missing KODEMA_MODELS_FILE=%s: %v", modelsPath, env)
+		}
+		if !strings.Contains(stdout, "LLM Proxy:") || !strings.Contains(stdout, "/llm/{openai,anthropic,opencode}/*") {
+			t.Fatalf("stdout missing LLM Proxy summary:\n%s", stdout)
+		}
+		data, err := os.ReadFile(modelsPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var parsed localModelsFile
+		if err := json.Unmarshal(data, &parsed); err != nil {
+			t.Fatalf("decode models.json: %v", err)
+		}
+		if len(parsed.Providers) != 3 {
+			t.Fatalf("providers = %+v; want 3 built-in providers", parsed.Providers)
+		}
+		byName := make(map[string]localModelProvider, len(parsed.Providers))
+		for _, p := range parsed.Providers {
+			byName[p.Name] = p
+		}
+		if p := byName["openai"]; p.BaseURL != DefaultOpenAIBaseURL || p.SecretName != "OPENAI_API_KEY" || p.TenantID != DefaultTenantID {
+			t.Fatalf("openai provider = %+v", p)
+		}
+		if p := byName["anthropic"]; p.BaseURL != DefaultAnthropicBaseURL || p.SecretName != "ANTHROPIC_API_KEY" || p.AuthHeader != "x-api-key" {
+			t.Fatalf("anthropic provider = %+v", p)
+		}
+		if p := byName["opencode"]; p.BaseURL != DefaultOpenCodeBaseURL || p.SecretName != "OPENCODE_API_KEY" {
+			t.Fatalf("opencode provider = %+v", p)
+		}
+		if len(parsed.SecretRules) != 1 || parsed.SecretRules[0].TenantID != DefaultTenantID ||
+			!slices.Equal(parsed.SecretRules[0].Names, []string{"ANTHROPIC_API_KEY", "OPENAI_API_KEY", "OPENCODE_API_KEY"}) {
+			t.Fatalf("secret_rules = %+v", parsed.SecretRules)
+		}
+	})
+
+	t.Run("custom LLMProviders adds provider and overrides built-in; DisableLLMProxy removes stale file", func(t *testing.T) {
+		home := t.TempDir()
+		desc, engine, _, err := runMockUp(t, home, UpConfig{
+			LLMProviders: []LLMProviderSpec{
+				{Name: "openrouter", BaseURL: "https://openrouter.ai/api/v1", SecretName: "OPENROUTER_API_KEY"},
+				{Name: "openai", BaseURL: "https://litellm.internal/v1", SecretName: "LITELLM_KEY"},
+			},
+		})
+		if err != nil {
+			t.Fatalf("Up with custom LLMProviders: %v", err)
+		}
+		modelsPath := filepath.Join(desc.StateDir, modelsFileName)
+		data, err := os.ReadFile(modelsPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var parsed localModelsFile
+		if err := json.Unmarshal(data, &parsed); err != nil {
+			t.Fatal(err)
+		}
+		if len(parsed.Providers) != 4 {
+			t.Fatalf("providers count = %d (%+v); want 4", len(parsed.Providers), parsed.Providers)
+		}
+		byName := make(map[string]localModelProvider, len(parsed.Providers))
+		for _, p := range parsed.Providers {
+			byName[p.Name] = p
+		}
+		if p := byName["openai"]; p.BaseURL != "https://litellm.internal/v1" || p.SecretName != "LITELLM_KEY" {
+			t.Fatalf("overridden openai = %+v", p)
+		}
+		if p := byName["openrouter"]; p.BaseURL != "https://openrouter.ai/api/v1" || p.SecretName != "OPENROUTER_API_KEY" {
+			t.Fatalf("openrouter = %+v", p)
+		}
+		if env := engine.containerEnv(t, "kodema-llm-server"); !slices.Contains(env, "KODEMA_MODELS_FILE="+modelsPath) {
+			t.Fatalf("server env missing KODEMA_MODELS_FILE: %v", env)
+		}
+
+		// Disabling removes stale models.json and omits KODEMA_MODELS_FILE.
+		_, disabledEngine, _, err := runMockUp(t, home, UpConfig{DisableLLMProxy: true})
+		if err != nil {
+			t.Fatalf("Up(DisableLLMProxy): %v", err)
+		}
+		if _, err := os.Stat(modelsPath); !os.IsNotExist(err) {
+			t.Fatalf("stale models.json still exists: %v", err)
+		}
+		for _, entry := range disabledEngine.containerEnv(t, "kodema-llm-server") {
+			if strings.HasPrefix(entry, "KODEMA_MODELS_FILE=") {
+				t.Fatalf("DisableLLMProxy unexpectedly set %s", entry)
+			}
+		}
+	})
+
+	t.Run("ParseLLMProviderSpec and conflict refusals", func(t *testing.T) {
+		spec, err := ParseLLMProviderSpec("openrouter=https://openrouter.ai/api/v1/")
+		if err != nil {
+			t.Fatalf("ParseLLMProviderSpec default secret: %v", err)
+		}
+		if spec.Name != "openrouter" || spec.BaseURL != "https://openrouter.ai/api/v1" || spec.SecretName != "OPENROUTER_API_KEY" || spec.AuthHeader != "" {
+			t.Fatalf("parsed spec = %+v", spec)
+		}
+		spec2, err := ParseLLMProviderSpec("my-claude=https://claude.internal,secret=CLAUDE_KEY,auth=x-api-key")
+		if err != nil {
+			t.Fatalf("ParseLLMProviderSpec full: %v", err)
+		}
+		if spec2.Name != "my-claude" || spec2.SecretName != "CLAUDE_KEY" || spec2.AuthHeader != "x-api-key" {
+			t.Fatalf("parsed spec2 = %+v", spec2)
+		}
+		for _, bad := range []string{
+			"",
+			"no-equals",
+			"BadUpper=https://example.com",
+			"good=ftp://example.com",
+			"good=https://example.com?key=1",
+			"good=https://example.com,secret=KODEMA_TOKEN",
+			"good=https://example.com,auth=Basic",
+			"good=https://example.com,unknown=1",
+		} {
+			if _, err := ParseLLMProviderSpec(bad); err == nil {
+				t.Errorf("ParseLLMProviderSpec(%q) succeeded; want error", bad)
+			}
+		}
+		for _, cfg := range []UpConfig{
+			{DisableLLMProxy: true, LLMProviders: []LLMProviderSpec{{Name: "openrouter", BaseURL: "https://openrouter.ai/api/v1"}}},
+			{DisableLLMProxy: true, ModelsFile: "/tmp/models.json"},
+			{ModelsFile: "/tmp/models.json", LLMProviders: []LLMProviderSpec{{Name: "openrouter", BaseURL: "https://openrouter.ai/api/v1"}}},
+		} {
+			if _, _, _, err := runMockUp(t, t.TempDir(), cfg); err == nil {
+				t.Errorf("Up(%+v) succeeded; want error", cfg)
+			}
+		}
+	})
+}
