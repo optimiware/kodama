@@ -24,6 +24,9 @@ func (config Config) Validate() error {
 	if config.CredentialFile != "" && !filepath.IsAbs(config.CredentialFile) {
 		return fmt.Errorf("credential file %q must be an absolute path", config.CredentialFile)
 	}
+	if config.SessionFile != "" && strings.TrimSpace(config.SessionFile) == "" {
+		return fmt.Errorf("session_file must not be blank")
+	}
 	if config.CAFile != "" && strings.TrimSpace(config.CAFile) == "" {
 		return fmt.Errorf("ca_file must not be blank")
 	}

@@ -87,6 +87,11 @@ func (h *Harness) MCP(token, operation string, input any, expected *uint64, key 
 		}
 		return api.Result{}, publicError, nil
 	}
+	if publicError, isToolErr, err := api.DecodeMCPToolError(response.Result); err != nil {
+		return api.Result{}, api.Error{}, fmt.Errorf("decode MCP tool error: %w; result=%s", err, string(response.Result))
+	} else if isToolErr {
+		return api.Result{}, publicError, nil
+	}
 	result, err := api.DecodeMCPResult(response.Result)
 	if err != nil {
 		return api.Result{}, api.Error{}, fmt.Errorf("decode MCP result: %w; result=%s", err, string(response.Result))

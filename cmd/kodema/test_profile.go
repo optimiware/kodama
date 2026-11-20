@@ -203,6 +203,7 @@ func buildTestProfile(options serverOptions, getenv productionEnv) (productionBu
 		InstallationID:       options.InstallationID,
 		DataDir:              options.DataDir,
 		MCPPath:              options.MCPPath,
+		ServerVersion:        version,
 		LoopInterval:         loopInterval,
 		NATSAuth:             natsAuth,
 		GitStorageRoot:       gitStorageRoot,

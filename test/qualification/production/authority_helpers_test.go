@@ -193,6 +193,15 @@ func decodeMCPToolsCall(body []byte, operation string) (api.Result, *APIError, e
 		}
 		return api.Result{}, &APIError{Status: status, Code: public.Code, RequestID: public.RequestID}, nil
 	}
+	if public, isToolErr, err := api.DecodeMCPToolError(response.Result); err != nil {
+		return api.Result{}, nil, fmt.Errorf("the MCP tool error is not a public error")
+	} else if isToolErr {
+		status, ok := api.HTTPStatus(public.Code)
+		if !ok {
+			return api.Result{}, nil, fmt.Errorf("the public code has no frozen status")
+		}
+		return api.Result{}, &APIError{Status: status, Code: public.Code, RequestID: public.RequestID}, nil
+	}
 	result, err := api.DecodeMCPResult(response.Result)
 	if err != nil {
 		return api.Result{}, nil, fmt.Errorf("the MCP result is not a public result")

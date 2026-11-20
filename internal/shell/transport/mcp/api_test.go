@@ -13,6 +13,7 @@
 //	func ToolCatalog() []Tool
 //	type Config struct {
 //	    Router     Router
+//	    Principals authorize.CurrentPrincipal
 //	    ServerInfo api.MCPImplementation
 //	}
 //	func NewEdge(Config) (*Edge, error)
@@ -21,13 +22,19 @@
 // # Pinned behavior
 //
 // The MCP edge is a thin JSON-RPC 2.0 transport over the shared router. It
-// supports initialize, tools/call and tools/list; every other method refuses
-// with the stable invalid_input mapping (-32602). initialize echoes
-// api.MCPProtocolVersion (2025-06-18) and the configured server info and never
-// calls the router. tools/call names a registry operation and passes the strict
-// api.Request envelope as arguments to the router with the presented
-// credential; the success result is the JSON api.Result and an error carries
-// the declared api.MCPErrorCode mapping plus the api.Error body in data.
+// supports initialize, ping, tools/call and tools/list; every other method
+// refuses with the stable invalid_input mapping (-32602). When Principals is
+// configured, initialize and tools/list authenticate the presented credential
+// before returning server metadata or tool schemas, while never calling the
+// router. initialize echoes the negotiated MCP protocol version and the
+// configured server info. tools/call names a registry operation and passes
+// either the canonical api.Request envelope or flat top-level operation fields
+// as arguments to the router with the presented credential; the success result
+// is an MCP CallToolResult carrying the JSON api.Result, domain/authorization
+// refusals return an MCP CallToolResult with isError=true carrying the stable
+// api.Error in text content and structuredContent, and protocol,
+// unauthenticated and internal failures return JSON-RPC errors carrying the
+// declared api.MCPErrorCode mapping plus the api.Error body in data.
 // tools/list returns exactly ToolCatalog(), whose entries are the 58 registry
 // operations in registry order with InputSchema the field-level
 // api.OperationInputSchema object: the strict shared envelope that keeps the
@@ -50,6 +57,10 @@ import (
 	"testing"
 
 	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/shell/authorize"
+	"github.com/optimiware/kodema/internal/shell/identity"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
 	"github.com/optimiware/kodema/internal/shell/transport/mcp"
 	"github.com/optimiware/kodema/internal/shell/transport/ops"
 )
@@ -176,11 +187,59 @@ func resultOfEncodedSize(t *testing.T, operation string, size int) api.Result {
 	return result
 }
 
+type fakePrincipals struct {
+	mu    sync.Mutex
+	fn    func(context.Context, string) (authorize.Principal, error)
+	calls int
+	last  string
+}
+
+func (fake *fakePrincipals) Resolve(ctx context.Context, credential string) (authorize.Principal, error) {
+	fake.mu.Lock()
+	fake.calls++
+	fake.last = credential
+	fn := fake.fn
+	fake.mu.Unlock()
+	if fn != nil {
+		return fn(ctx, credential)
+	}
+	if credential == "" {
+		return authorize.Principal{}, fault.New(fault.Unauthenticated, "presented credential is invalid")
+	}
+	return authorize.Principal{
+		ID:      "human-1",
+		Kind:    identity.KindHuman,
+		Scope:   tenancy.Scope{TenantID: "tenant-1"},
+		Roles:   []tenancy.Role{tenancy.RoleViewer},
+		Enabled: true,
+		Version: 1,
+	}, nil
+}
+
+func (fake *fakePrincipals) callCount() int {
+	fake.mu.Lock()
+	defer fake.mu.Unlock()
+	return fake.calls
+}
+
 func newEdge(t *testing.T, router *fakeRouter) *mcp.Edge {
 	t.Helper()
 	edge, err := mcp.NewEdge(mcp.Config{
 		Router:     router,
 		ServerInfo: api.MCPImplementation{Name: "kodema", Version: "test"},
+	})
+	if err != nil {
+		t.Fatalf("mcp.NewEdge: %v", err)
+	}
+	return edge
+}
+
+func newAuthenticatedEdge(t *testing.T, router *fakeRouter, principals authorize.CurrentPrincipal) *mcp.Edge {
+	t.Helper()
+	edge, err := mcp.NewEdge(mcp.Config{
+		Router:     router,
+		Principals: principals,
+		ServerInfo: api.MCPImplementation{Name: "kodema", Version: "0.4.0"},
 	})
 	if err != nil {
 		t.Fatalf("mcp.NewEdge: %v", err)

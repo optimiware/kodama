@@ -3,12 +3,15 @@
 package composition
 
 import (
+	"bytes"
 	"encoding/json"
+	"net/http"
 	"reflect"
 	"testing"
 	"time"
 
 	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/shell/app"
 )
 
 // TestTransportParityAcrossOperationFamilies proves the REST and MCP edges are
@@ -216,13 +219,33 @@ func TestTransportParityAcrossOperationFamilies(t *testing.T) {
 	})
 }
 
-// TestMCPToolsListEqualsTheRegistry proves tools/list advertises exactly the 58
-// declared routes in registry order with their declared schema titles.
+// TestMCPToolsListEqualsTheRegistry proves tools/list requires authentication
+// on POST /mcp (returning 401 with WWW-Authenticate: Bearer when unauthenticated)
+// and advertises exactly the 58 declared routes in registry order with their
+// declared schema titles when authenticated.
 func TestMCPToolsListEqualsTheRegistry(t *testing.T) {
 	harness := newHarness(t)
 	environment := harness.start(newFakeRuntime(modeComplete))
 
-	response, err := environment.mcpRaw(api.MCPMethodToolsList, nil, "")
+	unauthReq, err := http.NewRequest(http.MethodPost, environment.baseURL+app.DefaultMCPPath,
+		bytes.NewReader([]byte(`{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}`)))
+	if err != nil {
+		t.Fatalf("build unauthenticated tools/list request: %v", err)
+	}
+	unauthReq.Header.Set("Content-Type", api.MediaType)
+	unauthResp, err := http.DefaultClient.Do(unauthReq)
+	if err != nil {
+		t.Fatalf("unauthenticated tools/list: %v", err)
+	}
+	_ = unauthResp.Body.Close()
+	if unauthResp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated tools/list status = %d; want 401", unauthResp.StatusCode)
+	}
+	if got := unauthResp.Header.Get("WWW-Authenticate"); got != "Bearer" {
+		t.Fatalf("unauthenticated tools/list WWW-Authenticate = %q; want Bearer", got)
+	}
+
+	response, err := environment.mcpRaw(api.MCPMethodToolsList, nil, projectToken)
 	if err != nil {
 		t.Fatalf("tools/list: %v", err)
 	}
@@ -252,6 +275,26 @@ func TestMCPToolsListEqualsTheRegistry(t *testing.T) {
 		if schema.Type != "object" || schema.Title != route.InputSchema {
 			t.Fatalf("%s inputSchema = %s; want object title %q", tool.Name, string(tool.InputSchema), route.InputSchema)
 		}
+	}
+
+	// Verify RBAC forbidden on tools/call returns CallToolResult isError=true
+	// with structured error details (not a JSON-RPC protocol error).
+	forbiddenResp, err := environment.mcpRaw(api.MCPMethodToolsCall, api.MCPToolsCallParams{
+		Name:      "membership_list",
+		Arguments: json.RawMessage(`{"project_id":"` + projectID + `"}`),
+	}, viewerToken)
+	if err != nil {
+		t.Fatalf("forbidden tools/call: %v", err)
+	}
+	if forbiddenResp.Error != nil {
+		t.Fatalf("forbidden tools/call returned JSON-RPC error %+v; want CallToolResult isError=true", forbiddenResp.Error)
+	}
+	toolErr, isToolErr, err := api.DecodeMCPToolError(forbiddenResp.Result)
+	if err != nil || !isToolErr {
+		t.Fatalf("forbidden DecodeMCPToolError = (%+v, %t, %v); want tool error", toolErr, isToolErr, err)
+	}
+	if toolErr.Code != api.CodeForbidden {
+		t.Fatalf("forbidden tool error code = %q; want forbidden", toolErr.Code)
 	}
 }
 

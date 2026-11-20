@@ -256,6 +256,9 @@ func TestServerReadsConfigFile(t *testing.T) {
 	if config.Dev.Tokens[0].Principal.ID != "admin-9" {
 		t.Fatalf("principal = %+v", config.Dev.Tokens[0].Principal)
 	}
+	if config.ServerVersion != version {
+		t.Fatalf("server version = %q; want binary version %q", config.ServerVersion, version)
+	}
 	cancel()
 	select {
 	case code := <-done:
@@ -350,5 +353,22 @@ func TestApplyServerEnvMapsEverySettingToItsOwnField(t *testing.T) {
 	}
 	if len(options.Discovery.Scopes) != 2 || options.Discovery.Scopes[0] != "scope-a" || options.Discovery.Scopes[1] != "scope-b" {
 		t.Fatalf("discovery scopes = %v; want the environment's two scopes", options.Discovery.Scopes)
+	}
+}
+
+func TestServerConfigPropagatesBinaryVersion(t *testing.T) {
+	previous := version
+	t.Cleanup(func() { version = previous })
+	version = "0.4.0"
+
+	options := defaultServerOptions()
+	options.DataDir = t.TempDir()
+	options.DevTokens = []string{"tok-1"}
+	cfg, err := options.config()
+	if err != nil {
+		t.Fatalf("options.config(): %v", err)
+	}
+	if cfg.ServerVersion != "0.4.0" {
+		t.Fatalf("ServerVersion = %q; want 0.4.0", cfg.ServerVersion)
 	}
 }

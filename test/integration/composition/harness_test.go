@@ -697,7 +697,7 @@ func (harness *harness) start(runtime kernelengine.Runtime) *runningEnv {
 	harness.t.Cleanup(func() { environment.close() })
 
 	environment.eventually(5*time.Second, func() bool {
-		response, err := environment.mcpRaw(api.MCPMethodToolsList, nil, "")
+		response, err := environment.mcpRaw(api.MCPMethodToolsList, nil, adminToken)
 		return err == nil && response.Error == nil
 	})
 	return environment
@@ -1000,6 +1000,11 @@ func (environment *runningEnv) mcpCall(token, operation string, input any, expec
 		if err := json.Unmarshal(response.Error.Data, &publicError); err != nil {
 			return api.Result{}, api.Error{}, fmt.Errorf("decode MCP error data: %w; data=%s", err, string(response.Error.Data))
 		}
+		return api.Result{}, publicError, nil
+	}
+	if publicError, isToolErr, err := api.DecodeMCPToolError(response.Result); err != nil {
+		return api.Result{}, api.Error{}, fmt.Errorf("decode MCP tool error: %w; result=%s", err, string(response.Result))
+	} else if isToolErr {
 		return api.Result{}, publicError, nil
 	}
 	result, err := api.DecodeMCPResult(response.Result)

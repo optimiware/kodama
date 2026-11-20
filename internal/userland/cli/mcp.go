@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/optimiware/kodema/api"
 	"github.com/optimiware/kodema/client"
@@ -204,12 +206,23 @@ func decodePublicErrorSummary(data []byte) string {
 	if err := json.Unmarshal(data, &pub); err == nil && pub.Message != "" {
 		return pub.Error()
 	}
+	var mcpResp api.MCPResponse
+	if err := json.Unmarshal(data, &mcpResp); err == nil && mcpResp.Error != nil {
+		if len(mcpResp.Error.Data) > 0 {
+			if dataErr, err := api.DecodeMCPErrorData(mcpResp.Error.Data); err == nil && dataErr.Message != "" {
+				return dataErr.Error()
+			}
+		}
+		if mcpResp.Error.Message != "" {
+			return mcpResp.Error.Message
+		}
+	}
 	return ""
 }
 
 // runMCPInstall prints or writes the MCP server configuration entry for
 // Claude Code, Cursor, or Codex.
-func runMCPInstall(_ context.Context, config Config, args []string, ports Ports, deps CommandDeps) int {
+func runMCPInstall(ctx context.Context, config Config, args []string, ports Ports, deps CommandDeps) int {
 	if hasHelpFlag(args) {
 		return runHelp(ports.Out, ports.Err, []string{"mcp", "install"})
 	}
@@ -276,8 +289,33 @@ func runMCPInstall(_ context.Context, config Config, args []string, ports Ports,
 		}
 		mcpArgs = append(mcpArgs, "--ca-file", absCAPath)
 	}
-	if credPath := strings.TrimSpace(config.CredentialFile); credPath != "" {
-		mcpArgs = append(mcpArgs, "--credential-file", credPath)
+	sessionPath := strings.TrimSpace(config.SessionFile)
+	credPath := strings.TrimSpace(config.CredentialFile)
+	if deps.ExplicitSessionFile && deps.ExplicitCredentialFile {
+		return usage(ports.Err, "mcp install accepts either --session or --credential-file, not both")
+	}
+	switch {
+	case sessionPath != "" && (credPath == "" || !deps.ExplicitCredentialFile):
+		// Preserve an explicit custom session path; prefer it over an ambient
+		// KODEMA_CREDENTIAL_FILE when --credential-file was not explicitly set.
+		absSessionPath, err := filepath.Abs(sessionPath)
+		if err != nil {
+			return failure(ports.Err, fmt.Errorf("cannot resolve session file %q: %w", sessionPath, err))
+		}
+		mcpArgs = append(mcpArgs, "--session", absSessionPath)
+	case credPath != "" && !deps.ExplicitCredentialFile && hasUsableHumanSession(ctx, config.ServerURL, deps.Login.Store, ports.Now):
+		// Prefer an already-logged-in refreshing human session over an ambient
+		// KODEMA_CREDENTIAL_FILE (such as env.sh's 24h admin-token).
+		if ports.Err != nil {
+			fmt.Fprintf(ports.Err, "note: using existing human session instead of KODEMA_CREDENTIAL_FILE (%s); pass --credential-file explicitly to embed a static token file\n", credPath)
+		}
+	case credPath != "":
+		absCredPath, err := filepath.Abs(credPath)
+		if err != nil {
+			return failure(ports.Err, fmt.Errorf("cannot resolve credential file %q: %w", credPath, err))
+		}
+		mcpArgs = append(mcpArgs, "--credential-file", absCredPath)
+		warnExpiringCredentialFile(ports.Err, absCredPath, ports.Files)
 	}
 	mcpArgs = append(mcpArgs, "mcp", "stdio")
 
@@ -336,6 +374,85 @@ func runMCPInstall(_ context.Context, config Config, args []string, ports Ports,
 
 	fmt.Fprintf(ports.Out, "installed MCP server %q for %s in %s\n", serverName, target, destPath)
 	return ExitSuccess
+}
+
+// hasUsableHumanSession reports whether store currently holds a refreshing or
+// non-expired version 2 human session bound to serverURL.
+func hasUsableHumanSession(ctx context.Context, serverURL string, store SessionRecordStore, now func() time.Time) bool {
+	if store == nil {
+		return false
+	}
+	apiURL, err := normalizeAPIURL(serverURL)
+	if err != nil {
+		return false
+	}
+	record, err := store.LoadRecord(ctx)
+	if err != nil || record.Legacy() {
+		return false
+	}
+	if record.APIURL != apiURL {
+		return false
+	}
+	if record.RefreshToken != "" {
+		return true
+	}
+	if now == nil {
+		now = time.Now
+	}
+	return record.Usable(now())
+}
+
+// warnExpiringCredentialFile emits a diagnostic on errOut when mcp install
+// embeds a short-lived local admin token (such as kodema up's 24h admin-token)
+// or a credential file carrying a JWT with an explicit exp claim. Token bytes
+// are never rendered.
+func warnExpiringCredentialFile(errOut io.Writer, credPath string, files FileSystem) {
+	if errOut == nil {
+		return
+	}
+	switch filepath.Base(credPath) {
+	case "admin-token", "tenant-admin-token":
+		fmt.Fprintf(errOut,
+			"warning: embedding --credential-file %s (short-lived local admin token expires in 24h and carries broad admin roles); run 'kodema login' and re-run without KODEMA_CREDENTIAL_FILE to use a refreshing human session\n",
+			credPath)
+		return
+	}
+	if files == nil {
+		return
+	}
+	data, err := files.ReadRegularFile(credPath, api.MaxCredentialBytes+64)
+	if err != nil {
+		return
+	}
+	if expiresAt, ok := credentialTokenExpiry(strings.TrimSpace(string(data))); ok {
+		fmt.Fprintf(errOut,
+			"warning: embedding --credential-file %s which contains an expiring token (expires %s); prefer 'kodema login' with a refreshing human session\n",
+			credPath, formatSessionTime(expiresAt))
+	}
+}
+
+// credentialTokenExpiry extracts the unverified exp claim of a compact JWT so
+// mcp install can warn about expiring static tokens without rendering any
+// credential bytes. Non-JWT credentials (such as kodsvc.* tokens) return false.
+func credentialTokenExpiry(raw string) (time.Time, bool) {
+	if strings.HasPrefix(raw, "kodsvc.") || strings.HasPrefix(raw, "kodex.") {
+		return time.Time{}, false
+	}
+	parts := strings.Split(raw, ".")
+	if len(parts) != 3 || parts[0] == "" || parts[1] == "" || parts[2] == "" {
+		return time.Time{}, false
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return time.Time{}, false
+	}
+	var claims struct {
+		Exp *float64 `json:"exp"`
+	}
+	if err := json.Unmarshal(payload, &claims); err != nil || claims.Exp == nil || *claims.Exp <= 0 {
+		return time.Time{}, false
+	}
+	return time.Unix(int64(*claims.Exp), 0).UTC(), true
 }
 
 func resolveMCPConfigPath(target, explicit string, localScope bool, homeDir func() (string, error)) (string, error) {

@@ -149,7 +149,7 @@ func TestExternalCloseStopsServing(t *testing.T) {
 		serveResult <- app.Serve(context.Background(), listener)
 	}()
 
-	body := []byte(`{"jsonrpc":"2.0","id":1,"method":"tools/list"}`)
+	body := []byte(`{"jsonrpc":"2.0","id":1,"method":"ping"}`)
 	client := &http.Client{Timeout: time.Second}
 	eventually(t, 5*time.Second, func() bool {
 		response, err := client.Post("http://"+listener.Addr().String()+"/mcp", "application/json", bytes.NewReader(body))

@@ -830,7 +830,7 @@ func start(t *testing.T, variant runtimeVariant, options ...Option) *Harness {
 	// The public edge is ready when MCP tools/list answers without a transport
 	// or protocol error. No fixed sleep decides readiness.
 	h.Eventually(t, 30*time.Second, func() bool {
-		response, err := h.mcpRaw(api.MCPMethodToolsList, nil, "")
+		response, err := h.mcpRaw(api.MCPMethodToolsList, nil, adminToken)
 		return err == nil && response.Error == nil
 	})
 

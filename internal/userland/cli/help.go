@@ -200,7 +200,9 @@ A request that cannot be delivered is answered with a JSON-RPC error; the bridge
 	"mcp install": {
 		usage:   "kodema mcp install [claude|cursor|codex] [--name kodema] [--config-file <path>] [--local] [--print]",
 		summary: "Print or install the kodema MCP server entry for an AI coding tool",
-		description: `Configures an MCP client to invoke 'kodema --url <url> [--ca-file <path>] mcp stdio'.
+		description: `Configures an MCP client to invoke 'kodema --url <url> [--ca-file <path>] [--session <path>] mcp stdio'.
+Preserves an explicit --session path and prefers a refreshing human session over an ambient
+KODEMA_CREDENTIAL_FILE when available. Warns on stderr if embedding a short-lived local admin token.
 
 Targets:
   claude   ~/.claude.json (or .mcp.json with --local)

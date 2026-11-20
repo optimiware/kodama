@@ -459,8 +459,9 @@ type unassignedPrincipalContextKey struct{}
 
 // WithUnassignedPrincipal marks a principal-resolution context so an
 // authenticated human whose OIDC token verified cleanly is resolved even when
-// they hold no committed membership rows yet. Only principal.whoami sets this
-// marker; every other operation requires a committed principal in scope.
+// they hold no committed membership rows yet. Only principal.whoami and MCP
+// discovery (initialize and tools/list) set this marker; every other operation
+// requires a committed principal in scope.
 func WithUnassignedPrincipal(ctx context.Context) context.Context {
 	if ctx == nil {
 		ctx = context.Background()

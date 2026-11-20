@@ -83,7 +83,7 @@ func (h *Harness) RestartController() {
 	}
 	// The replacement controller is ready when the public edge answers again.
 	h.Eventually(h.T, 30*time.Second, func() bool {
-		response, err := h.mcpRaw(api.MCPMethodToolsList, nil, "")
+		response, err := h.mcpRaw(api.MCPMethodToolsList, nil, h.AdminToken)
 		return err == nil && response.Error == nil
 	})
 }

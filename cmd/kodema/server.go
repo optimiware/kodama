@@ -715,6 +715,7 @@ func (options serverOptions) config() (shellapp.Config, error) {
 		DefaultActionTimeout: 5 * time.Minute,
 		LoopInterval:         20 * time.Millisecond,
 		MCPPath:              options.MCPPath,
+		ServerVersion:        version,
 		Discovery:            discovery,
 		SecretRules:          secretRules,
 		Models:               models,

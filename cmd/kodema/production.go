@@ -247,6 +247,7 @@ func buildProduction(options serverOptions, getenv productionEnv, kube driverkub
 		InstallationID: options.InstallationID,
 		DataDir:        options.DataDir,
 		MCPPath:        options.MCPPath,
+		ServerVersion:  version,
 		LoopInterval:   loopInterval,
 		GitStorageRoot: gitStorageRoot,
 		SecretRules:    secretRules,

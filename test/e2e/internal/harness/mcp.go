@@ -137,6 +137,12 @@ func (client *MCP) Call(ctx context.Context, call MCPCall) (api.Result, []byte, 
 		}
 		return api.Result{}, raw, &MCPRefusal{JSONRPCCode: response.Error.Code, Public: public}
 	}
+	if public, isToolErr, err := api.DecodeMCPToolError(response.Result); err != nil {
+		return api.Result{}, raw, fmt.Errorf("the MCP tool error is not a public error: %w", err)
+	} else if isToolErr {
+		code, _ := api.MCPErrorCode(public.Code)
+		return api.Result{}, raw, &MCPRefusal{JSONRPCCode: code, Public: public}
+	}
 	result, err := api.DecodeMCPResult(response.Result)
 	if err != nil {
 		return api.Result{}, raw, fmt.Errorf("the MCP result is not a public result: %w", err)
@@ -152,7 +158,7 @@ func (client *MCP) Call(ctx context.Context, call MCPCall) (api.Result, []byte, 
 // exchanges, so a probe can scan the protocol wire for credential material. It
 // proves the edge speaks the documented protocol and that every parity
 // operation is advertised under its declared name.
-func (client *MCP) Tools(ctx context.Context) ([]api.MCPTool, [][]byte, error) {
+func (client *MCP) Tools(ctx context.Context, token Secret) ([]api.MCPTool, [][]byte, error) {
 	initializeParams, err := json.Marshal(api.MCPInitializeParams{
 		ProtocolVersion: api.MCPProtocolVersion,
 		ClientInfo:      api.MCPImplementation{Name: "kodema-e2e", Version: "1.0.0"},
@@ -160,7 +166,7 @@ func (client *MCP) Tools(ctx context.Context) ([]api.MCPTool, [][]byte, error) {
 	if err != nil {
 		return nil, nil, fmt.Errorf("encode the MCP initialize parameters")
 	}
-	response, initializeRaw, err := client.request(ctx, "", api.MCPMethodInitialize, "initialize", initializeParams)
+	response, initializeRaw, err := client.request(ctx, token, api.MCPMethodInitialize, "initialize", initializeParams)
 	if err != nil {
 		return nil, [][]byte{initializeRaw}, err
 	}
@@ -174,7 +180,7 @@ func (client *MCP) Tools(ctx context.Context) ([]api.MCPTool, [][]byte, error) {
 	if err := initialized.Validate(); err != nil {
 		return nil, [][]byte{initializeRaw}, fmt.Errorf("invalid MCP initialize result: %w", err)
 	}
-	response, listRaw, err := client.request(ctx, "", api.MCPMethodToolsList, "tools-list", json.RawMessage(`{}`))
+	response, listRaw, err := client.request(ctx, token, api.MCPMethodToolsList, "tools-list", json.RawMessage(`{}`))
 	wire := [][]byte{initializeRaw, listRaw}
 	if err != nil {
 		return nil, wire, err

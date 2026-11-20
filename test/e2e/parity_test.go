@@ -441,7 +441,7 @@ func newParityProbe(t *testing.T, instance *live) *parityProbe {
 // under its declared name with the derived input schema.
 func (probe *parityProbe) requireToolCatalog() []api.MCPTool {
 	probe.t.Helper()
-	tools, wire, err := probe.mcp.Tools(probe.ctx)
+	tools, wire, err := probe.mcp.Tools(probe.ctx, probe.instance.token)
 	for _, exchange := range wire {
 		probe.scan("MCP", "initialize/tools-list", string(exchange))
 	}

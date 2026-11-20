@@ -1,16 +1,21 @@
 // Package mcp is the thin MCP JSON-RPC 2.0 edge over the single operation
 // router.
 //
-// It supports the initialize handshake, the tools/list catalog and tools/call.
-// Every other method refuses with the stable invalid_input mapping. initialize
-// and tools/list never dispatch an operation; tools/call names one registry
-// operation and passes the strict api.Request envelope to the router with the
-// presented credential. The edge never authenticates, authorizes, looks up a
-// resource or performs an effect itself.
+// It supports the initialize handshake, ping, the tools/list catalog and
+// tools/call. Every other method refuses with the stable invalid_input mapping.
+// When Principals is configured, initialize and tools/list authenticate the
+// presented credential before returning server metadata or tool schemas, while
+// never dispatching an operation; tools/call names one registry operation and
+// passes either the canonical api.Request envelope or flat top-level arguments
+// to the router with the presented credential.
 //
-// A success result is the JSON encoding of api.Result. An error carries the
-// declared api.MCPErrorCode mapping plus the api.Error body in data. A private
-// fault cause and the presented credential are never rendered.
+// A success result is an MCP CallToolResult carrying the JSON api.Result.
+// Domain, authorization and operational refusals from tools/call return an MCP
+// CallToolResult with isError=true carrying the stable api.Error in text
+// content and structuredContent. Protocol errors, unauthenticated refusals and
+// internal failures return JSON-RPC errors with the declared api.MCPErrorCode
+// mapping plus the api.Error body in data. A private fault cause and the
+// presented credential are never rendered.
 package mcp
 
 import (
@@ -32,9 +37,12 @@ type Router interface {
 }
 
 // Config is the MCP edge construction input. Both the router and the server
-// identity are required.
+// identity are required. Principals is optional for isolated unit tests and
+// wired by the server composition so initialize and tools/list require an
+// authenticated credential.
 type Config struct {
 	Router     Router
+	Principals authorize.CurrentPrincipal
 	ServerInfo api.MCPImplementation
 }
 
@@ -42,6 +50,7 @@ type Config struct {
 // concurrent use.
 type Edge struct {
 	router     Router
+	principals authorize.CurrentPrincipal
 	serverInfo api.MCPImplementation
 }
 
@@ -57,7 +66,11 @@ func NewEdge(config Config) (*Edge, error) {
 	if toolCatalogErr != nil {
 		return nil, toolCatalogErr
 	}
-	return &Edge{router: config.Router, serverInfo: config.ServerInfo}, nil
+	return &Edge{
+		router:     config.Router,
+		principals: config.Principals,
+		serverInfo: config.ServerInfo,
+	}, nil
 }
 
 // Handle decodes one bounded MCP message and returns the encoded JSON-RPC
@@ -95,20 +108,46 @@ func (edge *Edge) Handle(ctx context.Context, credential string, body []byte) []
 
 	switch request.Method {
 	case api.MCPMethodInitialize:
-		return edge.handleInitialize(request)
+		return edge.handleInitialize(ctx, credential, request)
 	case api.MCPMethodPing:
 		return encodeResult(request.ID, json.RawMessage(`{}`))
 	case api.MCPMethodToolsList:
-		return edge.handleToolsList(request)
+		return edge.handleToolsList(ctx, credential, request)
 	default:
 		return encodeError(request.ID, api.CodeInvalidInput,
 			fmt.Sprintf("unsupported MCP method %q", request.Method))
 	}
 }
 
+// authenticate verifies the presented credential against the optional
+// principal resolver, returning a sanitized JSON-RPC refusal when
+// authentication fails and nil when the caller is authenticated (or no
+// resolver is configured). Unassigned principals are permitted so any
+// authenticated human or service can complete MCP discovery.
+func (edge *Edge) authenticate(ctx context.Context, credential string, id json.RawMessage) []byte {
+	if edge.principals == nil {
+		return nil
+	}
+	principal, err := edge.principals.Resolve(authorize.WithUnassignedPrincipal(ctx), credential)
+	if err != nil {
+		return encodeFault(id, err)
+	}
+	if err := principal.Validate(); err != nil {
+		return encodeFault(id, err)
+	}
+	if !principal.Enabled {
+		return encodeError(id, api.CodeUnauthenticated, "presented credential is invalid")
+	}
+	return nil
+}
+
 // handleInitialize echoes the negotiated protocol version and the configured
-// server identity. It never dispatches an operation.
-func (edge *Edge) handleInitialize(request api.MCPRequest) []byte {
+// server identity after authenticating the caller when Principals is wired. It
+// never dispatches an operation.
+func (edge *Edge) handleInitialize(ctx context.Context, credential string, request api.MCPRequest) []byte {
+	if refusal := edge.authenticate(ctx, credential, request.ID); refusal != nil {
+		return refusal
+	}
 	var params api.MCPInitializeParams
 	if err := json.Unmarshal(request.Params, &params); err != nil {
 		return encodeError(request.ID, api.CodeInvalidInput, "initialize params are invalid")
@@ -130,10 +169,14 @@ func (edge *Edge) handleInitialize(request api.MCPRequest) []byte {
 }
 
 // handleToolsList returns exactly ToolCatalog(): the registry's MCP-exposed
-// operations in registry order with their field-level input schemas. Listing
-// needs no credential and dispatches nothing; an unusable catalog refuses
-// rather than advertising an incomplete inventory.
-func (edge *Edge) handleToolsList(request api.MCPRequest) []byte {
+// operations in registry order with their field-level input schemas. When
+// Principals is wired, listing authenticates the presented credential before
+// advertising schemas while never dispatching an operation; an unusable catalog
+// refuses rather than advertising an incomplete inventory.
+func (edge *Edge) handleToolsList(ctx context.Context, credential string, request api.MCPRequest) []byte {
+	if refusal := edge.authenticate(ctx, credential, request.ID); refusal != nil {
+		return refusal
+	}
 	if toolCatalogErr != nil {
 		return encodeError(request.ID, api.CodeInternalFailure, "internal failure")
 	}
@@ -145,9 +188,10 @@ func (edge *Edge) handleToolsList(request api.MCPRequest) []byte {
 }
 
 // handleToolsCall routes one named operation through the shared router with the
-// presented credential and the strict request envelope as arguments. The id is
-// the already-validated JSON-RPC id; the arguments envelope is decoded with the
-// named operation's own api.MaxEnvelopeBytes bound.
+// presented credential and either the canonical api.Request envelope or flat
+// top-level operation fields as arguments. The id is the already-validated
+// JSON-RPC id; the arguments object is decoded with the named operation's own
+// api.MaxEnvelopeBytes bound.
 func (edge *Edge) handleToolsCall(ctx context.Context, credential string, id json.RawMessage, params api.MCPToolsCallParams) []byte {
 	operation, ok := api.MCPToolOperationName(params.Name)
 	if !ok {
@@ -158,7 +202,7 @@ func (edge *Edge) handleToolsCall(ctx context.Context, credential string, id jso
 	case "", "null":
 		decoded = api.Request{}
 	default:
-		arguments, err := api.DecodeOperationRequest(operation, params.Arguments)
+		arguments, err := api.DecodeMCPOperationArguments(operation, params.Arguments)
 		if err != nil {
 			return encodeError(id, api.CodeInvalidInput, messageOf(err))
 		}
@@ -171,7 +215,7 @@ func (edge *Edge) handleToolsCall(ctx context.Context, credential string, id jso
 		Request:    decoded,
 	})
 	if err != nil {
-		return encodeFault(id, err)
+		return encodeToolFault(id, err)
 	}
 	if result.Operation != operation {
 		return encodeError(id, api.CodeInternalFailure, "internal failure")
@@ -243,6 +287,30 @@ func encodeFault(id json.RawMessage, err error) []byte {
 		}
 	}
 	return encodeError(id, api.CodeInternalFailure, "internal failure")
+}
+
+// encodeToolFault maps a typed router refusal from tools/call: domain,
+// authorization and operational refusals render as an MCP CallToolResult with
+// isError=true carrying the sanitized public api.Error, while unauthenticated
+// and internal/unexpected failures remain JSON-RPC errors.
+func encodeToolFault(id json.RawMessage, err error) []byte {
+	if class, ok := fault.ClassOf(err); ok {
+		if code, ok := fault.CodeFor(class); ok && api.IsMCPToolErrorCode(string(code)) {
+			message, _ := fault.MessageOf(err)
+			if message == "" {
+				message = string(code)
+			}
+			encoded, encodeErr := api.EncodeMCPToolError(api.Error{
+				Code:    string(code),
+				Message: message,
+			})
+			if encodeErr != nil {
+				return encodeError(id, api.CodeInternalFailure, "internal failure")
+			}
+			return encodeResult(id, encoded)
+		}
+	}
+	return encodeFault(id, err)
 }
 
 // requestID recovers the request id for a response to a message that failed

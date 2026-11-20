@@ -262,6 +262,38 @@ func TestMCPToolsListReturnsCatalog(t *testing.T) {
 	}
 }
 
+// TestMCPToolsListEnforcesPrincipalsAuth pins that when Principals is
+// configured on the edge, unauthenticated tools/list refuses with -32001 and
+// authenticated tools/list returns the full catalog with zero router calls.
+func TestMCPToolsListEnforcesPrincipalsAuth(t *testing.T) {
+	router := &fakeRouter{}
+	principals := &fakePrincipals{}
+	edge := newAuthenticatedEdge(t, router, principals)
+
+	unauth := decodeResponse(t, edge.Handle(context.Background(), "", toolsListRequest()))
+	if unauth.Error == nil || unauth.Error.Code != -32001 {
+		t.Fatalf("unauthenticated tools/list = %+v; want -32001", unauth.Error)
+	}
+	if got := decodeErrorData(t, unauth); got.Code != api.CodeUnauthenticated {
+		t.Fatalf("unauthenticated tools/list code = %q; want unauthenticated", got.Code)
+	}
+
+	auth := decodeResponse(t, edge.Handle(context.Background(), "valid-token", toolsListRequest()))
+	if auth.Error != nil {
+		t.Fatalf("authenticated tools/list refused: %+v", auth.Error)
+	}
+	var listed api.MCPToolsListResult
+	if err := json.Unmarshal(auth.Result, &listed); err != nil {
+		t.Fatalf("decode tools/list: %v", err)
+	}
+	if len(listed.Tools) != len(mcp.ToolCatalog()) {
+		t.Fatalf("tools/list count = %d; want %d", len(listed.Tools), len(mcp.ToolCatalog()))
+	}
+	if got := router.callCount(); got != 0 {
+		t.Fatalf("router calls = %d; want 0", got)
+	}
+}
+
 // TestMCPToolCatalogIsStable pins that the catalog is a deterministic
 // declaration: repeated calls return the same tool identities and schemas.
 func TestMCPToolCatalogIsStable(t *testing.T) {

@@ -72,6 +72,10 @@ const DefaultActionTimeout = 5 * time.Minute
 // explicit path instead of guessing a route.
 const DefaultMCPPath = "/mcp"
 
+// DefaultServerVersion is the fallback Kodema version advertised in the MCP
+// initialize serverInfo when no linked build version was supplied.
+const DefaultServerVersion = "dev"
+
 // Clock is the authoritative time source and cancellable sleeper every
 // capability and background loop consumes.
 type Clock interface {
@@ -272,6 +276,9 @@ type Config struct {
 	DefaultActionTimeout time.Duration
 	LoopInterval         time.Duration
 	MCPPath              string
+	// ServerVersion is the running Kodema version advertised by the MCP
+	// initialize serverInfo handshake. Empty defaults to DefaultServerVersion.
+	ServerVersion string
 
 	// RenewBefore is the workload credential renewal margin. A running
 	// execution's committed credential is renewed once its committed expiry is
@@ -411,6 +418,9 @@ func (config Config) resolved() Config {
 	}
 	if config.MCPPath == "" {
 		config.MCPPath = DefaultMCPPath
+	}
+	if strings.TrimSpace(config.ServerVersion) == "" {
+		config.ServerVersion = DefaultServerVersion
 	}
 	if config.Adapters == nil {
 		config.Adapters = &Adapters{}
