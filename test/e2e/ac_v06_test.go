@@ -301,9 +301,8 @@ func TestE2E_AC21V06Capabilities(t *testing.T) {
 
 	finished := time.Now().UTC()
 	instance.recordScenario(t, "AC21V06Capabilities", "TestE2E_AC21V06Capabilities", &stage3View, started, finished, map[string]any{
-		"task_id":              created.TaskID,
-		"superseded_execution": stage2Started.ExecutionID,
-		"sse_event_ids":        []string{pub1.EventID, pub2.EventID},
+		"task_id":  created.TaskID,
+		"event_id": pub2.EventID,
 	})
 }
 
