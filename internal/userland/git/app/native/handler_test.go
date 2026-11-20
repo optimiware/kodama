@@ -725,3 +725,32 @@ func (v *approvalFaultVerification) Verify(context.Context, api.VerifyRequest) (
 func (*approvalFaultVerification) Report(context.Context, api.ReportRequest) (api.ReportResponse, error) {
 	return api.ReportResponse{}, errors.New("not configured")
 }
+
+func TestRequestValidatePushOptionsBounds(t *testing.T) {
+	valid := validRequest(PhasePreReceive)
+	valid.PushOptions = []string{"kodema.approved_base=" + strings.Repeat("a", 40)}
+	if err := valid.Validate(); err != nil {
+		t.Fatalf("valid push option rejected: %v", err)
+	}
+
+	empty := validRequest(PhasePreReceive)
+	empty.PushOptions = []string{""}
+	if err := empty.Validate(); err == nil {
+		t.Fatal("empty push option accepted")
+	}
+
+	control := validRequest(PhasePreReceive)
+	control.PushOptions = []string{"kodema.approved_base=abc\ndef"}
+	if err := control.Validate(); err == nil {
+		t.Fatal("newline-bearing push option accepted")
+	}
+
+	tooMany := validRequest(PhasePreReceive)
+	tooMany.PushOptions = make([]string, DefaultMaxPushOptions+1)
+	for i := range tooMany.PushOptions {
+		tooMany.PushOptions[i] = "opt=1"
+	}
+	if err := tooMany.Validate(); err == nil {
+		t.Fatal("over-bound push options count accepted")
+	}
+}

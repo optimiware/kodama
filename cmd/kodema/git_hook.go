@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/optimiware/kodema/internal/userland/git"
@@ -49,6 +50,13 @@ func runGitHook(ctx context.Context, args []string, stdin io.Reader, stdout, std
 		SourceEvent: os.Getenv(git.EnvSourceEvent),
 	}
 	request.ObjectEnvironment = hookObjectEnvironment()
+	if phase == native.PhasePreReceive {
+		pushOptions, err := hookPushOptions()
+		if err != nil {
+			return rejectHookProcess(stderr)
+		}
+		request.PushOptions = pushOptions
+	}
 	switch phase {
 	case native.PhaseUpdate:
 		if len(args) != 4 {
@@ -99,6 +107,32 @@ func hookObjectEnvironment() []string {
 		}
 	}
 	return environment
+}
+
+// hookPushOptions reads Git's GIT_PUSH_OPTION_COUNT and GIT_PUSH_OPTION_<i>
+// environment variables on pre-receive. Malformed counts, missing entries,
+// control characters or out-of-bounds options fail closed.
+func hookPushOptions() ([]string, error) {
+	rawCount, ok := os.LookupEnv(git.EnvPushOptionCount)
+	if !ok || rawCount == "" {
+		return nil, nil
+	}
+	count, err := strconv.Atoi(rawCount)
+	if err != nil || count < 0 || count > native.DefaultMaxPushOptions || strconv.Itoa(count) != rawCount {
+		return nil, fmt.Errorf("invalid push option count")
+	}
+	if count == 0 {
+		return nil, nil
+	}
+	options := make([]string, 0, count)
+	for index := 0; index < count; index++ {
+		value, exists := os.LookupEnv(git.EnvPushOptionPrefix + strconv.Itoa(index))
+		if !exists || value == "" || len(value) > native.DefaultMaxLineBytes || strings.ContainsAny(value, "\x00\r\n") {
+			return nil, fmt.Errorf("invalid push option entry %d", index)
+		}
+		options = append(options, value)
+	}
+	return options, nil
 }
 
 // readHookLines reads git's bounded stdin batch.

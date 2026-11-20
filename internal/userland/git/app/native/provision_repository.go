@@ -615,6 +615,7 @@ func initializeBareRepository(ctx context.Context, repositoryPath string, execut
 			"--initial-branch=" + provisioningInitialBranch, repositoryPath},
 		{"--git-dir=" + repositoryPath, "symbolic-ref", "HEAD", CommittedPolicyRef},
 		{"--git-dir=" + repositoryPath, "config", "receive.advertiseAtomic", "true"},
+		{"--git-dir=" + repositoryPath, "config", "receive.advertisePushOptions", "true"},
 		{"--git-dir=" + repositoryPath, "config", "http.receivepack", "true"},
 	}
 	for _, args := range commands {

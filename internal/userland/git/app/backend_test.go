@@ -295,3 +295,41 @@ func TestHTTPBackendStreamsLargeResponseAndEnforcesMaxResponseBytes(t *testing.T
 		}
 	})
 }
+
+func TestAppendGitConfigEnvPreservesExistingAndAddsPushOptions(t *testing.T) {
+	t.Run("merges with KeepRefHideEnvironment", func(t *testing.T) {
+		env := appendGitConfigEnv(KeepRefHideEnvironment(), "receive.advertisePushOptions", "true")
+		values := make(map[string]string, len(env))
+		for _, entry := range env {
+			k, v, ok := strings.Cut(entry, "=")
+			if !ok {
+				t.Fatalf("malformed env entry %q", entry)
+			}
+			values[k] = v
+		}
+		if values["GIT_CONFIG_COUNT"] != "3" {
+			t.Fatalf("GIT_CONFIG_COUNT = %q; want 3", values["GIT_CONFIG_COUNT"])
+		}
+		if values["GIT_CONFIG_KEY_0"] != "uploadpack.hideRefs" || values["GIT_CONFIG_VALUE_0"] != "refs/kodema" {
+			t.Fatalf("entry 0 overwritten: %q=%q", values["GIT_CONFIG_KEY_0"], values["GIT_CONFIG_VALUE_0"])
+		}
+		if values["GIT_CONFIG_KEY_1"] != "transfer.hideRefs" || values["GIT_CONFIG_VALUE_1"] != "refs/kodema" {
+			t.Fatalf("entry 1 overwritten: %q=%q", values["GIT_CONFIG_KEY_1"], values["GIT_CONFIG_VALUE_1"])
+		}
+		if values["GIT_CONFIG_KEY_2"] != "receive.advertisePushOptions" || values["GIT_CONFIG_VALUE_2"] != "true" {
+			t.Fatalf("entry 2 = %q=%q; want receive.advertisePushOptions=true", values["GIT_CONFIG_KEY_2"], values["GIT_CONFIG_VALUE_2"])
+		}
+	})
+
+	t.Run("creates GIT_CONFIG_COUNT when absent", func(t *testing.T) {
+		env := appendGitConfigEnv([]string{"LC_ALL=C"}, "receive.advertisePushOptions", "true")
+		values := make(map[string]string, len(env))
+		for _, entry := range env {
+			k, v, _ := strings.Cut(entry, "=")
+			values[k] = v
+		}
+		if values["GIT_CONFIG_COUNT"] != "1" || values["GIT_CONFIG_KEY_0"] != "receive.advertisePushOptions" || values["GIT_CONFIG_VALUE_0"] != "true" {
+			t.Fatalf("unexpected env = %v", env)
+		}
+	})
+}

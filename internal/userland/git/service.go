@@ -111,6 +111,12 @@ type UpdateRequest struct {
 	ExpectedBase string
 	// Candidate is the new commit; a delete has no journal representation.
 	Candidate string
+	// ApprovedBase and ApprovedCandidate optionally identify an earlier
+	// approved `(expected_base, candidate)` pair supplied via Git push options
+	// (`kodema.approved_base` and `kodema.approved_candidate`) for opt-in
+	// `option approve-rebase.<ref> = disjoint` verification.
+	ApprovedBase      string
+	ApprovedCandidate string
 	// ActorCredential is the forwarded actor credential. It is used only for
 	// verification and is never persisted.
 	ActorCredential string
@@ -445,7 +451,22 @@ func (service *Service) prepareLocked(ctx context.Context, request UpdateRequest
 		return JournalEntry{}, err
 	}
 	approvalRole, guarded := policy.ApprovalFor(request.Ref)
-	identity, actorID, verificationID, approved, err := service.verifyActor(ctx, request, approvalRole, guarded)
+	rebaseMode, hasApproveRebase := policy.ApproveRebaseFor(request.Ref)
+	useDisjointRebase := guarded &&
+		hasApproveRebase &&
+		rebaseMode == ApproveRebaseDisjoint &&
+		request.ExpectedBase != "" &&
+		request.ApprovedBase != "" &&
+		request.ApprovedCandidate != "" &&
+		(request.ExpectedBase != request.ApprovedBase || request.Candidate != request.ApprovedCandidate)
+
+	verifyBase, verifyCandidate := request.ExpectedBase, request.Candidate
+	if useDisjointRebase {
+		verifyBase, verifyCandidate = request.ApprovedBase, request.ApprovedCandidate
+	}
+	identity, actorID, verificationID, approved, err := service.verifyActorSubject(
+		ctx, request, verifyBase, verifyCandidate, approvalRole, guarded,
+	)
 	if err != nil {
 		return JournalEntry{}, err
 	}
@@ -500,6 +521,43 @@ func (service *Service) prepareLocked(ctx context.Context, request UpdateRequest
 			Ref:           request.Ref,
 			Cause:         ErrApprovalRequired,
 		})
+	}
+	if useDisjointRebase {
+		if kind != UpdateFastForward {
+			return service.refuse(ctx, request, verificationID, &RefusalError{
+				Category:      "disjoint_rebase_refused",
+				ClientMessage: "disjoint rebase refused: push is not a fast-forward of current target ref; fresh review required",
+				ActorID:       actorID,
+				Ref:           request.Ref,
+				Cause:         ErrApprovalRequired,
+			})
+		}
+		if err := service.verifyDisjointRebase(ctx, path, request, actorID); err != nil {
+			var refusal *RefusalError
+			if errors.As(err, &refusal) {
+				return service.refuse(ctx, request, verificationID, err)
+			}
+			return JournalEntry{}, err
+		}
+		// Mint a verification record for the exact pushed (oldOID, newOID)
+		// effect subject so verified git.ref.updated reporting links to the
+		// pushed commit and passes Shell's subject-linkage validation.
+		effectIdentity, effectActorID, effectVerificationID, _, err := service.verifyActorSubject(
+			ctx, request, request.ExpectedBase, request.Candidate, "", false,
+		)
+		if err != nil {
+			return JournalEntry{}, err
+		}
+		if !effectIdentity.Execution || effectActorID != actorID {
+			return service.refuse(ctx, request, verificationID, &RefusalError{
+				Category:      "approval_required",
+				ClientMessage: fmt.Sprintf("protected ref requires role/%s approval", approvalRole),
+				ActorID:       effectActorID,
+				Ref:           request.Ref,
+				Cause:         ErrApprovalRequired,
+			})
+		}
+		verificationID = effectVerificationID
 	}
 
 	entry := service.entryFor(request, verificationID, JournalIntended)
@@ -899,10 +957,17 @@ func (service *Service) recoverLocked(ctx context.Context, sourceEventID string)
 	}
 }
 
-// verifyActor verifies the exact canonical `git.ref.update` subject and turns
+// verifyActorSubject verifies one canonical `git.ref.update` subject and turns
 // the verified principal into the local rule identity. The forwarded actor
 // credential is the only credential used and is never retained.
-func (service *Service) verifyActor(ctx context.Context, request UpdateRequest, approvalRole string, guarded bool) (Identity, string, string, bool, error) {
+func (service *Service) verifyActorSubject(
+	ctx context.Context,
+	request UpdateRequest,
+	expectedBase string,
+	candidate string,
+	approvalRole string,
+	requireApproval bool,
+) (Identity, string, string, bool, error) {
 	verify := api.VerifyRequest{
 		ActorCredential: request.ActorCredential,
 		ResourceID:      request.ResourceID,
@@ -911,11 +976,11 @@ func (service *Service) verifyActor(ctx context.Context, request UpdateRequest, 
 			{Name: "operation", Kind: "string", Value: string(api.ResourceOperationGitRefUpdate)},
 			{Name: "resource", Kind: "string", Value: request.ResourceID},
 			{Name: "ref", Kind: "string", Value: request.Ref},
-			{Name: "expected_base", Kind: "string", Value: request.ExpectedBase},
-			{Name: "candidate", Kind: "string", Value: request.Candidate},
+			{Name: "expected_base", Kind: "string", Value: expectedBase},
+			{Name: "candidate", Kind: "string", Value: candidate},
 		}},
 	}
-	if guarded {
+	if requireApproval {
 		verify.Approval = "role/" + approvalRole
 	}
 	if err := verify.Validate(); err != nil {
@@ -923,7 +988,7 @@ func (service *Service) verifyActor(ctx context.Context, request UpdateRequest, 
 	}
 	response, err := service.verify.Verify(ctx, verify)
 	if err != nil {
-		if guarded {
+		if requireApproval {
 			if classified := classifyApprovalVerifyError(request.Ref, approvalRole, err); classified != nil {
 				return Identity{}, "", "", false, classified
 			}
@@ -1163,6 +1228,17 @@ func validateUpdateRequest(request UpdateRequest) error {
 	}
 	if !validJournalID(request.Candidate) {
 		return fmt.Errorf("candidate %q is invalid", request.Candidate)
+	}
+	if request.ApprovedBase != "" || request.ApprovedCandidate != "" {
+		if request.ApprovedBase == "" || request.ApprovedCandidate == "" {
+			return fmt.Errorf("approved base and approved candidate must both be set")
+		}
+		if !validStrictCommitOID(request.ApprovedBase) {
+			return fmt.Errorf("approved base %q is not a valid 40-hex commit oid", request.ApprovedBase)
+		}
+		if !validStrictCommitOID(request.ApprovedCandidate) {
+			return fmt.Errorf("approved candidate %q is not a valid 40-hex commit oid", request.ApprovedCandidate)
+		}
 	}
 	if !validJournalID(request.SourceEventID) {
 		return fmt.Errorf("source event id %q is invalid", request.SourceEventID)

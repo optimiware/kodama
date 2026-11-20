@@ -191,3 +191,62 @@ func TestGitHookDispatch(t *testing.T) {
 		t.Fatal("git hook did not dispatch to its runner")
 	}
 }
+
+func TestGitHookForwardsPreReceivePushOptionsAndFailsClosedOnMalformed(t *testing.T) {
+	t.Run("forwards push options on pre-receive", func(t *testing.T) {
+		capture := &capturedRequest{response: native.Response{ExitCode: 0}}
+		socket := startHookSocket(t, capture)
+		setHookEnvironment(t, socket)
+		base := strings.Repeat("a", 40)
+		cand := strings.Repeat("b", 40)
+		t.Setenv(git.EnvPushOptionCount, "2")
+		t.Setenv(git.EnvPushOptionPrefix+"0", "kodema.approved_base="+base)
+		t.Setenv(git.EnvPushOptionPrefix+"1", "kodema.approved_candidate="+cand)
+		stdin := strings.NewReader(strings.Repeat("1", 40) + " " + strings.Repeat("2", 40) + " refs/heads/main\n")
+		var stderr bytes.Buffer
+		if code := runGitHook(context.Background(), []string{"pre-receive"}, stdin, io.Discard, &stderr); code != 0 {
+			t.Fatalf("exit code = %d; stderr=%q", code, stderr.String())
+		}
+		request, ok := capture.last()
+		if !ok {
+			t.Fatal("hook never reached socket")
+		}
+		if len(request.PushOptions) != 2 ||
+			request.PushOptions[0] != "kodema.approved_base="+base ||
+			request.PushOptions[1] != "kodema.approved_candidate="+cand {
+			t.Fatalf("forwarded PushOptions = %+v", request.PushOptions)
+		}
+	})
+
+	t.Run("fails closed on malformed GIT_PUSH_OPTION_COUNT", func(t *testing.T) {
+		capture := &capturedRequest{response: native.Response{ExitCode: 0}}
+		socket := startHookSocket(t, capture)
+		setHookEnvironment(t, socket)
+		t.Setenv(git.EnvPushOptionCount, "not-a-number")
+		stdin := strings.NewReader(strings.Repeat("1", 40) + " " + strings.Repeat("2", 40) + " refs/heads/main\n")
+		var stderr bytes.Buffer
+		if code := runGitHook(context.Background(), []string{"pre-receive"}, stdin, io.Discard, &stderr); code == 0 {
+			t.Fatal("malformed GIT_PUSH_OPTION_COUNT was accepted")
+		}
+		if _, ok := capture.last(); ok {
+			t.Fatal("malformed push option count should fail before dialing socket")
+		}
+	})
+
+	t.Run("post-receive ignores push option env", func(t *testing.T) {
+		capture := &capturedRequest{response: native.Response{ExitCode: 0}}
+		socket := startHookSocket(t, capture)
+		setHookEnvironment(t, socket)
+		t.Setenv(git.EnvPushOptionCount, "1")
+		t.Setenv(git.EnvPushOptionPrefix+"0", "kodema.approved_base="+strings.Repeat("a", 40))
+		stdin := strings.NewReader(strings.Repeat("1", 40) + " " + strings.Repeat("2", 40) + " refs/heads/main\n")
+		var stderr bytes.Buffer
+		if code := runGitHook(context.Background(), []string{"post-receive"}, stdin, io.Discard, &stderr); code != 0 {
+			t.Fatalf("exit code = %d; stderr=%q", code, stderr.String())
+		}
+		request, ok := capture.last()
+		if !ok || len(request.PushOptions) != 0 {
+			t.Fatalf("post-receive PushOptions = %+v; want empty", request.PushOptions)
+		}
+	})
+}
