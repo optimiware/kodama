@@ -95,11 +95,15 @@ func IsReservedPath(path string) bool {
 	return path == ReservedCredentialPath
 }
 
+// maxTaskFileNameBytes bounds one filename under /kodema/task/ to fit within
+// Kubernetes ConfigMap key limits (253) and POSIX NAME_MAX (255).
+const maxTaskFileNameBytes = 253
+
 // TaskFilePath returns the confined path for one admitted task specification
 // file under /kodema/task/. Name must be a single safe filename without path
-// separators, traversal or control characters.
+// separators, traversal, kubelet reserved ".." prefixes, or control characters.
 func TaskFilePath(name string) (string, error) {
-	if name == "" || name == "." || name == ".." {
+	if name == "" || name == "." || name == ".." || strings.HasPrefix(name, "..") || len(name) > maxTaskFileNameBytes {
 		return "", fault.New(fault.InvalidInput, "task file name is invalid")
 	}
 	for index := 0; index < len(name); index++ {

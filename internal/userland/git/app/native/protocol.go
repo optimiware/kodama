@@ -168,6 +168,9 @@ func (request Request) Validate() error {
 			return fmt.Errorf("%w: object environment entry is not allowed", ErrMalformedRequest)
 		}
 	}
+	if len(request.PushOptions) > 0 && request.Phase != PhasePreReceive {
+		return fmt.Errorf("%w: push options are only allowed on %s", ErrMalformedRequest, PhasePreReceive)
+	}
 	if len(request.PushOptions) > DefaultMaxPushOptions {
 		return fmt.Errorf("%w: push options count is out of bounds", ErrMalformedRequest)
 	}

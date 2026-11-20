@@ -1,7 +1,7 @@
 package httpapi_test
 
 // These tests pin the one unauthenticated public discovery route served by the
-// REST edge, api.DiscoveryPath. It is a fixed root route outside the 58-operation
+// REST edge, api.DiscoveryPath. It is a fixed root route outside the operation
 // registry: it is served before authentication and before operation routing,
 // validates the consumer-owned provider's document on every response, and never
 // falls back to a partial, invalid or oversized document.

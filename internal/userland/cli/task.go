@@ -328,6 +328,9 @@ func runTaskStart(ctx context.Context, config Config, args []string, ports Ports
 	if err != nil {
 		return usage(ports.Err, err.Error())
 	}
+	if err := validateOutputInputRefCollisions(inputs, outputRefs); err != nil {
+		return usage(ports.Err, err.Error())
+	}
 	format, err := resolveOutputFormat(outputFlag, config)
 	if err != nil {
 		return usage(ports.Err, err.Error())
@@ -473,6 +476,9 @@ func runTaskRestart(ctx context.Context, config Config, args []string, ports Por
 	}
 	outputRefs, err := parseOutputInputRefs(outputInputPairs)
 	if err != nil {
+		return usage(ports.Err, err.Error())
+	}
+	if err := validateOutputInputRefCollisions(inputs, outputRefs); err != nil {
 		return usage(ports.Err, err.Error())
 	}
 	format, err := resolveOutputFormat(outputFlag, config)
@@ -640,6 +646,15 @@ func parseOutputInputRefs(entries []string) ([]outputInputRef, error) {
 	return refs, nil
 }
 
+func validateOutputInputRefCollisions(inputs map[string]string, refs []outputInputRef) error {
+	for _, ref := range refs {
+		if _, exists := inputs[ref.inputKey]; exists {
+			return fmt.Errorf("input key %q is specified by both --input and --input-from-output", ref.inputKey)
+		}
+	}
+	return nil
+}
+
 // resolveInputsFromLatestSucceeded inspects executions in reverse history order
 // to locate the task's latest succeeded execution and resolves each declared
 // output reference into the outgoing inputs map.
@@ -651,14 +666,12 @@ func resolveInputsFromLatestSucceeded(
 	refs []outputInputRef,
 	base map[string]string,
 ) (map[string]string, error) {
+	if err := validateOutputInputRefCollisions(base, refs); err != nil {
+		return nil, err
+	}
 	merged := make(map[string]string, len(base)+len(refs))
 	for k, v := range base {
 		merged[k] = v
-	}
-	for _, ref := range refs {
-		if _, exists := merged[ref.inputKey]; exists {
-			return nil, fmt.Errorf("input key %q is specified by both --input and --input-from-output", ref.inputKey)
-		}
 	}
 	var latest *api.ExecutionInspectResult
 	for i := len(readView.ExecutionHistory) - 1; i >= 0; i-- {

@@ -119,12 +119,17 @@ func resolvePresentedToken(ctx context.Context, config Config, ports Ports, deps
 			}
 		}
 	}
-	if config.CredentialFile != "" && ports.Files != nil {
-		if data, err := ports.Files.ReadFile(config.CredentialFile); err == nil {
-			if token := strings.TrimSpace(string(data)); token != "" {
-				return token
+	if config.CredentialFile != "" {
+		if ports.Files != nil {
+			if data, err := ports.Files.ReadFile(config.CredentialFile); err == nil {
+				if token := strings.TrimSpace(string(data)); token != "" {
+					return token
+				}
 			}
 		}
+		// Never fall through to a saved human session when an explicit
+		// credential file was configured.
+		return ""
 	}
 	if deps.Login.Store != nil {
 		if record, err := deps.Login.Store.LoadRecord(ctx); err == nil {

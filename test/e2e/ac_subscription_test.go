@@ -70,11 +70,10 @@ func requireLiveBrokerInputs(t *testing.T, instance *live) {
 // is explicitly set or fallbackToken is empty. It never reconnects: a probe
 // must observe the installation's live connection, not a client retry schedule.
 //
-// A tls:// broker with the per-credential authorization callout only accepts a
-// store-backed credential (service or execution): a human OIDC token has no
-// store-backed expiry and is refused by the served surface by design
-// (AC07). Callers therefore pass the same run-unique service credential
-// they use for the served subscription grant.
+// A tls:// broker with the per-credential authorization callout accepts any
+// authenticated Kodema credential carrying a verified expiry (service,
+// execution, or human OIDC JWT). Callers pass the same credential they use for
+// the served subscription grant so connection and grant share one scope.
 func connectLiveBroker(t *testing.T, instance *live, fallbackToken harness.Secret) *natsgo.Conn {
 	t.Helper()
 	requireLiveBrokerInputs(t, instance)
@@ -123,13 +122,10 @@ func liveScope(t *testing.T, instance *live) (tenant, project string) {
 }
 
 // liveSubscriberToken creates one run-unique engineer service and returns its
-// freshly issued credential. A human OIDC token deliberately has no store-backed
-// credential expiry, so the served event.subscribe setup refuses it as a
-// documented composition boundary (AC07) and the broker callout refuses it
-// for the same reason; a service principal is the supported subscriber on this
-// installation. The same credential the probe presents to the broker is the one
-// it uses for the served grant, so connection and grant share one scope. The
-// token is never rendered.
+// freshly issued credential so the broker probe isolates its own short-lived
+// subscriber identity and can disable it cleanly on test cleanup. The same
+// credential the probe presents to the broker is the one it uses for the served
+// grant, so connection and grant share one scope. The token is never rendered.
 func liveSubscriberToken(ctx context.Context, t *testing.T, instance *live, label string) harness.Secret {
 	t.Helper()
 	admin := instance.smokeToken(t, harness.PersonaAdmin)

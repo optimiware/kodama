@@ -1,5 +1,80 @@
 # Changelog
 
+## 0.6.0
+
+Added:
+
+- **Embedded documentation across MCP and CLI, plus Git company context CLI.**
+  Kodema embeds its documentation topics inside the binary and exposes them via
+  MCP resources (`kodema://docs/<topic>`) and `kodema docs [<topic>|install]`.
+  Added `kodema context pull` to clone/sync shared company and project Git
+  context repositories and skills into agent workspaces.
+- **First-class project, repository, and pipeline management across REST, MCP,
+  and CLI** (61 registered operations total):
+  - `project.create` (`kodema project create <id> [--name ...] [--copy-members-from <project>]`)
+    and `project.list` (`kodema project list`, defaulting `tenant_id` to the
+    caller's authenticated tenant).
+  - `repository.create` (`kodema repo create <name>`) and `repository.list`
+    (`kodema repo list`) for one-step HTTP bare-repository provisioning,
+    `admin/conf/git.conf` stanza registration, and project resource binding.
+  - `kodema pipeline apply <file-or-dir>` (deriving names from filenames),
+    `kodema pipeline show <name|id> [--yaml]`, and `kodema pipeline delete`.
+- **Native credential-injecting LLM proxy and token-usage attribution.**
+  Workloads authenticate to `${KODEMA_URL}/llm/<provider>/*` with
+  `/kodema/secrets/KODEMA_TOKEN` while provider API keys remain strictly inside
+  the control plane (never mountable via `secrets: [...]`). Enabled out of the
+  box in `kodema up` for OpenAI, Anthropic, and OpenCode Zen plus custom
+  `--llm-provider` entries, with per-execution `model_usage` attribution
+  surfaced in `execution.inspect` and `kodema inspect`.
+- **Live project SSE event stream and ergonomic monitoring CLI:**
+  - `GET /api/v1/projects/{project}/events/stream` (`text/event-stream`) with
+    `since`/`after`, repeatable `type`, and `Last-Event-ID` cursor resume (zero
+    gaps, zero duplicates) sharing REST auth, visibility, and expiry rules.
+  - `kodema events [--follow]`, `kodema watch --project <id> [--until request]`,
+    `kodema inbox --wait`, and multi-action `kodema logs --follow <execution-id>`.
+- **Multi-stage task transitions and clean `task.restart`:**
+  - `task.start` (`kodema task start <task-id> --pipeline <name|id> --input ... --input-from-output <k>=<action>.<out>`)
+    atomically switches pipelines and inputs across stages on one task,
+    including transitioning from `done`.
+  - `task.restart` (`kodema task restart <task-id> [--pipeline ...] [--input ...] [--input-from-output ...] [--reason "..."]`)
+    atomically cancels a running or waiting execution with Kernel
+    `CancelSuperseded` (`superseded`) and starts a fresh attempt once the
+    predecessor stop settles.
+  - Two-stage agent pipeline recipes under `examples/pipelines/`.
+- **Stale approval detection and approval guards.** Verified `git.ref.updated`
+  events automatically mark pending `git.ref.update` requests stale in
+  `task.inbox` (`STALE` badge + superseding commit/reason in `kodema inbox`).
+  `kodema approve` refuses stale requests by default unless `--allow-stale` is
+  supplied and supports `--candidate <sha>` confirmation.
+- **Opt-in disjoint rebase approval in `kodema git serve`.** Repositories can
+  opt in per ref via `option approve-rebase.<ref> = disjoint` alongside
+  `option approve.<ref> = <role>` to accept clean, linear, merge-free rebases
+  pushed with `-o kodema.approved_base=<sha> -o kodema.approved_candidate=<sha>`
+  when intervening target-ref commits touch strictly disjoint paths and
+  per-commit raw diffs/modes match byte-for-byte.
+- **Read-only task specification materialization.** Every task-associated
+  container action receives `/kodema/task/title`, `/kodema/task/description`,
+  `/kodema/task/metadata.json`, and `/kodema/task/spec.json` (immutable at
+  admission across process, Podman, and Kubernetes runtimes) alongside
+  `/kodema/task.json`.
+
+Fixed:
+
+- Propagate verified human OIDC JWT expiry into `event.subscribe` and the NATS
+  authorization callout across `test` and `production` profiles so human users
+  can subscribe to live project events without switching to service accounts.
+- Surface failed container action stderr tails and actionable `kodema logs`
+  hints in `kodema inspect` and `kodema watch`.
+- Fix `kodema up` identity-mismatch preflight guard and tenant-scoped local
+  workload secrets across multi-project installations.
+- Document `kodema task create/run --meta`/`--metadata`, align metadata JSON
+  Schema (`additionalProperties: {"type": "string"}`) and docs, display the
+  active server URL in `kodema whoami`, and attach actionable client-side hints
+  on project-scope JWT mismatch without falling through an explicit
+  `--credential-file`.
+- Stabilize `TestTaskSpecMaterializationEndToEnd` version/cleanup synchronization
+  and add live Podman and kind E2E coverage for v0.6 capabilities.
+
 ## 0.5.0
 
 Changed:

@@ -13,6 +13,7 @@ import (
 	"github.com/optimiware/kodema/internal/kernel"
 	"github.com/optimiware/kodema/internal/kernel/engine"
 	runtimekube "github.com/optimiware/kodema/internal/shell/runtime/kube"
+	"github.com/optimiware/kodema/internal/shell/workspace"
 )
 
 // TestConfigMapAndSecretRoundTrip proves the real API accepts the driver's
@@ -161,6 +162,54 @@ func TestCredentialRefreshReplacesOnlyTheSecret(t *testing.T) {
 	waitForObservation(t, ctx, fx.Adapter, engine.ObserveRequest{
 		Identity: identity, WorkspaceID: workspaceID,
 	}, kernel.ObservationExited)
+}
+
+// TestTaskSpecMaterializedInRealPod proves that kubelet projects the immutable
+// activation ConfigMap's /kodema/task/{title,description,metadata.json,spec.json}
+// files read-only into a real Kubernetes Job pod alongside /kodema/task.json.
+func TestTaskSpecMaterializedInRealPod(t *testing.T) {
+	t.Parallel()
+	workspaceID := id.WorkspaceID("workspace-kube-task-spec")
+	fx, ctx := newFixture(t, workspaceID, fixtureOptions{withClaim: true})
+	identity := testIdentity("exec-ktask", "action-ktask", "workload-ktask", "idem-ktask")
+
+	taskID := id.TaskID("task-kube-spec")
+	taskFiles, err := workspace.BuildTaskFiles(
+		taskID,
+		"Kubernetes spec title",
+		"Multi-line\ndescription ✓",
+		map[string]string{"release": "0.6.0", "area": "kube"},
+	)
+	if err != nil {
+		t.Fatalf("BuildTaskFiles: %v", err)
+	}
+	req := prepareRequest(
+		identity, workspaceID, "build", taskID,
+		testContainer([]string{
+			`test "$(cat /kodema/task/title)" = "Kubernetes spec title"`,
+			`test "$(cat /kodema/task/description)" = "$(printf 'Multi-line\ndescription ✓')"`,
+			`test "$(cat /kodema/task/metadata.json)" = '{"area":"kube","release":"0.6.0"}'`,
+			`test "$(cat /kodema/task/spec.json)" = '{"id":"task-kube-spec","title":"Kubernetes spec title","description":"Multi-line\ndescription ✓","metadata":{"area":"kube","release":"0.6.0"}}'`,
+			`test ! -w /kodema/task/title && test ! -w /kodema/task/spec.json`,
+			`printf 'kube-task-spec-ok\n'`,
+		}, nil),
+		nil,
+		"tok-ktask",
+	)
+	req.TaskFiles = taskFiles
+	startPrepared(t, ctx, fx, req)
+
+	obs := waitForObservation(t, ctx, fx.Adapter, engine.ObserveRequest{
+		Identity: identity, WorkspaceID: workspaceID,
+	}, kernel.ObservationExited)
+	if code, ok := obs.ExitStatus(); !ok || code != 0 {
+		stdout, _ := readAllLogs(t, ctx, fx.Adapter, identity, 1<<20)
+		t.Fatalf("pod exit = %d/%v (want 0/true); logs:\n%s", code, ok, stdout)
+	}
+	stdout, _ := readAllLogs(t, ctx, fx.Adapter, identity, 1<<20)
+	if !containsLine(string(stdout), "kube-task-spec-ok") {
+		t.Fatalf("pod logs missing kube-task-spec-ok:\n%s", stdout)
+	}
 }
 
 // secretDataByWorkload reads the single owned credential Secret through kubectl

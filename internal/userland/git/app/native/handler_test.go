@@ -753,4 +753,12 @@ func TestRequestValidatePushOptionsBounds(t *testing.T) {
 	if err := tooMany.Validate(); err == nil {
 		t.Fatal("over-bound push options count accepted")
 	}
+
+	for _, phase := range []Phase{PhasePostReceive, PhaseUpdate} {
+		wrongPhase := validRequest(phase)
+		wrongPhase.PushOptions = []string{"kodema.approved_base=" + strings.Repeat("a", 40)}
+		if err := wrongPhase.Validate(); err == nil {
+			t.Fatalf("push options accepted on non-pre-receive phase %q", phase)
+		}
+	}
 }

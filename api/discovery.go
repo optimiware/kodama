@@ -10,7 +10,7 @@ import (
 )
 
 // DiscoveryPath is the one unauthenticated public discovery route. It is a
-// fixed root path outside the 58-operation registry: it is not returned by
+// fixed root path outside the operation registry: it is not returned by
 // Routes, not resolvable by Match or LookupRoute, and carries no credential.
 const DiscoveryPath = "/.well-known/kodema-configuration"
 

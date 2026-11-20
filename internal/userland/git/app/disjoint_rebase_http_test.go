@@ -300,8 +300,11 @@ func TestSmartHTTPDisjointRebasePushOptionsEndToEnd(t *testing.T) {
 		"    R = @all",
 		"    RW+ refs/heads/work/ = @execution",
 		"    RW refs/heads/main = @execution",
+		"    RW refs/heads/release = @execution",
 		"    option approve.refs/heads/main = reviewer",
 		"    option approve-rebase.refs/heads/main = disjoint",
+		"    option approve.refs/heads/release = reviewer",
+		"    option approve-rebase.refs/heads/release = disjoint",
 		"",
 		"repo shop/strict",
 		"    option resource = res-shop-strict",
@@ -470,5 +473,57 @@ func TestSmartHTTPDisjointRebasePushOptionsEndToEnd(t *testing.T) {
 	}
 	if !strings.Contains(out, "approval") {
 		t.Fatalf("strict repo refusal output = %q; want approval diagnostic", out)
+	}
+
+	// 4. Multi-ref push isolation: a second approval-guarded ref in the same
+	//    push batch cannot borrow the first ref's push-option disjoint-rebase
+	//    approval; the entire pre-receive batch fails atomically and neither
+	//    ref moves.
+	verifier.grant("exec-1-token", "res-shop-web", "refs/heads/release", "", mainOverlapOID, "reviewer")
+	mustHTTPGit(t, webWork, "exec-1-token", "push", "-q", "origin", mainOverlapOID+":refs/heads/release")
+
+	mustHTTPGit(t, webWork, "", "checkout", "-q", "-b", "feat-multiref", mainOverlapOID)
+	if err := os.WriteFile(filepath.Join(webWork, "multi_a.txt"), []byte("multi-a\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	mustHTTPGit(t, webWork, "", "add", "-A")
+	mustHTTPGit(t, webWork, "", "commit", "-q", "-m", "feat multi-ref")
+	multiApproved := mustHTTPGit(t, webWork, "", "rev-parse", "HEAD")
+	mustHTTPGit(t, webWork, "exec-1-token", "push", "-q", "origin", "HEAD:refs/heads/work/feat-multiref")
+	// Grant approval ONLY for refs/heads/main (not refs/heads/release).
+	verifier.grant("exec-1-token", "res-shop-web", "refs/heads/main", mainOverlapOID, multiApproved, "reviewer")
+
+	// Advance both main and release with a disjoint commit.
+	mustHTTPGit(t, webWork, "", "checkout", "-q", "-B", "main", mainOverlapOID)
+	if err := os.WriteFile(filepath.Join(webWork, "multi_other.txt"), []byte("other\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	mustHTTPGit(t, webWork, "", "add", "-A")
+	mustHTTPGit(t, webWork, "", "commit", "-q", "-m", "advance main and release disjointly")
+	movedBoth := mustHTTPGit(t, webWork, "", "rev-parse", "HEAD")
+	verifier.grant("exec-2-token", "res-shop-web", "refs/heads/main", mainOverlapOID, movedBoth, "reviewer")
+	verifier.grant("exec-2-token", "res-shop-web", "refs/heads/release", mainOverlapOID, movedBoth, "reviewer")
+	mustHTTPGit(t, webWork, "exec-2-token", "push", "-q", "origin", movedBoth+":refs/heads/main", movedBoth+":refs/heads/release")
+
+	// Rebase feat-multiref onto movedBoth and attempt a single multi-ref push
+	// updating BOTH refs/heads/main (approved) and refs/heads/release (unapproved).
+	mustHTTPGit(t, webWork, "", "checkout", "-q", "feat-multiref")
+	mustHTTPGit(t, webWork, "", "rebase", "-q", "main")
+	multiRebased := mustHTTPGit(t, webWork, "", "rev-parse", "HEAD")
+	out, err = runHTTPGit(t, webWork, "exec-1-token", "push",
+		"-o", "kodema.approved_base="+mainOverlapOID,
+		"-o", "kodema.approved_candidate="+multiApproved,
+		"origin",
+		multiRebased+":refs/heads/main",
+		multiRebased+":refs/heads/release",
+	)
+	if err == nil {
+		t.Fatalf("multi-ref push borrowing approval across refs succeeded unexpectedly:\n%s", out)
+	}
+	if got := mustHTTPGit(t, webBarePath, "", "rev-parse", "refs/heads/main"); got != movedBoth {
+		t.Fatalf("refs/heads/main moved to %s after multi-ref refusal; want %s", got, movedBoth)
+	}
+	if got := mustHTTPGit(t, webBarePath, "", "rev-parse", "refs/heads/release"); got != movedBoth {
+		t.Fatalf("refs/heads/release moved to %s after multi-ref refusal; want %s", got, movedBoth)
 	}
 }

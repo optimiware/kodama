@@ -237,7 +237,15 @@ func (service *Service) isAncestor(ctx context.Context, path, ancestor, descenda
 func (service *Service) linearCommitSeries(ctx context.Context, path, base, tip, label string) ([]linearCommit, string, error) {
 	result, err := service.executor.Run(ctx, Command{
 		Name: "git",
-		Args: []string{"-C", path, "--no-replace-objects", "rev-list", "--reverse", "--parents", base + ".." + tip},
+		Args: []string{
+			"-C", path,
+			"--no-replace-objects",
+			"rev-list",
+			fmt.Sprintf("--max-count=%d", maxDisjointRebaseCommits+1),
+			"--reverse",
+			"--parents",
+			base + ".." + tip,
+		},
 	})
 	if err != nil {
 		return nil, "", err

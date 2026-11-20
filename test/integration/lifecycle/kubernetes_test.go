@@ -121,6 +121,8 @@ func TestKubernetesPipeline(t *testing.T) {
 					// submission below authenticates it against KODEMA_URL
 					// through BusyBox nc from inside the pod.
 					`test -s /kodema/secrets/KODEMA_TOKEN`,
+					// Task-free executions must not materialize /kodema/task or /kodema/task.json.
+					`test ! -e /kodema/task && test ! -e /kodema/task.json`,
 					// The workload prints its mounted credential so the retained
 					// log proves the Logs path redacts it. The test asserts the
 					// marker and the absence of the captured value.
