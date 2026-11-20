@@ -21,6 +21,7 @@ import (
 	"github.com/optimiware/kodema/internal/kernel/definition"
 	"github.com/optimiware/kodema/internal/kernel/engine"
 	runtimekube "github.com/optimiware/kodema/internal/shell/runtime/kube"
+	"github.com/optimiware/kodema/test/support/infrastructure/harness"
 )
 
 // workloadCAImage is the ordinary smoke workload used by this test. It is the
@@ -53,6 +54,7 @@ func TestWorkloadMountedCAHTTPS(t *testing.T) {
 	trustCA := clusterTrustCA(t, ctx, fx)
 	putWorkloadCASecret(t, ctx, fx, workloadCASecret, trustCA)
 	putWorkloadCASecret(t, ctx, fx, workloadCAWrongSecret, generateWrongCA(t))
+	waitForClusterDNS(t, ctx, fx)
 
 	intended := newWorkloadCAAdapter(t, fx, workloadCASecret)
 	script := fmt.Sprintf(
@@ -64,7 +66,7 @@ func TestWorkloadMountedCAHTTPS(t *testing.T) {
 	identity := testIdentity("exec-ca-ok", "action-ca-ok", "workload-ca-ok", "idem-ca-ok")
 	observation, stdout, _ := runCAWorkload(t, ctx, fx, intended, identity, workspaceID, script)
 	if code, ok := observation.ExitStatus(); !ok || code != 0 {
-		t.Fatalf("workload with the intended CA exit = %d/%v; want 0/true (%+v)", code, ok, observation)
+		t.Fatalf("workload with the intended CA exit = %d/%v; want 0/true (%+v)\noutput: %s", code, ok, observation, stdout)
 	}
 	if !strings.Contains(string(stdout), `"major"`) {
 		t.Fatalf("workload HTTPS response = %q; want the API server version document", stdout)
@@ -168,6 +170,51 @@ func runCAWorkload(
 	}, kernel.ObservationExited)
 	stdout, stderr := readAllLogs(t, ctx, adapter, identity, 1<<20)
 	return observation, stdout, stderr
+}
+
+// waitForClusterDNS blocks until CoreDNS is ready and kube-dns has at least one
+// ready EndpointSlice address. Cluster.WaitReady intentionally waits only for
+// node readiness, the default ServiceAccount, and the standard StorageClass;
+// under concurrent kind load, CoreDNS can finish starting a few seconds later,
+// which would make curl exit 6 (CURLE_COULDNT_RESOLVE_HOST) on
+// kubernetes.default.svc.
+func waitForClusterDNS(t *testing.T, ctx context.Context, fx *fixture) {
+	t.Helper()
+	options := harness.DefaultWaitOptions()
+	options.Timeout = 2 * time.Minute
+	probe := func(ctx context.Context) error {
+		deployment, err := fx.Cluster.GetJSON(ctx, "get", "deployment", "coredns", "-n", "kube-system")
+		if err != nil {
+			return fmt.Errorf("read coredns deployment: %w", err)
+		}
+		status, _ := deployment["status"].(map[string]any)
+		readyReplicas, _ := status["readyReplicas"].(float64)
+		if readyReplicas < 1 {
+			return fmt.Errorf("coredns readyReplicas = %v; want >= 1", status["readyReplicas"])
+		}
+		slicesDoc, err := fx.Cluster.GetJSON(ctx, "get", "endpointslices", "-n", "kube-system", "-l", "kubernetes.io/service-name=kube-dns")
+		if err != nil {
+			return fmt.Errorf("read kube-dns endpointslices: %w", err)
+		}
+		items, _ := slicesDoc["items"].([]any)
+		for _, rawSlice := range items {
+			slice, _ := rawSlice.(map[string]any)
+			endpoints, _ := slice["endpoints"].([]any)
+			for _, rawEndpoint := range endpoints {
+				endpoint, _ := rawEndpoint.(map[string]any)
+				conditions, _ := endpoint["conditions"].(map[string]any)
+				ready, _ := conditions["ready"].(bool)
+				addresses, _ := endpoint["addresses"].([]any)
+				if ready && len(addresses) > 0 {
+					return nil
+				}
+			}
+		}
+		return fmt.Errorf("kube-dns has no ready endpoint address yet")
+	}
+	if err := harness.WaitReady(ctx, harness.RealClock{}, "kind cluster DNS "+fx.Cluster.Name, probe, options); err != nil {
+		t.Fatalf("cluster DNS did not become ready: %v", err)
+	}
 }
 
 // clusterTrustCA reads the namespace's cluster CA, which signs the in-cluster
