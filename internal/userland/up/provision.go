@@ -2,8 +2,10 @@ package up
 
 import (
 	"context"
+	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -98,7 +100,7 @@ func provision(ctx context.Context, cfg provisionConfig) (string, error) {
 		return err
 	}
 
-	if err := ensure(cfg.TenantToken, "project.create", "kodema-up-project", api.ProjectCreateRequest{
+	if err := ensure(cfg.TenantToken, "project.create", provisionIdempotencyKey("kodema-up-project", cfg.ProjectID), api.ProjectCreateRequest{
 		TenantID: cfg.TenantID, ProjectID: cfg.ProjectID, Name: cfg.ProjectID,
 	}); err != nil {
 		return "", err
@@ -113,19 +115,19 @@ func provision(ctx context.Context, cfg provisionConfig) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		if err := ensure(cfg.TenantToken, "membership.grant", "kodema-up-member-"+persona, api.MembershipGrantRequest{
+		if err := ensure(cfg.TenantToken, "membership.grant", provisionIdempotencyKey("kodema-up-member-"+persona, cfg.ProjectID), api.MembershipGrantRequest{
 			ProjectID: cfg.ProjectID, PrincipalID: string(principalID), Roles: roles,
 		}); err != nil {
 			return "", err
 		}
 	}
 
-	if err := ensure(cfg.ProjectToken, "service.create", "kodema-up-service-git", api.ServiceCreateRequest{
+	if err := ensure(cfg.ProjectToken, "service.create", provisionIdempotencyKey("kodema-up-service-git", cfg.ProjectID), api.ServiceCreateRequest{
 		ProjectID: cfg.ProjectID, ServiceID: gitServiceID, Roles: []string{"viewer"},
 	}); err != nil {
 		return "", err
 	}
-	if err := ensure(cfg.ProjectToken, "resource.binding.register", "kodema-up-binding-git-admin", api.ResourceBindingRegisterRequest{
+	if err := ensure(cfg.ProjectToken, "resource.binding.register", provisionIdempotencyKey("kodema-up-binding-git-admin", cfg.ProjectID), api.ResourceBindingRegisterRequest{
 		ProjectID:        cfg.ProjectID,
 		BindingID:        "git-admin",
 		ResourceID:       "git-admin",
@@ -166,4 +168,15 @@ func provision(ctx context.Context, cfg provisionConfig) (string, error) {
 		return "", fmt.Errorf("the Git service credential was not returned")
 	}
 	return *issued.Token, nil
+}
+
+// provisionIdempotencyKey scopes one bootstrap idempotency key to projectID
+// while keeping the key within api.MaxIdempotencyKeyBytes.
+func provisionIdempotencyKey(prefix, projectID string) string {
+	key := prefix + "-" + projectID
+	if len(key) <= api.MaxIdempotencyKeyBytes {
+		return key
+	}
+	sum := sha256.Sum256([]byte(projectID))
+	return prefix + "-" + hex.EncodeToString(sum[:16])
 }

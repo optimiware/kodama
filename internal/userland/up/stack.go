@@ -20,6 +20,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/fault"
 	"github.com/optimiware/kodema/internal/id"
 )
 
@@ -64,21 +66,26 @@ type UpConfig struct {
 	ListenAddr            string
 	Socket                string
 	AllowUnsharedStateDir bool
-	TenantID              string
-	ProjectID             string
-	KodemaImage           string
-	PostgresImage         string
-	NATSImage             string
-	WorkloadMemory        string
-	WorkloadCPUs          string
-	WorkloadMaxMemory     string
-	WorkloadMaxCPUs       string
-	Foreground            bool
+	// TenantID and ProjectID set the bootstrap tenant and project for a fresh
+	// instance. When empty on an existing instance, the stored identity from
+	// stack.json is preserved; when non-empty and different from the stored
+	// identity, Up refuses before modifying any state or stopping the gateway.
+	TenantID          string
+	ProjectID         string
+	KodemaImage       string
+	PostgresImage     string
+	NATSImage         string
+	WorkloadMemory    string
+	WorkloadCPUs      string
+	WorkloadMaxMemory string
+	WorkloadMaxCPUs   string
+	Foreground        bool
 	// DenyProjectSecrets disables the local workload secret-name allow-list so
 	// the server runs deny-by-default. By default (false) and when AllowSecrets
-	// is empty, kodema up allows project-stored workload secrets for
-	// (TenantID, ProjectID) while still rejecting KODEMA_TOKEN, missing secrets
-	// and other scopes.
+	// is empty, kodema up emits a tenant-scoped allow_all rule for TenantID so
+	// workloads in the bootstrap project and additional projects created in the
+	// same local instance can resolve project-stored secrets while still
+	// rejecting KODEMA_TOKEN, missing secrets and other tenants.
 	DenyProjectSecrets bool
 	// AllowSecrets restricts the local workload secret-name allow-list to these
 	// exact secret names in (TenantID, ProjectID) instead of allowing all
@@ -271,8 +278,6 @@ func Up(ctx context.Context, cfg UpConfig, stdout io.Writer) (_ StackDescriptor,
 	if err != nil {
 		return StackDescriptor{}, err
 	}
-	tenantID := defaultIfEmpty(cfg.TenantID, DefaultTenantID)
-	projectID := defaultIfEmpty(cfg.ProjectID, DefaultProjectID)
 	kodemaImage := defaultIfEmpty(cfg.KodemaImage, KodemaImageRepository+":latest")
 	postgresImage := defaultIfEmpty(cfg.PostgresImage, DefaultPostgresImage)
 	natsImage := defaultIfEmpty(cfg.NATSImage, DefaultNATSImage)
@@ -291,6 +296,11 @@ func Up(ctx context.Context, cfg UpConfig, stdout io.Writer) (_ StackDescriptor,
 		ExplicitStateDir:      cfg.StateDir,
 		AllowUnsharedStateDir: cfg.AllowUnsharedStateDir,
 	})
+	if err != nil {
+		return StackDescriptor{}, err
+	}
+
+	tenantID, projectID, err := resolveInstanceIdentity(stateDir, instance, cfg.TenantID, cfg.ProjectID)
 	if err != nil {
 		return StackDescriptor{}, err
 	}
@@ -728,6 +738,9 @@ func Up(ctx context.Context, cfg UpConfig, stdout io.Writer) (_ StackDescriptor,
 		GitOrigins:   []string{publicURL, workloadOrigin},
 	})
 	if err != nil {
+		if !shouldAttachServerLogTail(err) {
+			return StackDescriptor{}, err
+		}
 		if tail := engine.LogTail(ctx, serverContainer, 5); tail != "" {
 			return StackDescriptor{}, fmt.Errorf("%w; the log of container %s ends with:\n%s", err, serverContainer, tail)
 		}
@@ -1332,9 +1345,86 @@ func validateAllowSecrets(raw []string) ([]string, error) {
 	return out, nil
 }
 
+// resolveInstanceIdentity checks whether stateDir already belongs to a
+// bootstrapped instance and validates requestedTenant / requestedProject before
+// Up performs any side effects. When an existing stack.json is present, empty
+// requested values preserve the stored identity so bare `kodema up` restarts
+// work idempotently even for custom-project instances; non-empty mismatched
+// values fail immediately with an actionable error.
+func resolveInstanceIdentity(stateDir, instance, requestedTenant, requestedProject string) (string, string, error) {
+	reqTenant := strings.TrimSpace(requestedTenant)
+	reqProject := strings.TrimSpace(requestedProject)
+
+	desc, err := loadStackDescriptor(stateDir)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return defaultIfEmpty(reqTenant, DefaultTenantID), defaultIfEmpty(reqProject, DefaultProjectID), nil
+		}
+		return "", "", fmt.Errorf("read existing stack metadata for instance %q: %w", instance, err)
+	}
+
+	existingTenant := strings.TrimSpace(desc.TenantID)
+	existingProject := strings.TrimSpace(desc.ProjectID)
+
+	tenantMismatch := reqTenant != "" && existingTenant != "" && reqTenant != existingTenant
+	projectMismatch := reqProject != "" && existingProject != "" && reqProject != existingProject
+	if tenantMismatch || projectMismatch {
+		shownTenant := defaultIfEmpty(existingTenant, DefaultTenantID)
+		shownProject := defaultIfEmpty(existingProject, DefaultProjectID)
+		wantTenant := defaultIfEmpty(reqTenant, shownTenant)
+		wantProject := defaultIfEmpty(reqProject, shownProject)
+		return "", "", fmt.Errorf(
+			"instance %q was bootstrapped with tenant %q / project %q (requested tenant %q / project %q); use --name <other> for a separate instance, create another project inside this instance, or run `kodema down --purge` to reset it",
+			instance, shownTenant, shownProject, wantTenant, wantProject,
+		)
+	}
+
+	tenantID := defaultIfEmpty(existingTenant, DefaultTenantID)
+	if reqTenant != "" {
+		tenantID = reqTenant
+	}
+	projectID := defaultIfEmpty(existingProject, DefaultProjectID)
+	if reqProject != "" {
+		projectID = reqProject
+	}
+	return tenantID, projectID, nil
+}
+
+// shouldAttachServerLogTail reports whether a provisioning failure reflects a
+// startup, readiness, transport or server-side failure where recent server
+// container logs help diagnose the cause. Structured API refusals returned by a
+// healthy server do not attach unrelated startup logs.
+func shouldAttachServerLogTail(err error) bool {
+	if err == nil {
+		return false
+	}
+	var apiErr *api.Error
+	if errors.As(err, &apiErr) && apiErr != nil {
+		return false
+	}
+	var apiErrVal api.Error
+	if errors.As(err, &apiErrVal) && apiErrVal.Code != "" {
+		return false
+	}
+	if class, ok := fault.ClassOf(err); ok {
+		switch class {
+		case fault.DependencyUnavailable, fault.InternalFailure, fault.UncertainExternalEffect:
+			return true
+		default:
+			return false
+		}
+	}
+	return true
+}
+
 // reconcileSecretRulesFile writes or removes <state-dir>/secret-rules.json for
 // the local stack's server container. When denyAll is true it removes any stale
-// file and returns an empty path so the server stays deny-by-default.
+// file and returns an empty path so the server stays deny-by-default. When
+// allowSecrets is empty, it emits a tenant-scoped allow_all rule (empty
+// project_id) so additional projects created inside the same local instance can
+// materialize their own project-scoped secrets in workloads. When allowSecrets
+// is non-empty, it restricts workload secret resolution to those exact names in
+// (tenantID, projectID).
 func reconcileSecretRulesFile(stateDir, tenantID, projectID string, denyAll bool, allowSecrets []string) (string, error) {
 	path := filepath.Join(stateDir, secretRulesFileName)
 	if denyAll {
@@ -1344,10 +1434,10 @@ func reconcileSecretRulesFile(stateDir, tenantID, projectID string, denyAll bool
 		return "", nil
 	}
 	rule := localSecretRule{
-		TenantID:  tenantID,
-		ProjectID: projectID,
+		TenantID: tenantID,
 	}
 	if len(allowSecrets) > 0 {
+		rule.ProjectID = projectID
 		rule.Names = allowSecrets
 	} else {
 		rule.AllowAll = true

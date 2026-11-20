@@ -11,12 +11,17 @@ package app
 // vocabulary rather than a silently defaulted no-op.
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/shell/secret"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
 )
 
 func writeConfigFile(t *testing.T, name, content string) string {
@@ -586,6 +591,44 @@ func TestLoadSecretRulesFile(t *testing.T) {
 			} else if !strings.Contains(err.Error(), SecretRulesFileSetting) || !strings.Contains(err.Error(), "unknown composition profile") {
 				t.Fatalf("invalid profile %q refusal = %q; want %s and unknown composition profile", invalidProfile, err, SecretRulesFileSetting)
 			}
+		}
+	})
+
+	t.Run("tenant-scoped allow_all covers additional projects in same tenant and is refused in production", func(t *testing.T) {
+		const tenantAllowAllFile = `{
+  "secret_rules": [
+    {"tenant_id": "tenant-local", "allow_all": true}
+  ]
+}`
+		path := writeConfigFile(t, "secret-rules-tenant-allow-all.json", tenantAllowAllFile)
+		rules, err := LoadSecretRulesFile(path, ProfileTest)
+		if err != nil {
+			t.Fatalf("LoadSecretRulesFile(test): %v", err)
+		}
+		if len(rules) != 1 || !rules[0].AllowAll || rules[0].Scope.TenantID != "tenant-local" || rules[0].Scope.ProjectID != "" {
+			t.Fatalf("rules = %+v; want tenant-scoped allow_all", rules)
+		}
+		policy, err := secret.NewConfiguredNamePolicy(secret.NamePolicyConfig{
+			Consumer: secret.ConsumerWorkload,
+			Rules:    rules,
+		})
+		if err != nil {
+			t.Fatalf("NewConfiguredNamePolicy: %v", err)
+		}
+		for _, proj := range []id.ProjectID{"project-local", "project-second"} {
+			scope := tenancy.Scope{TenantID: "tenant-local", ProjectID: proj}
+			if err := policy.Check(context.Background(), scope, "APP_API_KEY"); err != nil {
+				t.Fatalf("Check(%s, APP_API_KEY) = %v; want allowed", proj, err)
+			}
+			if err := policy.Check(context.Background(), scope, id.SecretTokenName); err == nil {
+				t.Fatalf("Check(%s, %s) succeeded; want denied", proj, id.SecretTokenName)
+			}
+		}
+		if err := policy.Check(context.Background(), tenancy.Scope{TenantID: "tenant-other", ProjectID: "project-second"}, "APP_API_KEY"); err == nil {
+			t.Fatal("Check(tenant-other/project-second, APP_API_KEY) succeeded; want denied")
+		}
+		if prodRules, err := LoadSecretRulesFile(path, ProfileProduction); err == nil || prodRules != nil {
+			t.Fatalf("production accepted tenant-scoped allow_all: %+v", prodRules)
 		}
 	})
 

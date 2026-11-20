@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 
 	"github.com/optimiware/kodema/internal/id"
@@ -172,14 +173,29 @@ func runUpEntry(ctx context.Context, args []string, stdout, stderr io.Writer) in
 		}
 	}
 
+	explicitFlags := make(map[string]bool)
+	flags.Visit(func(f *flag.Flag) {
+		explicitFlags[f.Name] = true
+	})
+	_, hasTenantEnv := os.LookupEnv("KODEMA_UP_TENANT")
+	_, hasProjectEnv := os.LookupEnv("KODEMA_UP_PROJECT")
+	tenantVal := ""
+	if explicitFlags["tenant"] || hasTenantEnv {
+		tenantVal = strings.TrimSpace(*tenant)
+	}
+	projectVal := ""
+	if explicitFlags["project"] || hasProjectEnv {
+		projectVal = strings.TrimSpace(*project)
+	}
+
 	_, err := runUpStack(ctx, up.UpConfig{
 		Instance:              *name,
 		StateDir:              *stateDir,
 		ListenAddr:            *listen,
 		Socket:                *socket,
 		AllowUnsharedStateDir: *allowUnshared,
-		TenantID:              *tenant,
-		ProjectID:             *project,
+		TenantID:              tenantVal,
+		ProjectID:             projectVal,
 		KodemaImage:           *image,
 		WorkloadMemory:        memVal,
 		WorkloadCPUs:          cpuVal,
