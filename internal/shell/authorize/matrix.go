@@ -141,3 +141,25 @@ func operationScopeMatches(operation Operation, scope tenancy.Scope) error {
 	}
 	return nil
 }
+
+// DenialMessage explains why a human or service principal was denied an
+// operation in scope. When an enabled project-scoped principal attempts a
+// tenant-scoped operation inside its own tenant, the message explains that a
+// tenant-scoped credential is required rather than returning a generic role
+// refusal. Cross-tenant and disabled principals still receive the generic
+// message.
+func DenialMessage(principal Principal, name OperationName, scope tenancy.Scope) string {
+	if operation, ok := LookupOperation(name); ok &&
+		principal.Enabled &&
+		operation.Scope == ScopeTenant &&
+		!scope.ProjectScoped() &&
+		principal.Scope.TenantID == scope.TenantID &&
+		principal.Scope.ProjectScoped() &&
+		!operationScopeContains(operation.Name, principal.Scope, scope) {
+		return fmt.Sprintf(
+			"operation %q requires a tenant-scoped credential (principal %q is scoped to project %q; use a tenant-scoped credential such as $KODEMA_TENANT_ADMIN_CREDENTIAL_FILE)",
+			name, principal.ID, principal.Scope.ProjectID,
+		)
+	}
+	return fmt.Sprintf("principal %q is not authorized for operation %q", principal.ID, name)
+}

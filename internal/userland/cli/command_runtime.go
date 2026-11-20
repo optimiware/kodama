@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/optimiware/kodema/api"
@@ -151,7 +152,30 @@ func runConfiguredLogin(ctx context.Context, config Config, ports Ports, runtime
 	}
 	fmt.Fprintf(ports.Out, "logged in; issuer %s; access token expires %s\n",
 		record.Issuer, formatSessionTime(record.ExpiresAt))
+	warnShadowedSession(ports.Err, runtime.Environment)
 	return ExitSuccess
+}
+
+// warnShadowedSession warns on stderr when shell environment variables would
+// shadow the newly saved human session (for example after sourcing env.sh). It
+// never prints credential values.
+func warnShadowedSession(errOut io.Writer, getenv func(string) string) {
+	if errOut == nil {
+		return
+	}
+	if getenv == nil {
+		getenv = os.Getenv
+	}
+	credFileSet := strings.TrimSpace(getenv("KODEMA_CREDENTIAL_FILE")) != ""
+	tokenSet := strings.TrimSpace(getenv("KODEMA_TOKEN")) != ""
+	switch {
+	case credFileSet && tokenSet:
+		fmt.Fprintln(errOut, "warning: KODEMA_CREDENTIAL_FILE (and KODEMA_TOKEN) is set in the environment and takes precedence over the saved human session; unset KODEMA_CREDENTIAL_FILE KODEMA_TOKEN to use this session")
+	case credFileSet:
+		fmt.Fprintln(errOut, "warning: KODEMA_CREDENTIAL_FILE is set in the environment and takes precedence over the saved human session; unset KODEMA_CREDENTIAL_FILE to use this session")
+	case tokenSet:
+		fmt.Fprintln(errOut, "warning: KODEMA_TOKEN is set in the environment and may take precedence over the saved human session in scripts; unset KODEMA_TOKEN to use this session")
+	}
 }
 
 // runLogout revokes the recorded refresh token and deletes the local session.
@@ -253,6 +277,9 @@ func runRefresh(ctx context.Context, config Config, args []string, ports Ports, 
 	issuer, clientID, audience, bindErr := trustedBinding(ctx, runtime.OIDC, apiURL,
 		runtime.Issuer, runtime.ClientID, runtime.Audience)
 	if bindErr != nil {
+		if isTLSDiscoveryError(bindErr) {
+			return failure(ports.Err, bindErr)
+		}
 		return failure(ports.Err, loginRequired("the session binding could not be verified", bindErr))
 	}
 	updated, err := Refresh(ctx, RefreshDeps{
@@ -331,6 +358,13 @@ func trustedBinding(ctx context.Context, oidc OIDCClient, apiURL, issuer, client
 	}
 	document, err := oidc.Discover(ctx, apiURL+api.DiscoveryPath)
 	if err != nil {
+		if isTLSDiscoveryError(err) {
+			return "", "", "", fault.Wrap(
+				fault.DependencyUnavailable,
+				"TLS certificate verification failed while reading the login configuration (pass --ca-file or set KODEMA_CA_FILE to trust a custom CA)",
+				err,
+			)
+		}
 		return "", "", "", fault.Wrap(fault.DependencyUnavailable, "the login configuration is unavailable", err)
 	}
 	if err := document.Validate(); err != nil {
@@ -417,6 +451,9 @@ func (source SessionCredentialSource) Credential(ctx context.Context) (client.Cr
 	issuer, clientID, audience, bindErr := trustedBinding(ctx, source.OIDC, apiURL,
 		source.Issuer, source.ClientID, source.Audience)
 	if bindErr != nil {
+		if isTLSDiscoveryError(bindErr) {
+			return client.Credential{}, loginRequired("TLS certificate verification failed while verifying the session (pass --ca-file or set KODEMA_CA_FILE to trust a custom CA)", bindErr)
+		}
 		return client.Credential{}, loginRequired("the session binding could not be verified", bindErr)
 	}
 	if err := checkSessionBinding(record, apiURL, issuer, clientID, audience); err != nil {

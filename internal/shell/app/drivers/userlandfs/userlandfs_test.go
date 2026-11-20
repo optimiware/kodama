@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 )
@@ -346,5 +347,63 @@ func TestRemoveSessionFile(t *testing.T) {
 	}
 	if _, err := os.Stat(regular); err != nil {
 		t.Fatalf("Remove followed the symlink and removed its target: %v", err)
+	}
+}
+
+// TestEnsurePrivateDirTightensUserDirAndRefusesSharedDir pins that
+// EnsurePrivateDir creates missing directories 0700, tightens an existing 0755
+// user subdirectory to 0700, and refuses symlinks and shared/sticky directories
+// without mutating them.
+func TestEnsurePrivateDirTightensUserDirAndRefusesSharedDir(t *testing.T) {
+	files := FileSystem{}
+	root := t.TempDir()
+
+	// Missing directory is created 0700.
+	missing := filepath.Join(root, "new-sessions")
+	if err := files.EnsurePrivateDir(missing); err != nil {
+		t.Fatalf("EnsurePrivateDir(missing): %v", err)
+	}
+	if info, err := os.Lstat(missing); err != nil || info.Mode().Perm() != 0o700 {
+		t.Fatalf("created dir mode = %v, err = %v; want 0700", info, err)
+	}
+
+	// Existing 0755 user directory is tightened to 0700.
+	loose := filepath.Join(root, "loose-sessions")
+	if err := os.Mkdir(loose, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(loose, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := files.EnsurePrivateDir(loose); err != nil {
+		t.Fatalf("EnsurePrivateDir(loose): %v", err)
+	}
+	if info, err := os.Lstat(loose); err != nil || info.Mode().Perm() != 0o700 {
+		t.Fatalf("tightened dir mode = %o, err = %v; want 0700", info.Mode().Perm(), err)
+	}
+
+	// Symlink is refused.
+	link := filepath.Join(root, "link-sessions")
+	if err := os.Symlink(loose, link); err != nil {
+		t.Fatal(err)
+	}
+	if err := files.EnsurePrivateDir(link); err == nil {
+		t.Fatal("EnsurePrivateDir accepted a symlink")
+	}
+
+	// Shared/sticky directory (e.g. /tmp or a sticky dir) is refused without chmod.
+	sticky := filepath.Join(root, "sticky")
+	if err := os.Mkdir(sticky, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(sticky, 0o755|os.ModeSticky); err != nil {
+		t.Fatal(err)
+	}
+	err := files.EnsurePrivateDir(sticky)
+	if err == nil || !strings.Contains(err.Error(), "0700") {
+		t.Fatalf("EnsurePrivateDir(sticky) = %v; want actionable 0700 refusal", err)
+	}
+	if info, statErr := os.Lstat(sticky); statErr != nil || info.Mode().Perm() != 0o755 {
+		t.Fatalf("sticky dir mode mutated to %o (err=%v); want 0755", info.Mode().Perm(), statErr)
 	}
 }

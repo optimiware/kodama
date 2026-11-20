@@ -71,8 +71,12 @@ func runGitCredential(ctx context.Context, config Config, args []string, ports P
 	if ports.Credential == nil {
 		return failure(ports.Err, fmt.Errorf("no credential source is configured"))
 	}
+	if !matchesTrustedOrigin(config, request.URL) {
+		return ExitSuccess
+	}
 	credential, err := ports.Credential.Credential(ctx)
 	if err != nil {
+		fmt.Fprintf(ports.Err, "kodema git credential: %v\n", err)
 		return ExitSuccess
 	}
 	response, err := HelperDecision(config, request, credential, ports.Now())
@@ -84,6 +88,25 @@ func runGitCredential(ctx context.Context, config Config, args []string, ports P
 	}
 	fmt.Fprintf(ports.Out, "username=%s\npassword=%s\n", response.Username, response.Password)
 	return ExitSuccess
+}
+
+// matchesTrustedOrigin reports whether targetURL is a valid https target under
+// at least one registered trusted origin in config.
+func matchesTrustedOrigin(config Config, targetURL string) bool {
+	target, err := ParseOrigin(targetURL)
+	if err != nil {
+		return false
+	}
+	for _, raw := range config.TrustedOrigins {
+		origin, err := ParseOrigin(raw)
+		if err != nil {
+			continue
+		}
+		if origin.Matches(target.String()) {
+			return true
+		}
+	}
+	return false
 }
 
 // gitCredentialRequestURL reads the `key=value` attributes of one Git

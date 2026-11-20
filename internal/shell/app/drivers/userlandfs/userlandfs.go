@@ -1,20 +1,18 @@
 // Package userlandfs implements the Userland-declared kodema filesystem port
-// over the operating system file API.
-//
-// The wrapper is deliberately tiny: it exposes only the operations the
-// consumer-owned cli.FileSystem port declares and adds no policy of its own.
-// Command logic still maps a missing file, a permission failure and a
-// directory read error.
+// over the operating system file API, along with optional private-directory
+// helpers for human session storage.
 package userlandfs
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"syscall"
 
+	"github.com/optimiware/kodema/internal/fault"
 	"github.com/optimiware/kodema/internal/userland/cli"
 )
 
@@ -137,6 +135,143 @@ func (FileSystem) Remove(name string) error {
 		return &os.PathError{Op: "remove", Path: name, Err: errIsDirectory}
 	}
 	return os.Remove(name)
+}
+
+// CheckPrivateDir validates that dir can safely hold a human session file at
+// mode 0700 without mutating the filesystem. Missing directories are allowed
+// (they will be created at mode 0700 on save). Non-directories, symlinks, and
+// shared/system directories (such as /, /tmp, $HOME, ~/.config, or sticky-bit
+// directories) whose permissions are not already 0700 are refused with an
+// actionable error.
+func (FileSystem) CheckPrivateDir(dir string) error {
+	cleaned := filepath.Clean(dir)
+	info, err := os.Lstat(cleaned)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return fault.Wrap(fault.DependencyUnavailable, "the human session directory is unreadable", err)
+	}
+	if !info.IsDir() {
+		return fault.New(fault.InvalidInput, fmt.Sprintf("the human session directory %q is not a directory", cleaned))
+	}
+	if info.Mode().Perm() == 0o700 {
+		return nil
+	}
+	if stat, ok := info.Sys().(*syscall.Stat_t); ok && stat.Uid != uint32(os.Geteuid()) {
+		return fault.New(
+			fault.InvalidInput,
+			fmt.Sprintf(
+				"the human session directory %q has mode %04o and is owned by another user, so it cannot be restricted to 0700; place the session file in a dedicated 0700 subdirectory",
+				cleaned, info.Mode().Perm(),
+			),
+		)
+	}
+	if isSharedSessionDir(cleaned, info) {
+		return fault.New(
+			fault.InvalidInput,
+			fmt.Sprintf(
+				"the human session directory %q has mode %04o and cannot be restricted to 0700; place the session file in a dedicated 0700 subdirectory",
+				cleaned, info.Mode().Perm(),
+			),
+		)
+	}
+	return nil
+}
+
+// EnsurePrivateDir ensures dir exists as a regular directory with mode 0700.
+// Missing directories are created at 0700; an existing non-shared user
+// directory is tightened to 0700; shared/system directories or directories
+// that cannot be restricted to 0700 are refused with an actionable error.
+func (files FileSystem) EnsurePrivateDir(dir string) error {
+	cleaned := filepath.Clean(dir)
+	if err := files.CheckPrivateDir(cleaned); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(cleaned, 0o700); err != nil {
+		return fault.Wrap(fault.DependencyUnavailable, fmt.Sprintf("the human session directory %q could not be created", cleaned), err)
+	}
+	dirFile, err := os.OpenFile(cleaned, os.O_RDONLY|syscall.O_DIRECTORY|syscall.O_NOFOLLOW, 0)
+	if err != nil {
+		if errors.Is(err, syscall.ELOOP) || errors.Is(err, syscall.ENOTDIR) {
+			return fault.New(fault.InvalidInput, fmt.Sprintf("the human session directory %q is not a directory", cleaned))
+		}
+		return fault.Wrap(fault.DependencyUnavailable, "the human session directory is unreadable", err)
+	}
+	defer dirFile.Close()
+	info, err := dirFile.Stat()
+	if err != nil {
+		return fault.Wrap(fault.DependencyUnavailable, "the human session directory is unreadable", err)
+	}
+	if !info.IsDir() {
+		return fault.New(fault.InvalidInput, fmt.Sprintf("the human session directory %q is not a directory", cleaned))
+	}
+	if info.Mode().Perm() != 0o700 {
+		if err := dirFile.Chmod(0o700); err != nil {
+			return fault.Wrap(
+				fault.DependencyUnavailable,
+				fmt.Sprintf(
+					"the human session directory %q has mode %04o and could not be restricted to 0700; use a dedicated 0700 subdirectory or run chmod 0700 %q",
+					cleaned, info.Mode().Perm(), cleaned,
+				),
+				err,
+			)
+		}
+		info, err = dirFile.Stat()
+		if err != nil {
+			return fault.Wrap(fault.DependencyUnavailable, "the human session directory is unreadable", err)
+		}
+		if info.Mode().Perm() != 0o700 {
+			return fault.New(
+				fault.DependencyUnavailable,
+				fmt.Sprintf(
+					"the human session directory %q has mode %04o and could not be restricted to 0700; use a dedicated 0700 subdirectory",
+					cleaned, info.Mode().Perm(),
+				),
+			)
+		}
+	}
+	return nil
+}
+
+// isSharedSessionDir reports whether dir is a shared or system directory whose
+// permissions must never be silently tightened to 0700.
+func isSharedSessionDir(dir string, info fs.FileInfo) bool {
+	if info.Mode()&os.ModeSticky != 0 {
+		return true
+	}
+	canonical := canonicalDirPath(dir)
+	if canonical == string(filepath.Separator) {
+		return true
+	}
+	var shared []string
+	if tmp := os.TempDir(); tmp != "" {
+		shared = append(shared, tmp)
+	}
+	shared = append(shared, "/tmp", "/var/tmp")
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		shared = append(shared, home)
+	}
+	if cfgDir, err := os.UserConfigDir(); err == nil && cfgDir != "" {
+		shared = append(shared, cfgDir)
+	}
+	for _, candidate := range shared {
+		if canonical == canonicalDirPath(candidate) {
+			return true
+		}
+	}
+	return false
+}
+
+func canonicalDirPath(path string) string {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		abs = filepath.Clean(path)
+	}
+	if resolved, err := filepath.EvalSymlinks(abs); err == nil {
+		return filepath.Clean(resolved)
+	}
+	return filepath.Clean(abs)
 }
 
 // errIsDirectory reports a refused directory removal.

@@ -78,8 +78,6 @@ func TestRunHelperRefusals(t *testing.T) {
 			credential: &client.Credential{Kind: client.KindSession, Token: "human-token", ExpiresAt: testNow().Add(time.Hour)}, wantCalls: -1},
 		{name: "expired credential", protocol: "get", url: "https://git.example.com/shop/repo.git",
 			credential: &expired, wantCalls: -1},
-		{name: "source error", protocol: "get", url: "https://git.example.com/shop/repo.git",
-			sourceErr: fault.New(fault.Unauthenticated, "no session"), wantCalls: -1},
 	}
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
@@ -228,6 +226,70 @@ func TestGitCredentialStoreAndEraseReadNothing(t *testing.T) {
 		}
 		if out.Len() != 0 || errOut.Len() != 0 || source.callCount() != 0 {
 			t.Fatalf("%s wrote %q/%q and read the credential %d time(s); want nothing", operation, out.String(), errOut.String(), source.callCount())
+		}
+	}
+}
+
+// TestGitCredentialLogsErrorForTrustedOriginOnly pins that credential or TLS
+// failures for a trusted origin emit an actionable diagnostic to stderr while
+// keeping stdout empty and exit code 0 for Git fallthrough, whereas untrusted
+// origins never invoke the credential source or write to stderr.
+func TestGitCredentialLogsErrorForTrustedOriginOnly(t *testing.T) {
+	t.Run("trusted origin source failure writes concise stderr and empty stdout", func(t *testing.T) {
+		source := &scriptedSource{err: fault.New(fault.Unauthenticated, "login required: TLS certificate verification failed (pass --ca-file or set KODEMA_CA_FILE)")}
+		ports, out, errOut := testPorts(&scriptedTransport{})
+		ports.Credential = source
+		code := cli.Run(context.Background(), testConfig(), []string{
+			"git", "credential", "get", "https://git.example.com/shop/repo.git",
+		}, ports)
+		if code != cli.ExitSuccess {
+			t.Fatalf("exit code = %d; want %d", code, cli.ExitSuccess)
+		}
+		if out.Len() != 0 {
+			t.Fatalf("stdout = %q; want empty", out.String())
+		}
+		if !strings.Contains(errOut.String(), "kodema git credential:") || !strings.Contains(errOut.String(), "--ca-file") {
+			t.Fatalf("stderr = %q; want actionable diagnostic mentioning --ca-file", errOut.String())
+		}
+		if source.callCount() != 1 {
+			t.Fatalf("credential calls = %d; want 1", source.callCount())
+		}
+	})
+
+	t.Run("untrusted origin never reads credential or logs stderr", func(t *testing.T) {
+		source := &scriptedSource{err: fault.New(fault.Unauthenticated, "no session")}
+		ports, out, errOut := testPorts(&scriptedTransport{})
+		ports.Credential = source
+		code := cli.Run(context.Background(), testConfig(), []string{
+			"git", "credential", "get", "https://other.example.com/repo.git",
+		}, ports)
+		if code != cli.ExitSuccess {
+			t.Fatalf("exit code = %d; want %d", code, cli.ExitSuccess)
+		}
+		if out.Len() != 0 || errOut.Len() != 0 {
+			t.Fatalf("stdout=%q stderr=%q; want both empty", out.String(), errOut.String())
+		}
+		if source.callCount() != 0 {
+			t.Fatalf("credential calls = %d; want 0 for untrusted origin", source.callCount())
+		}
+	})
+}
+
+// TestHelpDocumentsTrustedOrigin pins that --trusted-origin appears in both
+// top-level help and `kodema git credential --help`.
+func TestHelpDocumentsTrustedOrigin(t *testing.T) {
+	for _, args := range [][]string{
+		{"help"},
+		{"help", "git", "credential"},
+		{"git", "credential", "--help"},
+	} {
+		ports, out, errOut := testPorts(&scriptedTransport{})
+		code := cli.Run(context.Background(), cli.Config{}, args, ports)
+		if code != cli.ExitSuccess {
+			t.Fatalf("%v exit code = %d; stderr=%q", args, code, errOut.String())
+		}
+		if !strings.Contains(out.String(), "--trusted-origin") {
+			t.Fatalf("%v help missing --trusted-origin:\n%s", args, out.String())
 		}
 	}
 }

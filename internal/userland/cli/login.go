@@ -85,9 +85,21 @@ func Login(ctx context.Context, deps LoginDeps) (SessionRecord, error) {
 	if deps.Err == nil {
 		deps.Err = io.Discard
 	}
+	if checker, ok := deps.Store.(sessionDirChecker); ok {
+		if err := checker.checkPrivateDir(); err != nil {
+			return SessionRecord{}, err
+		}
+	}
 
 	document, err := deps.OIDC.Discover(ctx, apiURL+api.DiscoveryPath)
 	if err != nil {
+		if isTLSDiscoveryError(err) {
+			return SessionRecord{}, fault.Wrap(
+				fault.DependencyUnavailable,
+				"TLS certificate verification failed while reading the login configuration (pass --ca-file or set KODEMA_CA_FILE to trust a custom CA)",
+				err,
+			)
+		}
 		return SessionRecord{}, fault.Wrap(fault.DependencyUnavailable, "the login configuration is unavailable", err)
 	}
 	if err := document.Validate(); err != nil {
@@ -178,10 +190,24 @@ func loginBrowser(ctx context.Context, deps LoginDeps, document api.DiscoveryDoc
 		CodeVerifier: verifier,
 	})
 	if err != nil {
+		if isTLSDiscoveryError(err) {
+			return SessionRecord{}, fault.Wrap(
+				fault.DependencyUnavailable,
+				"TLS certificate verification failed while exchanging the authorization code (pass --ca-file or set KODEMA_CA_FILE to trust a custom CA)",
+				err,
+			)
+		}
 		return SessionRecord{}, fault.Wrap(fault.DependencyUnavailable, "the authorization code could not be exchanged", err)
 	}
 	keys, err := deps.OIDC.JWKS(ctx, document.Issuer)
 	if err != nil {
+		if isTLSDiscoveryError(err) {
+			return SessionRecord{}, fault.Wrap(
+				fault.DependencyUnavailable,
+				"TLS certificate verification failed while reading the issuer keys (pass --ca-file or set KODEMA_CA_FILE to trust a custom CA)",
+				err,
+			)
+		}
 		return SessionRecord{}, fault.Wrap(fault.DependencyUnavailable, "the issuer keys are unavailable", err)
 	}
 	// The ID token proves the authentication to THIS OAuth client, so its
@@ -202,7 +228,7 @@ func loginBrowser(ctx context.Context, deps LoginDeps, document api.DiscoveryDoc
 		return SessionRecord{}, err
 	}
 	if err := persistSessionRecord(ctx, deps.Store, record); err != nil {
-		return SessionRecord{}, fault.Wrap(fault.DependencyUnavailable, "the session could not be persisted", err)
+		return SessionRecord{}, wrapPersistSessionError(err)
 	}
 	return record, nil
 }
@@ -215,6 +241,13 @@ func loginDevice(ctx context.Context, deps LoginDeps, document api.DiscoveryDocu
 		Scopes:   append([]string(nil), document.Scopes...),
 	})
 	if err != nil {
+		if isTLSDiscoveryError(err) {
+			return SessionRecord{}, fault.Wrap(
+				fault.DependencyUnavailable,
+				"TLS certificate verification failed while starting device authorization (pass --ca-file or set KODEMA_CA_FILE to trust a custom CA)",
+				err,
+			)
+		}
 		return SessionRecord{}, fault.Wrap(fault.DependencyUnavailable, "the device authorization is unavailable", err)
 	}
 	if response.DeviceCode == "" || response.VerificationURI == "" {
@@ -269,10 +302,21 @@ func loginDevice(ctx context.Context, deps LoginDeps, document api.DiscoveryDocu
 			return SessionRecord{}, err
 		}
 		if err := persistSessionRecord(ctx, deps.Store, record); err != nil {
-			return SessionRecord{}, fault.Wrap(fault.DependencyUnavailable, "the session could not be persisted", err)
+			return SessionRecord{}, wrapPersistSessionError(err)
 		}
 		return record, nil
 	}
+}
+
+// wrapPersistSessionError preserves actionable public messages from typed
+// session-store faults (such as 0700 directory permission refusals) while
+// keeping opaque errors wrapped under the stable dependency_unavailable class.
+func wrapPersistSessionError(err error) error {
+	var fe *fault.Error
+	if errors.As(err, &fe) && fe.Message() != "" {
+		return err
+	}
+	return fault.Wrap(fault.DependencyUnavailable, "the session could not be persisted", err)
 }
 
 // recordFromToken builds the version 2 session bound to the discovery document.

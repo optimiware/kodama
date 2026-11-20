@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/fs"
 	"path"
 	"slices"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/optimiware/kodema/api"
 	"github.com/optimiware/kodema/client"
+	"github.com/optimiware/kodema/internal/fault"
 	"github.com/optimiware/kodema/internal/userland/cli"
 )
 
@@ -156,6 +158,49 @@ func (filesystem *fakeFS) ReadDir(name string) ([]cli.DirEntry, error) {
 		return nil, fs.ErrNotExist
 	}
 	return append([]cli.DirEntry(nil), entries...), nil
+}
+
+// CheckPrivateDir mirrors userlandfs.FileSystem.CheckPrivateDir for tests:
+// refuses shared/sticky directories (such as "/" or a mode with ModeSticky)
+// whose permissions are not 0700 without mutating filesystem state.
+func (filesystem *fakeFS) CheckPrivateDir(dir string) error {
+	filesystem.mu.Lock()
+	defer filesystem.mu.Unlock()
+	cleaned := path.Clean(dir)
+	mode, ok := filesystem.dirs[cleaned]
+	if !ok {
+		return nil
+	}
+	if mode.Perm() == 0o700 {
+		return nil
+	}
+	if cleaned == "/" || cleaned == "." || mode&fs.ModeSticky != 0 {
+		return fault.New(
+			fault.InvalidInput,
+			fmt.Sprintf(
+				"the human session directory %q has mode %04o and cannot be restricted to 0700; place the session file in a dedicated 0700 subdirectory",
+				cleaned, mode.Perm(),
+			),
+		)
+	}
+	return nil
+}
+
+// EnsurePrivateDir mirrors userlandfs.FileSystem.EnsurePrivateDir: validates
+// shared directories, creates missing parents 0700, and tightens an existing
+// non-shared directory to 0700.
+func (filesystem *fakeFS) EnsurePrivateDir(dir string) error {
+	if err := filesystem.CheckPrivateDir(dir); err != nil {
+		return err
+	}
+	filesystem.mu.Lock()
+	defer filesystem.mu.Unlock()
+	cleaned := path.Clean(dir)
+	if _, ok := filesystem.dirs[cleaned]; !ok {
+		filesystem.createParents(path.Join(cleaned, "sentinel"))
+	}
+	filesystem.dirs[cleaned] = 0o700
+	return nil
 }
 
 // scriptedTransport records invocations and delegates each response.

@@ -607,9 +607,13 @@ func TestLegacySessionIsUnusableForLogin(t *testing.T) {
 	code, stdout, stderr := harness.run(nil,
 		"-trusted-origin", "https://git.example.com/shop",
 		"git", "credential", "get", "https://git.example.com/shop/repo.git")
-	if code != 0 || stdout != "" || stderr != "" {
-		t.Fatalf("legacy helper = %d/%q/%q; want an empty refusal", code, stdout, stderr)
+	if code != 0 || stdout != "" {
+		t.Fatalf("legacy helper = %d/%q/%q; want exit 0 with empty stdout", code, stdout, stderr)
 	}
+	if !strings.Contains(stderr, "login required") {
+		t.Fatalf("legacy helper stderr = %q; want login-required diagnostic", stderr)
+	}
+	requireNoTokenOutput(t, []string{stdout, stderr}, legacy.Token)
 	code, stdout, _ = harness.run(nil, "refresh")
 	if code != 1 {
 		t.Fatalf("legacy refresh exit = %d; want 1 (stdout=%q)", code, stdout)

@@ -3,11 +3,57 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"path/filepath"
 	"time"
 
 	"github.com/optimiware/kodema/client"
 	"github.com/optimiware/kodema/internal/fault"
 )
+
+// privateDirEnsurer is an optional capability implemented by filesystem
+// drivers that enforce mode 0700 on the human session directory before saving.
+type privateDirEnsurer interface {
+	EnsurePrivateDir(dir string) error
+}
+
+// privateDirChecker is an optional capability implemented by filesystem
+// drivers that validate an existing human session directory before login.
+type privateDirChecker interface {
+	CheckPrivateDir(dir string) error
+}
+
+// sessionDirChecker is implemented by FileSessionStore so Login can refuse an
+// unrestrictable shared session directory before starting an interactive flow.
+type sessionDirChecker interface {
+	checkPrivateDir() error
+}
+
+func (store FileSessionStore) ensurePrivateDir() error {
+	if ensurer, ok := store.Files.(privateDirEnsurer); ok {
+		if err := ensurer.EnsurePrivateDir(filepath.Dir(store.Path)); err != nil {
+			if _, ok := fault.ClassOf(err); ok {
+				return err
+			}
+			return fault.Wrap(fault.DependencyUnavailable, "the human session directory permissions could not be set to 0700", err)
+		}
+	}
+	return nil
+}
+
+func (store FileSessionStore) checkPrivateDir() error {
+	if store.Files == nil || store.Path == "" {
+		return nil
+	}
+	if checker, ok := store.Files.(privateDirChecker); ok {
+		if err := checker.CheckPrivateDir(filepath.Dir(store.Path)); err != nil {
+			if _, ok := fault.ClassOf(err); ok {
+				return err
+			}
+			return fault.Wrap(fault.InvalidInput, "the human session directory permissions are not 0700", err)
+		}
+	}
+	return nil
+}
 
 // sessionFile is the durable human-session JSON shape. It never contains a
 // service or execution credential.
@@ -42,6 +88,9 @@ func (store FileSessionStore) Save(ctx context.Context, credential client.Creden
 	})
 	if err != nil {
 		return fault.New(fault.InternalFailure, "the session is not encodable")
+	}
+	if err := store.ensurePrivateDir(); err != nil {
+		return err
 	}
 	if err := store.Files.ReplaceFile(store.Path, data, 0o600); err != nil {
 		return fault.New(fault.DependencyUnavailable, "the session file is not writable")

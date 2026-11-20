@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/fault"
 	"github.com/optimiware/kodema/internal/userland/cli"
 )
 
@@ -741,5 +742,28 @@ func TestHTTPOIDCJWKSRefusals(t *testing.T) {
 	}
 	if got := insecure.calls.Load(); got != 0 {
 		t.Fatalf("insecure issuer sent %d requests", got)
+	}
+}
+
+// TestHTTPOIDCTLSFailureReportsCAFileHint pins that an untrusted self-signed
+// TLS certificate produces a dependency_unavailable fault mentioning --ca-file
+// and KODEMA_CA_FILE instead of an opaque "endpoint is unavailable" error.
+func TestHTTPOIDCTLSFailureReportsCAFileHint(t *testing.T) {
+	server := newOIDCTestServer(t, true)
+	server.handle(api.DiscoveryPath, jsonHandler(oidcDocumentJSON(server.url(""), server.url(""))))
+
+	// Use the default transport (does not trust httptest's self-signed CA).
+	untrusted := &cli.HTTPOIDCClient{RoundTripper: http.DefaultTransport}
+	_, err := untrusted.Discover(context.Background(), server.url(api.DiscoveryPath))
+	if err == nil {
+		t.Fatal("Discover succeeded against an untrusted TLS certificate")
+	}
+	if class, ok := fault.ClassOf(err); !ok || class != fault.DependencyUnavailable {
+		t.Fatalf("fault class = %v; want %v", class, fault.DependencyUnavailable)
+	}
+	for _, want := range []string{"TLS", "--ca-file", "KODEMA_CA_FILE"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("error = %q; want %q", err.Error(), want)
+		}
 	}
 }
