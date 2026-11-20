@@ -71,6 +71,10 @@ import (
 )
 
 const (
+	// handoffQuestion is the question asked before the reply in testTaskReply.
+	handoffQuestion = "Which durable context should the next attempt restore?"
+	// handoffReference is the durable reference attached to handoffQuestion.
+	handoffReference = "commit=deadbeef0123456789abcdef0123456789abcdef"
 	// handoffAnswer is the answer the restoring action of the successful
 	// handoff pipeline requires in /kodema/task.json.
 	handoffAnswer = "approved-context-42"
@@ -622,12 +626,16 @@ func testTaskReply(t *testing.T, harness *factory.Harness) {
 	waitExecutionRunning(t, harness, created.ExecutionID)
 	readTask(t, harness, harness.ProjectToken, created.TaskID)
 	askTaskCurrent(t, harness, harness.ProjectToken, created.TaskID, api.TaskAskRequest{
-		Question:   "Which durable context should the next attempt restore?",
+		Question:   handoffQuestion,
 		Assignment: "role/reviewer",
+		References: []string{handoffReference},
 	}, "task-reply-ask")
 	waiting := readTask(t, harness, harness.ProjectToken, created.TaskID)
 	if waiting.Question == nil {
 		t.Fatalf("waiting task has no outstanding question")
+	}
+	if !slices.Equal(waiting.Question.References, []string{handoffReference}) {
+		t.Fatalf("waiting task question references = %v; want [%s]", waiting.Question.References, handoffReference)
 	}
 	// The assigned reviewer discovers the question identity through its own
 	// inbox projection rather than relying on an engineer's task.read.
@@ -638,9 +646,10 @@ func testTaskReply(t *testing.T, harness *factory.Harness) {
 	}
 	if inboxItem.QuestionID != waiting.Question.QuestionID ||
 		inboxItem.Version != waiting.Question.Version ||
-		inboxItem.LifecycleVersion != waiting.LifecycleVersion {
-		t.Fatalf("reviewer waiting_task projection = %+v; want question %q version %d lifecycle %d",
-			inboxItem, waiting.Question.QuestionID, waiting.Question.Version, waiting.LifecycleVersion)
+		inboxItem.LifecycleVersion != waiting.LifecycleVersion ||
+		!slices.Equal(inboxItem.References, []string{handoffReference}) {
+		t.Fatalf("reviewer waiting_task projection = %+v; want question %q version %d lifecycle %d refs [%s]",
+			inboxItem, waiting.Question.QuestionID, waiting.Question.Version, waiting.LifecycleVersion, handoffReference)
 	}
 
 	// A stale task lifecycle version is refused before any admission. This is a
@@ -727,12 +736,30 @@ func testTaskReply(t *testing.T, harness *factory.Harness) {
 		t.Fatalf("reply question version = %d; want > %d", replied.QuestionVersion, waiting.Question.Version)
 	}
 
-	// The fresh execution runs the restoring action, which only succeeds when
-	// /kodema/task.json carries the answer.
+	// The fresh execution runs the restoring action, which prints
+	// /kodema/task.json and only succeeds when /kodema/task.json carries the
+	// asked question, its durable reference and the reviewer answer.
 	fresh := waitExecution(t, harness, harness.ProjectToken, replied.ExecutionID)
 	requireSucceeded(t, fresh)
 	if fresh.TaskID != created.TaskID {
 		t.Fatalf("fresh execution task = %q; want %q", fresh.TaskID, created.TaskID)
+	}
+	freshLogs := strings.TrimSpace(executionLogs(t, harness, harness.ProjectToken, fresh.ExecutionID, "restore"))
+	var mountedMessages []api.TaskMessage
+	if err := json.Unmarshal([]byte(freshLogs), &mountedMessages); err != nil {
+		t.Fatalf("decode /kodema/task.json from restore logs %q: %v", factory.SanitizeDiagnostic(freshLogs), err)
+	}
+	if len(mountedMessages) != 2 {
+		t.Fatalf("/kodema/task.json messages = %+v; want 2 (question + answer)", mountedMessages)
+	}
+	if mountedMessages[0].Body != handoffQuestion || !slices.Equal(mountedMessages[0].References, []string{handoffReference}) {
+		t.Fatalf("/kodema/task.json[0] = %+v; want asked question %q with ref [%s]", mountedMessages[0], handoffQuestion, handoffReference)
+	}
+	if mountedMessages[1].Body != handoffAnswer || mountedMessages[1].Author != factory.ReviewerPrincipal || len(mountedMessages[1].References) != 0 {
+		t.Fatalf("/kodema/task.json[1] = %+v; want reviewer answer %q", mountedMessages[1], handoffAnswer)
+	}
+	if mountedMessages[1].At.Before(mountedMessages[0].At) {
+		t.Fatalf("/kodema/task.json timestamps out of chronological order: question=%v answer=%v", mountedMessages[0].At, mountedMessages[1].At)
 	}
 
 	firstWorkspace, err := harness.ExecutionWorkspaceID(ctx, created.ExecutionID)
@@ -764,14 +791,29 @@ func testTaskReply(t *testing.T, harness *factory.Harness) {
 	if len(after.ExecutionHistory) != 2 || after.ExecutionHistory[0] != created.ExecutionID || after.ExecutionHistory[1] != replied.ExecutionID {
 		t.Fatalf("task history = %v; want [%s %s]", after.ExecutionHistory, created.ExecutionID, replied.ExecutionID)
 	}
-	foundAnswer := false
-	for _, message := range after.Messages {
-		if message.Body == handoffAnswer && message.Author == factory.ReviewerPrincipal {
-			foundAnswer = true
+	if len(after.Messages) != 2 {
+		t.Fatalf("task.read messages after reply = %+v; want question + reviewer answer", after.Messages)
+	}
+	if after.Messages[0].Body != handoffQuestion || !slices.Equal(after.Messages[0].References, []string{handoffReference}) {
+		t.Fatalf("task.read messages[0] = %+v; want asked question %q with ref [%s]", after.Messages[0], handoffQuestion, handoffReference)
+	}
+	if after.Messages[1].Body != handoffAnswer || after.Messages[1].Author != factory.ReviewerPrincipal {
+		t.Fatalf("task.read messages[1] = %+v; want reviewer answer %q", after.Messages[1], handoffAnswer)
+	}
+
+	historyResult := harness.MustREST(harness.ProjectToken, "task.history", api.TaskHistoryRequest{TaskID: created.TaskID}, nil, "")
+	var historyPage api.TaskHistoryResult
+	harness.Decode(historyResult, &historyPage)
+	var historyMessages []api.TaskMessage
+	for _, entry := range historyPage.Entries {
+		if entry.Kind == "message" && entry.Message != nil {
+			historyMessages = append(historyMessages, *entry.Message)
 		}
 	}
-	if !foundAnswer {
-		t.Fatalf("task conversation does not retain the reviewer answer: %+v", after.Messages)
+	if len(historyMessages) != 2 ||
+		historyMessages[0].Body != handoffQuestion || !slices.Equal(historyMessages[0].References, []string{handoffReference}) ||
+		historyMessages[1].Body != handoffAnswer || historyMessages[1].Author != factory.ReviewerPrincipal {
+		t.Fatalf("task.history messages after reply = %+v; want asked question (with refs) followed by reviewer answer", historyMessages)
 	}
 }
 
@@ -1404,8 +1446,9 @@ sleep 300`},
 }
 
 // handoffPipeline is one restoring action that succeeds only when
-// /kodema/task.json carries the handoff answer. The first execution has no
-// answer and stays running until the ask cancels it.
+// /kodema/task.json carries the asked question, its durable reference, and the
+// handoff answer. The first execution has no answer and stays running until the
+// ask cancels it.
 func handoffPipeline(t *testing.T, harness *factory.Harness) []byte {
 	t.Helper()
 	return marshalPipeline(t, pipelineDoc{
@@ -1413,12 +1456,16 @@ func handoffPipeline(t *testing.T, harness *factory.Harness) []byte {
 			Name:    "restore",
 			Image:   harness.Image.Reference,
 			Timeout: containerTimeout,
-			Commands: []string{fmt.Sprintf(`if grep -q %q /kodema/task.json 2>/dev/null; then
+			Commands: []string{fmt.Sprintf(`if grep -Fq %q /kodema/task.json 2>/dev/null; then
+  cat /kodema/task.json
+  printf '\n'
+  grep -Fq %q /kodema/task.json || { echo "missing question in /kodema/task.json" >&2; exit 1; }
+  grep -Fq %q /kodema/task.json || { echo "missing reference in /kodema/task.json" >&2; exit 1; }
   printf 'restored\n' > /workspace/restored
   exit 0
 fi
 printf 'workspace\n' > /workspace/marker
-sleep 300`, handoffAnswer)},
+sleep 300`, handoffAnswer, handoffQuestion, handoffReference)},
 		}},
 	})
 }

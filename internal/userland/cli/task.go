@@ -240,6 +240,9 @@ func runTaskShow(ctx context.Context, config Config, args []string, ports Ports)
 	if readView.Question != nil {
 		fmt.Fprintf(ports.Out, "question_id\t%s\nquestion_assignment\t%s\nquestion_version\t%d\nquestion\t%s\n",
 			readView.Question.QuestionID, readView.Question.Assignment, readView.Question.Version, singleLine(readView.Question.Body, 160))
+		if refs := formatReferences(readView.Question.References); refs != "" {
+			fmt.Fprintf(ports.Out, "question_references\t%s\n", refs)
+		}
 	}
 	return ExitSuccess
 }

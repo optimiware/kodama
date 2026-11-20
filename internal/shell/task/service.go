@@ -353,7 +353,7 @@ func (service *Service) Start(ctx context.Context, command StartCommand) (StartR
 		return StartResult{}, err
 	}
 	now := service.clock.Now()
-	conversation, err := conversationBytes(current.Messages, nil)
+	conversation, err := conversationBytes(current.Messages)
 	if err != nil {
 		return StartResult{}, err
 	}
@@ -600,8 +600,12 @@ func (service *Service) Reply(ctx context.Context, command ReplyCommand) (ReplyR
 		return ReplyResult{}, err
 	}
 	now := service.clock.Now()
+	messages := current.Messages
+	if current.Question != nil && !messagesContainQuestion(messages, current.Question) {
+		messages = insertMessageChronologically(messages, questionMessage(current.Question))
+	}
 	answer := &Message{Author: command.Actor.ID, At: now, Body: command.Answer}
-	conversation, err := conversationBytes(current.Messages, answer)
+	conversation, err := conversationBytes(messages, answer)
 	if err != nil {
 		return ReplyResult{}, err
 	}

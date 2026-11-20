@@ -511,6 +511,17 @@ func TestRunInboxApproveAndReject(t *testing.T) {
 						Assignment:       "role/engineer",
 						QuestionID:       "q-1",
 						Question:         "Which target cluster?",
+						References:       []string{"commit=abc123def456", "digest=sha256:9999"},
+						Version:          1,
+						LifecycleVersion: 2,
+						At:               testNow(),
+					},
+					{
+						Kind:             "waiting_task",
+						TaskID:           "task-10",
+						Assignment:       "role/engineer",
+						QuestionID:       "q-2",
+						Question:         "Proceed without refs?",
 						Version:          1,
 						LifecycleVersion: 2,
 						At:               testNow(),
@@ -528,9 +539,19 @@ func TestRunInboxApproveAndReject(t *testing.T) {
 			t.Fatalf("exit = %d; stderr=%q", code, errOut.String())
 		}
 		rendered := out.String()
-		for _, want := range []string{"KIND", "TASK", "EXECUTION", "ACTION", "PROMPT/SUMMARY", "request", "exec-1", "act-review", "waiting_task", "task-9", "Which target cluster?"} {
+		for _, want := range []string{
+			"KIND", "TASK", "EXECUTION", "ACTION", "PROMPT/SUMMARY",
+			"request", "exec-1", "act-review",
+			"waiting_task", "task-9", "Which target cluster?", "refs: commit=abc123def456, digest=sha256:9999",
+			"task-10", "Proceed without refs?",
+		} {
 			if !strings.Contains(rendered, want) {
 				t.Fatalf("inbox table missing %q:\n%s", want, rendered)
+			}
+		}
+		for _, line := range strings.Split(rendered, "\n") {
+			if strings.Contains(line, "task-10") && strings.Contains(line, "refs:") {
+				t.Fatalf("waiting task without references should not print refs: %q", line)
 			}
 		}
 	})
@@ -743,6 +764,7 @@ func TestRunTaskCommands(t *testing.T) {
 				QuestionID: "q-9",
 				Body:       "Restart staging?",
 				Assignment: "role/operator",
+				References: []string{"commit=deadbeef1234", "digest=sha256:abcd"},
 				Version:    3,
 			},
 		})
@@ -794,6 +816,37 @@ func TestRunTaskCommands(t *testing.T) {
 			if out.Len() == 0 {
 				t.Fatalf("%v wrote empty stdout", argv)
 			}
+			if argv[1] == "show" {
+				rendered := out.String()
+				if !strings.Contains(rendered, "question_references\tcommit=deadbeef1234, digest=sha256:abcd") {
+					t.Fatalf("task show table missing question_references:\n%s", rendered)
+				}
+			}
+		}
+
+		// When a waiting task question has no references, task show omits question_references.
+		noRefsBody, _ := json.Marshal(api.TaskReadResult{
+			TaskID:           "task-43",
+			Title:            "Check logs",
+			State:            "waiting",
+			ContentVersion:   1,
+			LifecycleVersion: 2,
+			Initiator:        "oidc-1234",
+			Question: &api.TaskQuestion{
+				QuestionID: "q-10",
+				Body:       "Continue?",
+				Assignment: "role/operator",
+				Version:    1,
+			},
+		})
+		noRefsPorts, noRefsOut, noRefsErr := testPorts(&scriptedTransport{respond: func(_ context.Context, _ int, inv api.Invocation) (api.Result, error) {
+			return api.Result{Operation: inv.Operation, Body: noRefsBody}, nil
+		}})
+		if code := cli.Run(context.Background(), cfg, []string{"task", "show", "task-43"}, noRefsPorts); code != cli.ExitSuccess {
+			t.Fatalf("task show without refs exit = %d; stderr=%q", code, noRefsErr.String())
+		}
+		if strings.Contains(noRefsOut.String(), "question_references") {
+			t.Fatalf("task show without refs should omit question_references:\n%s", noRefsOut.String())
 		}
 	})
 

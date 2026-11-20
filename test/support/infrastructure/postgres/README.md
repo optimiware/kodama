@@ -336,7 +336,7 @@ a changed written table set cannot leave the documentation stale.
 | `request.resolve.pass.nonlast` | actions, audit, events, executions, receipts |
 | `secret.delete` | audit, events, receipts, secrets |
 | `secret.write` | audit, events, receipts, secrets |
-| `task.ask` | actions, audit, cleanup, events, executions, receipts, tasks |
+| `task.ask` | actions, audit, cleanup, events, executions, receipts, task_messages, tasks |
 | `task.ask.loser` | none |
 | `task.ask.replay` | none |
 | `task.cancel` | audit, events, receipts, tasks |
