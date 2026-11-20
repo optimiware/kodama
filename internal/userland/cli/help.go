@@ -65,6 +65,7 @@ Flags:
 		summary: "List pending request approvals, waiting tasks, and failed tasks",
 		description: `Queries task.inbox for the project (defaulting to --project or KODEMA_PROJECT)
 and renders a table of actionable items (KIND, TASK, EXECUTION, ACTION, VERSION, PROMPT/SUMMARY).
+Stale git.ref.update requests whose target ref has moved are marked with a STALE badge.
 
 Flags:
   --project <id>         Project ID (defaults to global --project or KODEMA_PROJECT)
@@ -73,7 +74,7 @@ Flags:
   --output <table|json>  Output format`,
 	},
 	"approve": {
-		usage:   "kodema approve <execution-id> [--action <id>] [--comment <text>] [--output <k=v>]",
+		usage:   "kodema approve <execution-id> [--action <id>] [--comment <text>] [--candidate <sha>] [--allow-stale] [--output <k=v>]",
 		summary: "Approve a waiting execution request action",
 		description: `Resolves a waiting request action on <execution-id> with decision "pass".
 When --action is omitted, inspects the execution and selects the single waiting request action.
@@ -81,6 +82,8 @@ When --action is omitted, inspects the execution and selects the single waiting 
 Flags:
   --action <id>      Waiting request action ID (auto-detected when omitted)
   --comment <text>   Optional approval comment (persisted as decision note)
+  --candidate <sha>  Verify the request subject.candidate matches <sha> before approving
+  --allow-stale      Override the stale git.ref.update expected_base guard
   --output <k=v>     Declared request response output pair (repeatable)`,
 	},
 	"reject": {

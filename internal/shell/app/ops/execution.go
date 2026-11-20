@@ -166,6 +166,7 @@ func executionHandlers(deps Dependencies) map[authorizeOperation]ops.Handler {
 				Decision:                 shellrequest.Decision(request.Decision),
 				Response:                 kernel.Outputs(outputsOf(request.Outputs)),
 				Note:                     request.Note,
+				AllowStale:               request.AllowStale,
 			})
 			if err != nil {
 				return api.Result{}, err

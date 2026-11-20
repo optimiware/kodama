@@ -215,6 +215,9 @@ func summarizeInboxItem(item api.InboxItem, wide bool) string {
 		if summary == "" {
 			summary = "pending request approval"
 		}
+		if item.Stale {
+			summary = formatStaleBadge(item) + " " + summary
+		}
 		if item.Assignment != "" {
 			return fmt.Sprintf("[%s] %s", item.Assignment, summary)
 		}
@@ -258,6 +261,25 @@ func formatReferences(references []string) string {
 	return strings.Join(parts, ", ")
 }
 
+func formatStaleBadge(item api.InboxItem) string {
+	if item.CurrentRefCommit != "" {
+		return fmt.Sprintf("STALE (moved -> %s)", shortCommit(item.CurrentRefCommit))
+	}
+	return "STALE (deleted)"
+}
+
+func subjectFieldValue(subject *api.Subject, name string) (string, bool) {
+	if subject == nil {
+		return "", false
+	}
+	for _, field := range subject.Fields {
+		if field.Name == name {
+			return field.Value, true
+		}
+	}
+	return "", false
+}
+
 func orDash(value string) string {
 	if strings.TrimSpace(value) == "" {
 		return "-"
@@ -286,6 +308,8 @@ func runResolveDecision(ctx context.Context, config Config, args []string, ports
 		actionFlag         string
 		commentFlag        string
 		reasonFlag         string
+		allowStaleFlag     bool
+		candidateFlag      string
 		expectedVerRaw     string
 		expectedActVerRaw  string
 		idempotencyKeyFlag string
@@ -296,6 +320,8 @@ func runResolveDecision(ctx context.Context, config Config, args []string, ports
 	spec.stringFlag(&actionFlag, "--action", "-a")
 	if approve {
 		spec.stringFlag(&commentFlag, "--comment", "-m")
+		spec.boolFlag(&allowStaleFlag, "--allow-stale")
+		spec.stringFlag(&candidateFlag, "--candidate")
 	} else {
 		spec.stringFlag(&reasonFlag, "--reason", "-r")
 	}
@@ -304,7 +330,7 @@ func runResolveDecision(ctx context.Context, config Config, args []string, ports
 	spec.stringFlag(&expectedVerRaw, "--expected-version")
 	spec.stringFlag(&expectedActVerRaw, "--expected-action-version")
 	spec.stringFlag(&idempotencyKeyFlag, "--idempotency-key")
-	positionals, _, err := spec.parse(args)
+	positionals, seen, err := spec.parse(args)
 	if err != nil {
 		return usage(ports.Err, err.Error())
 	}
@@ -318,6 +344,10 @@ func runResolveDecision(ctx context.Context, config Config, args []string, ports
 	executionID := strings.TrimSpace(positionals[0])
 	if !approve && strings.TrimSpace(reasonFlag) == "" {
 		return usage(ports.Err, "reject requires --reason <text>")
+	}
+	candidateCheck := strings.TrimSpace(candidateFlag)
+	if approve && seen["--candidate"] && candidateCheck == "" {
+		return usage(ports.Err, "--candidate must not be empty")
 	}
 	outputFlag := ""
 	for _, raw := range rawOutputs {
@@ -356,7 +386,7 @@ func runResolveDecision(ctx context.Context, config Config, args []string, ports
 		actionVersion = *expectedActionVer
 	}
 
-	if actionID == "" || actionVersion == 0 {
+	if actionID == "" || actionVersion == 0 || candidateCheck != "" {
 		inspected, err := fetchExecutionInspect(ctx, ports, executionID)
 		if err != nil {
 			return failure(ports.Err, err)
@@ -374,6 +404,15 @@ func runResolveDecision(ctx context.Context, config Config, args []string, ports
 			actionVersion = selected.Version
 			if actionVersion == 0 {
 				actionVersion = 1
+			}
+		}
+		if candidateCheck != "" {
+			gotCandidate, ok := subjectFieldValue(selected.Subject, "candidate")
+			if !ok || gotCandidate == "" {
+				return failure(ports.Err, fmt.Errorf("cannot verify --candidate %q: request action %s has no subject.candidate field", candidateCheck, actionID))
+			}
+			if gotCandidate != candidateCheck {
+				return failure(ports.Err, fmt.Errorf("candidate mismatch on action %s: request subject.candidate is %q, expected %q", actionID, gotCandidate, candidateCheck))
 			}
 		}
 	}
@@ -413,6 +452,7 @@ func runResolveDecision(ctx context.Context, config Config, args []string, ports
 		Decision:              decision,
 		Outputs:               outputs,
 		Note:                  note,
+		AllowStale:            approve && allowStaleFlag,
 	}
 	if err := req.Validate(); err != nil {
 		return usage(ports.Err, publicMessage(err))

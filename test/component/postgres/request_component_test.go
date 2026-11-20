@@ -29,6 +29,7 @@ import (
 	storepg "github.com/optimiware/kodema/internal/shell/store/postgres"
 	executionstore "github.com/optimiware/kodema/internal/shell/store/units/execution"
 	"github.com/optimiware/kodema/internal/shell/store/units/execution/snapshotdoc"
+	"github.com/optimiware/kodema/internal/shell/store/units/readers"
 	"github.com/optimiware/kodema/internal/shell/tenancy"
 	"github.com/optimiware/kodema/internal/shell/token"
 	"github.com/optimiware/kodema/test/support/infrastructure/postgres"
@@ -60,7 +61,12 @@ func newRequestRaceEnv(t *testing.T) *requestRaceEnv {
 		string(tenancy.RoleEngineer), string(tenancy.RoleAdmin))
 	runtime := shard.Runtime(6)
 	t.Cleanup(runtime.Close)
-	execStore := executionstore.New(storepg.New(runtime), storepg.New(runtime))
+	pgStore := storepg.New(runtime)
+	execStore := executionstore.New(pgStore, pgStore)
+	refHeads, err := readers.NewRefHeadReader(pgStore)
+	if err != nil {
+		t.Fatalf("readers.NewRefHeadReader: %v", err)
+	}
 	ids := &integrationIDs{}
 	now := time.Now().UTC().Truncate(time.Microsecond)
 	executionService, err := execution.NewService(execution.Config{
@@ -75,6 +81,7 @@ func newRequestRaceEnv(t *testing.T) *requestRaceEnv {
 		Clock: integrationClock{now: now}, IDs: ids,
 		Authorizer: allowAuthorizer{}, Authority: confirmAuthority{},
 		State: execStore, Activations: execStore, Resolutions: execStore,
+		RefHeads: refHeads,
 	})
 	if err != nil {
 		t.Fatalf("request.NewService: %v", err)

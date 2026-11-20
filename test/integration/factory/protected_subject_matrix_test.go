@@ -119,6 +119,7 @@ func TestProtectedFactoryRejectsMismatchedApprovalSubject(t *testing.T) {
 				assignment:              "role/reviewer",
 				respondent:              protectedSubjectAnsweredByReviewer,
 				probeReplacementSubject: testCase.probeReplacementSubject,
+				allowStale:              testCase.field == "ref" || testCase.field == "expected_base",
 			})
 			assertProtectedSubjectRefusal(t, evidence, testCase.field)
 			if testCase.probeReplacementSubject && evidence.replacementSubjectErr.Code != api.CodeInvalidInput {

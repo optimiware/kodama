@@ -77,6 +77,9 @@ type Item struct {
 	Assignment       request.Assignment  `json:"assignment"`
 	Subject          *definition.Subject `json:"subject,omitempty"`
 	Outputs          []id.OutputKey      `json:"outputs,omitempty"`
+	Stale            bool                `json:"stale,omitempty"`
+	CurrentRefCommit string              `json:"current_ref_commit,omitempty"`
+	StaleReason      string              `json:"stale_reason,omitempty"`
 	QuestionID       task.QuestionID     `json:"question_id,omitempty"`
 	Question         string              `json:"question,omitempty"`
 	References       []string            `json:"references,omitempty"`

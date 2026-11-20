@@ -448,6 +448,9 @@ func inboxItem(item inbox.Item) (api.InboxItem, error) {
 		}
 		mapped.Subject = subject
 		mapped.Outputs = publicOutputNames(item.Outputs)
+		mapped.Stale = item.Stale
+		mapped.CurrentRefCommit = item.CurrentRefCommit
+		mapped.StaleReason = item.StaleReason
 	case inbox.KindWaitingTask:
 		mapped.QuestionID = string(item.QuestionID)
 		mapped.Question = item.Question

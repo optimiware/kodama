@@ -634,7 +634,9 @@ func (result ExecutionActionOutputsResult) Validate() error {
 // operation, so the internal commit versions come from the observed state
 // instead of a repeated body member. The execution and action are carried
 // explicitly for MCP callers and are optional for REST callers whose route
-// supplies them.
+// supplies them. AllowStale opts out of the stale git.ref.update expected_base
+// guard for pass decisions (for example when disjoint-rebase approval is in
+// use); fail decisions never require it.
 type ExecutionRequestResolveRequest struct {
 	ExecutionID           string            `json:"execution_id,omitempty" schema:"id"`
 	ActionID              string            `json:"action_id,omitempty" schema:"id"`
@@ -642,6 +644,7 @@ type ExecutionRequestResolveRequest struct {
 	Decision              string            `json:"decision"`
 	Outputs               map[string]string `json:"outputs,omitempty"`
 	Note                  string            `json:"note,omitempty"`
+	AllowStale            bool              `json:"allow_stale,omitempty"`
 }
 
 // Validate checks the optional execution/action identities, the expected action

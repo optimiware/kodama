@@ -71,6 +71,10 @@ func wireApp(ctx context.Context, builder *builder, environment *environment) (*
 	if err != nil {
 		return nil, err
 	}
+	refHeadReader, err := readers.NewRefHeadReader(environment.scanner)
+	if err != nil {
+		return nil, err
+	}
 	executionReader, err := readers.NewExecutionReader(environment.store, environment.scanner)
 	if err != nil {
 		return nil, err
@@ -221,6 +225,7 @@ func wireApp(ctx context.Context, builder *builder, environment *environment) (*
 		State:       executionStore,
 		Activations: executionStore,
 		Resolutions: executionStore,
+		RefHeads:    refHeadReader,
 	})
 	if err != nil {
 		return nil, err

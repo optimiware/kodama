@@ -533,6 +533,10 @@ func newHarness(t *testing.T) *harness {
 	if err != nil {
 		t.Fatalf("inbox.NewService: %v", err)
 	}
+	refHeadReader, err := readers.NewRefHeadReader(instance)
+	if err != nil {
+		t.Fatalf("readers.NewRefHeadReader: %v", err)
+	}
 	requestService, err := shellrequest.NewService(shellrequest.Config{
 		Clock:       clock,
 		IDs:         ids,
@@ -541,6 +545,7 @@ func newHarness(t *testing.T) *harness {
 		State:       executions,
 		Activations: executions,
 		Resolutions: executions,
+		RefHeads:    refHeadReader,
 	})
 	if err != nil {
 		t.Fatalf("request.NewService: %v", err)

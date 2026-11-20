@@ -162,8 +162,19 @@ func (adapter *Inbox) requestItems(ctx context.Context, scope tenancy.Scope, pri
 		snapshot snapshotdoc.Admitted
 		taskID   id.TaskID
 	}
+	type refHeadKey struct {
+		resource string
+		ref      string
+	}
+	type pendingTarget struct {
+		entryIndex int
+		target     request.GitRefUpdateSubject
+	}
 	admitted := make(map[id.ExecutionID]cachedExecution)
 	entries := make([]inboxEntry, 0, len(rows))
+	var pending []pendingTarget
+	refsByResource := make(map[string]map[string]struct{})
+	resourceOrder := make([]string, 0)
 	for _, row := range rows {
 		assignment, err := decodeJSON[request.Assignment](bytesValue(row, "request_assignment"))
 		if err != nil {
@@ -221,7 +232,57 @@ func (adapter *Inbox) requestItems(ctx context.Context, scope tenancy.Scope, pri
 			// timestamp and is set at activation.
 			At: timeValue(row, "deadline"),
 		}
+		entryIndex := len(entries)
 		entries = append(entries, inboxEntry{item: item, identity: string(item.ActionID)})
+		if adapter.refHeads != nil {
+			if target, ok := request.ExtractGitRefUpdateSubject(subject); ok {
+				pending = append(pending, pendingTarget{entryIndex: entryIndex, target: target})
+				refSet, seenResource := refsByResource[target.Resource]
+				if !seenResource {
+					refSet = make(map[string]struct{})
+					refsByResource[target.Resource] = refSet
+					resourceOrder = append(resourceOrder, target.Resource)
+				}
+				refSet[target.Ref] = struct{}{}
+			}
+		}
+	}
+	if len(pending) > 0 {
+		refHeads := make(map[refHeadKey]request.RefHead, len(pending))
+		batchReader, isBatch := adapter.refHeads.(request.BatchRefHeadReader)
+		for _, resourceID := range resourceOrder {
+			refSet := refsByResource[resourceID]
+			refs := make([]string, 0, len(refSet))
+			for ref := range refSet {
+				refs = append(refs, ref)
+			}
+			sort.Strings(refs)
+			if isBatch {
+				heads, err := batchReader.LatestRefHeads(ctx, scope, resourceID, refs)
+				if err != nil {
+					return nil, err
+				}
+				for _, ref := range refs {
+					refHeads[refHeadKey{resource: resourceID, ref: ref}] = heads[ref]
+				}
+			} else {
+				for _, ref := range refs {
+					head, err := adapter.refHeads.LatestRefHead(ctx, scope, resourceID, ref)
+					if err != nil {
+						return nil, err
+					}
+					refHeads[refHeadKey{resource: resourceID, ref: ref}] = head
+				}
+			}
+		}
+		for _, p := range pending {
+			head := refHeads[refHeadKey{resource: p.target.Resource, ref: p.target.Ref}]
+			if stale, currentCommit, reason := request.EvaluateGitRefStaleness(p.target, head); stale {
+				entries[p.entryIndex].item.Stale = true
+				entries[p.entryIndex].item.CurrentRefCommit = currentCommit
+				entries[p.entryIndex].item.StaleReason = reason
+			}
+		}
 	}
 	return entries, nil
 }

@@ -896,7 +896,7 @@ func TestNoClaimAcknowledgeOrMutationSeam(t *testing.T) {
 	assertFieldNames(t, reflect.TypeOf(inbox.QueryCommand{}), []string{"Actor", "Scope", "Kinds", "Cursor", "Limit"})
 	assertFieldNames(t, reflect.TypeOf(inbox.Query{}), []string{"Scope", "Principal", "Kinds", "Cursor", "Limit"})
 	assertFieldNames(t, reflect.TypeOf(inbox.Page{}), []string{"Items", "NextCursor"})
-	assertFieldNames(t, reflect.TypeOf(inbox.Item{}), []string{"Kind", "TaskID", "ExecutionID", "ActionID", "Assignment", "Subject", "Outputs", "QuestionID", "Question", "References", "Version", "LifecycleVersion", "At"})
+	assertFieldNames(t, reflect.TypeOf(inbox.Item{}), []string{"Kind", "TaskID", "ExecutionID", "ActionID", "Assignment", "Subject", "Outputs", "Stale", "CurrentRefCommit", "StaleReason", "QuestionID", "Question", "References", "Version", "LifecycleVersion", "At"})
 
 	markers := []string{"claim", "ack", "state", "status", "seen", "persist", "save", "update", "delete", "resolve", "mutate"}
 	types := []reflect.Type{

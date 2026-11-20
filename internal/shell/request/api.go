@@ -81,7 +81,8 @@ type ActivateCommand struct {
 // ResolveCommand is one authorized answer to an activated request action. The
 // public body is action-only; ExpectedExecutionVersion is the optional shared
 // envelope guard (zero means omitted). The service derives the internal commit
-// versions from the state it observes at the commit boundary.
+// versions from the state it observes at the commit boundary. AllowStale opts
+// out of the stale git.ref.update expected_base guard for pass decisions.
 type ResolveCommand struct {
 	Actor                    authorize.Principal
 	Scope                    tenancy.Scope
@@ -92,9 +93,13 @@ type ResolveCommand struct {
 	Decision                 Decision
 	Response                 kernel.Outputs
 	Note                     string
+	AllowStale               bool
 }
 
 // Config is the complete set of injected request-operation boundaries.
+// RefHeads is optional; when provided, Resolve guards pass decisions on
+// git.ref.update requests against stale expected_base values using committed
+// verified git.ref.updated events.
 type Config struct {
 	Clock       Clock
 	IDs         IDSource
@@ -103,6 +108,7 @@ type Config struct {
 	State       StateReader
 	Activations ActivationPort
 	Resolutions ResolvePort
+	RefHeads    RefHeadReader
 }
 
 // Service builds complete request activation and resolution commit units. It
@@ -116,4 +122,5 @@ type Service struct {
 	state       StateReader
 	activations ActivationPort
 	resolutions ResolvePort
+	refHeads    RefHeadReader
 }
