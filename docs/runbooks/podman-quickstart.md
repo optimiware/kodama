@@ -347,10 +347,11 @@ ids to your `KODEMA_LOCAL_TENANT` and `KODEMA_LOCAL_PROJECT`.
    `https://…@host` line is refused with exit 128. The token reaches the helper
    on stdin (through the shell builtin `printf`), never as an argument.
 
-   The demo block is exactly `R = @all`; `RW+ refs/heads/work/ = @engineer
-   @execution`; `RW refs/heads/main = @execution`; and `option
-   approve.refs/heads/main = reviewer`. It names no `@admin` rule. The policy is
-   evaluated first-match-wins.
+   The demo block is exactly `option resource = git-demo`; `R = @all`;
+   `RW+ refs/heads/work/ = @engineer @execution`;
+   `RW refs/heads/main = @execution`; and
+   `option approve.refs/heads/main = reviewer`. It names no `@admin` rule. The
+   policy is evaluated first-match-wins.
 
    Never add a second `repo demo` block. `git.ParseConfig` refuses a repository
    declared twice, so a candidate commit that contains one is rejected before
@@ -470,22 +471,26 @@ server resolves through the registry).
 ## Run a first protected task
 
 A protected task runs a stored pipeline whose action is a request assigned to
-a human role. This installation's administrator holds the reviewer role
-explicitly, so one operator can walk the whole path on this trusted local host.
-The request subject in this walk-through is literal (`operation` and
-`resource` only) because no earlier action declares and submits an output here:
-a `{from: …}` lookup resolves only from an earlier succeeded action's declared
-outputs, and the product refuses an unavailable subject value before the request
-becomes answerable. A workload can submit declared outputs over HTTPS — the
-release smoke and `TestE2E_AC12Outputs` do — when it declares them and has the
-installation's public CA certificate in its workspace (for example at
-`/workspace/w49-ca.crt`, as the smoke does) or in its image; the install does
-not project the CA into workloads (P15).
+a human role. This installation's administrator holds the engineer and reviewer
+roles explicitly, so one operator can walk the whole path on this trusted local
+host using the administrator token written during sign-in. The request subject
+in this walk-through is literal (`operation` and `resource` only) because no
+earlier action declares and submits an output here: a `{from: …}` lookup
+resolves only from an earlier succeeded action's declared outputs, and the
+product refuses an unavailable subject value before the request becomes
+answerable. Every Podman workload receives the installation's public CA
+certificate read-only at `/kodema/ca.crt` (`KODEMA_CA_FILE=/kodema/ca.crt`) and
+the `kodema` toolbox at `/kodema/bin/kodema`, so an action that declares
+outputs can write files under `/kodema/outputs/<action>` and `kodema output
+push` submits them over verified HTTPS automatically.
 
-1. Apply a stored pipeline with a container prepare action and a literal
-   review request. The prepare action declares no output and submits nothing:
+1. Point `kodema` at the administrator token (keeping `KODEMA_URL`,
+   `KODEMA_CA_FILE` and `KODEMA_PROJECT` from above), write the pipeline, and
+   apply it to the project:
 
    ```sh
+   export KODEMA_CREDENTIAL_FILE="$STATE/secrets/admin-token"
+
    cat > "$WORK/protected-pipeline.yaml" <<EOF
    actions:
      - name: prepare
@@ -500,61 +505,43 @@ not project the CA into workloads (P15).
          resource: local-demo
        timeout: 10m
    EOF
-   jq -n --arg project "$PROJECT" --arg pipeline "protected-demo" \
-     --arg yaml "$(base64 -w0 "$WORK/protected-pipeline.yaml")" \
-     '{input: {project_id: $project, name: $pipeline, yaml: $yaml}, idempotency_key: "local-pipeline-protected-demo"}' \
-     > "$WORK/protected-apply.json"
-   curl --request PUT --silent --show-error --cacert "$STATE/tls/ca.crt" \
-     --header @"$STATE/secrets/admin-header" --data-binary @"$WORK/protected-apply.json" \
-     "$KODEMA_PUBLIC_URL/api/v1/projects/$PROJECT/pipelines/protected-demo" \
-     > "$WORK/protected-apply-response.json"
-   pipeline="$(jq -er '.body.pipeline_id' "$WORK/protected-apply-response.json")"
+
+   bin/kodema pipeline apply "$WORK/protected-pipeline.yaml"
    ```
 
-2. Create and start the task, then read the execution id from the response:
+   `kodema pipeline apply` prints the applied `pipeline_id`
+   (`applied protected-pipeline (pipeline_id=pipeline-…)`).
+
+2. Create and start the task using the `pipeline_id` printed above:
 
    ```sh
-   jq -n --arg project "$PROJECT" --arg pipeline "$pipeline" \
-     '{input: {project_id: $project, title: "First protected task", pipeline_id: $pipeline}, idempotency_key: "local-task-protected-1"}' \
-     > "$WORK/protected-task.json"
-   curl --silent --show-error --cacert "$STATE/tls/ca.crt" \
-     --header @"$STATE/secrets/admin-header" --data-binary @"$WORK/protected-task.json" \
-     "$KODEMA_PUBLIC_URL/api/v1/projects/$PROJECT/tasks/create-and-start" \
-     > "$WORK/protected-task-response.json"
-   execution="$(jq -er '.body.execution_id' "$WORK/protected-task-response.json")"
+   PIPELINE_ID="pipeline-..."   # replace with the pipeline_id printed above
+   bin/kodema task run --title "First protected task" --pipeline "$PIPELINE_ID"
    ```
 
-3. Read the waiting action's identity and version from the execution, then
-   answer it with the reviewer role the administrator holds:
+   `kodema task run` prints the `task_id` and `execution_id`.
+
+3. Once `prepare` finishes, the waiting `review` request appears in the role
+   inbox. Check the inbox and approve the execution with the reviewer role the
+   administrator holds (or reject it with `bin/kodema reject "$EXECUTION_ID"
+   --reason "…"`):
 
    ```sh
-   for _ in $(seq 1 60); do
-     jq -n --arg execution "$execution" '{input: {execution_id: $execution}}' \
-       > "$WORK/protected-inspect.json"
-     curl --request GET --silent --show-error --cacert "$STATE/tls/ca.crt" \
-       --header @"$STATE/secrets/admin-header" \
-       --data-binary @"$WORK/protected-inspect.json" \
-       "$KODEMA_PUBLIC_URL/api/v1/executions/$execution" \
-       > "$WORK/protected-inspect-response.json"
-     action="$(jq -r '.body.actions[] | select(.name == "review" and .state == "running") | .action_id' "$WORK/protected-inspect-response.json" | head -n 1)"
-     version="$(jq -r --arg action "$action" '.body.actions[] | select(.action_id == $action) | .version' "$WORK/protected-inspect-response.json")"
-     [ -n "$action" ] && [ -n "$version" ] && break
-     sleep 2
-   done
-   [ -n "$action" ] && [ -n "$version" ] || { echo "review action never became answerable" >&2; exit 1; }
-
-   jq -n --arg execution "$execution" --arg action "$action" \
-     --argjson version "$version" \
-     '{input: {execution_id: $execution, action_id: $action, expected_action_version: $version, decision: "pass"}, idempotency_key: "local-resolve-1"}' \
-     > "$WORK/protected-resolve.json"
-   curl --silent --show-error --cacert "$STATE/tls/ca.crt" \
-     --header @"$STATE/secrets/admin-header" --data-binary @"$WORK/protected-resolve.json" \
-     "$KODEMA_PUBLIC_URL/api/v1/executions/$execution/actions/$action/resolve"
+   EXECUTION_ID="execution-..." # replace with the execution_id printed above
+   bin/kodema inbox
+   bin/kodema approve "$EXECUTION_ID"
    ```
 
-4. Poll the execution until it is terminal (`succeeded`, with
-   `cleanup.state: "complete"`). A failed or timed-out request settles the
-   execution; there is no automatic approval reuse.
+4. Wait for the execution to reach a terminal state (`succeeded`, with
+   `cleanup.state: "complete"`), then inspect it and read the `prepare` action's
+   logs. A failed or timed-out request settles the execution; there is no
+   automatic approval reuse.
+
+   ```sh
+   bin/kodema watch "$EXECUTION_ID"
+   bin/kodema inspect "$EXECUTION_ID"
+   bin/kodema logs "$EXECUTION_ID" --action prepare
+   ```
 
 No script runs this walk-through. The full protected Git integration path
 (request, approval and a protected `git.ref.update` through a repository) is
@@ -683,7 +670,8 @@ containers, volumes or images.
   repository served needs an explicit rule.
 - A workload cannot reach the server: confirm the server listens on
   `0.0.0.0:18443`, that the certificate has `host.containers.internal` as a
-  subject alternative name, and that the workload trusts `$STATE/tls/ca.crt`.
+  subject alternative name, and that the workload trusts `$STATE/tls/ca.crt`
+  (projected automatically at `/kodema/ca.crt` as `KODEMA_CA_FILE`).
   The image must also already be in the same Podman store.
 - A workload cannot reach Git: use `https://host.containers.internal:18445`
   (never the loopback `127.0.0.1:18081` listener), trust the same installation
@@ -731,14 +719,16 @@ installation bugs:
   deny-by-default and not configurable through the installation or the `test`
   profile. A pipeline action that declares `secrets:` is refused at activation
   with `forbidden: secret name is not authorized`; workloads read only the
-  mounted execution credential at `/kodema/secrets/KODEMA_TOKEN`. Automatic CA
-  projection is P15 work, so a workload that needs verified HTTPS gets the
-  installation's **public** CA certificate from its image or from bytes the
-  pipeline writes into its workspace (`/workspace`, as the smoke and
-  `TestE2E_AC12Outputs` do). The certificate is public data, never a key.
+  mounted execution credential at `/kodema/secrets/KODEMA_TOKEN`. The
+  installation's **public** CA certificate (`$STATE/tls/ca.crt`) is projected
+  automatically read-only into Podman workloads at `/kodema/ca.crt` with
+  `KODEMA_CA_FILE=/kodema/ca.crt` (the certificate is public data, never a
+  key), and `/workspace` is shared across actions of one execution.
 - A workload can submit declared outputs over HTTPS with its mounted execution
-  token and the CA above; outputs submitted by an action that then fails are
-  discarded, and a promoted output is visible only after success.
+  token and projected CA (`KODEMA_CA_FILE`) — either by writing files to
+  `/kodema/outputs/<action>` for `kodema output push` or by calling the API
+  directly; outputs submitted by an action that then fails are discarded, and a
+  promoted output is visible only after success.
 - Retained logs are collected when the action's workload is removed at
   completion, and before a stop. A still-running action has no retained chunks
   yet; read the log after the action has finished (and `cleanup.state` is

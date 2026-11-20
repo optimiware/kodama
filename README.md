@@ -132,8 +132,6 @@ young, and the design is ahead of the evidence in these places:
 
 On Linux with rootless Podman 5 or newer, or on macOS with a Podman machine:
 
-If the installer reports **0.2.3**, follow the [0.2.3 quickstart](https://github.com/optimiware/kodema/blob/v0.2.3/docs/runbooks/quickstart.md): that release uses `kodactl run` and has no workload toolbox.
-
 ```sh
 curl -fsSL https://raw.githubusercontent.com/optimiware/kodema/master/install.sh | sh
 kodema up

@@ -3,6 +3,9 @@ package git_test
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -251,4 +254,85 @@ func TestValidateResourceBindingsRequiresOptionResourceForNonAdminRepos(t *testi
 			t.Fatalf("error = %q; want line 1 conflict for admin", err.Error())
 		}
 	})
+}
+
+// TestKodemaSpecGitConfExampleWorksVerbatim proves that the conf/git.conf
+// example in KODEMA.md parses cleanly, declares `option resource = <id>` on
+// every non-admin repository stanza, and resolves every non-admin repository
+// through Service.ResolveResourceID without static --resource pins.
+func TestKodemaSpecGitConfExampleWorksVerbatim(t *testing.T) {
+	specPath := filepath.Join("..", "..", "..", "KODEMA.md")
+	raw, err := os.ReadFile(specPath)
+	if err != nil {
+		t.Fatalf("read KODEMA.md: %v", err)
+	}
+	blockPattern := regexp.MustCompile("(?s)```text\\n(# <tenant>/admin → conf/git\\.conf\\n.*?)\\n```")
+	match := blockPattern.FindSubmatch(raw)
+	if match == nil {
+		t.Fatal("KODEMA.md has no conf/git.conf example code block")
+	}
+	parsed, err := git.ParseConfig(match[1])
+	if err != nil {
+		t.Fatalf("KODEMA.md conf/git.conf example failed ParseConfig: %v", err)
+	}
+	adminPolicy, ok := parsed.Policy("admin")
+	if !ok {
+		t.Fatal("KODEMA.md conf/git.conf example omits repo admin")
+	}
+	decision, err := adminPolicy.Authorize(git.AccessRequest{
+		Identity: git.Identity{Roles: []string{"admin"}},
+		Ref:      "refs/heads/main",
+		Update:   git.UpdateFastForward,
+	})
+	if err != nil || decision != git.DecisionAllow {
+		t.Fatalf("KODEMA.md repo admin does not allow @admin fast-forward on refs/heads/main: decision=%v err=%v", decision, err)
+	}
+	names := parsed.PolicyNames()
+	if len(names) < 2 {
+		t.Fatalf("KODEMA.md conf/git.conf example defines only %v; want admin plus example repositories", names)
+	}
+
+	storage, err := git.NewLocalStorage(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewLocalStorage: %v", err)
+	}
+	log := &callLog{}
+	executor := newFakeExecutor(log)
+	service, err := git.NewService(git.ServiceConfig{
+		TenantID:  testTenant,
+		Storage:   storage,
+		Policies:  &fakePolicySource{config: parsed},
+		Executor:  executor,
+		Observer:  &fakeObserver{executor: executor, log: log},
+		Journal:   newFakeJournal(log),
+		Verify:    newFakeVerifier(log),
+		Retention: &fakeRetention{log: log},
+		Clock:     &fakeClock{now: testNow},
+		ResourceIDs: map[string]string{
+			"admin": "git-admin",
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewService: %v", err)
+	}
+
+	ctx := context.Background()
+	for _, repo := range names {
+		if repo == "admin" {
+			continue
+		}
+		policy, _ := parsed.Policy(repo)
+		if policy.ResourceID == "" {
+			t.Errorf("KODEMA.md conf/git.conf stanza %q omits option resource = <resource-id>", repo)
+			continue
+		}
+		got, err := service.ResolveResourceID(ctx, repo)
+		if err != nil {
+			t.Errorf("ResolveResourceID(%q) using KODEMA.md conf/git.conf verbatim failed: %v", repo, err)
+			continue
+		}
+		if got != policy.ResourceID {
+			t.Errorf("ResolveResourceID(%q) = %q; want %q", repo, got, policy.ResourceID)
+		}
+	}
 }

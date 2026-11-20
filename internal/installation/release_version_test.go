@@ -87,3 +87,39 @@ func TestReleaseVersionIsConsistent(t *testing.T) {
 		t.Errorf("CHANGELOG.md still has an Unreleased section; VERSION is the release %s", version)
 	}
 }
+
+// TestDocsAlignedWithSingleBinaryRelease guards against stale 0.2.3 pre-release
+// warnings returning to README.md or docs/runbooks/quickstart.md and confirms
+// the quickstart documents local self-signed TLS prompts, --device login, and
+// --ca-file.
+func TestDocsAlignedWithSingleBinaryRelease(t *testing.T) {
+	root := repoRoot(t)
+	readme := readText(t, filepath.Join(root, "README.md"))
+	quickstart := readText(t, filepath.Join(root, "docs", "runbooks", "quickstart.md"))
+
+	staleBanners := []string{
+		"If the installer reports **0.2.3**",
+		"For **0.2.3**",
+		"before it is released",
+		"v0.2.3/docs/runbooks/quickstart.md",
+	}
+	for _, stale := range staleBanners {
+		if strings.Contains(readme, stale) {
+			t.Errorf("README.md still contains stale pre-release warning %q", stale)
+		}
+		if strings.Contains(quickstart, stale) {
+			t.Errorf("docs/runbooks/quickstart.md still contains stale pre-release warning %q", stale)
+		}
+	}
+
+	for _, phrase := range []string{
+		"self-signed",
+		"kodema login --device",
+		"--ca-file",
+		"https://127.0.0.1:8443/auth/",
+	} {
+		if !strings.Contains(quickstart, phrase) {
+			t.Errorf("docs/runbooks/quickstart.md does not document %q", phrase)
+		}
+	}
+}
