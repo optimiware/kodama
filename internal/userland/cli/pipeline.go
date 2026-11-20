@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -123,18 +124,27 @@ func runPipeline(ctx context.Context, config Config, args []string, ports Ports)
 	return ExitSuccess
 }
 
+// runFailureStderrMaxLines and runFailureStderrMaxBytes bound the container
+// stderr tail printed by `kodema run` when an execution fails.
+const (
+	runFailureStderrMaxLines = 50
+	runFailureStderrMaxBytes = 8 << 10
+)
+
 // runRun starts one local pipeline file inline through pipeline.start and
-// follows the execution to its end. Container stdout goes to stdout in action
-// order once the execution has ended; the execution id and the outcome go to
-// stderr.
+// follows the execution to its end (unless --detach is set). Container stdout
+// goes to stdout in action order once the execution has ended; the execution
+// id, action progress, failed container stderr, and final outcome go to stderr.
 func runRun(ctx context.Context, config Config, args []string, ports Ports, deps CommandDeps) int {
 	var (
 		projectFlag string
 		inputPairs  []string
+		detach      bool
 	)
 	spec := newArgSpec()
 	spec.stringFlag(&projectFlag, "--project", "-p")
 	spec.listFlag(&inputPairs, "--input")
+	spec.boolFlag(&detach, "--detach", "-d")
 	positionals, _, err := spec.parse(args)
 	if err != nil {
 		return usage(ports.Err, err.Error())
@@ -190,6 +200,16 @@ func runRun(ctx context.Context, config Config, args []string, ports Ports, deps
 		return failure(ports.Err, fmt.Errorf("pipeline.start returned no execution id"))
 	}
 	executionID := started.ExecutionID
+	if detach {
+		if config.Output == OutputJSON {
+			if err := renderResult(ports.Out, OutputJSON, result); err != nil {
+				return failure(ports.Err, err)
+			}
+			return ExitSuccess
+		}
+		fmt.Fprintln(ports.Out, executionID)
+		return ExitSuccess
+	}
 	fmt.Fprintf(ports.Err, "execution %s started\n", executionID)
 
 	fail := func(err error) int {
@@ -199,11 +219,20 @@ func runRun(ctx context.Context, config Config, args []string, ports Ports, deps
 		}
 		return failure(ports.Err, err)
 	}
+	failTerminal := func(state string, err error) int {
+		if ctx.Err() != nil {
+			fmt.Fprintf(ports.Err, "run interrupted while reading logs for %s execution %s\n", state, executionID)
+			return ExitFailure
+		}
+		return failure(ports.Err, err)
+	}
+	actionStates := make(map[string]string)
 	for settling := 0; ; {
 		inspected, err := fetchExecutionInspect(ctx, ports, executionID)
 		if err != nil {
 			return fail(err)
 		}
+		emitActionProgress(ports.Err, executionID, inspected.Actions, actionStates)
 		state := inspected.effectiveState()
 		switch state {
 		case "succeeded", "failed", "cancelled":
@@ -217,12 +246,17 @@ func runRun(ctx context.Context, config Config, args []string, ports Ports, deps
 				}
 				logs := logStreamState{actionID: action.ActionID}
 				if _, _, err := drainLogPages(ctx, ports, executionID, "stdout", OutputTable, false, &logs); err != nil {
-					return fail(err)
+					return failTerminal(state, err)
 				}
 			}
 			if state == "succeeded" {
 				fmt.Fprintf(ports.Err, "execution %s succeeded\n", executionID)
 				return ExitSuccess
+			}
+			if state == "failed" {
+				if err := printFailedActionStderr(ctx, ports, executionID, inspected.Actions); err != nil {
+					return failTerminal(state, err)
+				}
 			}
 			message := fmt.Sprintf("execution %s %s", executionID, state)
 			if reported := inspected.Failure; reported != nil {
@@ -237,10 +271,12 @@ func runRun(ctx context.Context, config Config, args []string, ports Ports, deps
 		case "queued", "running":
 			for _, action := range inspected.Actions {
 				// A request assigned to a role waits for a human; one assigned
-				// to a service is answered without this caller.
-				if action.Kind == "request" && action.effectiveState() == "running" && strings.HasPrefix(action.Assignment, "role/") {
+				// to a service is answered without this caller (whose waiting
+				// notice was already emitted by emitActionProgress).
+				actionState := action.effectiveState()
+				if action.Kind == "request" && (actionState == "running" || actionState == "waiting") && strings.HasPrefix(action.Assignment, "role/") {
 					fmt.Fprintf(ports.Err, "execution %s is waiting for %s to answer request %q; see 'kodema inbox' and 'kodema approve %s'\n",
-						executionID, action.Assignment, action.Name, executionID)
+						executionID, action.Assignment, actionDisplayName(action), executionID)
 					return ExitFailure
 				}
 			}
@@ -249,6 +285,139 @@ func runRun(ctx context.Context, config Config, args []string, ports Ports, deps
 			return failure(ports.Err, fmt.Errorf("execution status %q is unknown", state))
 		}
 	}
+}
+
+// actionProgressKey uniquely identifies an action across execution.inspect polls.
+func actionProgressKey(index int, action inspectedAction) string {
+	if action.ActionID != "" {
+		return action.ActionID
+	}
+	if action.Name != "" {
+		return fmt.Sprintf("%d:%s", index, action.Name)
+	}
+	return fmt.Sprintf("#%d", index)
+}
+
+// actionDisplayName returns the human-readable action name, falling back to its
+// opaque ActionID when a response omits Name.
+func actionDisplayName(action inspectedAction) string {
+	if trimmed := strings.TrimSpace(action.Name); trimmed != "" {
+		return trimmed
+	}
+	if trimmed := strings.TrimSpace(action.ActionID); trimmed != "" {
+		return trimmed
+	}
+	return "action"
+}
+
+// emitActionProgress writes one concise line to errOut each time an action
+// enters a new non-pending state, including a waiting notice for non-role
+// requests such as service/<id>.
+func emitActionProgress(errOut io.Writer, executionID string, actions []inspectedAction, seen map[string]string) {
+	for index, action := range actions {
+		state := action.effectiveState()
+		if state == "" || state == "pending" {
+			continue
+		}
+		key := actionProgressKey(index, action)
+		if seen[key] == state {
+			continue
+		}
+		seen[key] = state
+		name := actionDisplayName(action)
+		if action.Kind == "request" && (state == "running" || state == "waiting") {
+			if strings.HasPrefix(action.Assignment, "role/") {
+				continue
+			}
+			if action.Assignment != "" {
+				fmt.Fprintf(errOut, "execution %s is waiting for %s to answer request %q\n",
+					executionID, action.Assignment, name)
+			} else {
+				fmt.Fprintf(errOut, "execution %s is waiting for request %q\n",
+					executionID, name)
+			}
+			continue
+		}
+		if action.Kind == "request" && action.Decision != "" {
+			fmt.Fprintf(errOut, "action %s: %s (%s)\n", name, state, action.Decision)
+			continue
+		}
+		fmt.Fprintf(errOut, "action %s: %s\n", name, state)
+	}
+}
+
+// printFailedActionStderr fetches and prints a bounded stderr tail on ports.Err
+// for each failed container action, or prints a `kodema logs` hint when stderr
+// is empty or unavailable.
+func printFailedActionStderr(ctx context.Context, ports Ports, executionID string, actions []inspectedAction) error {
+	for _, action := range actions {
+		if action.Kind == "request" || action.effectiveState() != "failed" {
+			continue
+		}
+		label := actionDisplayName(action)
+		logHint := fmt.Sprintf("kodema logs %s --action %s --stream stderr", executionID, label)
+		if action.ActionID == "" {
+			fmt.Fprintf(ports.Err, "hint: inspect logs with '%s'\n", logHint)
+			continue
+		}
+		logs := logStreamState{actionID: action.ActionID}
+		chunks, serverTruncated, err := drainLogPages(ctx, ports, executionID, "stderr", OutputJSON, false, &logs)
+		if err != nil {
+			if ctx.Err() != nil {
+				return err
+			}
+			fmt.Fprintf(ports.Err, "stderr (action %s) unavailable (%v); inspect with '%s'\n", label, err, logHint)
+			continue
+		}
+		var combined strings.Builder
+		for _, chunk := range chunks {
+			combined.Write(chunk.Data)
+		}
+		raw := combined.String()
+		if strings.TrimSpace(raw) == "" {
+			fmt.Fprintf(ports.Err, "hint: no stderr captured for action %s; inspect logs with '%s'\n", label, logHint)
+			continue
+		}
+		tail, localTruncated := boundStderrTail(raw, runFailureStderrMaxLines, runFailureStderrMaxBytes)
+		fmt.Fprintf(ports.Err, "--- stderr (action %s) ---\n", label)
+		fmt.Fprintln(ports.Err, tail)
+		fmt.Fprintln(ports.Err, "---")
+		if serverTruncated || localTruncated {
+			fmt.Fprintf(ports.Err, "stderr truncated; run '%s' for full logs\n", logHint)
+		}
+	}
+	return nil
+}
+
+// boundStderrTail returns at most maxLines trailing lines and maxBytes trailing
+// bytes of raw without splitting a UTF-8 rune, reporting whether any leading
+// output was omitted.
+func boundStderrTail(raw string, maxLines, maxBytes int) (string, bool) {
+	trimmed := strings.TrimRight(raw, "\r\n")
+	if trimmed == "" {
+		return "", false
+	}
+	truncated := false
+	if maxBytes > 0 && len(trimmed) > maxBytes {
+		cut := len(trimmed) - maxBytes
+		startedMidLine := cut > 0 && trimmed[cut-1] != '\n'
+		trimmed = trimmed[cut:]
+		for len(trimmed) > 0 && !utf8.RuneStart(trimmed[0]) {
+			trimmed = trimmed[1:]
+		}
+		if startedMidLine {
+			if nl := strings.IndexByte(trimmed, '\n'); nl >= 0 && strings.TrimSpace(trimmed[nl+1:]) != "" {
+				trimmed = trimmed[nl+1:]
+			}
+		}
+		truncated = true
+	}
+	lines := strings.Split(trimmed, "\n")
+	if maxLines > 0 && len(lines) > maxLines {
+		lines = lines[len(lines)-maxLines:]
+		truncated = true
+	}
+	return strings.Join(lines, "\n"), truncated
 }
 
 // acceptedPipelineFiles filters and sorts the directory non-recursively: no

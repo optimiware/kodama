@@ -101,6 +101,7 @@ func runUpEntry(ctx context.Context, args []string, stdout, stderr io.Writer) in
 		Foreground:            *foreground,
 		DenyProjectSecrets:    !*allowProjectSecrets,
 		AllowSecrets:          allowSecrets,
+		Stderr:                stderr,
 	}, stdout)
 	if err != nil {
 		fmt.Fprintf(stderr, "kodema: %v\n", err)

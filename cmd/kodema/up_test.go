@@ -48,8 +48,8 @@ func TestUpDownStatusCLICommands(t *testing.T) {
 	if code := runUpEntry(context.Background(), []string{"--name", "demo", "--listen", "127.0.0.1:9443"}, &out, &errBuf); code != 0 {
 		t.Fatalf("runUpEntry exit = %d: %s", code, errBuf.String())
 	}
-	if capturedUp.Instance != "demo" || capturedUp.ListenAddr != "127.0.0.1:9443" {
-		t.Fatalf("capturedUp = %+v", capturedUp)
+	if capturedUp.Instance != "demo" || capturedUp.ListenAddr != "127.0.0.1:9443" || capturedUp.Stderr != &errBuf {
+		t.Fatalf("capturedUp = %+v (stderr wired=%v)", capturedUp, capturedUp.Stderr == &errBuf)
 	}
 
 	// KODEMA_SOCKET names the Podman socket of every command, and --socket wins.

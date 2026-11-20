@@ -184,6 +184,15 @@ func (c *EngineClient) RemoveVolume(ctx context.Context, name string) error {
 
 // EnsureImage checks whether imageRef exists locally and pulls it if missing.
 func (c *EngineClient) EnsureImage(ctx context.Context, imageRef string) error {
+	return c.EnsureImageWithProgress(ctx, imageRef, nil)
+}
+
+// EnsureImageWithProgress checks whether imageRef exists locally, pulls it if
+// missing, and writes concise pull status lines to progress when non-nil.
+func (c *EngineClient) EnsureImageWithProgress(ctx context.Context, imageRef string, progress io.Writer) error {
+	if progress == nil {
+		progress = io.Discard
+	}
 	status, _, err := c.doJSON(ctx, http.MethodGet, "/images/"+url.PathEscape(imageRef)+"/json", nil)
 	if err != nil {
 		return err
@@ -191,6 +200,7 @@ func (c *EngineClient) EnsureImage(ctx context.Context, imageRef string) error {
 	if status == http.StatusOK {
 		return nil
 	}
+	fmt.Fprintf(progress, "pulling image %s...\n", imageRef)
 	q := url.Values{"fromImage": {imageRef}}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://d/"+dockerAPIVersion+"/images/create?"+q.Encode(), nil)
 	if err != nil {
@@ -205,6 +215,7 @@ func (c *EngineClient) EnsureImage(ctx context.Context, imageRef string) error {
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("pull image %q failed (HTTP %d)", imageRef, resp.StatusCode)
 	}
+	fmt.Fprintf(progress, "pulled image %s\n", imageRef)
 	return nil
 }
 

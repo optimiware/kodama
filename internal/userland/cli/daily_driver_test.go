@@ -170,6 +170,16 @@ func TestHelpAndZeroArgCommandSummary(t *testing.T) {
 	}
 
 	p, stdout, stderr := testPorts(&scriptedTransport{})
+	if got := cli.Run(context.Background(), cli.Config{}, []string{"help", "run"}, p); got != cli.ExitSuccess {
+		t.Fatalf("help run exit = %d; want 0 (stderr=%q)", got, stderr.String())
+	}
+	for _, want := range []string{"--detach", "-d", "stderr", "service/*", "role/*"} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("help run stdout missing %q:\n%s", want, stdout.String())
+		}
+	}
+
+	p, stdout, stderr = testPorts(&scriptedTransport{})
 	if got := cli.Run(context.Background(), cli.Config{}, []string{"help", "nonexistent"}, p); got != cli.ExitUsage {
 		t.Fatalf("unknown help topic exit = %d; want %d (stdout=%q stderr=%q)", got, cli.ExitUsage, stdout.String(), stderr.String())
 	}
