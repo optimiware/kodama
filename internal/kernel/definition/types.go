@@ -48,14 +48,24 @@ type EnvVar struct {
 	Value string     `json:"value"`
 }
 
+// Resources are optional bounded compute hints declared on a container action.
+// Values use Kubernetes-compatible quantity syntax (for example memory "2Gi"
+// and cpu "2" or "500m"). Runtime adapters enforce installation-level maximums
+// so a pipeline can never request unbounded host memory or CPU.
+type Resources struct {
+	Memory string `json:"memory,omitempty"`
+	CPU    string `json:"cpu,omitempty"`
+}
+
 // Container is a validated container action declaration. Images are pinned to
 // immutable digests before admission; secrets are names only, never values.
 type Container struct {
-	Image    string          `json:"image"`
-	Commands []string        `json:"commands"`
-	Env      []EnvVar        `json:"env"`
-	Secrets  []id.SecretName `json:"secrets"`
-	Outputs  []id.OutputKey  `json:"outputs"`
+	Image     string          `json:"image"`
+	Commands  []string        `json:"commands"`
+	Env       []EnvVar        `json:"env"`
+	Secrets   []id.SecretName `json:"secrets"`
+	Outputs   []id.OutputKey  `json:"outputs"`
+	Resources *Resources      `json:"resources,omitempty"`
 }
 
 // Request is a validated request action declaration. Assignment is an opaque
@@ -104,6 +114,10 @@ func (a Action) clone() Action {
 		container.Env = append([]EnvVar(nil), a.Container.Env...)
 		container.Secrets = append([]id.SecretName(nil), a.Container.Secrets...)
 		container.Outputs = append([]id.OutputKey(nil), a.Container.Outputs...)
+		if a.Container.Resources != nil {
+			resources := *a.Container.Resources
+			container.Resources = &resources
+		}
 		out.Container = &container
 	}
 	if a.Request != nil {

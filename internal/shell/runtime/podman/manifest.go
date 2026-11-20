@@ -16,6 +16,7 @@ import (
 
 	"github.com/optimiware/kodema/internal/fault"
 	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/kernel/definition"
 	"github.com/optimiware/kodema/internal/kernel/engine"
 	"github.com/optimiware/kodema/internal/kernel/script"
 	"github.com/optimiware/kodema/internal/shell/workspace"
@@ -87,6 +88,13 @@ type preparationRecord struct {
 	GitURL  string `json:"git_url,omitempty"`
 	// An absent working directory in a 0.2.x record means use the image default.
 	WorkingDir string `json:"working_dir,omitempty"`
+	// Resources records the admitted per-action resource hints; MemoryBytes and
+	// CPUMillicores record the resolved bounded limits applied at Start so a
+	// reconstructed adapter builds the identical container even if defaults
+	// changed since Prepare.
+	Resources     *definition.Resources `json:"resources,omitempty"`
+	MemoryBytes   int64                 `json:"memory_bytes,omitempty"`
+	CPUMillicores int64                 `json:"cpu_millicores,omitempty"`
 }
 
 // workloadRoot returns the per-identity adapter root.
@@ -240,8 +248,47 @@ func buildPreparationWithCA(request engine.PrepareRequest, workloadCAPEM []byte)
 	return files, secrets, nil
 }
 
+// resolveResources validates any per-action resource hints against the
+// installation's bounded maximums and returns the concrete memory and CPU
+// limits for the container.
+func (a *Adapter) resolveResources(requested *definition.Resources) (int64, int64, error) {
+	if err := definition.ValidateResources(requested); err != nil {
+		return 0, 0, err
+	}
+	memoryBytes := a.resources.DefaultMemoryBytes
+	cpuMillicores := a.resources.DefaultCPUMillicores
+	if requested == nil {
+		return memoryBytes, cpuMillicores, nil
+	}
+	if requested.Memory != "" {
+		parsed, err := definition.ParseMemoryQuantity(requested.Memory)
+		if err != nil {
+			return 0, 0, err
+		}
+		if parsed > a.resources.MaxMemoryBytes {
+			return 0, 0, fault.New(fault.InvalidInput, fmt.Sprintf(
+				"container memory limit %q (%s) exceeds installation maximum %s",
+				requested.Memory, definition.FormatMemoryBytes(parsed), definition.FormatMemoryBytes(a.resources.MaxMemoryBytes)))
+		}
+		memoryBytes = parsed
+	}
+	if requested.CPU != "" {
+		parsed, err := definition.ParseCPUQuantity(requested.CPU)
+		if err != nil {
+			return 0, 0, err
+		}
+		if parsed > a.resources.MaxCPUMillicores {
+			return 0, 0, fault.New(fault.InvalidInput, fmt.Sprintf(
+				"container CPU limit %q (%s) exceeds installation maximum %s",
+				requested.CPU, definition.FormatCPUMillicores(parsed), definition.FormatCPUMillicores(a.resources.MaxCPUMillicores)))
+		}
+		cpuMillicores = parsed
+	}
+	return memoryBytes, cpuMillicores, nil
+}
+
 // preparationRecordFor builds the durable preparation marker for one request.
-func (a *Adapter) preparationRecordFor(request engine.PrepareRequest, files []preparedFile, secrets []engine.SecretValue) preparationRecord {
+func (a *Adapter) preparationRecordFor(request engine.PrepareRequest, files []preparedFile, secrets []engine.SecretValue, memoryBytes, cpuMillicores int64) preparationRecord {
 	env := make([]preparedEnvVar, 0, len(request.Container.Env))
 	for _, entry := range request.Container.Env {
 		env = append(env, preparedEnvVar{Name: entry.Name, Value: entry.Value})
@@ -255,6 +302,11 @@ func (a *Adapter) preparationRecordFor(request engine.PrepareRequest, files []pr
 	for _, file := range files {
 		paths = append(paths, file.logical)
 	}
+	var resources *definition.Resources
+	if request.Container.Resources != nil {
+		copied := *request.Container.Resources
+		resources = &copied
+	}
 	return preparationRecord{
 		WorkspaceID: request.WorkspaceID,
 		ActionName:  request.ActionName,
@@ -267,9 +319,12 @@ func (a *Adapter) preparationRecordFor(request engine.PrepareRequest, files []pr
 		Toolbox:     a.toolboxDir,
 		// Without a toolbox nothing submits the files, so no directory is
 		// mounted for them.
-		Outputs:    a.toolboxDir != "" && len(request.Container.Outputs) > 0,
-		GitURL:     a.gitURL,
-		WorkingDir: workspace.WorkspaceRoot,
+		Outputs:       a.toolboxDir != "" && len(request.Container.Outputs) > 0,
+		GitURL:        a.gitURL,
+		WorkingDir:    workspace.WorkspaceRoot,
+		Resources:     resources,
+		MemoryBytes:   memoryBytes,
+		CPUMillicores: cpuMillicores,
 	}
 }
 
@@ -366,6 +421,14 @@ func (a *Adapter) containerSpec(prepared preparationRecord, identity engine.Effe
 			SizeBytes:   workspace.OutputDirectoryBytes,
 		})
 	}
+	memoryBytes := prepared.MemoryBytes
+	if memoryBytes <= 0 {
+		memoryBytes = a.resources.DefaultMemoryBytes
+	}
+	cpuMillicores := prepared.CPUMillicores
+	if cpuMillicores <= 0 {
+		cpuMillicores = a.resources.DefaultCPUMillicores
+	}
 	return ContainerSpec{
 		Name:  name,
 		Image: prepared.Image,
@@ -378,6 +441,11 @@ func (a *Adapter) containerSpec(prepared preparationRecord, identity engine.Effe
 		WorkingDir:    prepared.WorkingDir,
 		Mounts:        mounts,
 		RestartPolicy: "no",
+		Resources: ContainerResources{
+			MemoryBytes: memoryBytes,
+			CPUQuota:    cpuMillicores * (DefaultCPUPeriod / 1000),
+			CPUPeriod:   DefaultCPUPeriod,
+		},
 	}, nil
 }
 

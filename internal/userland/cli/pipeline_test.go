@@ -551,6 +551,15 @@ func TestRunFile(t *testing.T) {
 			wantErr:  []string{"execution exec-1 cancelled: cancelled\n"},
 		},
 		{
+			name: "oom-killed execution reports OOMKilled and memory limit",
+			inspections: []string{
+				`{"state":"failed","actions":[{"action_id":"act-1","kind":"container","state":"failed"}],
+				"failure":{"kind":"runtime","reason":"oom_killed","detail":"OOMKilled: workload exceeded its 2 GiB memory limit (exit 137)"}}`,
+			},
+			wantCode: cli.ExitFailure,
+			wantErr:  []string{"execution exec-1 failed: runtime: oom_killed: OOMKilled: workload exceeded its 2 GiB memory limit (exit 137)\n"},
+		},
+		{
 			name: "a request waiting for a human stops the follow",
 			inspections: []string{
 				`{"state":"running","actions":[

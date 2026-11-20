@@ -51,6 +51,10 @@ func cloneDefinitionContainer(in definition.Container) definition.Container {
 	out.Env = append([]definition.EnvVar(nil), in.Env...)
 	out.Secrets = append([]id.SecretName(nil), in.Secrets...)
 	out.Outputs = append([]id.OutputKey(nil), in.Outputs...)
+	if in.Resources != nil {
+		resources := *in.Resources
+		out.Resources = &resources
+	}
 	return out
 }
 

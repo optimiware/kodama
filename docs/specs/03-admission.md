@@ -11,7 +11,7 @@ The Shell decodes YAML into the Kernel's typed definition. Kernel validates stru
 | Location | Supported fields |
 |---|---|
 | Pipeline | `inputs`, literal `env`, ordered `actions`; optional `repository`, `service`, `on.push` |
-| Container action | `name`, `image`, `commands`, literal `env`, `secrets`, `timeout`, optional `outputs` |
+| Container action | `name`, `image`, `commands`, literal `env`, `secrets`, `timeout`, optional `outputs`, optional bounded `resources` (`memory`, `cpu`) |
 | Request action | `name`, `request`, `subject`, `timeout`, optional response `outputs` |
 
 Exactly one action kind is present. Actions are nonempty and uniquely named; no condition, parallel action, dependency declaration, loop, join, skipped state, or dynamic request insertion is supported. Runtime requirements from the admitted model must be supported by the selected adapter; C01 records their exact supported encoding rather than inventing ad hoc YAML extensions.

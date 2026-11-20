@@ -16,6 +16,7 @@ import (
 	"github.com/optimiware/kodema/internal/fault"
 	"github.com/optimiware/kodema/internal/id"
 	"github.com/optimiware/kodema/internal/kernel"
+	"github.com/optimiware/kodema/internal/kernel/definition"
 	"github.com/optimiware/kodema/internal/kernel/engine"
 )
 
@@ -1325,4 +1326,99 @@ func TestRemoveNeverCallsAnExternalVolumeRemoval(t *testing.T) {
 	if volume.Name != fx.volumeName {
 		t.Fatalf("workspace volume name = %q, want %q", volume.Name, fx.volumeName)
 	}
+}
+
+func TestObserveSurfacesOOMKilledAndMemoryLimit(t *testing.T) {
+	t.Run("uses inspected HostConfig memory limit", func(t *testing.T) {
+		fx := newFixture(t)
+		fx.prepare(t)
+		state := fx.seedExited(t, 137, true)
+		state.OOMKilled = true
+		state.MemoryLimitBytes = 512 << 20
+		fx.libpod.setContainer(state)
+
+		obs := fx.observe(t)
+		if obs.Kind != kernel.ObservationExited || !obs.OOMKilled || !obs.StopConfirmed() {
+			t.Fatalf("observation = %+v; want exited OOMKilled with confirmed stop", obs)
+		}
+		if code, ok := obs.ExitStatus(); !ok || code != 137 {
+			t.Fatalf("exit status = %d (%v); want 137", code, ok)
+		}
+		if obs.MemoryLimit != "512 MiB" {
+			t.Fatalf("memory limit = %q; want 512 MiB", obs.MemoryLimit)
+		}
+		if !strings.Contains(obs.Stop.Detail, "OOMKilled") {
+			t.Fatalf("stop detail = %q; want OOMKilled", obs.Stop.Detail)
+		}
+	})
+
+	t.Run("falls back to prepared memory limit when daemon omits HostConfig.Memory", func(t *testing.T) {
+		fx := newFixture(t)
+		fx.request.Container.Resources = &definition.Resources{Memory: "3Gi"}
+		fx.prepare(t)
+		state := fx.seedExited(t, 137, true)
+		state.OOMKilled = true
+		state.MemoryLimitBytes = 0
+		fx.libpod.setContainer(state)
+
+		obs := fx.observe(t)
+		if !obs.OOMKilled || obs.MemoryLimit != "3 GiB" {
+			t.Fatalf("observation = %+v; want OOMKilled with 3 GiB fallback", obs)
+		}
+	})
+}
+
+func TestPrepareAppliesBoundedResourcesAndEnforcesInstallationMax(t *testing.T) {
+	t.Run("applies per-action resources within installation bounds", func(t *testing.T) {
+		fx := newFixture(t)
+		fx.request.Container.Resources = &definition.Resources{Memory: "3Gi", CPU: "1500m"}
+		fx.prepare(t)
+		fx.start(t)
+
+		specs := fx.libpod.createSpecs()
+		if len(specs) != 1 {
+			t.Fatalf("createSpecs = %d; want 1", len(specs))
+		}
+		got := specs[0].Resources
+		if got.MemoryBytes != 3<<30 {
+			t.Fatalf("MemoryBytes = %d; want %d", got.MemoryBytes, int64(3<<30))
+		}
+		if got.CPUQuota != 150000 || got.CPUPeriod != DefaultCPUPeriod {
+			t.Fatalf("CPU = quota %d period %d; want 150000/%d", got.CPUQuota, got.CPUPeriod, DefaultCPUPeriod)
+		}
+	})
+
+	t.Run("refuses memory and cpu above installation maximum before any effect", func(t *testing.T) {
+		fx := newFixture(t)
+		fx.request.Container.Resources = &definition.Resources{Memory: "8Gi"}
+		_, err := fx.adapter.Prepare(context.Background(), fx.request)
+		assertFaultClass(t, err, fault.InvalidInput)
+		if !strings.Contains(err.Error(), "exceeds installation maximum") {
+			t.Fatalf("error = %v; want installation maximum diagnostic", err)
+		}
+		if hostFileExists(t, preparationPath(fx.root, fx.request.Identity.WorkloadID)) {
+			t.Fatal("refused memory request wrote a preparation marker")
+		}
+
+		fx2 := newFixture(t)
+		fx2.request.Container.Resources = &definition.Resources{CPU: "8"}
+		_, err = fx2.adapter.Prepare(context.Background(), fx2.request)
+		assertFaultClass(t, err, fault.InvalidInput)
+		if !strings.Contains(err.Error(), "exceeds installation maximum") {
+			t.Fatalf("error = %v; want installation maximum diagnostic", err)
+		}
+	})
+
+	t.Run("rejects invalid resource policy at adapter construction", func(t *testing.T) {
+		fx := newFixture(t)
+		_, err := New(Config{
+			Libpod:    fx.libpod,
+			Files:     fx.files,
+			Root:      fx.root,
+			KodemaURL: testKodemaURL,
+			Cleanup:   CleanupPolicy{Attempts: 1},
+			Resources: ResourcePolicy{DefaultMemoryBytes: 4 << 30, MaxMemoryBytes: 2 << 30},
+		})
+		assertFaultClass(t, err, fault.InvalidInput)
+	})
 }

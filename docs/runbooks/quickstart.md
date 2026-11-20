@@ -274,6 +274,12 @@ kodema down --purge    # removes the containers, volumes and state
 - `kodema up` finds the Podman socket itself: your user's on Linux, the
   running Podman machine's on macOS. `--socket <path>` or `KODEMA_SOCKET`
   names another; `status` and `down` then use it without either.
+- Workloads default to 2 GiB memory and 2 CPUs (max 4 GiB / 4 CPUs). Override
+  with `--workload-memory`, `--workload-cpus`, `--workload-max-memory`, and
+  `--workload-max-cpus`. See
+  [unprivileged OCI builds and workload limits](unprivileged-oci-builds.md) for
+  per-action `resources`, `OOMKilled` diagnostics, and building container images
+  without a host Docker/Podman socket.
 
 ## Limits
 

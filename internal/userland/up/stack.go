@@ -31,6 +31,10 @@ const (
 
 	DefaultTenantID  = "tenant-local"
 	DefaultProjectID = "project-local"
+	// DefaultWorkloadMemory and DefaultWorkloadCPUs are the practical default
+	// container limits for local `kodema up` stacks (2 GiB / 2 CPUs).
+	DefaultWorkloadMemory = "2Gi"
+	DefaultWorkloadCPUs   = "2"
 	// KodemaImageRepository holds the released images, tagged by version.
 	KodemaImageRepository = "ghcr.io/optimiware/kodema/kodema"
 	DefaultPostgresImage  = "docker.io/library/postgres:18-alpine@sha256:300ebd02c6d4de9ee27ad7f6855d5d21b4d3a4a5117767c1197d284c635d9736"
@@ -65,6 +69,10 @@ type UpConfig struct {
 	KodemaImage           string
 	PostgresImage         string
 	NATSImage             string
+	WorkloadMemory        string
+	WorkloadCPUs          string
+	WorkloadMaxMemory     string
+	WorkloadMaxCPUs       string
 	Foreground            bool
 	// DenyProjectSecrets disables the local workload secret-name allow-list so
 	// the server runs deny-by-default. By default (false) and when AllowSecrets
@@ -677,6 +685,7 @@ func Up(ctx context.Context, cfg UpConfig, stdout io.Writer) (_ StackDescriptor,
 	if secretRulesPath != "" {
 		serverEnv = append(serverEnv, "KODEMA_SECRET_RULES_FILE="+secretRulesPath)
 	}
+	serverEnv = append(serverEnv, workloadResourceEnv(cfg)...)
 
 	fmt.Fprintf(stderr, "starting kodema server (%s)...\n", serverContainer)
 	gitDir := filepath.Join(stateDir, "git")
@@ -1068,6 +1077,32 @@ func ensureSecretHex(path string, numBytes int) (string, error) {
 		return "", err
 	}
 	return val, nil
+}
+
+// workloadResourceEnv builds the KODEMA_WORKLOAD_* environment entries for the
+// server container. When a default limit is omitted and no maximum is set, it
+// supplies the practical local default (2Gi / 2). When only a maximum is set,
+// it omits the default limit so the Podman adapter's normalizeResourcePolicy
+// clamps the default cleanly down to the maximum instead of failing default > max.
+func workloadResourceEnv(cfg UpConfig) []string {
+	var env []string
+	if memory := strings.TrimSpace(cfg.WorkloadMemory); memory != "" {
+		env = append(env, "KODEMA_WORKLOAD_MEMORY_LIMIT="+memory)
+	} else if strings.TrimSpace(cfg.WorkloadMaxMemory) == "" {
+		env = append(env, "KODEMA_WORKLOAD_MEMORY_LIMIT="+DefaultWorkloadMemory)
+	}
+	if cpus := strings.TrimSpace(cfg.WorkloadCPUs); cpus != "" {
+		env = append(env, "KODEMA_WORKLOAD_CPU_LIMIT="+cpus)
+	} else if strings.TrimSpace(cfg.WorkloadMaxCPUs) == "" {
+		env = append(env, "KODEMA_WORKLOAD_CPU_LIMIT="+DefaultWorkloadCPUs)
+	}
+	if maxMemory := strings.TrimSpace(cfg.WorkloadMaxMemory); maxMemory != "" {
+		env = append(env, "KODEMA_WORKLOAD_MAX_MEMORY_LIMIT="+maxMemory)
+	}
+	if maxCPUs := strings.TrimSpace(cfg.WorkloadMaxCPUs); maxCPUs != "" {
+		env = append(env, "KODEMA_WORKLOAD_MAX_CPU_LIMIT="+maxCPUs)
+	}
+	return env
 }
 
 func waitPostgresReady(ctx context.Context, engine *EngineClient, containerName string) error {

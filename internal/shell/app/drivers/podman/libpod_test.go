@@ -505,6 +505,69 @@ func TestCreateBodyRejectsMalformedEnvironment(t *testing.T) {
 	}
 }
 
+func TestCreateContainerMapsCustomResourceLimits(t *testing.T) {
+	var got createSpec
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
+			t.Errorf("decode create body: %v", err)
+		}
+		writeJSON(w, http.StatusCreated, map[string]string{"Id": "container-res"})
+	}))
+	_, err := client.CreateContainer(context.Background(), runtimepodman.ContainerSpec{
+		Name:          "kodema-workload-res",
+		Image:         "registry.example.com/tools/build@sha256:" + strings.Repeat("b", 64),
+		RestartPolicy: "no",
+		Resources: runtimepodman.ContainerResources{
+			MemoryBytes: 4 << 30,
+			CPUQuota:    350000,
+			CPUPeriod:   100000,
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateContainer: %v", err)
+	}
+	if got.ResourceLimits == nil || got.ResourceLimits.Memory == nil || got.ResourceLimits.CPU == nil {
+		t.Fatalf("resource limits missing: %+v", got.ResourceLimits)
+	}
+	if got.ResourceLimits.Memory.Limit != 4<<30 {
+		t.Fatalf("memory limit = %d; want %d", got.ResourceLimits.Memory.Limit, int64(4<<30))
+	}
+	if got.ResourceLimits.CPU.Quota != 350000 || got.ResourceLimits.CPU.Period != 100000 {
+		t.Fatalf("cpu limit = %+v; want quota=350000 period=100000", got.ResourceLimits.CPU)
+	}
+	if _, err := createBody(runtimepodman.ContainerSpec{
+		Name:      "c",
+		Image:     "i",
+		Resources: runtimepodman.ContainerResources{MemoryBytes: -1},
+	}); err == nil {
+		t.Fatal("negative memory limit was accepted")
+	}
+}
+
+func TestInspectContainerMapsOOMKilledAndMemoryLimit(t *testing.T) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"Id":"oom-1",
+			"Name":"kodema-workload-oom",
+			"ImageName":"img@sha256:x",
+			"State":{"Status":"exited","Running":false,"OOMKilled":true,"Pid":0,"ExitCode":137,"StartedAt":"2026-01-01T00:00:00Z","FinishedAt":"2026-01-01T00:01:00Z"},
+			"HostConfig":{"Memory":2147483648},
+			"Config":{"Labels":{"kodema.dev/workload":"wl-oom"}}
+		}`))
+	}))
+	state, err := client.InspectContainer(context.Background(), "kodema-workload-oom")
+	if err != nil {
+		t.Fatalf("InspectContainer: %v", err)
+	}
+	if !state.OOMKilled || state.ExitCode != 137 || !state.WholeStopped {
+		t.Fatalf("state = %+v; want OOMKilled=true ExitCode=137 WholeStopped=true", state)
+	}
+	if state.MemoryLimitBytes != 2<<30 {
+		t.Fatalf("MemoryLimitBytes = %d; want %d", state.MemoryLimitBytes, int64(2<<30))
+	}
+}
+
 func TestInspectImageMapsPresentNotFoundAndErrors(t *testing.T) {
 	const pinned = "registry.example.com/tools/build@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 	var (

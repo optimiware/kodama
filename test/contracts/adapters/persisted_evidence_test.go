@@ -68,10 +68,12 @@ func TestSchemaPersistsKernelAndGatewayEvidence(t *testing.T) {
 		"kernel.Failure.Reason": {{"executions", "failure"}},
 		"kernel.Failure.Detail": {{"executions", "failure"}},
 
-		"kernel.Observation.Kind":     {{"actions", "observation"}},
-		"kernel.Observation.Proof":    {{"actions", "observation"}},
-		"kernel.Observation.ExitCode": {{"actions", "observation"}},
-		"kernel.Observation.Stop":     {{"actions", "observation"}},
+		"kernel.Observation.Kind":        {{"actions", "observation"}},
+		"kernel.Observation.Proof":       {{"actions", "observation"}},
+		"kernel.Observation.ExitCode":    {{"actions", "observation"}},
+		"kernel.Observation.Stop":        {{"actions", "observation"}},
+		"kernel.Observation.OOMKilled":   {{"actions", "observation"}},
+		"kernel.Observation.MemoryLimit": {{"actions", "observation"}},
 
 		"kernel.StopEvidence.State":  {{"actions", "stop"}},
 		"kernel.StopEvidence.Detail": {{"actions", "stop"}},

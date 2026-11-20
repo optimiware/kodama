@@ -982,6 +982,14 @@ func TestStackUpStatusAndDownWithMockEngine(t *testing.T) {
 		t.Fatalf("Up stdout missing %q:\n%s", wantLoginHint, out.String())
 	}
 
+	// The server container receives the practical workload resource defaults.
+	serverEnvText := fmt.Sprint(engine.env(t, "kodema-test-server"))
+	for _, want := range []string{"KODEMA_WORKLOAD_MEMORY_LIMIT=2Gi", "KODEMA_WORKLOAD_CPU_LIMIT=2"} {
+		if !strings.Contains(serverEnvText, want) {
+			t.Fatalf("server env = %s, want %q", serverEnvText, want)
+		}
+	}
+
 	// The server mounts the socket Podman reports for itself, which on a
 	// rootless Podman machine is not /run/podman/podman.sock.
 	serverBinds := fmt.Sprint(engine.hostConfig(t, "kodema-test-server")["Binds"])
@@ -1252,6 +1260,39 @@ func TestUpSecretRulesConfiguration(t *testing.T) {
 	})
 }
 
+func TestWorkloadResourceEnv(t *testing.T) {
+	if got := workloadResourceEnv(UpConfig{}); !slices.Equal(got, []string{
+		"KODEMA_WORKLOAD_MEMORY_LIMIT=" + DefaultWorkloadMemory,
+		"KODEMA_WORKLOAD_CPU_LIMIT=" + DefaultWorkloadCPUs,
+	}) {
+		t.Fatalf("default env = %v", got)
+	}
+	// Setting only max limits below defaults omits the default limit vars so the
+	// runtime's normalizeResourcePolicy clamps the default down cleanly.
+	if got := workloadResourceEnv(UpConfig{
+		WorkloadMaxMemory: "1Gi",
+		WorkloadMaxCPUs:   "1",
+	}); !slices.Equal(got, []string{
+		"KODEMA_WORKLOAD_MAX_MEMORY_LIMIT=1Gi",
+		"KODEMA_WORKLOAD_MAX_CPU_LIMIT=1",
+	}) {
+		t.Fatalf("max-only env = %v", got)
+	}
+	if got := workloadResourceEnv(UpConfig{
+		WorkloadMemory:    "4Gi",
+		WorkloadCPUs:      "3",
+		WorkloadMaxMemory: "8Gi",
+		WorkloadMaxCPUs:   "6",
+	}); !slices.Equal(got, []string{
+		"KODEMA_WORKLOAD_MEMORY_LIMIT=4Gi",
+		"KODEMA_WORKLOAD_CPU_LIMIT=3",
+		"KODEMA_WORKLOAD_MAX_MEMORY_LIMIT=8Gi",
+		"KODEMA_WORKLOAD_MAX_CPU_LIMIT=6",
+	}) {
+		t.Fatalf("explicit env = %v", got)
+	}
+}
+
 // TestProvisionCreatesWhatIsMissingAndRenewsTheGitCredential drives provision
 // against a public API that already holds the project (a repeated `kodema up`)
 // and has no Git credential yet.
@@ -1338,6 +1379,14 @@ type mockEngine struct {
 	// logs is the output every container reports.
 	logs   string
 	client *http.Client
+}
+
+// env returns the Env slice the named container was created with.
+func (engine *mockEngine) env(t *testing.T, name string) any {
+	t.Helper()
+	engine.mu.Lock()
+	defer engine.mu.Unlock()
+	return engine.created[name]["Env"]
 }
 
 // hostConfig returns the HostConfig the named container was created with.

@@ -22,7 +22,13 @@ type podWire struct {
 }
 
 type podSpecWire struct {
-	NodeName string `json:"nodeName"`
+	NodeName   string             `json:"nodeName"`
+	Containers []podContainerWire `json:"containers"`
+}
+
+type podContainerWire struct {
+	Name      string        `json:"name"`
+	Resources resourcesBody `json:"resources"`
 }
 
 type podStatusWire struct {
@@ -38,7 +44,8 @@ type containerStatusWire struct {
 }
 
 type terminatedStateWire struct {
-	ExitCode int `json:"exitCode"`
+	ExitCode int    `json:"exitCode"`
+	Reason   string `json:"reason"`
 }
 
 type podListWire struct {
@@ -96,12 +103,22 @@ func (wire podWire) pod(operation string) (runtimekube.Pod, error) {
 	if err != nil {
 		return runtimekube.Pod{}, undecodable(operation)
 	}
+	memoryLimits := make(map[string]string, len(wire.Spec.Containers))
+	for _, spec := range wire.Spec.Containers {
+		if limit := spec.Resources.Limits["memory"]; limit != "" {
+			memoryLimits[spec.Name] = limit
+		}
+	}
 	containers := make([]runtimekube.ContainerStatus, 0, len(wire.Status.ContainerStatuses))
 	for _, container := range wire.Status.ContainerStatuses {
-		status := runtimekube.ContainerStatus{Name: container.Name}
+		status := runtimekube.ContainerStatus{
+			Name:        container.Name,
+			MemoryLimit: memoryLimits[container.Name],
+		}
 		if container.State.Terminated != nil {
 			status.Terminated = true
 			status.ExitCode = container.State.Terminated.ExitCode
+			status.Reason = container.State.Terminated.Reason
 		}
 		containers = append(containers, status)
 	}

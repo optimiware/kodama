@@ -221,10 +221,12 @@ func (k ObservationKind) Valid() bool {
 // Observation is evidence about one stable workload identity. It never
 // collapses absence, unknown outcome and affirmative proof into a boolean.
 type Observation struct {
-	Kind     ObservationKind
-	Proof    string
-	ExitCode *int
-	Stop     *StopEvidence
+	Kind        ObservationKind
+	Proof       string
+	ExitCode    *int
+	Stop        *StopEvidence
+	OOMKilled   bool
+	MemoryLimit string
 }
 
 // UnknownObservation reports that the runtime could not classify the workload.
@@ -255,6 +257,20 @@ func ExitedObservation(exitCode int, stop StopEvidence) Observation {
 	return Observation{Kind: ObservationExited, ExitCode: &code, Stop: &stop}
 }
 
+// OOMKilledObservation reports an out-of-memory termination with its exit
+// status, optional configured memory limit description and separate stop
+// barrier.
+func OOMKilledObservation(exitCode int, memoryLimit string, stop StopEvidence) Observation {
+	code := exitCode
+	return Observation{
+		Kind:        ObservationExited,
+		ExitCode:    &code,
+		Stop:        &stop,
+		OOMKilled:   true,
+		MemoryLimit: strings.TrimSpace(memoryLimit),
+	}
+}
+
 // ExitStatus returns the exit status only for an exited observation.
 func (o Observation) ExitStatus() (int, bool) {
 	if o.Kind != ObservationExited || o.ExitCode == nil {
@@ -279,11 +295,11 @@ func (o Observation) StopConfirmed() bool {
 func (o Observation) Valid() bool {
 	switch o.Kind {
 	case ObservationUnknown, ObservationAbsent, ObservationRunning:
-		return o.Proof == "" && o.ExitCode == nil && o.Stop == nil
+		return o.Proof == "" && o.ExitCode == nil && o.Stop == nil && !o.OOMKilled && o.MemoryLimit == ""
 	case ObservationNeverStarted:
-		return strings.TrimSpace(o.Proof) != "" && o.ExitCode == nil && o.Stop == nil
+		return strings.TrimSpace(o.Proof) != "" && o.ExitCode == nil && o.Stop == nil && !o.OOMKilled && o.MemoryLimit == ""
 	case ObservationExited:
-		return o.ExitCode != nil && o.Stop != nil && o.Stop.State.Valid()
+		return o.ExitCode != nil && o.Stop != nil && o.Stop.State.Valid() && (o.OOMKilled || o.MemoryLimit == "")
 	default:
 		return false
 	}
@@ -308,11 +324,16 @@ func (o Observation) MarshalJSON() ([]byte, error) {
 		if o.ExitCode == nil || o.Stop == nil || !o.Stop.State.Valid() {
 			return nil, fmt.Errorf("kernel: exited observation requires exit status and valid stop evidence")
 		}
+		if !o.OOMKilled && o.MemoryLimit != "" {
+			return nil, fmt.Errorf("kernel: exited observation cannot set memory limit without OOMKilled")
+		}
 		return json.Marshal(struct {
-			Kind     ObservationKind `json:"kind"`
-			ExitCode int             `json:"exit_code"`
-			Stop     StopEvidence    `json:"stop"`
-		}{o.Kind, *o.ExitCode, *o.Stop})
+			Kind        ObservationKind `json:"kind"`
+			ExitCode    int             `json:"exit_code"`
+			Stop        StopEvidence    `json:"stop"`
+			OOMKilled   bool            `json:"oom_killed,omitempty"`
+			MemoryLimit string          `json:"memory_limit,omitempty"`
+		}{o.Kind, *o.ExitCode, *o.Stop, o.OOMKilled, o.MemoryLimit})
 	default:
 		return nil, fmt.Errorf("kernel: unknown observation kind %q", o.Kind)
 	}
@@ -321,10 +342,12 @@ func (o Observation) MarshalJSON() ([]byte, error) {
 // UnmarshalJSON decodes one observation and rejects collapsed uncertainty.
 func (o *Observation) UnmarshalJSON(data []byte) error {
 	var raw struct {
-		Kind     ObservationKind `json:"kind"`
-		Proof    string          `json:"proof"`
-		ExitCode *int            `json:"exit_code"`
-		Stop     *StopEvidence   `json:"stop"`
+		Kind        ObservationKind `json:"kind"`
+		Proof       string          `json:"proof"`
+		ExitCode    *int            `json:"exit_code"`
+		Stop        *StopEvidence   `json:"stop"`
+		OOMKilled   bool            `json:"oom_killed"`
+		MemoryLimit string          `json:"memory_limit"`
 	}
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
@@ -332,10 +355,12 @@ func (o *Observation) UnmarshalJSON(data []byte) error {
 		return fmt.Errorf("kernel: decode observation: %w", err)
 	}
 	observation := Observation{
-		Kind:     raw.Kind,
-		Proof:    raw.Proof,
-		ExitCode: raw.ExitCode,
-		Stop:     raw.Stop,
+		Kind:        raw.Kind,
+		Proof:       raw.Proof,
+		ExitCode:    raw.ExitCode,
+		Stop:        raw.Stop,
+		OOMKilled:   raw.OOMKilled,
+		MemoryLimit: raw.MemoryLimit,
 	}
 	if !observation.Valid() {
 		return fault.New(fault.InvalidInput, fmt.Sprintf("observation kind %q is inconsistent", raw.Kind))

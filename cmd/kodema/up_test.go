@@ -76,6 +76,56 @@ func TestUpDownStatusCLICommands(t *testing.T) {
 	if !capturedDown.Purge || capturedDown.Instance != "demo" || capturedDown.Socket != "/env/podman.sock" {
 		t.Fatalf("capturedDown = %+v", capturedDown)
 	}
+
+	// Unset workload memory/CPU flags remain empty so the runtime applies its
+	// defaults (2Gi / 2) or clamps them cleanly when only max limits are set.
+	if capturedUp.WorkloadMemory != "" || capturedUp.WorkloadCPUs != "" {
+		t.Fatalf("unset workload limits = %q/%q; want empty",
+			capturedUp.WorkloadMemory, capturedUp.WorkloadCPUs)
+	}
+	errBuf.Reset()
+	if code := runUpEntry(context.Background(), []string{
+		"--name", "demo",
+		"--workload-max-memory", "1Gi",
+		"--workload-max-cpus", "1",
+	}, &out, &errBuf); code != 0 {
+		t.Fatalf("runUpEntry with max-only limits below defaults exit = %d: %s", code, errBuf.String())
+	}
+	if capturedUp.WorkloadMemory != "" || capturedUp.WorkloadCPUs != "" ||
+		capturedUp.WorkloadMaxMemory != "1Gi" || capturedUp.WorkloadMaxCPUs != "1" {
+		t.Fatalf("captured max-only workload limits = %+v", capturedUp)
+	}
+	errBuf.Reset()
+	if code := runUpEntry(context.Background(), []string{
+		"--name", "demo",
+		"--workload-memory", "4Gi",
+		"--workload-cpus", "3",
+		"--workload-max-memory", "8Gi",
+		"--workload-max-cpus", "6",
+	}, &out, &errBuf); code != 0 {
+		t.Fatalf("runUpEntry with custom limits exit = %d: %s", code, errBuf.String())
+	}
+	if capturedUp.WorkloadMemory != "4Gi" || capturedUp.WorkloadCPUs != "3" ||
+		capturedUp.WorkloadMaxMemory != "8Gi" || capturedUp.WorkloadMaxCPUs != "6" {
+		t.Fatalf("captured custom workload limits = %+v", capturedUp)
+	}
+	errBuf.Reset()
+	if code := runUpEntry(context.Background(), []string{"--name", "demo", "--workload-memory", "bad"}, &out, &errBuf); code != 2 {
+		t.Fatalf("invalid --workload-memory exit = %d; want 2", code)
+	}
+	errBuf.Reset()
+	if code := runUpEntry(context.Background(), []string{"--name", "demo", "--workload-memory", "2Gi", "--workload-max-memory", "1Gi"}, &out, &errBuf); code != 2 {
+		t.Fatalf("explicit default > max memory exit = %d; want 2", code)
+	}
+	errBuf.Reset()
+	if code := runUpEntry(context.Background(), []string{"--name", "demo", "--workload-cpus", "2", "--workload-max-cpus", "1"}, &out, &errBuf); code != 2 {
+		t.Fatalf("explicit default > max cpus exit = %d; want 2", code)
+	}
+	t.Setenv("KODEMA_WORKLOAD_MEMORY_LIMIT", "2Gi")
+	errBuf.Reset()
+	if code := runUpEntry(context.Background(), []string{"--name", "demo", "--workload-max-memory", "1Gi"}, &out, &errBuf); code != 2 {
+		t.Fatalf("env default > max memory exit = %d; want 2", code)
+	}
 }
 
 func TestUpCLISecretRuleFlags(t *testing.T) {

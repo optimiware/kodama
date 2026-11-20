@@ -87,7 +87,14 @@ type serverOptions struct {
 	// containers' platform, that workloads mount at /kodema/bin. Empty selects
 	// the running executable on Linux.
 	ToolboxFile string
-	MCPPath     string
+	// WorkloadMemory, WorkloadCPUs, WorkloadMaxMemory and WorkloadMaxCPUs
+	// configure the test profile's default and maximum container limits
+	// (for example "2Gi", "2", "4Gi", "4"). Empty selects the runtime defaults.
+	WorkloadMemory    string
+	WorkloadCPUs      string
+	WorkloadMaxMemory string
+	WorkloadMaxCPUs   string
+	MCPPath           string
 	// LoopInterval is the durable profiles' background scan cadence. Zero
 	// selects the profile default (one second); the value is bounded by
 	// resolvedLoopInterval before any adapter is built.
@@ -189,6 +196,10 @@ func applyServerEnv(options serverOptions) (serverOptions, error) {
 	options.WorkloadCAFile = envOr("KODEMA_WORKLOAD_CA_FILE", options.WorkloadCAFile)
 	options.WorkloadGitURL = envOr("KODEMA_WORKLOAD_GIT_URL", options.WorkloadGitURL)
 	options.ToolboxFile = envOr("KODEMA_TOOLBOX_FILE", options.ToolboxFile)
+	options.WorkloadMemory = envOr("KODEMA_WORKLOAD_MEMORY_LIMIT", options.WorkloadMemory)
+	options.WorkloadCPUs = envOr("KODEMA_WORKLOAD_CPU_LIMIT", options.WorkloadCPUs)
+	options.WorkloadMaxMemory = envOr("KODEMA_WORKLOAD_MAX_MEMORY_LIMIT", options.WorkloadMaxMemory)
+	options.WorkloadMaxCPUs = envOr("KODEMA_WORKLOAD_MAX_CPU_LIMIT", options.WorkloadMaxCPUs)
 	options.MCPPath = envOr("KODEMA_MCP_PATH", options.MCPPath)
 	options.GitStorageRoot = envOr("KODEMA_GIT_STORAGE_ROOT", options.GitStorageRoot)
 	interval, err := envDurationStrict("KODEMA_LOOP_INTERVAL", options.LoopInterval)
@@ -275,28 +286,32 @@ func envDurationStrict(name string, fallback time.Duration) (time.Duration, erro
 
 // serverFile is the optional JSON configuration file shape.
 type serverFile struct {
-	Profile         string               `json:"profile"`
-	Address         string               `json:"address"`
-	DataDir         string               `json:"data_dir"`
-	InstallationID  string               `json:"installation_id"`
-	PublicURL       string               `json:"public_url"`
-	WorkloadURL     string               `json:"workload_url"`
-	WorkloadCAFile  string               `json:"workload_ca_file"`
-	WorkloadGitURL  string               `json:"workload_git_url"`
-	ToolboxFile     string               `json:"toolbox_file"`
-	MCPPath         string               `json:"mcp_path"`
-	LoopInterval    string               `json:"loop_interval"`
-	GitStorageRoot  string               `json:"git_storage_root"`
-	DevTokens       []string             `json:"dev_tokens"`
-	DevPrincipal    string               `json:"dev_principal"`
-	DevTenant       string               `json:"dev_tenant"`
-	DevProject      string               `json:"dev_project"`
-	DevRoles        string               `json:"dev_roles"`
-	DevExpiry       string               `json:"dev_expiry"`
-	Discovery       *serverDiscoveryFile `json:"discovery"`
-	ModelsFile      string               `json:"models_file"`
-	ToolProxyFile   string               `json:"tool_proxy_file"`
-	SecretRulesFile string               `json:"secret_rules_file"`
+	Profile           string               `json:"profile"`
+	Address           string               `json:"address"`
+	DataDir           string               `json:"data_dir"`
+	InstallationID    string               `json:"installation_id"`
+	PublicURL         string               `json:"public_url"`
+	WorkloadURL       string               `json:"workload_url"`
+	WorkloadCAFile    string               `json:"workload_ca_file"`
+	WorkloadGitURL    string               `json:"workload_git_url"`
+	ToolboxFile       string               `json:"toolbox_file"`
+	WorkloadMemory    string               `json:"workload_memory"`
+	WorkloadCPUs      string               `json:"workload_cpus"`
+	WorkloadMaxMemory string               `json:"workload_max_memory"`
+	WorkloadMaxCPUs   string               `json:"workload_max_cpus"`
+	MCPPath           string               `json:"mcp_path"`
+	LoopInterval      string               `json:"loop_interval"`
+	GitStorageRoot    string               `json:"git_storage_root"`
+	DevTokens         []string             `json:"dev_tokens"`
+	DevPrincipal      string               `json:"dev_principal"`
+	DevTenant         string               `json:"dev_tenant"`
+	DevProject        string               `json:"dev_project"`
+	DevRoles          string               `json:"dev_roles"`
+	DevExpiry         string               `json:"dev_expiry"`
+	Discovery         *serverDiscoveryFile `json:"discovery"`
+	ModelsFile        string               `json:"models_file"`
+	ToolProxyFile     string               `json:"tool_proxy_file"`
+	SecretRulesFile   string               `json:"secret_rules_file"`
 }
 
 // serverDiscoveryFile is the optional public discovery configuration nested as
@@ -360,6 +375,10 @@ func parseServerOptions(args []string, stderr io.Writer) (serverOptions, int) {
 	flags.StringVar(&options.WorkloadCAFile, "workload-ca-file", options.WorkloadCAFile, "test profile: PEM CA bundle mounted read-only into workloads at /kodema/ca.crt")
 	flags.StringVar(&options.WorkloadGitURL, "workload-git-url", options.WorkloadGitURL, "HTTPS base URL of the Git service as workloads reach it; production replaces {tenant}")
 	flags.StringVar(&options.ToolboxFile, "toolbox-file", options.ToolboxFile, "test profile: kodema binary for the containers' platform, mounted into workloads at /kodema/bin (default on Linux: this executable)")
+	flags.StringVar(&options.WorkloadMemory, "workload-memory", options.WorkloadMemory, "test profile: default memory limit for workload containers (e.g. 2Gi, 4Gi)")
+	flags.StringVar(&options.WorkloadCPUs, "workload-cpus", options.WorkloadCPUs, "test profile: default CPU limit for workload containers (e.g. 2, 1500m, 4)")
+	flags.StringVar(&options.WorkloadMaxMemory, "workload-max-memory", options.WorkloadMaxMemory, "test profile: maximum memory limit a pipeline action may request (e.g. 4Gi, 8Gi)")
+	flags.StringVar(&options.WorkloadMaxCPUs, "workload-max-cpus", options.WorkloadMaxCPUs, "test profile: maximum CPU limit a pipeline action may request (e.g. 4, 8)")
 	flags.StringVar(&options.MCPPath, "mcp-path", options.MCPPath, "MCP JSON-RPC path")
 	flags.DurationVar(&options.LoopInterval, "loop-interval", options.LoopInterval, "durable profiles' background scan interval (default 1s, 100ms to 1m)")
 	flags.StringVar(&options.GitStorageRoot, "git-storage-root", options.GitStorageRoot, "mounted tenant Git storage root for retained-commit keep refs")
@@ -453,6 +472,18 @@ func mergeServerFile(file serverFile, options serverOptions) (serverOptions, err
 	}
 	if file.ToolboxFile != "" {
 		options.ToolboxFile = file.ToolboxFile
+	}
+	if file.WorkloadMemory != "" {
+		options.WorkloadMemory = file.WorkloadMemory
+	}
+	if file.WorkloadCPUs != "" {
+		options.WorkloadCPUs = file.WorkloadCPUs
+	}
+	if file.WorkloadMaxMemory != "" {
+		options.WorkloadMaxMemory = file.WorkloadMaxMemory
+	}
+	if file.WorkloadMaxCPUs != "" {
+		options.WorkloadMaxCPUs = file.WorkloadMaxCPUs
 	}
 	if file.MCPPath != "" {
 		options.MCPPath = file.MCPPath

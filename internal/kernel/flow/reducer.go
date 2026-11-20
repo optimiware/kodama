@@ -365,18 +365,14 @@ func reduceObserve(execution kernel.Execution, fact ObserveFact) (kernel.Executi
 				commit.Output = OutputChange{Action: OutputDiscard}
 				commit.PendingCancellations = pendingCancellations(execution, action.ID)
 				commit.InvalidateCredential = true
-				commit.Failure = &kernel.Failure{
-					Kind:   kernel.FailureRuntime,
-					Reason: "workload_exited",
-					Detail: fmt.Sprintf("workload exited with status %d", code),
-				}
+				commit.Failure = workloadExitFailure(code, observation.OOMKilled, observation.MemoryLimit)
 				// A failed exit settles the execution without a later
 				// Reconcile pass, so the pending cleanup intent/progress must
 				// travel in this same commit. The just-exited workload counts
 				// as an effect workload: its launch was durably issued before
 				// the command ran, and an unknown identity may have applied it.
 				workload := firstEffectWorkload(execution)
-				commit.Cleanup = &CleanupIntent{WorkloadID: workload, WorkspaceID: execution.WorkspaceID, Reason: "workload_exited"}
+				commit.Cleanup = &CleanupIntent{WorkloadID: workload, WorkspaceID: execution.WorkspaceID, Reason: commit.Failure.Reason}
 				commit.CleanupUpdate = &CleanupUpdate{State: kernel.CleanupPending, WorkloadID: workload, WorkspaceID: execution.WorkspaceID}
 			}
 		}
@@ -1130,8 +1126,31 @@ func cloneStop(stop *kernel.StopEvidence) *kernel.StopEvidence {
 	return &cloned
 }
 
+// workloadExitFailure builds the typed terminal diagnostic for a nonzero
+// workload exit, surfacing OOMKilled and the configured memory limit when the
+// runtime observed an out-of-memory kill.
+func workloadExitFailure(code int, oomKilled bool, memoryLimit string) *kernel.Failure {
+	if oomKilled {
+		detail := fmt.Sprintf("OOMKilled: workload exceeded its memory limit (exit %d)", code)
+		if memoryLimit != "" {
+			detail = fmt.Sprintf("OOMKilled: workload exceeded its %s memory limit (exit %d)", memoryLimit, code)
+		}
+		return &kernel.Failure{
+			Kind:   kernel.FailureRuntime,
+			Reason: "oom_killed",
+			Detail: detail,
+		}
+	}
+	return &kernel.Failure{
+		Kind:   kernel.FailureRuntime,
+		Reason: "workload_exited",
+		Detail: fmt.Sprintf("workload exited with status %d", code),
+	}
+}
+
 func observationsEqual(recorded, candidate kernel.Observation) bool {
-	if recorded.Kind != candidate.Kind || recorded.Proof != candidate.Proof {
+	if recorded.Kind != candidate.Kind || recorded.Proof != candidate.Proof ||
+		recorded.OOMKilled != candidate.OOMKilled || recorded.MemoryLimit != candidate.MemoryLimit {
 		return false
 	}
 	if (recorded.ExitCode == nil) != (candidate.ExitCode == nil) {
