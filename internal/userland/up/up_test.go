@@ -962,6 +962,28 @@ func TestStackUpStatusAndDownWithMockEngine(t *testing.T) {
 	if !strings.Contains(serverBinds, "/run/user/501/podman/podman.sock:/var/run/kodema-container.sock") {
 		t.Fatalf("server binds = %s, want the engine's own socket", serverBinds)
 	}
+	// A fresh `kodema up` configures project-scoped workload secret rules so
+	// project secrets written via secret.write can materialize in workloads.
+	secretRulesPath := filepath.Join(desc.StateDir, secretRulesFileName)
+	serverEnv := engine.containerEnv(t, "kodema-test-server")
+	if !slices.Contains(serverEnv, "KODEMA_SECRET_RULES_FILE="+secretRulesPath) {
+		t.Fatalf("server env missing KODEMA_SECRET_RULES_FILE=%s: %v", secretRulesPath, serverEnv)
+	}
+	rulesData, err := os.ReadFile(secretRulesPath)
+	if err != nil {
+		t.Fatalf("read secret-rules.json: %v", err)
+	}
+	var parsedRules localSecretRulesFile
+	if err := json.Unmarshal(rulesData, &parsedRules); err != nil {
+		t.Fatalf("decode secret-rules.json: %v", err)
+	}
+	if len(parsedRules.SecretRules) != 1 ||
+		parsedRules.SecretRules[0].TenantID != DefaultTenantID ||
+		parsedRules.SecretRules[0].ProjectID != DefaultProjectID ||
+		!parsedRules.SecretRules[0].AllowAll ||
+		len(parsedRules.SecretRules[0].Names) != 0 {
+		t.Fatalf("default secret-rules.json = %+v; want project-scoped allow_all", parsedRules)
+	}
 	// Every container that mounts a host path runs unconfined by SELinux; the
 	// broker mounts a named volume only and stays confined.
 	for _, name := range []string{"kodema-test-postgres", "kodema-test-bootstrap", "kodema-test-server", "kodema-test-git-init", "kodema-test-git"} {
@@ -1109,6 +1131,101 @@ func TestUpNeedsPodman(t *testing.T) {
 	}
 }
 
+func TestUpSecretRulesConfiguration(t *testing.T) {
+	runMockUp := func(t *testing.T, home string, cfg UpConfig) (StackDescriptor, *mockEngine, error) {
+		t.Helper()
+		engine := newMockEngine(t)
+		port, err := allocateLoopbackPort()
+		if err != nil {
+			t.Fatal(err)
+		}
+		gwCtx, stopGW := context.WithCancel(context.Background())
+		t.Cleanup(stopGW)
+		cfg.Instance = "sec"
+		cfg.ListenAddr = fmt.Sprintf("127.0.0.1:%d", port)
+		cfg.GOOS = "darwin"
+		cfg.HomeDir = home
+		cfg.DetectOpts = &DetectOptions{
+			ExplicitSocket: "/mock/podman.sock",
+			GOOS:           "darwin",
+			HomeDir:        home,
+			StatSocket:     func(string) bool { return true },
+			PingSocket:     func(context.Context, string) (RuntimeKind, error) { return KindPodman, nil },
+		}
+		cfg.EngineHTTP = engine.client
+		cfg.SpawnGateway = func(stateDir string) (int, error) {
+			go func() { _ = ServeStackGateway(gwCtx, stateDir) }()
+			return os.Getpid(), nil
+		}
+		cfg.Provision = func(context.Context, provisionConfig) (string, error) { return "kodsvc.test", nil }
+		desc, err := Up(context.Background(), cfg, io.Discard)
+		return desc, engine, err
+	}
+
+	t.Run("exact AllowSecrets writes names list and deduplicates", func(t *testing.T) {
+		home := t.TempDir()
+		desc, engine, err := runMockUp(t, home, UpConfig{
+			TenantID:     "tenant-dev",
+			ProjectID:    "project-dev",
+			AllowSecrets: []string{"MY_SECRET", "API_KEY", "MY_SECRET"},
+		})
+		if err != nil {
+			t.Fatalf("Up: %v", err)
+		}
+		path := filepath.Join(desc.StateDir, secretRulesFileName)
+		if info, err := os.Stat(path); err != nil || info.Mode().Perm() != 0o600 {
+			t.Fatalf("secret-rules.json stat/mode = %v, %v; want 0600", info, err)
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var parsed localSecretRulesFile
+		if err := json.Unmarshal(data, &parsed); err != nil {
+			t.Fatal(err)
+		}
+		if len(parsed.SecretRules) != 1 || parsed.SecretRules[0].AllowAll ||
+			parsed.SecretRules[0].TenantID != "tenant-dev" || parsed.SecretRules[0].ProjectID != "project-dev" ||
+			!slices.Equal(parsed.SecretRules[0].Names, []string{"MY_SECRET", "API_KEY"}) {
+			t.Fatalf("parsed secret-rules.json = %+v", parsed)
+		}
+		env := engine.containerEnv(t, "kodema-sec-server")
+		if !slices.Contains(env, "KODEMA_SECRET_RULES_FILE="+path) {
+			t.Fatalf("server env missing KODEMA_SECRET_RULES_FILE=%s", path)
+		}
+
+		// Re-running with DenyProjectSecrets removes the stale file and omits the env var.
+		_, denyEngine, err := runMockUp(t, home, UpConfig{
+			TenantID:           "tenant-dev",
+			ProjectID:          "project-dev",
+			DenyProjectSecrets: true,
+		})
+		if err != nil {
+			t.Fatalf("Up(DenyProjectSecrets): %v", err)
+		}
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Fatalf("stale secret-rules.json still present: %v", err)
+		}
+		for _, entry := range denyEngine.containerEnv(t, "kodema-sec-server") {
+			if strings.HasPrefix(entry, "KODEMA_SECRET_RULES_FILE=") {
+				t.Fatalf("DenyProjectSecrets server env unexpectedly set %s", entry)
+			}
+		}
+	})
+
+	t.Run("rejects reserved KODEMA_TOKEN, invalid names and conflicting options", func(t *testing.T) {
+		for _, cfg := range []UpConfig{
+			{AllowSecrets: []string{"KODEMA_TOKEN"}},
+			{AllowSecrets: []string{"bad_lowercase"}},
+			{DenyProjectSecrets: true, AllowSecrets: []string{"MY_SECRET"}},
+		} {
+			if _, _, err := runMockUp(t, t.TempDir(), cfg); err == nil {
+				t.Fatalf("Up(%+v) succeeded; want error", cfg)
+			}
+		}
+	})
+}
+
 // TestProvisionCreatesWhatIsMissingAndRenewsTheGitCredential drives provision
 // against a public API that already holds the project (a repeated `kodema up`)
 // and has no Git credential yet.
@@ -1204,6 +1321,24 @@ func (engine *mockEngine) hostConfig(t *testing.T, name string) map[string]any {
 		t.Fatalf("container %q was not created with a HostConfig: %v", name, engine.created[name])
 	}
 	return hostConfig
+}
+
+// containerEnv returns the Env slice the named container was created with.
+func (engine *mockEngine) containerEnv(t *testing.T, name string) []string {
+	t.Helper()
+	engine.mu.Lock()
+	defer engine.mu.Unlock()
+	raw, ok := engine.created[name]["Env"].([]any)
+	if !ok {
+		t.Fatalf("container %q was not created with an Env slice: %v", name, engine.created[name])
+	}
+	env := make([]string, 0, len(raw))
+	for _, entry := range raw {
+		if s, ok := entry.(string); ok {
+			env = append(env, s)
+		}
+	}
+	return env
 }
 
 func newMockEngine(t *testing.T) *mockEngine {

@@ -3,10 +3,13 @@ package secret_test
 // Behavior tests for the configuration-backed, deny-by-default NamePolicy.
 //
 // The policy is trusted installation configuration, never a store table or a
-// per-name grant row. It carries exact declared names only: no globs, no
-// prefix matching and no implicit widening. These tests pin the allow/deny
-// matrix, scope containment, per-consumer isolation, construction validation,
-// post-construction immutability, concurrent reads and error hygiene.
+// per-name grant row. Exact rules carry declared names only (no globs, no
+// prefix matching, no implicit widening); the workload consumer additionally
+// supports an explicit scoped AllowAll rule for local development stacks while
+// refusing reserved/invalid names and Shell-internal consumers. These tests pin
+// the allow/deny matrix, scope containment, per-consumer isolation,
+// construction validation, post-construction immutability, concurrent reads and
+// error hygiene.
 
 import (
 	"context"
@@ -230,8 +233,11 @@ func TestConfiguredNamePolicyErrorsCarryNoSecretMaterial(t *testing.T) {
 	if strings.Contains(denial.Error(), secretValue) {
 		t.Fatalf("denial error %q leaks secret material", denial.Error())
 	}
-	if strings.Contains(denial.Error(), "UNKNOWN") || strings.Contains(denial.Error(), "DB_PASSWORD") {
-		t.Fatalf("denial error %q echoes a secret name", denial.Error())
+	if !strings.Contains(denial.Error(), `"UNKNOWN"`) || !strings.Contains(denial.Error(), "not authorized by server secret rules") {
+		t.Fatalf("denial error %q does not name the unauthorized secret with an actionable message", denial.Error())
+	}
+	if strings.Contains(denial.Error(), "DB_PASSWORD") {
+		t.Fatalf("denial error %q leaks an allowed secret name from the policy", denial.Error())
 	}
 
 	_, construction := secret.NewConfiguredNamePolicy(secret.NamePolicyConfig{
@@ -334,6 +340,121 @@ func TestConfiguredNamePolicyDeniesResolverBeforeLookup(t *testing.T) {
 	if len(cipher.openCalls()) != 0 {
 		t.Fatal("a denied name was decrypted")
 	}
+}
+
+func TestConfiguredNamePolicyAllowAllRules(t *testing.T) {
+	projectA := projectScope("tenant-a", "project-a")
+	projectB := projectScope("tenant-a", "project-b")
+	tenantA := tenantScope("tenant-a")
+	tenantB := tenantScope("tenant-b")
+	projectOtherTenant := projectScope("tenant-b", "project-b")
+
+	t.Run("project-scoped AllowAll stays confined to its project and blocks reserved/invalid names", func(t *testing.T) {
+		policy := newConfiguredPolicy(t, secret.NamePolicyConfig{
+			Consumer: secret.ConsumerWorkload,
+			Rules: []secret.NameRule{
+				{Scope: projectA, AllowAll: true},
+			},
+		})
+		checkAllowed(t, policy, projectA, "MY_SECRET")
+		checkAllowed(t, policy, projectA, "UC06_API_KEY")
+		checkDenied(t, policy, projectB, "MY_SECRET")
+		checkDenied(t, policy, tenantA, "MY_SECRET")
+		checkDenied(t, policy, projectOtherTenant, "MY_SECRET")
+		checkDenied(t, policy, projectA, id.SecretTokenName)
+		if err := policy.Check(context.Background(), projectA, id.SecretTokenName); !strings.Contains(err.Error(), id.SecretTokenName) {
+			t.Fatalf("KODEMA_TOKEN denial = %q; want KODEMA_TOKEN named", err)
+		}
+		for _, invalid := range []id.SecretName{"lowercase_bad", "", "../ESCAPE"} {
+			err := policy.Check(context.Background(), projectA, invalid)
+			requireClass(t, err, fault.Forbidden)
+			if invalid != "" && strings.Contains(err.Error(), string(invalid)) {
+				t.Fatalf("invalid secret name %q was echoed in denial %q", invalid, err)
+			}
+		}
+	})
+
+	t.Run("tenant-scoped AllowAll covers projects in that tenant only", func(t *testing.T) {
+		policy := newConfiguredPolicy(t, secret.NamePolicyConfig{
+			Consumer: secret.ConsumerWorkload,
+			Rules: []secret.NameRule{
+				{Scope: tenantA, AllowAll: true},
+			},
+		})
+		checkAllowed(t, policy, tenantA, "SHARED_KEY")
+		checkAllowed(t, policy, projectA, "SHARED_KEY")
+		checkAllowed(t, policy, projectB, "ANOTHER_KEY")
+		checkDenied(t, policy, tenantB, "SHARED_KEY")
+		checkDenied(t, policy, projectOtherTenant, "SHARED_KEY")
+		checkDenied(t, policy, projectA, id.SecretTokenName)
+	})
+
+	t.Run("AllowAll is refused for non-workload consumers and when combined with explicit Names", func(t *testing.T) {
+		cases := []struct {
+			label  string
+			config secret.NamePolicyConfig
+		}{
+			{
+				label: "gateway consumer",
+				config: secret.NamePolicyConfig{
+					Consumer: secret.ConsumerGateway,
+					Rules:    []secret.NameRule{{Scope: projectA, AllowAll: true}},
+				},
+			},
+			{
+				label: "mcp consumer",
+				config: secret.NamePolicyConfig{
+					Consumer: secret.ConsumerMCP,
+					Rules:    []secret.NameRule{{Scope: projectA, AllowAll: true}},
+				},
+			},
+			{
+				label: "allow_all combined with explicit names",
+				config: secret.NamePolicyConfig{
+					Consumer: secret.ConsumerWorkload,
+					Rules:    []secret.NameRule{{Scope: projectA, Names: []id.SecretName{"API_KEY"}, AllowAll: true}},
+				},
+			},
+		}
+		for _, tc := range cases {
+			t.Run(tc.label, func(t *testing.T) {
+				policy, err := secret.NewConfiguredNamePolicy(tc.config)
+				if policy != nil {
+					t.Fatalf("policy = %+v; want nil", policy)
+				}
+				requireClass(t, err, fault.InvalidInput)
+			})
+		}
+	})
+
+	t.Run("AllowAll resolves stored project secrets and fails closed for missing ones", func(t *testing.T) {
+		policy := newConfiguredPolicy(t, secret.NamePolicyConfig{
+			Consumer: secret.ConsumerWorkload,
+			Rules:    []secret.NameRule{{Scope: projectA, AllowAll: true}},
+		})
+		lookup := &fakeLookup{rows: map[string]secret.Stored{
+			lookupKey(projectA, "MY_SECRET"): testStored(projectA, "MY_SECRET", "secret-1", 1, 1),
+		}}
+		cipher := &fakeCipher{values: map[id.SecretName]string{"MY_SECRET": "value-1"}}
+		resolver, err := secret.NewResolver(secret.ResolverConfig{
+			InstallationID: "install-1",
+			Policy:         policy,
+			Lookup:         lookup,
+			Cipher:         cipher,
+		})
+		if err != nil {
+			t.Fatalf("NewResolver: %v", err)
+		}
+		resolved, err := resolver.Resolve(context.Background(), resolverRequest(projectA, "MY_SECRET"))
+		if err != nil {
+			t.Fatalf("Resolve(MY_SECRET): %v", err)
+		}
+		if len(resolved) != 1 || resolved[0].Value != "value-1" {
+			t.Fatalf("resolved = %+v; want MY_SECRET=value-1", resolved)
+		}
+		_, err = resolver.Resolve(context.Background(), resolverRequest(projectA, "NONEXISTENT"))
+		requireClass(t, err, fault.NotFound)
+	})
 }
 
 func isForbidden(err error) bool {

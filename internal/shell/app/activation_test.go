@@ -147,8 +147,11 @@ func TestActivationSecretsAndCredential(t *testing.T) {
 		if recorder.Code != api.HTTPStatusSuccess {
 			t.Fatalf("execution.inspect status=%d", recorder.Code)
 		}
-		if containsMaterial(recorder.Body.String(), activationSecretValue) {
-			t.Fatal("the preparation refusal rendered the stored secret value")
+		if !strings.Contains(recorder.Body.String(), string(activationSecretName)) {
+			t.Fatalf("execution.inspect did not name the unauthorized secret %q: %s", activationSecretName, recorder.Body.String())
+		}
+		if containsMaterial(recorder.Body.String(), activationSecretValue, string(activationOtherName)) {
+			t.Fatal("the preparation refusal rendered the stored secret value or an allowed rule name")
 		}
 		if containsMaterial(fixture.environment.logs.String(), activationSecretValue) {
 			t.Fatal("composition logs contain a denied secret value")

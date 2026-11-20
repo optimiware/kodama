@@ -36,6 +36,10 @@ func runUpEntry(ctx context.Context, args []string, stdout, stderr io.Writer) in
 	foreground := flags.Bool("foreground", false, "keep the single-origin TLS gateway in the foreground")
 	gatewayOnly := flags.Bool("gateway-only", false, "serve only the single-origin TLS gateway from an existing stack.json")
 	allowUnshared := flags.Bool("allow-unshared-state-dir", false, "allow --state-dir outside $HOME on macOS")
+	defaultAllowProjectSecrets, allowSecretsEnvErr := envBoolStrict("KODEMA_UP_ALLOW_PROJECT_SECRETS", true)
+	allowProjectSecrets := flags.Bool("allow-project-secrets", defaultAllowProjectSecrets, "allow project-stored workload secrets in the local stack (env KODEMA_UP_ALLOW_PROJECT_SECRETS)")
+	var allowSecrets stringList
+	flags.Var(&allowSecrets, "allow-secret", "allow only this exact workload secret name in the local project (repeatable; overrides allow-all)")
 	if err := flags.Parse(args); err != nil {
 		return 2
 	}
@@ -53,6 +57,20 @@ func runUpEntry(ctx context.Context, args []string, stdout, stderr io.Writer) in
 			return 1
 		}
 		return 0
+	}
+	if allowSecretsEnvErr != nil {
+		usage(stderr, allowSecretsEnvErr.Error())
+		return 2
+	}
+	if !*allowProjectSecrets && len(allowSecrets) > 0 {
+		usage(stderr, "up: cannot combine --allow-project-secrets=false with --allow-secret")
+		return 2
+	}
+	for _, entry := range allowSecrets {
+		if _, err := id.ParseSecretName(strings.TrimSpace(entry)); err != nil {
+			usage(stderr, fmt.Sprintf("invalid --allow-secret %q: %v", entry, err))
+			return 2
+		}
 	}
 	if err := up.ValidateInstanceName(*name); err != nil {
 		usage(stderr, err.Error())
@@ -81,6 +99,8 @@ func runUpEntry(ctx context.Context, args []string, stdout, stderr io.Writer) in
 		ProjectID:             *project,
 		KodemaImage:           *image,
 		Foreground:            *foreground,
+		DenyProjectSecrets:    !*allowProjectSecrets,
+		AllowSecrets:          allowSecrets,
 	}, stdout)
 	if err != nil {
 		fmt.Fprintf(stderr, "kodema: %v\n", err)

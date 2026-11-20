@@ -77,3 +77,70 @@ func TestUpDownStatusCLICommands(t *testing.T) {
 		t.Fatalf("capturedDown = %+v", capturedDown)
 	}
 }
+
+func TestUpCLISecretRuleFlags(t *testing.T) {
+	origUp := runUpStack
+	t.Cleanup(func() { runUpStack = origUp })
+
+	var captured up.UpConfig
+	runUpStack = func(_ context.Context, cfg up.UpConfig, _ io.Writer) (up.StackDescriptor, error) {
+		captured = cfg
+		return up.StackDescriptor{Instance: cfg.Instance}, nil
+	}
+
+	var out, errBuf bytes.Buffer
+	// Default enables local project secrets without exact-name restriction.
+	if code := runUpEntry(context.Background(), []string{"--name", "demo"}, &out, &errBuf); code != 0 {
+		t.Fatalf("default runUpEntry exit = %d: %s", code, errBuf.String())
+	}
+	if captured.DenyProjectSecrets || len(captured.AllowSecrets) != 0 {
+		t.Fatalf("default secret config = deny:%t allow:%v; want deny:false allow:nil", captured.DenyProjectSecrets, captured.AllowSecrets)
+	}
+
+	// Explicit deny-by-default flag.
+	errBuf.Reset()
+	if code := runUpEntry(context.Background(), []string{"--name", "demo", "--allow-project-secrets=false"}, &out, &errBuf); code != 0 {
+		t.Fatalf("--allow-project-secrets=false exit = %d: %s", code, errBuf.String())
+	}
+	if !captured.DenyProjectSecrets {
+		t.Fatal("--allow-project-secrets=false did not set DenyProjectSecrets")
+	}
+
+	// Environment variable disables project secrets; flag overrides it back on.
+	t.Setenv("KODEMA_UP_ALLOW_PROJECT_SECRETS", "false")
+	if code := runUpEntry(context.Background(), []string{"--name", "demo"}, &out, &errBuf); code != 0 || !captured.DenyProjectSecrets {
+		t.Fatalf("KODEMA_UP_ALLOW_PROJECT_SECRETS=false: exit=%d deny=%t", code, captured.DenyProjectSecrets)
+	}
+	if code := runUpEntry(context.Background(), []string{"--name", "demo", "--allow-project-secrets=true"}, &out, &errBuf); code != 0 || captured.DenyProjectSecrets {
+		t.Fatalf("--allow-project-secrets=true override: exit=%d deny=%t", code, captured.DenyProjectSecrets)
+	}
+
+	// Explicit repeatable --allow-secret list.
+	t.Setenv("KODEMA_UP_ALLOW_PROJECT_SECRETS", "")
+	if code := runUpEntry(context.Background(), []string{"--name", "demo", "--allow-secret", "API_KEY", "--allow-secret", "DB_PASSWORD"}, &out, &errBuf); code != 0 {
+		t.Fatalf("--allow-secret exit = %d: %s", code, errBuf.String())
+	}
+	if captured.DenyProjectSecrets || len(captured.AllowSecrets) != 2 || captured.AllowSecrets[0] != "API_KEY" || captured.AllowSecrets[1] != "DB_PASSWORD" {
+		t.Fatalf("captured allow secrets = %+v", captured)
+	}
+
+	// Refusals: reserved KODEMA_TOKEN, invalid name, conflicting flags, bad env.
+	for _, tc := range []struct {
+		name string
+		env  string
+		args []string
+	}{
+		{"reserved KODEMA_TOKEN", "", []string{"--allow-secret", "KODEMA_TOKEN"}},
+		{"lowercase secret name", "", []string{"--allow-secret", "my_secret"}},
+		{"conflicting deny and allow-secret", "", []string{"--allow-project-secrets=false", "--allow-secret", "API_KEY"}},
+		{"invalid env boolean", "maybe", []string{"--name", "demo"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("KODEMA_UP_ALLOW_PROJECT_SECRETS", tc.env)
+			errBuf.Reset()
+			if code := runUpEntry(context.Background(), tc.args, &out, &errBuf); code != 2 {
+				t.Fatalf("runUpEntry(%v) exit = %d, want 2 (stderr: %s)", tc.args, code, errBuf.String())
+			}
+		})
+	}
+}

@@ -36,6 +36,9 @@ const (
 	// ToolProxyFileSetting names the trusted external MCP tool-proxy
 	// configuration file.
 	ToolProxyFileSetting = "KODEMA_TOOL_PROXY_FILE"
+	// SecretRulesFileSetting names the trusted workload secret-name allow-list
+	// configuration file.
+	SecretRulesFileSetting = "KODEMA_SECRET_RULES_FILE"
 
 	// ToolArgumentValidatorJSONObject is the configured argument validator that
 	// admits exactly one JSON object. It is the only validator a file may name;
@@ -136,6 +139,38 @@ type secretRuleFile struct {
 	TenantID  string   `json:"tenant_id"`
 	ProjectID string   `json:"project_id"`
 	Names     []string `json:"names"`
+}
+
+// secretRulesFile is the strict JSON shape of KODEMA_SECRET_RULES_FILE.
+type secretRulesFile struct {
+	SecretRules []workloadSecretRuleFile `json:"secret_rules"`
+}
+
+// workloadSecretRuleFile is one configured workload secret-name allow-list
+// rule. AllowAll is permitted only for non-production profiles.
+type workloadSecretRuleFile struct {
+	TenantID  string   `json:"tenant_id"`
+	ProjectID string   `json:"project_id"`
+	Names     []string `json:"names"`
+	AllowAll  bool     `json:"allow_all"`
+}
+
+// LoadSecretRulesFile reads and validates the trusted workload secret-name
+// allow-list at path for one composition profile. An empty secret_rules list is
+// a valid deny-by-default configuration; malformed JSON, unknown members,
+// invalid scopes or secret names, and wildcard allow_all rules in production
+// are refused with SecretRulesFileSetting named.
+func LoadSecretRulesFile(path string, profile Profile) ([]secret.NameRule, error) {
+	var file secretRulesFile
+	if err := decodeTrustedConfigFile(path, SecretRulesFileSetting, &file); err != nil {
+		return nil, err
+	}
+	rules := trustedWorkloadSecretRules(file.SecretRules)
+	if err := validateWorkloadSecretRules(rules, profile); err != nil {
+		return nil, fault.Wrap(fault.InvalidInput,
+			fmt.Sprintf("%s configuration is invalid: %v", SecretRulesFileSetting, err), err)
+	}
+	return rules, nil
 }
 
 // LoadModelsConfigFile reads and validates the trusted model-gateway
@@ -329,6 +364,33 @@ func trustedSecretRules(rules []secretRuleFile) []secret.NameRule {
 				ProjectID: id.ProjectID(rule.ProjectID),
 			},
 			Names: names,
+		})
+	}
+	return configured
+}
+
+// trustedWorkloadSecretRules maps workload secret-name rules; an absent list
+// stays nil.
+func trustedWorkloadSecretRules(rules []workloadSecretRuleFile) []secret.NameRule {
+	if len(rules) == 0 {
+		return nil
+	}
+	configured := make([]secret.NameRule, 0, len(rules))
+	for _, rule := range rules {
+		var names []id.SecretName
+		if len(rule.Names) > 0 {
+			names = make([]id.SecretName, 0, len(rule.Names))
+			for _, name := range rule.Names {
+				names = append(names, id.SecretName(name))
+			}
+		}
+		configured = append(configured, secret.NameRule{
+			Scope: tenancy.Scope{
+				TenantID:  id.TenantID(rule.TenantID),
+				ProjectID: id.ProjectID(rule.ProjectID),
+			},
+			Names:    names,
+			AllowAll: rule.AllowAll,
 		})
 	}
 	return configured

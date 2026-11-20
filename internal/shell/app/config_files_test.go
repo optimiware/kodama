@@ -535,3 +535,83 @@ func TestLoadModelsConfigFileProviders(t *testing.T) {
 		t.Fatal("production accepted a plaintext http provider base_url")
 	}
 }
+
+func TestLoadSecretRulesFile(t *testing.T) {
+	const exactFile = `{
+  "secret_rules": [
+    {"tenant_id": "tenant-1", "project_id": "project-1", "names": ["API_KEY", "DB_PASSWORD"]}
+  ]
+}`
+	const allowAllFile = `{
+  "secret_rules": [
+    {"tenant_id": "tenant-local", "project_id": "project-local", "allow_all": true}
+  ]
+}`
+
+	t.Run("exact rules load for all profiles", func(t *testing.T) {
+		path := writeConfigFile(t, "secret-rules.json", exactFile)
+		for _, profile := range []Profile{ProfileDevelopment, ProfileTest, ProfileProduction} {
+			rules, err := LoadSecretRulesFile(path, profile)
+			if err != nil {
+				t.Fatalf("LoadSecretRulesFile(%s): %v", profile, err)
+			}
+			if len(rules) != 1 || rules[0].Scope.TenantID != "tenant-1" || rules[0].Scope.ProjectID != "project-1" || rules[0].AllowAll {
+				t.Fatalf("rules(%s) = %+v", profile, rules)
+			}
+			if len(rules[0].Names) != 2 || rules[0].Names[0] != "API_KEY" || rules[0].Names[1] != "DB_PASSWORD" {
+				t.Fatalf("names(%s) = %+v", profile, rules[0].Names)
+			}
+		}
+	})
+
+	t.Run("allow_all loads for development and test, refused in production", func(t *testing.T) {
+		path := writeConfigFile(t, "secret-rules-allow-all.json", allowAllFile)
+		for _, profile := range []Profile{ProfileDevelopment, ProfileTest} {
+			rules, err := LoadSecretRulesFile(path, profile)
+			if err != nil {
+				t.Fatalf("LoadSecretRulesFile(%s): %v", profile, err)
+			}
+			if len(rules) != 1 || !rules[0].AllowAll || rules[0].Scope.TenantID != "tenant-local" || rules[0].Scope.ProjectID != "project-local" {
+				t.Fatalf("rules(%s) = %+v", profile, rules)
+			}
+		}
+		if rules, err := LoadSecretRulesFile(path, ProfileProduction); err == nil || rules != nil {
+			t.Fatalf("production accepted wildcard allow_all secret rules: %+v", rules)
+		} else if !strings.Contains(err.Error(), SecretRulesFileSetting) || !strings.Contains(err.Error(), "allow_all") {
+			t.Fatalf("production refusal = %q; want %s and allow_all named", err, SecretRulesFileSetting)
+		}
+		for _, invalidProfile := range []Profile{"", Profile("staging")} {
+			if rules, err := LoadSecretRulesFile(path, invalidProfile); err == nil || rules != nil {
+				t.Fatalf("invalid profile %q accepted wildcard allow_all secret rules: %+v", invalidProfile, rules)
+			} else if !strings.Contains(err.Error(), SecretRulesFileSetting) || !strings.Contains(err.Error(), "unknown composition profile") {
+				t.Fatalf("invalid profile %q refusal = %q; want %s and unknown composition profile", invalidProfile, err, SecretRulesFileSetting)
+			}
+		}
+	})
+
+	t.Run("refuses malformed and invalid files", func(t *testing.T) {
+		for _, tc := range []struct {
+			name     string
+			content  string
+			contains string
+		}{
+			{"empty file", "", "empty"},
+			{"malformed json", `{"secret_rules": [`, "malformed"},
+			{"unknown member", `{"secret_rules": [], "extra": true}`, "malformed"},
+			{"empty rule", `{"secret_rules": [{"tenant_id": "tenant-1"}]}`, "no secret names"},
+			{"reserved KODEMA_TOKEN", `{"secret_rules": [{"tenant_id": "tenant-1", "names": ["KODEMA_TOKEN"]}]}`, "invalid secret name"},
+			{"allow_all with names", `{"secret_rules": [{"tenant_id": "tenant-1", "allow_all": true, "names": ["API_KEY"]}]}`, "combine allow_all"},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				path := writeConfigFile(t, "bad-secret-rules.json", tc.content)
+				rules, err := LoadSecretRulesFile(path, ProfileTest)
+				if err == nil || rules != nil {
+					t.Fatalf("LoadSecretRulesFile accepted %s: %+v", tc.name, rules)
+				}
+				if !strings.Contains(err.Error(), SecretRulesFileSetting) || !strings.Contains(err.Error(), tc.contains) {
+					t.Fatalf("refusal = %q; want %s and %q", err, SecretRulesFileSetting, tc.contains)
+				}
+			})
+		}
+	})
+}

@@ -109,6 +109,7 @@ type fakeRuntime struct {
 
 	mu       sync.Mutex
 	prepared int
+	prepares []kernelengine.PrepareRequest
 	started  []id.WorkloadID
 	stopped  []id.WorkloadID
 	removed  []id.WorkloadID
@@ -132,6 +133,7 @@ func (runtime *fakeRuntime) Capabilities(context.Context) (kernelengine.Capabili
 func (runtime *fakeRuntime) Prepare(_ context.Context, request kernelengine.PrepareRequest) (kernelengine.Preparation, error) {
 	runtime.mu.Lock()
 	runtime.prepared++
+	runtime.prepares = append(runtime.prepares, request)
 	runtime.mu.Unlock()
 	return kernelengine.Preparation{WorkspaceID: request.WorkspaceID, Detail: "prepared"}, nil
 }
@@ -215,6 +217,12 @@ func (runtime *fakeRuntime) startedIDs() []id.WorkloadID {
 	runtime.mu.Lock()
 	defer runtime.mu.Unlock()
 	return append([]id.WorkloadID(nil), runtime.started...)
+}
+
+func (runtime *fakeRuntime) prepareRequests() []kernelengine.PrepareRequest {
+	runtime.mu.Lock()
+	defer runtime.mu.Unlock()
+	return append([]kernelengine.PrepareRequest(nil), runtime.prepares...)
 }
 
 // release marks one controlled workload as exited successfully on the next
