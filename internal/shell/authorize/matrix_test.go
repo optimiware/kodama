@@ -2,6 +2,7 @@ package authorize_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/optimiware/kodema/internal/fault"
@@ -409,6 +410,43 @@ func TestScopeContainment(t *testing.T) {
 	}
 	if decision != authorize.DecisionDeny {
 		t.Fatalf("execution in project %q was allowed in project %q", projectScope().ProjectID, otherProjectScope().ProjectID)
+	}
+}
+
+// TestDenialMessageExplainsTenantScopeRequirement pins that a project-scoped
+// principal denied a tenant-scoped operation inside its own tenant gets an
+// actionable scope explanation, while cross-tenant, disabled, and role-denial
+// cases stay generic.
+func TestDenialMessageExplainsTenantScopeRequirement(t *testing.T) {
+	projectAdmin := humanPrincipal(tenancy.RoleAdmin, projectScope())
+	for _, op := range []authorize.OperationName{"membership.list", "membership.grant", "project.create"} {
+		msg := authorize.DenialMessage(projectAdmin, op, tenantScope())
+		for _, want := range []string{"tenant-scoped credential", string(op), string(projectScope().ProjectID), "KODEMA_TENANT_ADMIN_CREDENTIAL_FILE"} {
+			if !strings.Contains(msg, want) {
+				t.Errorf("DenialMessage(%s) = %q; want %q", op, msg, want)
+			}
+		}
+	}
+
+	// Cross-tenant denial stays generic (no cross-tenant info leak).
+	crossTenant := authorize.DenialMessage(projectAdmin, "membership.list", otherTenantScope())
+	if strings.Contains(crossTenant, "tenant-scoped credential") {
+		t.Fatalf("cross-tenant denial leaked scope detail: %q", crossTenant)
+	}
+
+	// Disabled principal stays generic.
+	disabled := projectAdmin
+	disabled.Enabled = false
+	disabledMsg := authorize.DenialMessage(disabled, "membership.list", tenantScope())
+	if strings.Contains(disabledMsg, "tenant-scoped credential") {
+		t.Fatalf("disabled principal denial leaked scope detail: %q", disabledMsg)
+	}
+
+	// Role denial on a project operation stays generic.
+	viewer := humanPrincipal(tenancy.RoleViewer, projectScope())
+	roleMsg := authorize.DenialMessage(viewer, "pipeline.apply", projectScope())
+	if strings.Contains(roleMsg, "tenant-scoped credential") {
+		t.Fatalf("role denial reported tenant-scope message: %q", roleMsg)
 	}
 }
 

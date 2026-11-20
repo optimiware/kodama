@@ -199,6 +199,9 @@ func (store FileSessionStore) SaveRecord(ctx context.Context, record SessionReco
 	if len(data) > MaxSessionFileBytes {
 		return fault.New(fault.Unauthenticated, "the session is too large")
 	}
+	if err := store.ensurePrivateDir(); err != nil {
+		return err
+	}
 	if err := store.Files.ReplaceFile(store.Path, data, 0o600); err != nil {
 		return fault.Wrap(fault.DependencyUnavailable, "the session file is not writable", err)
 	}

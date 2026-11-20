@@ -6,6 +6,7 @@ package cli_test
 import (
 	"bytes"
 	"context"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -1128,6 +1129,145 @@ func TestRunHelperUsesRefreshingSessionSource(t *testing.T) {
 
 func faultsUnavailable() error {
 	return fault.New(fault.DependencyUnavailable, "disk unavailable")
+}
+
+// TestRunWithDepsLoginWarnsWhenCredentialEnvShadowsSession pins that a
+// successful login warns on stderr when KODEMA_CREDENTIAL_FILE or KODEMA_TOKEN
+// is set in the environment, without ever rendering the token value.
+func TestRunWithDepsLoginWarnsWhenCredentialEnvShadowsSession(t *testing.T) {
+	const secretToken = "env-secret-token-canary-9876"
+	cases := []struct {
+		name     string
+		env      map[string]string
+		wantWarn string
+	}{
+		{
+			name:     "KODEMA_CREDENTIAL_FILE set",
+			env:      map[string]string{"KODEMA_CREDENTIAL_FILE": "/home/user/.kodema/instances/default/admin-token"},
+			wantWarn: "KODEMA_CREDENTIAL_FILE",
+		},
+		{
+			name:     "KODEMA_CREDENTIAL_FILE and KODEMA_TOKEN set",
+			env:      map[string]string{"KODEMA_CREDENTIAL_FILE": "/tmp/admin-token", "KODEMA_TOKEN": secretToken},
+			wantWarn: "KODEMA_CREDENTIAL_FILE",
+		},
+		{
+			name:     "only KODEMA_TOKEN set",
+			env:      map[string]string{"KODEMA_TOKEN": secretToken},
+			wantWarn: "KODEMA_TOKEN",
+		},
+		{
+			name:     "neither set",
+			env:      map[string]string{},
+			wantWarn: "",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			oidc := &commandOIDC{document: commandDocument()}
+			store := &commandStore{}
+			lock := &commandLock{}
+			ports, out, errOut := testPorts(&scriptedTransport{})
+			code := cli.RunWithDeps(context.Background(), commandConfig(), []string{"login", "--device"}, ports, cli.CommandDeps{
+				Login: cli.LoginRuntime{
+					OIDC:        oidc,
+					Clock:       commandClock{now: testNow()},
+					Lock:        lock,
+					Store:       store,
+					Environment: func(k string) string { return tc.env[k] },
+				},
+			})
+			if code != cli.ExitSuccess {
+				t.Fatalf("login exit = %d; stderr=%q", code, errOut.String())
+			}
+			if !strings.Contains(out.String(), "logged in") {
+				t.Fatalf("stdout = %q; want logged in", out.String())
+			}
+			if tc.wantWarn == "" {
+				if errOut.Len() != 0 {
+					t.Fatalf("stderr = %q; want empty", errOut.String())
+				}
+			} else {
+				if !strings.Contains(errOut.String(), "warning:") || !strings.Contains(errOut.String(), tc.wantWarn) {
+					t.Fatalf("stderr = %q; want warning mentioning %s", errOut.String(), tc.wantWarn)
+				}
+			}
+			if strings.Contains(out.String(), secretToken) || strings.Contains(errOut.String(), secretToken) {
+				t.Fatalf("output leaked KODEMA_TOKEN value")
+			}
+		})
+	}
+}
+
+// TestRunWithDepsLoginSurfacesTLSHintOnUntrustedCA pins that a TLS/x509
+// discovery failure reports an actionable --ca-file / KODEMA_CA_FILE hint
+// instead of an opaque "login configuration is unavailable" error.
+func TestRunWithDepsLoginSurfacesTLSHintOnUntrustedCA(t *testing.T) {
+	tlsErr := &commandTLSError{}
+	oidc := &commandOIDC{discoveryErr: tlsErr}
+	store := &commandStore{}
+	lock := &commandLock{}
+	ports, out, errOut := testPorts(&scriptedTransport{})
+	code := cli.RunWithDeps(context.Background(), commandConfig(), []string{"login", "--device"}, ports, cli.CommandDeps{
+		Login: cli.LoginRuntime{
+			OIDC:  oidc,
+			Clock: commandClock{now: testNow()},
+			Lock:  lock,
+			Store: store,
+		},
+	})
+	if code != cli.ExitFailure {
+		t.Fatalf("login exit = %d; want %d", code, cli.ExitFailure)
+	}
+	if out.Len() != 0 {
+		t.Fatalf("stdout = %q; want empty", out.String())
+	}
+	for _, want := range []string{"TLS", "--ca-file", "KODEMA_CA_FILE"} {
+		if !strings.Contains(errOut.String(), want) {
+			t.Fatalf("stderr = %q; want %q", errOut.String(), want)
+		}
+	}
+}
+
+// TestRunWithDepsLoginRefusesSharedSessionDirBeforeDiscovery pins that login
+// fails up front if the session path points directly into a shared sticky
+// directory (such as /tmp), without calling discovery.
+func TestRunWithDepsLoginRefusesSharedSessionDirBeforeDiscovery(t *testing.T) {
+	filesystem := newFakeFS()
+	filesystem.dirs["/tmp"] = 0o777 | fs.ModeSticky
+	store := cli.FileSessionStore{Path: "/tmp/persona.json", Files: filesystem, Now: testNow}
+	oidc := &commandOIDC{document: commandDocument()}
+	ports, out, errOut := testPorts(&scriptedTransport{})
+	code := cli.RunWithDeps(context.Background(), commandConfig(), []string{"login", "--device"}, ports, cli.CommandDeps{
+		Login: cli.LoginRuntime{
+			OIDC:  oidc,
+			Clock: commandClock{now: testNow()},
+			Lock:  &commandLock{},
+			Store: store,
+		},
+	})
+	if code != cli.ExitFailure {
+		t.Fatalf("login exit = %d; want %d", code, cli.ExitFailure)
+	}
+	if out.Len() != 0 {
+		t.Fatalf("stdout = %q; want empty", out.String())
+	}
+	if !strings.Contains(errOut.String(), "0700") {
+		t.Fatalf("stderr = %q; want actionable 0700 hint", errOut.String())
+	}
+	if len(oidc.discovered()) != 0 {
+		t.Fatalf("discovery calls = %d; want 0 when session dir is invalid", len(oidc.discovered()))
+	}
+}
+
+type commandTLSError struct{}
+
+func (*commandTLSError) Error() string { return "x509: certificate signed by unknown authority" }
+
+func (*commandTLSError) Unwrap() error { return x509UnknownAuthorityErr() }
+
+func x509UnknownAuthorityErr() error {
+	return x509.UnknownAuthorityError{}
 }
 
 var _ client.CredentialSource = cli.SessionCredentialSource{}

@@ -3,6 +3,8 @@ package cli
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -35,6 +37,37 @@ const (
 // errOIDCRedirectRefused is the CheckRedirect sentinel. A redirect is always a
 // failure: an authorization endpoint must never relocate a token request.
 var errOIDCRedirectRefused = errors.New("OIDC redirect refused")
+
+// errOIDCTLSVerification marks a TLS certificate verification failure so
+// callers (login, discovery, git credential) can surface a clear --ca-file /
+// KODEMA_CA_FILE hint instead of an opaque dependency_unavailable message.
+var errOIDCTLSVerification = errors.New("TLS certificate verification failed")
+
+// isTLSCertError reports whether err is or wraps a Go TLS/x509 certificate
+// verification failure.
+func isTLSCertError(err error) bool {
+	if err == nil {
+		return false
+	}
+	var (
+		unknownAuth x509.UnknownAuthorityError
+		certInvalid x509.CertificateInvalidError
+		hostnameErr x509.HostnameError
+		sysRootsErr x509.SystemRootsError
+		verifyErr   *tls.CertificateVerificationError
+	)
+	return errors.As(err, &unknownAuth) ||
+		errors.As(err, &certInvalid) ||
+		errors.As(err, &hostnameErr) ||
+		errors.As(err, &sysRootsErr) ||
+		errors.As(err, &verifyErr)
+}
+
+// isTLSDiscoveryError reports whether err carries a TLS certificate
+// verification failure from an OIDC HTTP call.
+func isTLSDiscoveryError(err error) bool {
+	return errors.Is(err, errOIDCTLSVerification) || isTLSCertError(err)
+}
 
 // HTTPOIDCClient is the real OAuth/OIDC network adapter behind the
 // consumer-owned OIDCClient port. It sends every request to exactly the
@@ -313,6 +346,12 @@ func (client *HTTPOIDCClient) execute(ctx context.Context, method, endpoint stri
 			return nil, ctx.Err()
 		case requestCtx.Err() != nil:
 			return nil, fault.New(fault.DependencyUnavailable, "the OIDC request timed out")
+		case isTLSCertError(err):
+			return nil, fault.Wrap(
+				fault.DependencyUnavailable,
+				"TLS certificate verification failed for the OIDC endpoint (pass --ca-file or set KODEMA_CA_FILE to trust a custom CA)",
+				errors.Join(errOIDCTLSVerification, err),
+			)
 		default:
 			return nil, fault.New(fault.DependencyUnavailable, "the OIDC endpoint is unavailable")
 		}

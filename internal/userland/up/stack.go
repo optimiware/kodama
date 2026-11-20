@@ -10,6 +10,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -792,7 +793,8 @@ func Up(ctx context.Context, cfg UpConfig, stdout io.Writer) (_ StackDescriptor,
 	fmt.Fprintf(stdout, "  OIDC Auth:  %s/auth/.well-known/openid-configuration\n", publicURL)
 	fmt.Fprintf(stdout, "  Git HTTP:   %s/git/\n", publicURL)
 	fmt.Fprintf(stdout, "  Shell env:  source %s\n", shellSingleQuote(envFilePath))
-	fmt.Fprintf(stdout, "  CLI login:  kodema --server %s login\n", shellSingleQuote(publicURL))
+	fmt.Fprintf(stdout, "  CLI login:  kodema --server %s --ca-file %s login\n",
+		shellSingleQuote(publicURL), shellSingleQuote(tlsBundle.CACertPath))
 	return desc, nil
 }
 
@@ -1098,6 +1100,64 @@ func saveStackDescriptor(stateDir string, desc StackDescriptor) error {
 		return err
 	}
 	return writeFileAtomic(filepath.Join(stateDir, "stack.json"), append(data, '\n'), 0o600)
+}
+
+// DiscoverDefaultInstance returns the StackDescriptor of the local "default"
+// `kodema up` instance under $HOME/.kodema/instances/default when its stack
+// metadata is present and its TLS gateway is alive. When no live default
+// instance exists, ok is false.
+func DiscoverDefaultInstance(homeDir string) (StackDescriptor, bool) {
+	home := strings.TrimSpace(homeDir)
+	if home == "" {
+		detected, err := os.UserHomeDir()
+		if err != nil || strings.TrimSpace(detected) == "" {
+			return StackDescriptor{}, false
+		}
+		home = detected
+	}
+	stateDir, err := DefaultStateDir(home, DefaultInstanceName)
+	if err != nil {
+		return StackDescriptor{}, false
+	}
+	desc, err := loadStackDescriptor(stateDir)
+	if err != nil || strings.TrimSpace(desc.PublicURL) == "" {
+		return StackDescriptor{}, false
+	}
+	if !instanceGatewayAlive(stateDir, desc) {
+		return StackDescriptor{}, false
+	}
+	return desc, true
+}
+
+// instanceGatewayAlive reports whether the local instance gateway is running,
+// checking gateway.pid first (background daemon mode) and falling back to a
+// fast loopback TCP dial (foreground mode).
+func instanceGatewayAlive(stateDir string, desc StackDescriptor) bool {
+	if pid := readPIDFile(filepath.Join(stateDir, "gateway.pid")); pid > 0 && processAlive(pid) {
+		return true
+	}
+	parsed, err := url.Parse(strings.TrimSpace(desc.PublicURL))
+	if err != nil || parsed.Host == "" {
+		return false
+	}
+	host := parsed.Hostname()
+	if host != "127.0.0.1" && host != "::1" && host != "localhost" {
+		return false
+	}
+	port := parsed.Port()
+	if port == "" {
+		if strings.EqualFold(parsed.Scheme, "https") {
+			port = "443"
+		} else {
+			port = "80"
+		}
+	}
+	conn, err := net.DialTimeout("tcp", net.JoinHostPort(host, port), 200*time.Millisecond)
+	if err != nil {
+		return false
+	}
+	_ = conn.Close()
+	return true
 }
 
 func loadStackDescriptor(stateDir string) (StackDescriptor, error) {

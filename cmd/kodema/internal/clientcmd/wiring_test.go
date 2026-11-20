@@ -4,23 +4,30 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/userland/cli"
+	"github.com/optimiware/kodema/internal/userland/up"
 )
 
-// isolateUserConfig points the default kodema config directory at an empty
-// temporary directory so a developer's real config never affects a test.
+// isolateUserConfig points the default kodema config directory and HOME at
+// empty temporary directories so a developer's real config or running
+// ~/.kodema/instances/default never affects a test.
 func isolateUserConfig(t *testing.T) {
 	t.Helper()
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("HOME", t.TempDir())
 }
 
 // writeSessionFile writes one current version 2 durable human session with the
@@ -624,5 +631,283 @@ func TestKodemaRefusesInvalidConfigFile(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), "invalid kodema config") {
 		t.Fatalf("stderr = %q; want an invalid-config diagnostic", stderr.String())
+	}
+}
+
+// setupDefaultInstance writes a live ~/.kodema/instances/default state dir
+// under home pointing at publicURL, caPath and projectID.
+func setupDefaultInstance(t *testing.T, home, publicURL, caPath, projectID string) string {
+	t.Helper()
+	stateDir, err := up.DefaultStateDir(home, up.DefaultInstanceName)
+	if err != nil {
+		t.Fatalf("DefaultStateDir: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(stateDir, "tls"), 0o700); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	desc := up.StackDescriptor{
+		Instance:   up.DefaultInstanceName,
+		StateDir:   stateDir,
+		PublicURL:  publicURL,
+		TenantID:   up.DefaultTenantID,
+		ProjectID:  projectID,
+		CACertPath: caPath,
+		GatewayPID: os.Getpid(),
+	}
+	data, err := json.MarshalIndent(desc, "", "  ")
+	if err != nil {
+		t.Fatalf("marshal stack descriptor: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(stateDir, "stack.json"), data, 0o600); err != nil {
+		t.Fatalf("WriteFile stack.json: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(stateDir, "gateway.pid"), []byte(strconv.Itoa(os.Getpid())+"\n"), 0o600); err != nil {
+		t.Fatalf("WriteFile gateway.pid: %v", err)
+	}
+	return stateDir
+}
+
+// TestKodemaAutoDiscoversDefaultInstanceForClientCommands pins that in a fresh
+// shell without env.sh or --server/--ca-file/--project, `kodema login`,
+// `kodema whoami`, `kodema inbox`, and `kodema git credential get` auto-discover
+// the running ~/.kodema/instances/default stack, and explicit flags still win.
+func TestKodemaAutoDiscoversDefaultInstanceForClientCommands(t *testing.T) {
+	isolateUserConfig(t)
+	home := os.Getenv("HOME")
+	provider := newFakeProvider(t)
+	document := api.DiscoveryDocument{}
+	var gotInboxProject string
+	apiServer := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		switch request.URL.Path {
+		case api.DiscoveryPath:
+			writeJSON(writer, document)
+		case "/api/v1/whoami":
+			payload, _ := json.Marshal(api.Result{
+				Operation: "principal.whoami",
+				Body:      json.RawMessage(`{"principal_id":"oidc-00112233445566778899aabbccddeeff","kind":"human","tenant_id":"tenant-local","project_id":"project-local","roles":["engineer"]}`),
+			})
+			writer.Header().Set("Content-Type", api.MediaType)
+			writer.WriteHeader(api.HTTPStatusSuccess)
+			_, _ = writer.Write(payload)
+		default:
+			if strings.Contains(request.URL.Path, "/projects/") && strings.HasSuffix(request.URL.Path, "/inbox") {
+				parts := strings.Split(strings.TrimPrefix(request.URL.Path, "/"), "/")
+				for i := 0; i < len(parts)-1; i++ {
+					if parts[i] == "projects" {
+						gotInboxProject = parts[i+1]
+						break
+					}
+				}
+				payload, _ := json.Marshal(api.Result{
+					Operation: "task.inbox",
+					Body:      json.RawMessage(`{"items":[]}`),
+				})
+				writer.Header().Set("Content-Type", api.MediaType)
+				writer.WriteHeader(api.HTTPStatusSuccess)
+				_, _ = writer.Write(payload)
+				return
+			}
+			http.NotFound(writer, request)
+		}
+	}))
+	t.Cleanup(apiServer.Close)
+	apiServer.Config.ErrorLog = log.New(io.Discard, "", 0)
+	provider.server.Config.ErrorLog = log.New(io.Discard, "", 0)
+	document = provider.document(apiServer.URL)
+
+	caPath := writeCertBundlePEM(t, provider.server, apiServer)
+	setupDefaultInstance(t, home, apiServer.URL, caPath, "project-local")
+
+	deps := defaultCLIDeps()
+	deps.clock = fixedClock{now: time.Now().Truncate(time.Second)}
+	deps.environment = mapEnvironment(nil)
+
+	// 1. `kodema login --device` auto-discovers server + CA from default instance.
+	code, stdout, stderr := runEntry(t, []string{"login", "--device"}, deps)
+	if code != cli.ExitSuccess {
+		t.Fatalf("auto-discovered login exit = %d; stderr=%q", code, stderr)
+	}
+	if !strings.Contains(stdout, "logged in") {
+		t.Fatalf("login stdout = %q", stdout)
+	}
+
+	// 2. `kodema whoami` works without any flags or env vars and prints explicit scope.
+	code, stdout, stderr = runEntry(t, []string{"whoami"}, deps)
+	if code != cli.ExitSuccess {
+		t.Fatalf("auto-discovered whoami exit = %d; stderr=%q", code, stderr)
+	}
+	if !strings.Contains(stdout, "scope\tproject (project-local)") {
+		t.Fatalf("whoami stdout = %q; want explicit project scope", stdout)
+	}
+
+	// 3. `kodema inbox` auto-discovers project-local without --project or KODEMA_PROJECT.
+	code, _, stderr = runEntry(t, []string{"inbox"}, deps)
+	if code != cli.ExitSuccess {
+		t.Fatalf("auto-discovered inbox exit = %d; stderr=%q", code, stderr)
+	}
+	if gotInboxProject != "project-local" {
+		t.Fatalf("inbox project = %q; want project-local", gotInboxProject)
+	}
+
+	// 4. Explicit --project overrides auto-discovered project.
+	code, _, stderr = runEntry(t, []string{"--project", "project-override", "inbox"}, deps)
+	if code != cli.ExitSuccess {
+		t.Fatalf("override inbox exit = %d; stderr=%q", code, stderr)
+	}
+	if gotInboxProject != "project-override" {
+		t.Fatalf("override inbox project = %q; want project-override", gotInboxProject)
+	}
+
+	// 5. `kodema --trusted-origin <url> git credential get` works without --server or --ca-file.
+	code, stdout, stderr = runEntry(t, []string{
+		"--trusted-origin", apiServer.URL,
+		"git", "credential", "get", apiServer.URL + "/git/demo.git",
+	}, deps)
+	if code != cli.ExitSuccess || stderr != "" {
+		t.Fatalf("auto-discovered git credential = %d / stderr=%q", code, stderr)
+	}
+	if want := "username=kodema\npassword=" + loginAccess + "\n"; stdout != want {
+		t.Fatalf("git credential stdout = %q; want %q", stdout, want)
+	}
+}
+
+// TestKodemaGitCredentialSessionAPIURLFallbackAndTLSDiagnostic pins that
+// `kodema --trusted-origin <url> --session <file> git credential get` works
+// without --server (falling back to the session's api_url) and writes an
+// actionable TLS/CA diagnostic to stderr instead of failing silently when CA
+// trust is missing.
+func TestKodemaGitCredentialSessionAPIURLFallbackAndTLSDiagnostic(t *testing.T) {
+	isolateUserConfig(t)
+	_, sessionPath := sessionPaths(t)
+	provider := newFakeProvider(t)
+	document := api.DiscoveryDocument{}
+	apiServer := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path == api.DiscoveryPath {
+			writeJSON(writer, document)
+			return
+		}
+		http.NotFound(writer, request)
+	}))
+	t.Cleanup(apiServer.Close)
+	apiServer.Config.ErrorLog = log.New(io.Discard, "", 0)
+	provider.server.Config.ErrorLog = log.New(io.Discard, "", 0)
+	document = provider.document(apiServer.URL)
+	seedRecord(t, sessionPath, recordFor(document, time.Now().Add(time.Hour)))
+	caPath := writeCertBundlePEM(t, provider.server, apiServer)
+
+	// Without --server (and no default instance), --ca-file + --session works via session api_url.
+	code, stdout, stderr := runEntry(t, []string{
+		"--ca-file", caPath,
+		"--trusted-origin", apiServer.URL,
+		"--session", sessionPath,
+		"git", "credential", "get", apiServer.URL + "/git/repo.git",
+	}, defaultCLIDeps())
+	if code != cli.ExitSuccess || stderr != "" {
+		t.Fatalf("git credential with session api_url = %d / stderr=%q", code, stderr)
+	}
+	if want := "username=kodema\npassword=" + loginAccess + "\n"; stdout != want {
+		t.Fatalf("stdout = %q; want %q", stdout, want)
+	}
+
+	// Without --ca-file against self-signed TLS, exits 0 with empty stdout and logs CA hint to stderr.
+	code, stdout, stderr = runEntry(t, []string{
+		"--trusted-origin", apiServer.URL,
+		"--session", sessionPath,
+		"git", "credential", "get", apiServer.URL + "/git/repo.git",
+	}, defaultCLIDeps())
+	if code != cli.ExitSuccess {
+		t.Fatalf("missing-CA git credential exit = %d; want 0", code)
+	}
+	if stdout != "" {
+		t.Fatalf("missing-CA git credential stdout = %q; want empty", stdout)
+	}
+	for _, want := range []string{"kodema git credential:", "TLS", "--ca-file"} {
+		if !strings.Contains(stderr, want) {
+			t.Fatalf("missing-CA git credential stderr = %q; want %q", stderr, want)
+		}
+	}
+	assertNoSecrets(t, []string{stdout, stderr}, loginAccess, loginRefresh)
+}
+
+// TestKodemaLoginTightensSessionDirPermissionsAndWarnsOnShadowingEnv pins that
+// `kodema login --session <0755-dir>/persona.json` tightens the parent dir to
+// 0700 so subsequent commands immediately succeed, refuses shared sticky dirs
+// up front, and warns on stderr if KODEMA_CREDENTIAL_FILE shadows the session.
+func TestKodemaLoginTightensSessionDirPermissionsAndWarnsOnShadowingEnv(t *testing.T) {
+	isolateUserConfig(t)
+	provider := newFakeProvider(t)
+	recorder := &resultRecorder{}
+	document := api.DiscoveryDocument{}
+	apiServer := newPublicServer(t, "task.read", &document, recorder)
+	document = provider.document(apiServer.URL)
+
+	deps := defaultCLIDeps()
+	deps.oidc = &cli.HTTPOIDCClient{RoundTripper: provider.client().Transport}
+	deps.clock = fixedClock{now: time.Now()}
+
+	// Existing 0755 parent directory: login tightens to 0700 so next command succeeds.
+	looseDir := filepath.Join(t.TempDir(), "s")
+	if err := os.Mkdir(looseDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(looseDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	sessionPath := filepath.Join(looseDir, "eng.json")
+
+	deps.environment = mapEnvironment(map[string]string{
+		"KODEMA_CREDENTIAL_FILE": "/tmp/admin-token",
+	})
+	code, stdout, stderr := runEntry(t, []string{
+		"--server", apiServer.URL,
+		"--session", sessionPath,
+		"login", "--device",
+	}, deps)
+	if code != cli.ExitSuccess {
+		t.Fatalf("login into 0755 dir exit = %d; stderr=%q", code, stderr)
+	}
+	if !strings.Contains(stdout, "logged in") {
+		t.Fatalf("login stdout = %q", stdout)
+	}
+	if !strings.Contains(stderr, "warning:") || !strings.Contains(stderr, "KODEMA_CREDENTIAL_FILE") {
+		t.Fatalf("login stderr = %q; want KODEMA_CREDENTIAL_FILE shadowing warning", stderr)
+	}
+	info, err := os.Lstat(looseDir)
+	if err != nil || info.Mode().Perm() != 0o700 {
+		t.Fatalf("session parent dir mode after login = %v, err=%v; want 0700", info.Mode().Perm(), err)
+	}
+
+	// Next command reads the session immediately without any 0700 failure.
+	deps.environment = mapEnvironment(nil)
+	code, _, stderr = runEntry(t, []string{
+		"--server", apiServer.URL,
+		"--session", sessionPath,
+		"call", "task.read", `--input={"task_id":"task-1"}`,
+	}, deps)
+	if code != cli.ExitSuccess {
+		t.Fatalf("subsequent call after login exit = %d; stderr=%q", code, stderr)
+	}
+	if recorder.count() != 1 || recorder.authorization(0) != "Bearer "+loginAccess {
+		t.Fatalf("recorder = %d / %q", recorder.count(), recorder.authorization(0))
+	}
+
+	// Direct session in a shared sticky directory (e.g. /tmp or sticky temp dir) is refused up front.
+	stickyDir := filepath.Join(t.TempDir(), "shared")
+	if err := os.Mkdir(stickyDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(stickyDir, 0o755|os.ModeSticky); err != nil {
+		t.Fatal(err)
+	}
+	code, stdout, stderr = runEntry(t, []string{
+		"--server", apiServer.URL,
+		"--session", filepath.Join(stickyDir, "eng.json"),
+		"login", "--device",
+	}, deps)
+	if code != cli.ExitFailure || stdout != "" {
+		t.Fatalf("login into sticky dir = %d / stdout=%q; want failure", code, stdout)
+	}
+	if !strings.Contains(stderr, "0700") {
+		t.Fatalf("sticky dir login stderr = %q; want 0700 hint", stderr)
 	}
 }

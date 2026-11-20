@@ -213,8 +213,7 @@ func (router *Router) authorize(ctx context.Context, principal authorize.Princip
 		return sanitize(err)
 	}
 	if decision != authorize.DecisionAllow {
-		return fault.New(fault.Forbidden,
-			fmt.Sprintf("principal %q is not authorized for operation %q", principal.ID, name))
+		return fault.New(fault.Forbidden, authorize.DenialMessage(principal, name, scope))
 	}
 	return nil
 }

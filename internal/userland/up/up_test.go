@@ -976,6 +976,11 @@ func TestStackUpStatusAndDownWithMockEngine(t *testing.T) {
 			t.Fatalf("env.sh missing %q:\n%s", want, envSh)
 		}
 	}
+	wantLoginHint := fmt.Sprintf("CLI login:  kodema --server %s --ca-file %s login",
+		shellSingleQuote(desc.PublicURL), shellSingleQuote(desc.CACertPath))
+	if !strings.Contains(out.String(), wantLoginHint) {
+		t.Fatalf("Up stdout missing %q:\n%s", wantLoginHint, out.String())
+	}
 
 	// The server mounts the socket Podman reports for itself, which on a
 	// rootless Podman machine is not /run/podman/podman.sock.
@@ -1643,4 +1648,108 @@ func onlyUnder(root string) func(string) ([]os.DirEntry, error) {
 		}
 		return os.ReadDir(dir)
 	}
+}
+
+// TestDiscoverDefaultInstance pins local default-instance discovery:
+// alive via gateway.pid, alive via foreground loopback listener, and absent
+// when stopped or missing.
+func TestDiscoverDefaultInstance(t *testing.T) {
+	t.Run("missing state returns false", func(t *testing.T) {
+		if _, ok := DiscoverDefaultInstance(t.TempDir()); ok {
+			t.Fatal("DiscoverDefaultInstance succeeded without stack.json")
+		}
+	})
+
+	t.Run("alive via gateway.pid returns descriptor", func(t *testing.T) {
+		home := t.TempDir()
+		stateDir, err := DefaultStateDir(home, DefaultInstanceName)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.MkdirAll(stateDir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		want := StackDescriptor{
+			Instance:   DefaultInstanceName,
+			StateDir:   stateDir,
+			PublicURL:  "https://127.0.0.1:8443",
+			TenantID:   DefaultTenantID,
+			ProjectID:  DefaultProjectID,
+			CACertPath: filepath.Join(stateDir, "tls", "ca.crt"),
+			GatewayPID: os.Getpid(),
+		}
+		if err := saveStackDescriptor(stateDir, want); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(stateDir, "gateway.pid"), []byte(strconv.Itoa(os.Getpid())+"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		got, ok := DiscoverDefaultInstance(home)
+		if !ok {
+			t.Fatal("DiscoverDefaultInstance returned false for live gateway.pid")
+		}
+		if got.PublicURL != want.PublicURL || got.CACertPath != want.CACertPath || got.ProjectID != want.ProjectID {
+			t.Fatalf("discovered = %+v; want %+v", got, want)
+		}
+	})
+
+	t.Run("alive via foreground loopback listener without gateway.pid", func(t *testing.T) {
+		home := t.TempDir()
+		stateDir, err := DefaultStateDir(home, DefaultInstanceName)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.MkdirAll(stateDir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		ln, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer ln.Close()
+
+		want := StackDescriptor{
+			Instance:   DefaultInstanceName,
+			StateDir:   stateDir,
+			PublicURL:  "https://" + ln.Addr().String(),
+			ProjectID:  "proj-fg",
+			CACertPath: filepath.Join(stateDir, "tls", "ca.crt"),
+		}
+		if err := saveStackDescriptor(stateDir, want); err != nil {
+			t.Fatal(err)
+		}
+		got, ok := DiscoverDefaultInstance(home)
+		if !ok || got.PublicURL != want.PublicURL || got.ProjectID != want.ProjectID {
+			t.Fatalf("DiscoverDefaultInstance(foreground) = %+v, %v; want %+v, true", got, ok, want)
+		}
+	})
+
+	t.Run("stopped instance without gateway.pid or listener returns false", func(t *testing.T) {
+		home := t.TempDir()
+		stateDir, err := DefaultStateDir(home, DefaultInstanceName)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.MkdirAll(stateDir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		ln, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		closedAddr := ln.Addr().String()
+		_ = ln.Close()
+
+		if err := saveStackDescriptor(stateDir, StackDescriptor{
+			Instance:  DefaultInstanceName,
+			StateDir:  stateDir,
+			PublicURL: "https://" + closedAddr,
+			ProjectID: DefaultProjectID,
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if _, ok := DiscoverDefaultInstance(home); ok {
+			t.Fatal("DiscoverDefaultInstance returned true for stopped instance")
+		}
+	})
 }

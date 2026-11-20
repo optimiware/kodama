@@ -31,6 +31,7 @@ import (
 	"github.com/optimiware/kodema/internal/shell/app/drivers/sessionlock"
 	"github.com/optimiware/kodema/internal/shell/app/drivers/userlandfs"
 	"github.com/optimiware/kodema/internal/userland/cli"
+	"github.com/optimiware/kodema/internal/userland/up"
 )
 
 // defaultSessionLockTimeout bounds one acquisition of the cross-process session
@@ -127,7 +128,12 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer, deps cliD
 		return deps.runCLI(ctx, cli.Config{}, flags.Args(), cli.Ports{Out: stdout, Err: stderr}, cli.CommandDeps{})
 	}
 
-	config, rootCAs, code := loadConfig(flags, *configFile, serverURL, *caFile, *credentialFile, *output, *project, trustedOrigins, stderr)
+	homeDir := deps.homeDir
+	if homeDir == nil {
+		homeDir = os.UserHomeDir
+	}
+
+	config, rootCAs, serverExplicit, code := loadConfig(flags, *configFile, serverURL, *caFile, *credentialFile, *output, *project, trustedOrigins, homeDir, stderr)
 	if code != 0 {
 		return code
 	}
@@ -165,10 +171,6 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer, deps cliD
 	if environment == nil {
 		environment = os.Getenv
 	}
-	homeDir := deps.homeDir
-	if homeDir == nil {
-		homeDir = os.UserHomeDir
-	}
 	runtimeDeps := cli.LoginRuntime{
 		OIDC:        oidc,
 		Browser:     browser,
@@ -179,7 +181,13 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer, deps cliD
 		Store:       store,
 		Environment: environment,
 	}
-	source := credentialSource(config.CredentialFile, sessionFile, store, lock, oidc, config.ServerURL, clock, now)
+	credentialAPIURL := config.ServerURL
+	if isGitCredentialArgs(flags.Args()) && !serverExplicit && strings.TrimSpace(config.CredentialFile) == "" {
+		if sessionAPIURL := readSessionAPIURL(sessionFile); sessionAPIURL != "" {
+			credentialAPIURL = sessionAPIURL
+		}
+	}
+	source := credentialSource(config.CredentialFile, sessionFile, store, lock, oidc, credentialAPIURL, clock, now)
 	ports := cli.Ports{
 		Files:      files,
 		Session:    store,
@@ -527,10 +535,13 @@ func validateBrowserTarget(raw string) error {
 
 // loadConfig merges the configuration file with the explicit flags and
 // environment values. Explicit flags and environment values win over the file.
-// A missing default file is not an error; an explicitly requested unreadable
-// file, an unreadable/invalid --ca-file and an invalid configuration are usage
-// refusals.
-func loadConfig(flags *flag.FlagSet, configFile, serverURL, caFile, credentialFile, output, project string, trustedOrigins stringList, stderr io.Writer) (cli.Config, *x509.CertPool, int) {
+// When no server is configured and a local default `kodema up` instance is
+// alive under $HOME/.kodema/instances/default, its public URL, CA certificate
+// and project are used as defaults unless overridden by flags or environment
+// variables. A missing default file is not an error; an explicitly requested
+// unreadable file, an unreadable/invalid --ca-file and an invalid configuration
+// are usage refusals.
+func loadConfig(flags *flag.FlagSet, configFile, serverURL, caFile, credentialFile, output, project string, trustedOrigins stringList, homeDir func() (string, error), stderr io.Writer) (cli.Config, *x509.CertPool, bool, int) {
 	explicitConfig := flagSet(flags, "config") || envSet("KODEMA_CONFIG")
 	config := cli.Config{}
 	if configPath := strings.TrimSpace(configFile); configPath != "" {
@@ -539,30 +550,32 @@ func loadConfig(flags *flag.FlagSet, configFile, serverURL, caFile, credentialFi
 		case err == nil:
 			loaded, parseErr := cli.ParseConfig(data)
 			if parseErr != nil {
-				return cli.Config{}, nil, usage(stderr, parseErr.Error())
+				return cli.Config{}, nil, false, usage(stderr, parseErr.Error())
 			}
 			config = loaded
 		case errors.Is(err, fs.ErrNotExist) && !explicitConfig:
 			// No default configuration file is a normal workstation state.
 		default:
-			return cli.Config{}, nil, usage(stderr, fmt.Sprintf("config %q is unreadable", configPath))
+			return cli.Config{}, nil, false, usage(stderr, fmt.Sprintf("config %q is unreadable", configPath))
 		}
 	}
 	serverFlag := flagSet(flags, "server") || flagSet(flags, "server-url") || flagSet(flags, "url")
 	if serverFlag || envSet("KODEMA_SERVER") || envSet("KODEMA_SERVER_URL") || envSet("KODEMA_URL") {
 		config.ServerURL = serverURL
 	}
-	if flagSet(flags, "ca-file") || envSet("KODEMA_CA_FILE") {
+	caExplicit := flagSet(flags, "ca-file") || envSet("KODEMA_CA_FILE")
+	if caExplicit {
 		trimmedCA := strings.TrimSpace(caFile)
 		if trimmedCA == "" && flagSet(flags, "ca-file") {
-			return cli.Config{}, nil, usage(stderr, "--ca-file requires a path")
+			return cli.Config{}, nil, false, usage(stderr, "--ca-file requires a path")
 		}
 		config.CAFile = trimmedCA
 	}
 	if flagSet(flags, "credential-file") || envSet("KODEMA_CREDENTIAL_FILE") {
 		config.CredentialFile = credentialFile
 	}
-	if mountedCredentialPresent() {
+	mounted := mountedCredentialPresent()
+	if mounted {
 		// A workload image may have workstation defaults baked into it. Use
 		// the installation and identity supplied by the runtime unless the
 		// caller explicitly selected other ones on the command line.
@@ -576,8 +589,23 @@ func loadConfig(flags *flag.FlagSet, configFile, serverURL, caFile, credentialFi
 	if flagSet(flags, "output") || envSet("KODEMA_OUTPUT") {
 		config.Output = cli.OutputFormat(output)
 	}
-	if flagSet(flags, "project") || envSet("KODEMA_PROJECT") {
+	projectExplicit := flagSet(flags, "project") || envSet("KODEMA_PROJECT")
+	if projectExplicit {
 		config.Project = project
+	}
+	serverExplicit := strings.TrimSpace(config.ServerURL) != ""
+	if !mounted && !serverExplicit {
+		if home, err := homeDir(); err == nil && strings.TrimSpace(home) != "" {
+			if desc, ok := up.DiscoverDefaultInstance(home); ok {
+				config.ServerURL = desc.PublicURL
+				if !caExplicit && strings.TrimSpace(config.CAFile) == "" && isRegularFile(desc.CACertPath) {
+					config.CAFile = desc.CACertPath
+				}
+				if !projectExplicit && strings.TrimSpace(config.Project) == "" && strings.TrimSpace(desc.ProjectID) != "" {
+					config.Project = desc.ProjectID
+				}
+			}
+		}
 	}
 	if config.Output == "" {
 		config.Output = cli.OutputTable
@@ -589,11 +617,45 @@ func loadConfig(flags *flag.FlagSet, configFile, serverURL, caFile, credentialFi
 	if caPath := strings.TrimSpace(config.CAFile); caPath != "" {
 		pool, err := loadCABundleFile(caPath)
 		if err != nil {
-			return cli.Config{}, nil, usage(stderr, err.Error())
+			return cli.Config{}, nil, serverExplicit, usage(stderr, err.Error())
 		}
 		rootCAs = pool
 	}
-	return config, rootCAs, 0
+	return config, rootCAs, serverExplicit, 0
+}
+
+// isGitCredentialArgs reports whether the positional arguments dispatch the
+// Git credential helper (`kodema git credential ...`).
+func isGitCredentialArgs(args []string) bool {
+	return len(args) >= 2 && args[0] == "git" && args[1] == "credential"
+}
+
+// readSessionAPIURL returns the api_url stored in a readable version 2 session
+// file, or "" when unavailable. It never returns or logs token material, and
+// callers still enforce full session permission and discovery checks.
+func readSessionAPIURL(sessionPath string) string {
+	trimmed := strings.TrimSpace(sessionPath)
+	if trimmed == "" {
+		return ""
+	}
+	data, err := (userlandfs.FileSystem{}).ReadRegularFile(trimmed, cli.MaxSessionFileBytes+1)
+	if err != nil {
+		return ""
+	}
+	record, err := cli.ParseSessionRecord(data)
+	if err != nil || record.Legacy() {
+		return ""
+	}
+	return strings.TrimSpace(record.APIURL)
+}
+
+func isRegularFile(path string) bool {
+	trimmed := strings.TrimSpace(path)
+	if trimmed == "" {
+		return false
+	}
+	info, err := os.Stat(trimmed)
+	return err == nil && info.Mode().IsRegular()
 }
 
 // mountedCredentialFile is where a container runtime mounts the execution

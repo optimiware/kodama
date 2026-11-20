@@ -177,6 +177,13 @@ func writeWhoamiTable(out interface{ Write([]byte) (int, error) }, view whoamiVi
 		fmt.Fprintf(out, "kind\t%s\n", view.Kind)
 	}
 	if view.TenantID != "" {
+		if view.ProjectID != "" {
+			fmt.Fprintf(out, "scope\tproject (%s)\n", view.ProjectID)
+		} else {
+			fmt.Fprintf(out, "scope\ttenant (%s)\n", view.TenantID)
+		}
+	}
+	if view.TenantID != "" {
 		fmt.Fprintf(out, "tenant_id\t%s\n", view.TenantID)
 	}
 	if view.ProjectID != "" {

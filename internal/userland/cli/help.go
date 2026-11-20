@@ -273,8 +273,17 @@ as the only helper of one origin, so no keychain or store keeps a Kodema token:
     '!kodema --trusted-origin https://<host> git credential'
 It answers get with the current credential (the human session, or the execution
 token inside a container action) for a trusted origin only; any other request
-gets an empty answer. store and erase do nothing. A <url> argument replaces the
-request on standard input. Inside a container action Kodema configures it itself.`,
+gets an empty answer. When --server is omitted, the session file's api_url (or
+the running local default instance) is used. Credential or TLS errors for a
+trusted origin are reported on stderr while keeping stdout empty for Git.
+store and erase do nothing. A <url> argument replaces the request on standard
+input. Inside a container action Kodema configures it itself.
+
+Global Flags:
+  --trusted-origin <url>   Registered trusted Git HTTPS origin (repeatable)
+  --session <path>         Human session file ($KODEMA_SESSION)
+  --ca-file <path>         PEM CA bundle for TLS trust ($KODEMA_CA_FILE)
+  --server <url>           Kodema server URL (defaults to session api_url or default instance)`,
 	},
 	"output": {
 		usage:   "kodema output <subcommand> [arguments]",
@@ -344,6 +353,7 @@ Global Flags:
   --output <table|json>                 Output format ($KODEMA_OUTPUT)
   --session, --session-file <path>      Human session file ($KODEMA_SESSION)
   --credential-file <path>              Mounted execution token file ($KODEMA_CREDENTIAL_FILE)
+  --trusted-origin <url>                Registered trusted Git origin for git credential (repeatable)
   --config <path>                       Configuration file ($KODEMA_CONFIG)
   -h, --help                            Show help and exit
 

@@ -107,14 +107,18 @@ func TestKodactlCAFileTrustsBothOIDCAndAPITransports(t *testing.T) {
 	deps.clock = fixedClock{now: base}
 	deps.environment = mapEnvironment(nil)
 
-	// 1. Without --ca-file, TLS login against self-signed server MUST fail.
-	failCode, _, _ := runEntry(t, []string{
+	// 1. Without --ca-file, TLS login against self-signed server MUST fail
+	// with an actionable CA/TLS hint.
+	failCode, _, failStderr := runEntry(t, []string{
 		"--server", apiServer.URL,
 		"--session", sessionPath,
 		"login", "--device",
 	}, deps)
 	if failCode == cli.ExitSuccess {
 		t.Fatal("login succeeded against untrusted TLS server without --ca-file")
+	}
+	if !strings.Contains(failStderr, "TLS") || !strings.Contains(failStderr, "--ca-file") {
+		t.Fatalf("untrusted TLS login stderr = %q; want TLS/--ca-file hint", failStderr)
 	}
 
 	// 2. With --ca-file, device login trusts BOTH apiServer (discovery) and provider (OIDC).

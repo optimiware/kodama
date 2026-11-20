@@ -302,3 +302,56 @@ func TestRunLoginPersistsSessionFile(t *testing.T) {
 		t.Fatal("failed refresh rewrote the persisted session")
 	}
 }
+
+// TestFileSessionStoreTightensExistingParentDirectory pins that saving into an
+// existing non-0700 user directory tightens it to 0700 so subsequent reads
+// succeed, while refusing shared/sticky directories without mutating them.
+func TestFileSessionStoreTightensExistingParentDirectory(t *testing.T) {
+	t.Run("tightens existing 0755 directory to 0700 on Save and SaveRecord", func(t *testing.T) {
+		filesystem := newFakeFS()
+		filesystem.dirs["/tmp"] = 0o777 | fs.ModeSticky
+		filesystem.dirs["/tmp/s"] = 0o755
+		path := "/tmp/s/eng.json"
+		store := cli.FileSessionStore{Path: path, Files: filesystem, Now: testNow}
+
+		if err := store.Save(context.Background(), humanCredential()); err != nil {
+			t.Fatalf("Save: %v", err)
+		}
+		if mode := filesystem.dirs["/tmp/s"]; mode != 0o700 {
+			t.Fatalf("parent dir mode after Save = %o; want 700", mode)
+		}
+		if mode := filesystem.dirs["/tmp"]; mode != 0o777|fs.ModeSticky {
+			t.Fatalf("ancestor /tmp mode changed = %v", mode)
+		}
+
+		// Reset to 0755 and verify SaveRecord also tightens it to 0700.
+		filesystem.dirs["/tmp/s"] = 0o755
+		if err := store.SaveRecord(context.Background(), commandRecord(testNow().Add(time.Hour))); err != nil {
+			t.Fatalf("SaveRecord: %v", err)
+		}
+		if mode := filesystem.dirs["/tmp/s"]; mode != 0o700 {
+			t.Fatalf("parent dir mode after SaveRecord = %o; want 700", mode)
+		}
+	})
+
+	t.Run("refuses shared sticky directory without mutating it or writing the session", func(t *testing.T) {
+		filesystem := newFakeFS()
+		filesystem.dirs["/tmp"] = 0o777 | fs.ModeSticky
+		path := "/tmp/eng.json"
+		store := cli.FileSessionStore{Path: path, Files: filesystem, Now: testNow}
+
+		err := store.SaveRecord(context.Background(), commandRecord(testNow().Add(time.Hour)))
+		if err == nil {
+			t.Fatal("SaveRecord accepted a shared sticky directory")
+		}
+		if !strings.Contains(err.Error(), "0700") {
+			t.Fatalf("error = %q; want actionable 0700 hint", err.Error())
+		}
+		if mode := filesystem.dirs["/tmp"]; mode != 0o777|fs.ModeSticky {
+			t.Fatalf("/tmp mode was modified: %v", mode)
+		}
+		if _, wrote := filesystem.files[path]; wrote {
+			t.Fatal("session file was written into shared sticky directory")
+		}
+	})
+}

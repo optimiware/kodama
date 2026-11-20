@@ -650,6 +650,25 @@ func TestRouterSanitizeLogsTheCauseWithoutCredentials(t *testing.T) {
 	}
 }
 
+// TestRouterExplainsTenantScopeRequirementForProjectAdmin pins that when a
+// project-scoped admin invokes a tenant-scoped operation (such as
+// membership.list) within its own tenant, the router returns forbidden with an
+// actionable explanation instead of a generic denial.
+func TestRouterExplainsTenantScopeRequirementForProjectAdmin(t *testing.T) {
+	h := newHarness(t)
+	operation, _ := authorize.LookupOperation("membership.list")
+	h.principals.set(humanPrincipal(projectScope(), tenancy.RoleAdmin), nil)
+	h.scopes.set(ops.Resolution{Scope: tenantScope()}, nil)
+
+	_, err := h.invoke(operation.Name, api.Request{}, nil)
+	mustCode(t, err, fault.Forbidden)
+	for _, want := range []string{"tenant-scoped credential", "membership.list", "KODEMA_TENANT_ADMIN_CREDENTIAL_FILE"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("forbidden error = %q; want %q", err.Error(), want)
+		}
+	}
+}
+
 type receiptRecord struct {
 	input  []byte
 	result api.Result
