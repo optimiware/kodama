@@ -23,6 +23,7 @@ import (
 	"github.com/optimiware/kodema/internal/shell/authorize"
 	"github.com/optimiware/kodema/internal/shell/event"
 	"github.com/optimiware/kodema/internal/shell/identity"
+	natsbroker "github.com/optimiware/kodema/internal/shell/integration/nats"
 	"github.com/optimiware/kodema/internal/shell/integration/oidc"
 	"github.com/optimiware/kodema/internal/shell/service"
 	"github.com/optimiware/kodema/internal/shell/store"
@@ -32,6 +33,7 @@ import (
 	"github.com/optimiware/kodema/internal/shell/store/units/readers"
 	"github.com/optimiware/kodema/internal/shell/tenancy"
 	"github.com/optimiware/kodema/internal/shell/token"
+	transportops "github.com/optimiware/kodema/internal/shell/transport/ops"
 )
 
 type sseFrame struct {
@@ -673,5 +675,114 @@ func TestProjectEventStream_HumanOIDCAuthExpiryAndKeepalive(t *testing.T) {
 	}
 	if strings.Contains(frames[0].Data, "evt-after-expiry") {
 		t.Fatalf("stream leaked post-expiry event: %s", frames[0].Data)
+	}
+}
+
+type stubPrincipalResolver struct {
+	principal identity.Principal
+}
+
+func (s stubPrincipalResolver) Resolve(context.Context, string) (identity.Principal, error) {
+	return s.principal, nil
+}
+
+type panickingScopeResolver struct{}
+
+func (panickingScopeResolver) Resolve(context.Context, identity.Principal, transportops.Call) (transportops.Resolution, error) {
+	panic("scopes.Resolve must not be called for execution principals on event stream")
+}
+
+type fakeBrokerWakeupSub struct {
+	mu     sync.Mutex
+	closed bool
+	onDone chan struct{}
+}
+
+func (s *fakeBrokerWakeupSub) Close(context.Context) error {
+	s.mu.Lock()
+	already := s.closed
+	s.closed = true
+	s.mu.Unlock()
+	if !already && s.onDone != nil {
+		close(s.onDone)
+	}
+	return nil
+}
+
+type fakeBrokerWakeup struct {
+	mu     sync.Mutex
+	subCnt int
+	last   *fakeBrokerWakeupSub
+}
+
+func (f *fakeBrokerWakeup) SubscribeEventWakeup(context.Context, tenancy.Scope, func()) (natsbroker.Subscription, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.subCnt++
+	sub := &fakeBrokerWakeupSub{onDone: make(chan struct{})}
+	f.last = sub
+	return sub, nil
+}
+
+func TestProjectEventStream_ExecutionPrincipalRejectedBeforeScopeResolveAndSharedWakeup(t *testing.T) {
+	execPrincipal := identity.Principal{
+		ID:          "exec-principal-1",
+		Kind:        identity.KindExecution,
+		ExecutionID: "exec-1",
+		Scope:       tenancy.Scope{TenantID: "tenant-1", ProjectID: "proj-1"},
+		Enabled:     true,
+	}
+	broker := &fakeBrokerWakeup{}
+	handler := &projectEventStreamHandler{
+		principals:   stubPrincipalResolver{principal: execPrincipal},
+		scopes:       panickingScopeResolver{},
+		hub:          newEventWakeupHub(),
+		brokerWakeup: broker,
+		brokerSubs:   make(map[tenancy.Scope]*sharedBrokerWakeup),
+		done:         make(chan struct{}),
+	}
+	defer func() { _ = handler.Close(context.Background()) }()
+
+	// Own project -> 403 forbidden without calling scopes.Resolve.
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/projects/proj-1/events/stream", nil)
+	req.Header.Set("Authorization", "Bearer exec-token")
+	handler.ServeProjectStream(rec, req, "proj-1")
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("own project status = %d body=%s; want 403", rec.Code, rec.Body.String())
+	}
+
+	// Foreign project -> 404 not_found without calling scopes.Resolve.
+	recOther := httptest.NewRecorder()
+	reqOther := httptest.NewRequest(http.MethodGet, "/api/v1/projects/proj-2/events/stream", nil)
+	reqOther.Header.Set("Authorization", "Bearer exec-token")
+	handler.ServeProjectStream(recOther, reqOther, "proj-2")
+	if recOther.Code != http.StatusNotFound {
+		t.Fatalf("foreign project status = %d body=%s; want 404", recOther.Code, recOther.Body.String())
+	}
+
+	// Shared ref-counted NATS wakeup: 2 concurrent streams share 1 subscription,
+	// closed only after both release.
+	scope := tenancy.Scope{TenantID: "tenant-1", ProjectID: "proj-1"}
+	rel1 := handler.acquireBrokerWakeup(context.Background(), scope)
+	rel2 := handler.acquireBrokerWakeup(context.Background(), scope)
+	broker.mu.Lock()
+	subCnt := broker.subCnt
+	sub := broker.last
+	broker.mu.Unlock()
+	if subCnt != 1 {
+		t.Fatalf("broker wakeup subscriptions = %d; want 1 shared per scope", subCnt)
+	}
+	rel1()
+	select {
+	case <-sub.onDone:
+		t.Fatal("shared broker wakeup closed while second subscriber still active")
+	case <-time.After(25 * time.Millisecond):
+	}
+	rel2()
+	select {
+	case <-sub.onDone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("shared broker wakeup did not close after last subscriber released")
 	}
 }

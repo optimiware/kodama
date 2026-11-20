@@ -178,6 +178,11 @@ type projectEventStreamConfig struct {
 	KeepaliveInterval time.Duration
 }
 
+type sharedBrokerWakeup struct {
+	sub  natsbroker.Subscription
+	refs int
+}
+
 // projectEventStreamHandler serves GET /api/v1/projects/{project}/events/stream
 // as text/event-stream backed by the same authentication, scope visibility,
 // event.subscribe grant/expiry, and event.read durable sequence contract.
@@ -191,6 +196,9 @@ type projectEventStreamHandler struct {
 	clock             Clock
 	pollInterval      time.Duration
 	keepaliveInterval time.Duration
+
+	brokerMu   sync.Mutex
+	brokerSubs map[tenancy.Scope]*sharedBrokerWakeup
 
 	closeOnce sync.Once
 	done      chan struct{}
@@ -229,19 +237,105 @@ func newProjectEventStreamHandler(cfg projectEventStreamConfig) (*projectEventSt
 		clock:             cfg.Clock,
 		pollInterval:      pollInterval,
 		keepaliveInterval: keepaliveInterval,
+		brokerSubs:        make(map[tenancy.Scope]*sharedBrokerWakeup),
 		done:              make(chan struct{}),
 	}, nil
 }
 
 // Close terminates all open SSE streams cleanly during server shutdown.
-func (handler *projectEventStreamHandler) Close(context.Context) error {
+func (handler *projectEventStreamHandler) Close(ctx context.Context) error {
 	if handler == nil {
 		return nil
 	}
 	handler.closeOnce.Do(func() {
 		close(handler.done)
 	})
+	handler.brokerMu.Lock()
+	subs := make([]natsbroker.Subscription, 0, len(handler.brokerSubs))
+	for scope, entry := range handler.brokerSubs {
+		if entry != nil && entry.sub != nil {
+			subs = append(subs, entry.sub)
+		}
+		delete(handler.brokerSubs, scope)
+	}
+	handler.brokerMu.Unlock()
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	for _, sub := range subs {
+		_ = sub.Close(ctx)
+	}
 	return nil
+}
+
+func (handler *projectEventStreamHandler) acquireBrokerWakeup(ctx context.Context, scope tenancy.Scope) func() {
+	if handler.brokerWakeup == nil {
+		return func() {}
+	}
+	handler.brokerMu.Lock()
+	if entry, ok := handler.brokerSubs[scope]; ok {
+		entry.refs++
+		handler.brokerMu.Unlock()
+		return handler.releaseBrokerWakeupFunc(scope)
+	}
+	handler.brokerMu.Unlock()
+
+	sub, err := handler.brokerWakeup.SubscribeEventWakeup(ctx, scope, func() {
+		handler.hub.notify(scope)
+	})
+	if err != nil || sub == nil {
+		return func() {}
+	}
+
+	var duplicate natsbroker.Subscription
+	handler.brokerMu.Lock()
+	select {
+	case <-handler.done:
+		duplicate = sub
+	default:
+		if existing, ok := handler.brokerSubs[scope]; ok {
+			existing.refs++
+			duplicate = sub
+		} else {
+			handler.brokerSubs[scope] = &sharedBrokerWakeup{sub: sub, refs: 1}
+		}
+	}
+	handler.brokerMu.Unlock()
+
+	if duplicate != nil {
+		_ = duplicate.Close(context.Background())
+		select {
+		case <-handler.done:
+			return func() {}
+		default:
+		}
+	}
+	return handler.releaseBrokerWakeupFunc(scope)
+}
+
+func (handler *projectEventStreamHandler) releaseBrokerWakeupFunc(scope tenancy.Scope) func() {
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			var toClose natsbroker.Subscription
+			handler.brokerMu.Lock()
+			if entry, ok := handler.brokerSubs[scope]; ok {
+				entry.refs--
+				if entry.refs <= 0 {
+					toClose = entry.sub
+					delete(handler.brokerSubs, scope)
+				}
+			}
+			handler.brokerMu.Unlock()
+			if toClose != nil {
+				go func() {
+					closeCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+					defer cancel()
+					_ = toClose.Close(closeCtx)
+				}()
+			}
+		})
+	}
 }
 
 // ServeProjectStream handles GET /api/v1/projects/{project}/events/stream.
@@ -252,6 +346,10 @@ func (handler *projectEventStreamHandler) ServeProjectStream(writer http.Respons
 			Code:    api.CodeInvalidInput,
 			Message: "the project event stream accepts only GET",
 		})
+		return
+	}
+	if request.URL != nil && request.URL.Fragment != "" {
+		writeHTTPError(writer, fault.New(fault.InvalidInput, "the project event stream does not accept a URL fragment"))
 		return
 	}
 	if hasHTTPRequestBody(request) {
@@ -271,6 +369,17 @@ func (handler *projectEventStreamHandler) ServeProjectStream(writer http.Respons
 		writeHTTPError(writer, fault.Wrap(fault.Unauthenticated, "principal is invalid", err))
 		return
 	}
+	// Reject execution principals before handler.scopes.Resolve so
+	// Ownership.Resolve never inserts a pending execution context that is not
+	// consumed by Ownership.Admit.
+	if principal.Kind == identity.KindExecution {
+		if principal.Scope.ProjectScoped() && projectID != string(principal.Scope.ProjectID) {
+			writeHTTPError(writer, fault.New(fault.NotFound, "project is not visible"))
+			return
+		}
+		writeHTTPError(writer, fault.New(fault.Forbidden, "execution credentials cannot subscribe to project events"))
+		return
+	}
 
 	resolution, err := handler.scopes.Resolve(ctx, principal, transportops.Call{
 		Operation: authorize.OperationName("event.subscribe"),
@@ -282,21 +391,21 @@ func (handler *projectEventStreamHandler) ServeProjectStream(writer http.Respons
 	}
 	scope := resolution.Scope
 
-	requestedSeq, hasCursor, types, err := parseEventStreamParams(request)
+	// Authorize the subscription before validating query parameters so
+	// unauthorized callers receive 403 rather than 400.
+	grant, err := handler.subscriber.Setup(ctx, event.SubscribeCommand{
+		Actor: principal,
+		Scope: scope,
+		Setup: event.SubscribeSetup{
+			Scope: scope,
+		},
+	})
 	if err != nil {
 		writeHTTPError(writer, err)
 		return
 	}
 
-	grant, err := handler.subscriber.Setup(ctx, event.SubscribeCommand{
-		Actor: principal,
-		Scope: scope,
-		Setup: event.SubscribeSetup{
-			Scope:  scope,
-			Types:  types,
-			Cursor: requestedSeq,
-		},
-	})
+	requestedSeq, hasCursor, types, err := parseEventStreamParams(request)
 	if err != nil {
 		writeHTTPError(writer, err)
 		return
@@ -310,36 +419,43 @@ func (handler *projectEventStreamHandler) ServeProjectStream(writer http.Respons
 	if hasCursor {
 		afterSeq = requestedSeq
 	}
+	initialCursor, err := api.EncodeEventCursor(afterSeq)
+	if err != nil {
+		writeHTTPError(writer, fault.Wrap(fault.InternalFailure, "event cursor encoding failed", err))
+		return
+	}
 
 	// Subscribe to live wakeups BEFORE backfilling committed rows so events
 	// committed concurrently with backfill are never missed.
 	wakeupCh, unsubHub := handler.hub.subscribe(scope)
 	defer unsubHub()
-	if handler.brokerWakeup != nil {
-		if sub, subErr := handler.brokerWakeup.SubscribeEventWakeup(ctx, scope, func() {
-			handler.hub.notify(scope)
-		}); subErr == nil && sub != nil {
-			defer func() { _ = sub.Close(context.Background()) }()
-		}
-	}
+	unsubBroker := handler.acquireBrokerWakeup(ctx, scope)
+	defer unsubBroker()
+
+	rc := http.NewResponseController(writer)
+	_ = rc.SetWriteDeadline(time.Time{})
 
 	writer.Header().Set("Content-Type", api.EventStreamMediaType+"; charset=utf-8")
 	writer.Header().Set("Cache-Control", "no-cache, no-transform")
 	writer.Header().Set("X-Content-Type-Options", "nosniff")
 	writer.Header().Set("X-Accel-Buffering", "no")
+	writer.Header().Set("X-Kodema-Event-Cursor", initialCursor)
 	writer.WriteHeader(http.StatusOK)
-	flusher, _ := writer.(http.Flusher)
-	if flusher != nil {
-		flusher.Flush()
+	// Emit an initial id-only SSE frame so idle clients (and EventSource) know
+	// the exact starting cursor to resume from if the connection closes before
+	// the first event arrives.
+	if _, err := fmt.Fprintf(writer, "id: %s\n\n", initialCursor); err != nil {
+		return
 	}
+	_ = rc.Flush()
 
-	handler.streamLoop(ctx, writer, flusher, credential, principal, scope, types, afterSeq, grant.ExpiresAt, wakeupCh)
+	handler.streamLoop(ctx, writer, rc, credential, principal, scope, types, afterSeq, grant.ExpiresAt, wakeupCh)
 }
 
 func (handler *projectEventStreamHandler) streamLoop(
 	ctx context.Context,
 	writer http.ResponseWriter,
-	flusher http.Flusher,
+	rc *http.ResponseController,
 	credential string,
 	initialPrincipal identity.Principal,
 	scope tenancy.Scope,
@@ -350,6 +466,7 @@ func (handler *projectEventStreamHandler) streamLoop(
 ) {
 	currentPrincipal := initialPrincipal
 	seen := make(map[id.EventID]struct{})
+	lastEmittedSeq := afterSeq
 
 	isExpired := func() bool {
 		return !handler.clock.Now().Before(expiresAt)
@@ -401,6 +518,13 @@ func (handler *projectEventStreamHandler) streamLoop(
 				return false
 			}
 			for index, envelope := range page.Events {
+				select {
+				case <-ctx.Done():
+					return false
+				case <-handler.done:
+					return false
+				default:
+				}
 				if isExpired() {
 					return false
 				}
@@ -419,10 +543,11 @@ func (handler *projectEventStreamHandler) streamLoop(
 				if err != nil {
 					return false
 				}
-				if err := writeSSEEvent(writer, flusher, streamEvt); err != nil {
+				if err := writeSSEEvent(writer, rc, streamEvt); err != nil {
 					return false
 				}
 				afterSeq = seq
+				lastEmittedSeq = seq
 				if len(seen) >= maxSeenStreamEventIDs {
 					clear(seen)
 				}
@@ -478,12 +603,19 @@ func (handler *projectEventStreamHandler) streamLoop(
 			if !revalidate() {
 				return
 			}
-			if _, err := fmt.Fprint(writer, ": keepalive\n\n"); err != nil {
+			if afterSeq > lastEmittedSeq {
+				if cursor, err := api.EncodeEventCursor(afterSeq); err == nil {
+					if _, err := fmt.Fprintf(writer, "id: %s\n: keepalive\n\n", cursor); err != nil {
+						return
+					}
+					lastEmittedSeq = afterSeq
+				} else if _, err := fmt.Fprint(writer, ": keepalive\n\n"); err != nil {
+					return
+				}
+			} else if _, err := fmt.Fprint(writer, ": keepalive\n\n"); err != nil {
 				return
 			}
-			if flusher != nil {
-				flusher.Flush()
-			}
+			_ = rc.Flush()
 		}
 	}
 }
@@ -514,7 +646,7 @@ func buildStreamEvent(envelope event.Envelope, sequence uint64) (api.StreamEvent
 	}, nil
 }
 
-func writeSSEEvent(writer http.ResponseWriter, flusher http.Flusher, evt api.StreamEvent) error {
+func writeSSEEvent(writer http.ResponseWriter, rc *http.ResponseController, evt api.StreamEvent) error {
 	payload, err := json.Marshal(evt)
 	if err != nil {
 		return err
@@ -522,8 +654,8 @@ func writeSSEEvent(writer http.ResponseWriter, flusher http.Flusher, evt api.Str
 	if _, err := fmt.Fprintf(writer, "id: %s\nevent: %s\ndata: %s\n\n", evt.Cursor, evt.Type, payload); err != nil {
 		return err
 	}
-	if flusher != nil {
-		flusher.Flush()
+	if rc != nil {
+		_ = rc.Flush()
 	}
 	return nil
 }

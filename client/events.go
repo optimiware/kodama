@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"mime"
 	"net/http"
 	"net/url"
 	"strings"
@@ -120,9 +121,10 @@ type httpEventStream struct {
 	types     []string
 	retry     RetryPolicy
 
-	lastCursor string
-	lastSeq    uint64
-	seenIDs    map[string]struct{}
+	lastCursor           string
+	lastSeq              uint64
+	seenIDs              map[string]struct{}
+	zeroEventDisconnects int
 
 	streamCtx context.Context
 	cancel    context.CancelFunc
@@ -337,14 +339,54 @@ func (stream *httpEventStream) dial(ctx context.Context, isReconnect bool) (erro
 		_, failure, retryable := stream.transport.decode("event.subscribe", response, false, false)
 		return failure, retryable
 	}
+	mediaType, _, mediaErr := mime.ParseMediaType(response.Header.Get("Content-Type"))
+	if mediaErr != nil || !strings.EqualFold(mediaType, api.EventStreamMediaType) {
+		reqCancel()
+		if response.Body != nil {
+			_ = response.Body.Close()
+		}
+		return fault.New(fault.InternalFailure, "the event stream response is not text/event-stream"), false
+	}
 	if response.Body == nil {
 		reqCancel()
 		return fault.New(fault.InternalFailure, "the event stream response has no body"), false
 	}
+	stream.recordCursor(strings.TrimSpace(response.Header.Get("X-Kodema-Event-Cursor")))
 	if err := stream.setBody(response.Body, reqCancel); err != nil {
 		return err, false
 	}
 	return nil, false
+}
+
+func (stream *httpEventStream) recordCursor(cursor string) {
+	if cursor == "" {
+		return
+	}
+	if seq, err := api.DecodeEventCursor(cursor); err == nil {
+		if stream.lastCursor == "" || seq > stream.lastSeq {
+			stream.lastCursor = cursor
+		}
+		if seq > stream.lastSeq {
+			stream.lastSeq = seq
+		}
+		return
+	}
+	stream.lastCursor = cursor
+}
+
+func (stream *httpEventStream) backoffZeroEventDisconnect(ctx context.Context) error {
+	stream.zeroEventDisconnects++
+	if stream.zeroEventDisconnects <= 1 {
+		return nil
+	}
+	policy := stream.retry
+	if policy.BaseDelay <= 0 {
+		policy.BaseDelay = defaultStreamBaseDly
+	}
+	if policy.MaxDelay <= 0 {
+		policy.MaxDelay = defaultStreamMaxDly
+	}
+	return wait(ctx, stream.transport.Sleep, policy, stream.zeroEventDisconnects-1)
 }
 
 func (stream *httpEventStream) Next(ctx context.Context) (api.StreamEvent, error) {
@@ -371,7 +413,7 @@ func (stream *httpEventStream) Next(ctx context.Context) (api.StreamEvent, error
 		stopCancel := context.AfterFunc(ctx, func() {
 			stream.closeCurrentBody()
 		})
-		evt, ok, err := readNextSSEEvent(scanner)
+		evt, ok, err := readNextSSEEvent(scanner, stream.recordCursor)
 		stopCancel()
 
 		if err != nil {
@@ -386,6 +428,12 @@ func (stream *httpEventStream) Next(ctx context.Context) (api.StreamEvent, error
 			if errors.Is(err, errMalformedSSEPayload) {
 				return api.StreamEvent{}, fault.Wrap(fault.InternalFailure, "the event stream payload is invalid", err)
 			}
+			if errors.Is(err, bufio.ErrTooLong) {
+				return api.StreamEvent{}, fault.Wrap(fault.InternalFailure, "the event stream line exceeds maximum size", err)
+			}
+			if waitErr := stream.backoffZeroEventDisconnect(ctx); waitErr != nil {
+				return api.StreamEvent{}, waitErr
+			}
 			if reconnectErr := stream.reconnect(ctx); reconnectErr != nil {
 				return api.StreamEvent{}, reconnectErr
 			}
@@ -399,6 +447,9 @@ func (stream *httpEventStream) Next(ctx context.Context) (api.StreamEvent, error
 				return api.StreamEvent{}, io.EOF
 			}
 			stream.closeCurrentBody()
+			if waitErr := stream.backoffZeroEventDisconnect(ctx); waitErr != nil {
+				return api.StreamEvent{}, waitErr
+			}
 			if reconnectErr := stream.reconnect(ctx); reconnectErr != nil {
 				return api.StreamEvent{}, reconnectErr
 			}
@@ -421,6 +472,7 @@ func (stream *httpEventStream) Next(ctx context.Context) (api.StreamEvent, error
 			}
 		}
 
+		stream.zeroEventDisconnects = 0
 		if evt.Sequence > stream.lastSeq {
 			stream.lastSeq = evt.Sequence
 		}
@@ -440,9 +492,11 @@ func (stream *httpEventStream) Next(ctx context.Context) (api.StreamEvent, error
 var errMalformedSSEPayload = errors.New("malformed SSE event payload")
 
 // readNextSSEEvent reads the next complete SSE frame from scanner, ignoring
-// comment/keepalive lines. Returns (evt, true, nil) on a decoded frame,
-// (zero, false, nil) on clean EOF, or (zero, false, err) on read/decode error.
-func readNextSSEEvent(scanner *bufio.Scanner) (api.StreamEvent, bool, error) {
+// comment/keepalive lines while reporting any frame id via onCursor so idle
+// streams preserve their resume cursor across reconnects. Returns (evt, true,
+// nil) on a decoded frame, (zero, false, nil) on clean EOF, or (zero, false,
+// err) on read/decode error.
+func readNextSSEEvent(scanner *bufio.Scanner, onCursor func(string)) (api.StreamEvent, bool, error) {
 	var (
 		eventID   string
 		eventType string
@@ -452,6 +506,9 @@ func readNextSSEEvent(scanner *bufio.Scanner) (api.StreamEvent, bool, error) {
 		line := scanner.Text()
 		if line == "" {
 			if len(dataLines) == 0 {
+				if eventID != "" && onCursor != nil {
+					onCursor(eventID)
+				}
 				eventID = ""
 				eventType = ""
 				continue

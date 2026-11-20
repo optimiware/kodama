@@ -163,3 +163,206 @@ func TestHTTPTransportStreamEventsRefusesPermanentErrors(t *testing.T) {
 		t.Fatalf("err = %v (class=%v); want forbidden", err, class)
 	}
 }
+
+func TestHTTPTransportStreamEventsIdleCursorReconnectBackoffAndValidation(t *testing.T) {
+	t.Run("idle stream captures initial cursor from header and id-only frame across reconnect", func(t *testing.T) {
+		curInit, _ := api.EncodeEventCursor(10)
+		cur11, _ := api.EncodeEventCursor(11)
+		evt11 := api.StreamEvent{ID: "e11", Cursor: cur11, Sequence: 11, Type: "action.requested"}
+		raw11, _ := json.Marshal(evt11)
+
+		var (
+			mu         sync.Mutex
+			call       int
+			lastEvents []string
+		)
+		rt := sseRoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+			mu.Lock()
+			call++
+			n := call
+			lastEvents = append(lastEvents, req.Header.Get("Last-Event-ID"))
+			mu.Unlock()
+
+			hdr := http.Header{
+				"Content-Type":          []string{api.EventStreamMediaType + "; charset=utf-8"},
+				"X-Kodema-Event-Cursor": []string{curInit},
+			}
+			if n == 1 {
+				// Idle disconnect: only an id-only frame and keepalive, zero data events.
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Header:     hdr,
+					Body:       io.NopCloser(strings.NewReader("id: " + curInit + "\n\n: keepalive\n\n")),
+					Request:    req,
+				}, nil
+			}
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     hdr,
+				Body:       io.NopCloser(strings.NewReader("id: " + cur11 + "\nevent: action.requested\ndata: " + string(raw11) + "\n\n")),
+				Request:    req,
+			}, nil
+		})
+		tr := &client.HTTPTransport{
+			BaseURL:      "https://api.kodema.example",
+			RoundTripper: rt,
+			Source: &fakeSource{credentials: []client.Credential{
+				{Kind: client.KindSession, Token: "tok-1", ExpiresAt: fixedNow().Add(time.Hour)},
+			}},
+			Now:   fixedNow,
+			Sleep: func(time.Duration) {},
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		stream, err := tr.StreamEvents(ctx, client.EventStreamRequest{ProjectID: "proj-1"})
+		if err != nil {
+			t.Fatalf("StreamEvents: %v", err)
+		}
+		defer stream.Close()
+
+		got, err := stream.Next(ctx)
+		if err != nil {
+			t.Fatalf("Next: %v", err)
+		}
+		if got.ID != "e11" {
+			t.Fatalf("got event %q; want e11", got.ID)
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		if len(lastEvents) != 2 || lastEvents[0] != "" || lastEvents[1] != curInit {
+			t.Fatalf("Last-Event-ID sequence = %v; want [\"\", %q]", lastEvents, curInit)
+		}
+	})
+
+	t.Run("rejects non-event-stream 200 OK Content-Type non-retryably", func(t *testing.T) {
+		calls := 0
+		rt := sseRoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+			calls++
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"text/html; charset=utf-8"}},
+				Body:       io.NopCloser(strings.NewReader("<html>proxy</html>")),
+				Request:    req,
+			}, nil
+		})
+		tr := &client.HTTPTransport{
+			BaseURL:      "https://api.kodema.example",
+			RoundTripper: rt,
+			Source: &fakeSource{credentials: []client.Credential{
+				{Kind: client.KindSession, Token: "tok-1", ExpiresAt: fixedNow().Add(time.Hour)},
+			}},
+			Retry: client.RetryPolicy{MaxAttempts: 3, BaseDelay: time.Millisecond, MaxDelay: 5 * time.Millisecond},
+			Now:   fixedNow,
+			Sleep: func(time.Duration) {},
+		}
+		_, err := tr.StreamEvents(context.Background(), client.EventStreamRequest{ProjectID: "proj-1"})
+		if class, ok := fault.ClassOf(err); !ok || class != fault.InternalFailure {
+			t.Fatalf("err = %v (class=%v); want internal_failure", err, class)
+		}
+		if calls != 1 {
+			t.Fatalf("calls = %d; want 1 (non-retryable)", calls)
+		}
+	})
+
+	t.Run("repeated zero-event EOFs back off instead of spinning", func(t *testing.T) {
+		var (
+			mu     sync.Mutex
+			sleeps []time.Duration
+			calls  int
+		)
+		cur1, _ := api.EncodeEventCursor(1)
+		evt1 := api.StreamEvent{ID: "e1", Cursor: cur1, Sequence: 1, Type: "task.created"}
+		raw1, _ := json.Marshal(evt1)
+		rt := sseRoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+			mu.Lock()
+			calls++
+			n := calls
+			mu.Unlock()
+			if n < 4 {
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Header:     http.Header{"Content-Type": []string{api.EventStreamMediaType}},
+					Body:       io.NopCloser(strings.NewReader("")),
+					Request:    req,
+				}, nil
+			}
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{api.EventStreamMediaType}},
+				Body:       io.NopCloser(strings.NewReader("id: " + cur1 + "\ndata: " + string(raw1) + "\n\n")),
+				Request:    req,
+			}, nil
+		})
+		tr := &client.HTTPTransport{
+			BaseURL:      "https://api.kodema.example",
+			RoundTripper: rt,
+			Source: &fakeSource{credentials: []client.Credential{
+				{Kind: client.KindSession, Token: "tok-1", ExpiresAt: fixedNow().Add(time.Hour)},
+			}},
+			Retry: client.RetryPolicy{MaxAttempts: 3, BaseDelay: 5 * time.Millisecond, MaxDelay: 50 * time.Millisecond},
+			Now:   fixedNow,
+			Sleep: func(d time.Duration) {
+				mu.Lock()
+				sleeps = append(sleeps, d)
+				mu.Unlock()
+			},
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		stream, err := tr.StreamEvents(ctx, client.EventStreamRequest{ProjectID: "proj-1"})
+		if err != nil {
+			t.Fatalf("StreamEvents: %v", err)
+		}
+		defer stream.Close()
+
+		got, err := stream.Next(ctx)
+		if err != nil {
+			t.Fatalf("Next: %v", err)
+		}
+		if got.ID != "e1" {
+			t.Fatalf("got = %q; want e1", got.ID)
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		if len(sleeps) < 2 {
+			t.Fatalf("zero-event disconnect sleeps = %v; want exponential backoff (>=2 sleeps)", sleeps)
+		}
+	})
+
+	t.Run("oversized SSE line fails non-retryably", func(t *testing.T) {
+		calls := 0
+		huge := "data: " + strings.Repeat("x", (512<<10)+1024) + "\n\n"
+		rt := sseRoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+			calls++
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{api.EventStreamMediaType}},
+				Body:       io.NopCloser(strings.NewReader(huge)),
+				Request:    req,
+			}, nil
+		})
+		tr := &client.HTTPTransport{
+			BaseURL:      "https://api.kodema.example",
+			RoundTripper: rt,
+			Source: &fakeSource{credentials: []client.Credential{
+				{Kind: client.KindSession, Token: "tok-1", ExpiresAt: fixedNow().Add(time.Hour)},
+			}},
+			Now:   fixedNow,
+			Sleep: func(time.Duration) {},
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		stream, err := tr.StreamEvents(ctx, client.EventStreamRequest{ProjectID: "proj-1"})
+		if err != nil {
+			t.Fatalf("StreamEvents: %v", err)
+		}
+		defer stream.Close()
+		_, err = stream.Next(ctx)
+		if class, ok := fault.ClassOf(err); !ok || class != fault.InternalFailure {
+			t.Fatalf("Next err = %v (class=%v); want internal_failure", err, class)
+		}
+		if calls != 1 {
+			t.Fatalf("calls = %d; want 1 (non-retryable ErrTooLong)", calls)
+		}
+	})
+}
