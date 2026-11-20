@@ -569,10 +569,14 @@ func (config Config) validate() error {
 }
 
 // validateWorkloadSecretRules checks workload secret-name rules for one
-// composition profile. Production refuses wildcard AllowAll rules so production
-// installations always list exact secret names (or stay deny-by-default).
+// composition profile. Only development and test profiles permit wildcard
+// AllowAll rules; production (and any unrecognized profile) fails closed so
+// production installations always list exact secret names or stay deny-by-default.
 func validateWorkloadSecretRules(rules []secret.NameRule, profile Profile) error {
-	if profile == ProfileProduction {
+	if !profile.Valid() {
+		return fault.New(fault.InvalidInput, fmt.Sprintf("unknown composition profile %q", profile))
+	}
+	if profile != ProfileDevelopment && profile != ProfileTest {
 		for index, rule := range rules {
 			if rule.AllowAll {
 				return fault.New(fault.InvalidInput,

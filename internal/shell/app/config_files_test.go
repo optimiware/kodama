@@ -580,6 +580,13 @@ func TestLoadSecretRulesFile(t *testing.T) {
 		} else if !strings.Contains(err.Error(), SecretRulesFileSetting) || !strings.Contains(err.Error(), "allow_all") {
 			t.Fatalf("production refusal = %q; want %s and allow_all named", err, SecretRulesFileSetting)
 		}
+		for _, invalidProfile := range []Profile{"", Profile("staging")} {
+			if rules, err := LoadSecretRulesFile(path, invalidProfile); err == nil || rules != nil {
+				t.Fatalf("invalid profile %q accepted wildcard allow_all secret rules: %+v", invalidProfile, rules)
+			} else if !strings.Contains(err.Error(), SecretRulesFileSetting) || !strings.Contains(err.Error(), "unknown composition profile") {
+				t.Fatalf("invalid profile %q refusal = %q; want %s and unknown composition profile", invalidProfile, err, SecretRulesFileSetting)
+			}
+		}
 	})
 
 	t.Run("refuses malformed and invalid files", func(t *testing.T) {
