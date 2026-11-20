@@ -21,18 +21,19 @@ type RouteParam struct {
 // set an MCP caller must supply (pipeline.start accepts inline YAML with only
 // the project, so its stored pipeline id is not a required MCP field).
 type OperationCodec struct {
-	Operation              string
-	InputSchema            string
-	ResultSchema           string
-	RequiresIdempotencyKey bool
-	RequestType            reflect.Type
-	RouteParams            []RouteParam
-	MCPRouteParams         []RouteParam
-	DecodeRequest          func(json.RawMessage) (any, error)
-	DecodeMCPRequest       func(json.RawMessage) (any, error)
-	EncodeRequest          func(any) (json.RawMessage, error)
-	DecodeResult           func(json.RawMessage) (any, error)
-	EncodeResult           func(any) (json.RawMessage, error)
+	Operation               string
+	InputSchema             string
+	ResultSchema            string
+	RequiresIdempotencyKey  bool
+	RequiresExpectedVersion bool
+	RequestType             reflect.Type
+	RouteParams             []RouteParam
+	MCPRouteParams          []RouteParam
+	DecodeRequest           func(json.RawMessage) (any, error)
+	DecodeMCPRequest        func(json.RawMessage) (any, error)
+	EncodeRequest           func(any) (json.RawMessage, error)
+	DecodeResult            func(json.RawMessage) (any, error)
+	EncodeResult            func(any) (json.RawMessage, error)
 }
 
 // operationCodecSpec is the internal table row: the codec functions plus the
@@ -160,20 +161,49 @@ func OperationCodecs() []OperationCodec {
 	return codecs
 }
 
+// expectedVersionRequired lists every registered operation whose handler
+// unconditionally requires the shared envelope expected_version at runtime.
+var expectedVersionRequired = map[string]bool{
+	"tenant.rotate_key":         true,
+	"project.update":            true,
+	"membership.revoke":         true,
+	"resource.binding.update":   true,
+	"resource.binding.delete":   true,
+	"pipeline.update":           true,
+	"pipeline.delete":           true,
+	"secret.delete":             true,
+	"service.update":            true,
+	"service.enable":            true,
+	"service.disable":           true,
+	"service.credential.issue":  true,
+	"service.credential.rotate": true,
+	"service.credential.revoke": true,
+	"task.edit":                 true,
+	"task.comment":              true,
+	"task.select_pipeline":      true,
+	"task.start":                true,
+	"task.ask":                  true,
+	"task.reply":                true,
+	"task.cancel":               true,
+	"execution.cancel":          true,
+	"execution.action.outputs":  true,
+}
+
 // newOperationCodec builds one public codec row, including the route-derived
 // field table and the MCP-mode decoder that requires those fields.
 func newOperationCodec(route Route, spec operationCodecSpec) OperationCodec {
 	routeParams := routeParamsFor(route.Operation)
 	mcpRouteParams := mcpRouteParamsFor(route.Operation, routeParams)
 	return OperationCodec{
-		Operation:              route.Operation,
-		InputSchema:            route.InputSchema,
-		ResultSchema:           route.ResultSchema,
-		RequiresIdempotencyKey: spec.requiresIdempotencyKey,
-		RequestType:            spec.inputType,
-		RouteParams:            routeParams,
-		MCPRouteParams:         mcpRouteParams,
-		DecodeRequest:          spec.decodeRequest,
+		Operation:               route.Operation,
+		InputSchema:             route.InputSchema,
+		ResultSchema:            route.ResultSchema,
+		RequiresIdempotencyKey:  spec.requiresIdempotencyKey,
+		RequiresExpectedVersion: expectedVersionRequired[route.Operation],
+		RequestType:             spec.inputType,
+		RouteParams:             routeParams,
+		MCPRouteParams:          mcpRouteParams,
+		DecodeRequest:           spec.decodeRequest,
 		DecodeMCPRequest: func(raw json.RawMessage) (any, error) {
 			value, err := spec.decodeRequestStrict(raw)
 			if err != nil {
@@ -485,7 +515,7 @@ func bindRouteParams(value any, params []RouteParam, routeValues map[string]stri
 	for _, param := range params {
 		routeValue, ok := routeValues[param.Name]
 		if !ok || routeValue == "" {
-			return nil, invalid("route parameter %q is missing", param.Name)
+			return nil, invalid("route parameter %q (input field %q) is missing", param.Name, param.Field)
 		}
 		field, err := fieldValueByJSONPath(pointer.Elem(), param.Field)
 		if err != nil {

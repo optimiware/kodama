@@ -137,7 +137,9 @@ func validateOutputKeys(action id.ActionName, keys []id.OutputKey) error {
 // validateAction checks one ordered declaration independently of its peers.
 func validateAction(index int, action Action) error {
 	if _, err := id.ParseActionName(string(action.Name)); err != nil {
-		return fault.Wrap(fault.InvalidInput, fmt.Sprintf("action %d: invalid action name %q", index, action.Name), err)
+		return fault.Wrap(fault.InvalidInput,
+			fmt.Sprintf("action %d name %q is invalid (must match %s, lowercase kebab-case without consecutive or trailing hyphens, max %d bytes)",
+				index, action.Name, id.ActionNamePattern, id.MaxNameLength), err)
 	}
 	if action.Timeout < minActionTimeout || action.Timeout > maxActionTimeout {
 		return invalidInput("action %q: timeout %s is outside [%s, %s]", action.Name, action.Timeout, minActionTimeout, maxActionTimeout)

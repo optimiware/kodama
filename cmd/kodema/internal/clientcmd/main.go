@@ -108,6 +108,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer, deps cliD
 	showHelp := false
 	flags.BoolVar(&showHelp, "help", false, "show usage help and exit")
 	flags.BoolVar(&showHelp, "h", false, "alias for --help")
+	args = hoistGlobalFlags(args)
 	if err := flags.Parse(args); err != nil {
 		return 2
 	}
@@ -224,7 +225,153 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer, deps cliD
 		CommandPath:            commandPath,
 		ExplicitCredentialFile: flagSet(flags, "credential-file"),
 		ExplicitSessionFile:    flagSet(flags, "session") || flagSet(flags, "session-file"),
+		GitConfig:              runSystemGitConfig,
 	})
+}
+
+// runSystemGitConfig invokes `git <args...>` without a shell to apply local or
+// global Git configuration entries for `kodema git configure`.
+func runSystemGitConfig(ctx context.Context, args []string) error {
+	command := exec.CommandContext(ctx, "git", args...)
+	output, err := command.CombinedOutput()
+	if err != nil {
+		trimmed := strings.TrimSpace(string(output))
+		if trimmed != "" {
+			return fmt.Errorf("%s", trimmed)
+		}
+		return err
+	}
+	return nil
+}
+
+// hoistGlobalFlags moves known global double-dash client flags (such as
+// --output, --project, --session, --server, --ca-file) that appear after the
+// subcommand to the front of args so Go's flag.FlagSet parses them regardless
+// of position. Unknown flags, help/version flags, "--output k=v" response
+// pairs on approve/reject, and anything after "--" are left untouched.
+func hoistGlobalFlags(args []string) []string {
+	if len(args) == 0 {
+		return args
+	}
+	isGlobalValueFlag := func(name string) bool {
+		switch name {
+		case "--config", "--server", "--server-url", "--url",
+			"--ca-file", "--credential-file", "--output", "--project",
+			"--session", "--session-file", "--session-lock-timeout",
+			"--trusted-origin":
+			return true
+		}
+		return false
+	}
+	isLeadingBoolFlag := func(name string) bool {
+		switch name {
+		case "-h", "--help", "-help", "--version", "-version":
+			return true
+		}
+		return false
+	}
+	isLeadingValueFlag := func(name string) bool {
+		if isGlobalValueFlag(name) {
+			return true
+		}
+		if strings.HasPrefix(name, "-") && !strings.HasPrefix(name, "--") {
+			return isGlobalValueFlag("-" + name)
+		}
+		return false
+	}
+
+	// Scan leading flags before the first positional subcommand.
+	subcmdIdx := -1
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if arg == "--" {
+			return args
+		}
+		if arg == "-" || !strings.HasPrefix(arg, "-") {
+			subcmdIdx = i
+			break
+		}
+		name, _, hasEq := strings.Cut(arg, "=")
+		if isLeadingBoolFlag(name) {
+			continue
+		}
+		if isLeadingValueFlag(name) {
+			if !hasEq && i+1 < len(args) {
+				i++
+			}
+			continue
+		}
+		// Unknown leading flag: let flags.Parse refuse it cleanly.
+		return args
+	}
+	if subcmdIdx < 0 {
+		return args
+	}
+	subcmd := args[subcmdIdx]
+	if subcmd == "help" || subcmd == "version" {
+		return args
+	}
+	isGitConfigure := subcmd == "git" && subcmdIdx+1 < len(args) && args[subcmdIdx+1] == "configure"
+	isDecisionCmd := subcmd == "approve" || subcmd == "reject"
+
+	leading := make([]string, 0, len(args))
+	leading = append(leading, args[:subcmdIdx]...)
+	trailing := make([]string, 0, len(args)-subcmdIdx)
+	trailing = append(trailing, args[subcmdIdx])
+
+	for i := subcmdIdx + 1; i < len(args); i++ {
+		arg := args[i]
+		if arg == "--" {
+			trailing = append(trailing, args[i:]...)
+			break
+		}
+		if !strings.HasPrefix(arg, "--") {
+			trailing = append(trailing, arg)
+			continue
+		}
+		name, inlineVal, hasEq := strings.Cut(arg, "=")
+		if !isGlobalValueFlag(name) {
+			trailing = append(trailing, arg)
+			continue
+		}
+		// Let `git configure` own its own --ca-file and --session flags so
+		// `--print` works even before a CA file exists on disk.
+		if isGitConfigure && (name == "--ca-file" || name == "--session" || name == "--session-file") {
+			trailing = append(trailing, arg)
+			if !hasEq && i+1 < len(args) {
+				i++
+				trailing = append(trailing, args[i])
+			}
+			continue
+		}
+		// On approve/reject, `--output k=v` is a request response output pair,
+		// not the global `--output <table|json>` format flag.
+		if isDecisionCmd && name == "--output" {
+			val := inlineVal
+			if !hasEq && i+1 < len(args) {
+				val = args[i+1]
+			}
+			if strings.Contains(val, "=") {
+				trailing = append(trailing, arg)
+				if !hasEq && i+1 < len(args) {
+					i++
+					trailing = append(trailing, args[i])
+				}
+				continue
+			}
+		}
+		if hasEq {
+			leading = append(leading, arg)
+			continue
+		}
+		if i+1 < len(args) {
+			leading = append(leading, arg, args[i+1])
+			i++
+			continue
+		}
+		leading = append(leading, arg)
+	}
+	return append(leading, trailing...)
 }
 
 // credentialSource selects the human session file outside a container and the

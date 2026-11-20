@@ -702,54 +702,70 @@ func TestRunLogsDefaultActionSelection(t *testing.T) {
 func TestRunInboxApproveAndReject(t *testing.T) {
 	t.Run("inbox table and KODEMA_PROJECT env fallback", func(t *testing.T) {
 		t.Setenv("KODEMA_PROJECT", "env-proj")
+		const shaDigest = "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 		transport := &scriptedTransport{respond: func(_ context.Context, _ int, inv api.Invocation) (api.Result, error) {
-			if inv.Operation != "task.inbox" {
-				t.Fatalf("operation = %s; want task.inbox", inv.Operation)
-			}
-			var req api.TaskInboxRequest
-			if err := json.Unmarshal(inv.Request.Input, &req); err != nil {
-				t.Fatalf("decode req: %v", err)
-			}
-			if req.ProjectID != "env-proj" {
-				t.Fatalf("project_id = %q; want env-proj", req.ProjectID)
-			}
-			body, _ := json.Marshal(api.TaskInboxResult{
-				Items: []api.InboxItem{
-					{
-						Kind:        "request",
-						ExecutionID: "exec-1",
-						ActionID:    "act-review",
-						Assignment:  "role/reviewer",
-						Subject: &api.Subject{Fields: []api.SubjectField{
-							{Name: "operation", Kind: "string", Value: "git.ref.update"},
-						}},
-						Version: 1,
-						At:      testNow(),
+			switch inv.Operation {
+			case "task.inbox":
+				var req api.TaskInboxRequest
+				if err := json.Unmarshal(inv.Request.Input, &req); err != nil {
+					t.Fatalf("decode req: %v", err)
+				}
+				if req.ProjectID != "env-proj" {
+					t.Fatalf("project_id = %q; want env-proj", req.ProjectID)
+				}
+				body, _ := json.Marshal(api.TaskInboxResult{
+					Items: []api.InboxItem{
+						{
+							Kind:        "request",
+							ExecutionID: "exec-1",
+							ActionID:    "act-review",
+							Assignment:  "role/reviewer",
+							Subject: &api.Subject{Fields: []api.SubjectField{
+								{Name: "operation", Kind: "string", Value: "git.ref.update"},
+								{Name: "digest", Kind: "string", Value: shaDigest},
+							}},
+							Version: 3,
+							At:      testNow(),
+						},
+						{
+							Kind:             "waiting_task",
+							TaskID:           "task-9",
+							Assignment:       "role/engineer",
+							QuestionID:       "q-1",
+							Question:         "Which target cluster?",
+							References:       []string{"commit=abc123def456", "digest=sha256:9999"},
+							Version:          1,
+							LifecycleVersion: 2,
+							At:               testNow(),
+						},
+						{
+							Kind:             "waiting_task",
+							TaskID:           "task-10",
+							Assignment:       "role/engineer",
+							QuestionID:       "q-2",
+							Question:         "Proceed without refs?",
+							Version:          1,
+							LifecycleVersion: 2,
+							At:               testNow(),
+						},
 					},
-					{
-						Kind:             "waiting_task",
-						TaskID:           "task-9",
-						Assignment:       "role/engineer",
-						QuestionID:       "q-1",
-						Question:         "Which target cluster?",
-						References:       []string{"commit=abc123def456", "digest=sha256:9999"},
-						Version:          1,
-						LifecycleVersion: 2,
-						At:               testNow(),
+				})
+				return api.Result{Operation: inv.Operation, Body: body}, nil
+			case "execution.inspect":
+				body, _ := json.Marshal(map[string]any{
+					"execution_id": "exec-1",
+					"task_id":      "task-77",
+					"state":        "running",
+					"version":      4,
+					"actions": []map[string]any{
+						{"action_id": "act-review", "name": "approve-release", "kind": "request", "state": "running", "version": 3},
 					},
-					{
-						Kind:             "waiting_task",
-						TaskID:           "task-10",
-						Assignment:       "role/engineer",
-						QuestionID:       "q-2",
-						Question:         "Proceed without refs?",
-						Version:          1,
-						LifecycleVersion: 2,
-						At:               testNow(),
-					},
-				},
-			})
-			return api.Result{Operation: inv.Operation, Body: body}, nil
+				})
+				return api.Result{Operation: inv.Operation, Body: body}, nil
+			default:
+				t.Fatalf("unexpected operation = %s", inv.Operation)
+				return api.Result{}, nil
+			}
 		}}
 		ports, out, errOut := testPorts(transport)
 		cfg := testConfig()
@@ -761,9 +777,9 @@ func TestRunInboxApproveAndReject(t *testing.T) {
 		}
 		rendered := out.String()
 		for _, want := range []string{
-			"KIND", "TASK", "EXECUTION", "ACTION", "PROMPT/SUMMARY",
-			"request", "exec-1", "act-review",
-			"waiting_task", "task-9", "Which target cluster?", "refs: commit=abc123def456, digest=sha256:9999",
+			"KIND", "TASK", "EXECUTION", "ACTION", "VERSION", "PROMPT/SUMMARY",
+			"request", "task-77", "exec-1", "approve-release (act-review)", "3", shaDigest,
+			"waiting_task", "task-9", "1 (task:2)", "Which target cluster?", "refs: commit=abc123def456, digest=sha256:9999",
 			"task-10", "Proceed without refs?",
 		} {
 			if !strings.Contains(rendered, want) {
@@ -1863,6 +1879,7 @@ func TestPurePersonaCLIWorkflows(t *testing.T) {
 		}
 		wantOps := []string{
 			"task.inbox",
+			"execution.inspect", // inbox table enriches request rows
 			"execution.inspect",
 			"execution.inspect",
 			"execution.logs.read",
@@ -1995,7 +2012,7 @@ func TestPurePersonaCLIWorkflows(t *testing.T) {
 				t.Fatalf("%v produced empty output", argv)
 			}
 		}
-		wantOps := []string{"task.inbox", "execution.inspect", "execution.request.resolve"}
+		wantOps := []string{"task.inbox", "execution.inspect", "execution.inspect", "execution.request.resolve"}
 		if strings.Join(seen, ",") != strings.Join(wantOps, ",") {
 			t.Fatalf("service operations = %v; want %v", seen, wantOps)
 		}

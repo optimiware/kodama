@@ -25,7 +25,12 @@ func OperationInputSchema(operation string) (json.RawMessage, error) {
 	if !ok {
 		return nil, invalid("unknown operation %q", operation)
 	}
+	codec, ok := operationCodecFor(operation)
+	if !ok {
+		return nil, invalid("unknown operation %q", operation)
+	}
 	input := schemaForType(spec.inputType, make(map[reflect.Type]bool))
+	addRequiredInputFields(input, codec.MCPRouteParams)
 	if branches, ok := inputSelectionBranches[operation]; ok {
 		oneOf := make([]any, 0, len(branches))
 		for _, required := range branches {
@@ -33,6 +38,14 @@ func OperationInputSchema(operation string) (json.RawMessage, error) {
 		}
 		input["oneOf"] = oneOf
 	}
+	envelopeRequired := []string{"input"}
+	if codec.RequiresIdempotencyKey {
+		envelopeRequired = append(envelopeRequired, "idempotency_key")
+	}
+	if codec.RequiresExpectedVersion {
+		envelopeRequired = append(envelopeRequired, "expected_version")
+	}
+	sort.Strings(envelopeRequired)
 	envelope := map[string]any{
 		"type":                 "object",
 		"title":                route.InputSchema,
@@ -42,9 +55,41 @@ func OperationInputSchema(operation string) (json.RawMessage, error) {
 			"expected_version": map[string]any{"type": "integer", "minimum": 1},
 			"idempotency_key":  map[string]any{"type": "string", "maxLength": MaxIdempotencyKeyBytes},
 		},
-		"required": []string{"input"},
+		"required": envelopeRequired,
 	}
 	return json.Marshal(envelope)
+}
+
+// addRequiredInputFields merges the operation's required route-derived input
+// fields (for example project_id or service_id) into the projected input
+// schema's required list so the published JSON Schema matches runtime
+// validation.
+func addRequiredInputFields(input map[string]any, params []RouteParam) {
+	if len(params) == 0 {
+		return
+	}
+	seen := make(map[string]bool)
+	var required []string
+	if existing, ok := input["required"].([]string); ok {
+		for _, name := range existing {
+			if !seen[name] {
+				seen[name] = true
+				required = append(required, name)
+			}
+		}
+	}
+	for _, param := range params {
+		topLevel, _, _ := strings.Cut(param.Field, ".")
+		if topLevel == "" || seen[topLevel] {
+			continue
+		}
+		seen[topLevel] = true
+		required = append(required, topLevel)
+	}
+	if len(required) > 0 {
+		sort.Strings(required)
+		input["required"] = required
+	}
 }
 
 // inputSelectionBranches advertises the exclusive input selections of an

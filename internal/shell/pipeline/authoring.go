@@ -560,7 +560,9 @@ func parseAction(index int, node *yaml.Node) (definition.Action, error) {
 	}
 	name, err := id.ParseActionName(nameText)
 	if err != nil {
-		return definition.Action{}, invalidInputWrap(label+" name is invalid", err)
+		return definition.Action{}, invalidInputWrap(
+			fmt.Sprintf("%s name %q is invalid (must match %s, lowercase kebab-case without consecutive or trailing hyphens, max %d bytes)",
+				label, nameText, id.ActionNamePattern, id.MaxNameLength), err)
 	}
 	action := definition.Action{Name: name}
 	if imageNode != nil && requestNode != nil {

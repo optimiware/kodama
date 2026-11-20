@@ -813,10 +813,47 @@ func TestInboxFailedTaskCurrentExecutionOnly(t *testing.T) {
 	}
 }
 
+// TestInboxRequestItemPopulatesTaskID pins that a task-backed execution's
+// running request action carries its task_id in the inbox projection.
+func TestInboxRequestItemPopulatesTaskID(t *testing.T) {
+	fixture := newFixture(t)
+	scope := testScope()
+	assignment := request.Assignment{Kind: request.AssignmentRole, Role: tenancy.RoleReviewer}
+	resolved := definition.NewSubject(map[string]definition.SubjectValue{
+		"seed": {Kind: definition.SubjectLiteral, Literal: "seed-1"},
+	})
+	fixture.seedRequestProjection(t, scope, requestProjection{
+		executionID: "exec-task-backed",
+		taskID:      "task-42",
+		actionID:    "act-review-42",
+		name:        "review",
+		assignment:  assignment,
+		declared: definition.Request{
+			Assignment: assignment.String(),
+			Subject:    resolved,
+			Outputs:    []id.OutputKey{"approved"},
+		},
+		resolved: resolved,
+		at:       testNow.Add(time.Minute),
+	})
+
+	reviewer := humanWithRoles("human-reviewer", tenancy.RoleReviewer)
+	page := queryInbox(t, fixture, reviewer, []inbox.Kind{inbox.KindRequest}, 10, "")
+	if len(page.Items) != 1 {
+		t.Fatalf("items = %+v; want 1", page.Items)
+	}
+	item := page.Items[0]
+	if item.TaskID != "task-42" || item.ExecutionID != "exec-task-backed" || item.ActionID != "act-review-42" {
+		t.Fatalf("item = %+v; want task_id=task-42 execution_id=exec-task-backed action_id=act-review-42", item)
+	}
+	assertPublicInboxItem(t, item)
+}
+
 // requestProjection describes one running request action whose execution row
 // carries an admitted snapshot declaring the request action.
 type requestProjection struct {
 	executionID id.ExecutionID
+	taskID      id.TaskID
 	actionID    id.ActionID
 	name        id.ActionName
 	assignment  request.Assignment
@@ -893,6 +930,10 @@ func (f *fixture) seedRequestProjection(t *testing.T, scope tenancy.Scope, seed 
 	if err != nil {
 		t.Fatalf("encode resolved subject: %v", err)
 	}
+	var taskValue any
+	if seed.taskID != "" {
+		taskValue = string(seed.taskID)
+	}
 	if _, err := f.store.Execute(context.Background(), scope, store.Unit{
 		Writes: []store.Write{
 			{
@@ -901,7 +942,7 @@ func (f *fixture) seedRequestProjection(t *testing.T, scope tenancy.Scope, seed 
 				Insert: true,
 				Values: map[string]any{
 					"pipeline_id":      testPipeline,
-					"task_id":          nil,
+					"task_id":          taskValue,
 					"principal_id":     testPrincipal,
 					"state":            string(kernel.ExecutionRunning),
 					"version":          int64(1),

@@ -592,16 +592,27 @@ func TestHTTPTransportRefusesUnsafePathParameters(t *testing.T) {
 		}
 	}
 
-	// A missing parameter is equally invalid.
+	// A missing parameter is equally invalid and reports the JSON field name.
 	roundTripper := &recordingRoundTripper{respond: func(_ *http.Request, _ int) (*http.Response, error) {
 		return resultResponse("pipeline.read", `{}`), nil
 	}}
 	transport := newTransport(roundTripper, &fakeSource{credentials: []client.Credential{validCredential()}})
-	if _, err := transport.Invoke(context.Background(), api.Invocation{
+	_, err := transport.Invoke(context.Background(), api.Invocation{
 		Operation: "pipeline.read",
 		Request:   api.Request{Input: json.RawMessage(`{"project_id":"shop"}`)},
-	}); err == nil {
+	})
+	if err == nil {
 		t.Fatal("Invoke accepted a missing route parameter")
+	}
+	if !strings.Contains(err.Error(), "pipeline_id") {
+		t.Fatalf("missing parameter error = %q; want JSON field name pipeline_id", err.Error())
+	}
+	_, err = transport.Invoke(context.Background(), api.Invocation{
+		Operation: "project.list",
+		Request:   api.Request{Input: json.RawMessage(`{}`)},
+	})
+	if err == nil || !strings.Contains(err.Error(), "tenant_id") {
+		t.Fatalf("missing tenant parameter error = %v; want JSON field name tenant_id", err)
 	}
 	if got := len(roundTripper.recorded()); got != 0 {
 		t.Fatalf("requests = %d; want 0", got)

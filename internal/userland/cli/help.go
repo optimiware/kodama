@@ -61,13 +61,16 @@ Flags:
   -f, --follow              Poll until the action/execution reaches a terminal state`,
 	},
 	"inbox": {
-		usage:   "kodema inbox [--project <id>]",
+		usage:   "kodema inbox [--project <id>] [--kind <kind>] [--wide] [--output <table|json>]",
 		summary: "List pending request approvals, waiting tasks, and failed tasks",
 		description: `Queries task.inbox for the project (defaulting to --project or KODEMA_PROJECT)
-and renders a table of actionable items (KIND, TASK, EXECUTION, ACTION, PROMPT/SUMMARY).
+and renders a table of actionable items (KIND, TASK, EXECUTION, ACTION, VERSION, PROMPT/SUMMARY).
 
 Flags:
-  --project <id>   Project ID (defaults to global --project or KODEMA_PROJECT)`,
+  --project <id>         Project ID (defaults to global --project or KODEMA_PROJECT)
+  --kind <kind>          Filter by inbox kind (request, waiting_task, failed_task; repeatable)
+  -w, --wide             Do not truncate long subject values or question text
+  --output <table|json>  Output format`,
 	},
 	"approve": {
 		usage:   "kodema approve <execution-id> [--action <id>] [--comment <text>] [--output <k=v>]",
@@ -93,39 +96,41 @@ Flags:
 	},
 	"task": {
 		usage:   "kodema task <subcommand> [arguments]",
-		summary: "Create, run, list, inspect, reply to, and manage tasks",
+		summary: "Create, run, list, inspect, ask, reply to, and manage tasks",
 		description: `Subcommands:
-  create   kodema task create --project <id> --title <t> [--description <d>] [--pipeline <id>]
-  run      kodema task run --project <id> --title <t> --pipeline <id> [--description <d>]
+  create   kodema task create --project <id> --title <t> [--description <d>] [--pipeline <name|id>] [--input <k=v>]
+  run      kodema task run --project <id> --title <t> --pipeline <name|id> [--description <d>] [--input <k=v>]
   list     kodema task list --project <id>
   show     kodema task show <task-id>
   start    kodema task start <task-id> [--expected-version <v>]
+  ask      kodema task ask [<task-id>] --question <text> --to <assignment> [--ref <ref>...]
   reply    kodema task reply <task-id> --answer <text>
   cancel   kodema task cancel <task-id> [--expected-version <v>]`,
 	},
 	"task create": {
-		usage:   "kodema task create [--project <id>] --title <t> [--description <d>] [--pipeline <id>] [--input <k=v>]",
+		usage:   "kodema task create [--project <id>] --title <t> [--description <d>] [--pipeline <name|id>] [--input <k=v>]",
 		summary: "Create an open task in a project",
 		description: `Invokes task.create with an auto-generated idempotency key.
 
 Flags:
-  --project <id>       Project ID (defaults to global --project or KODEMA_PROJECT)
-  --title <text>       Task title (required)
-  --description <text> Optional task description
-  --pipeline <id>      Optional selected pipeline ID
-  --input <k=v>        Pipeline input key=value pair (repeatable)`,
+  --project <id>         Project ID (defaults to global --project or KODEMA_PROJECT)
+  --title <text>         Task title (required)
+  --description <text>   Optional task description
+  --pipeline <name|id>   Optional selected pipeline name or ID
+  --input <k=v>          Pipeline input key=value pair (repeatable)`,
 	},
 	"task run": {
-		usage:   "kodema task run [--project <id>] --title <t> --pipeline <id> [--description <d>] [--input <k=v>]",
+		usage:   "kodema task run [--project <id>] --title <t> --pipeline <name|id> [--description <d>] [--input <k=v>]",
 		summary: "Create and immediately start a task on a pipeline",
 		description: `Invokes task.create_and_start with an auto-generated idempotency key.
+Accepts either a stored pipeline ID (pipeline-...) or a pipeline name (resolved via pipeline.list).
 
 Flags:
-  --project <id>       Project ID (defaults to global --project or KODEMA_PROJECT)
-  --title <text>       Task title (required)
-  --pipeline <id>      Pipeline ID to run (required)
-  --description <text> Optional task description
-  --input <k=v>        Pipeline input key=value pair (repeatable)`,
+  --project <id>         Project ID (defaults to global --project or KODEMA_PROJECT)
+  --title <text>         Task title (required)
+  --pipeline <name|id>   Pipeline name or ID to run (required)
+  --description <text>   Optional task description
+  --input <k=v>          Pipeline input key=value pair (repeatable)`,
 	},
 	"task list": {
 		usage:       "kodema task list [--project <id>]",
@@ -141,6 +146,21 @@ Flags:
 		usage:       "kodema task start <task-id> [--expected-version <v>]",
 		summary:     "Start a new execution for an existing task",
 		description: `Reads the current lifecycle version when --expected-version is omitted and invokes task.start.`,
+	},
+	"task ask": {
+		usage:   "kodema task ask [<task-id>] --question <text> --to <role/<role>|service/<id>> [--ref <ref>...]",
+		summary: "Pause a task with a question and optional durable references",
+		description: `Invokes task.ask with an auto-generated idempotency key. Defaults <task-id> to
+$KODEMA_TASK and reads the current lifecycle version via task.read when
+--expected-version is omitted.
+
+Flags:
+  -q, --question <text>         Question text to ask (required)
+  --to, --assignment <target>   Assignee (role/<role> or service/<id>, required)
+  --ref, --reference <ref>      Durable restoration reference (repeatable)
+  --expected-version <v>        Task lifecycle version (auto-fetched when omitted)
+  --idempotency-key <key>       Explicit idempotency key
+  --output <table|json>         Output format`,
 	},
 	"task reply": {
 		usage:       "kodema task reply <task-id> --answer <text>",
@@ -216,10 +236,136 @@ Flags:
   --print                Print configuration snippet to stdout without writing files`,
 	},
 	"pipeline": {
-		usage:   "kodema pipeline apply <directory|file>",
+		usage:   "kodema pipeline <apply|list> [arguments]",
+		summary: "Apply local pipeline YAML files or list stored pipelines",
+		description: `Subcommands:
+  apply   kodema pipeline apply <directory|file> [--project <id>] [--output <table|json>]
+  list    kodema pipeline list [--project <id>] [--output <table|json>]`,
+	},
+	"pipeline apply": {
+		usage:   "kodema pipeline apply <directory|file> [--project <id>] [--output <table|json>]",
 		summary: "Apply the .yaml/.yml pipeline definitions in a directory, or one file",
 		description: `Applies every non-hidden .yaml/.yml file in <directory>, or the one .yaml/.yml <file>, to the
-configured project via pipeline.apply and prints each applied pipeline's ID for 'task run --pipeline'.`,
+configured project via pipeline.apply. With --output json, emits structured JSON containing
+pipeline_id and version.`,
+	},
+	"pipeline list": {
+		usage:       "kodema pipeline list [--project <id>] [--output <table|json>]",
+		summary:     "List stored pipelines in a project",
+		description: `Lists stored pipelines for --project (or KODEMA_PROJECT) via pipeline.list.`,
+	},
+	"execution": {
+		usage:   "kodema execution <list|inspect|watch|cancel> [arguments]",
+		summary: "List, inspect, watch, and cancel executions",
+		description: `Subcommands:
+  list      kodema execution list [--project <id>] [--task <id>] [--pipeline <name|id>] [--state <state>]
+  inspect   kodema execution inspect <execution-id>
+  watch     kodema execution watch <execution-id>
+  cancel    kodema execution cancel <execution-id> [--expected-version <v>]`,
+	},
+	"execution list": {
+		usage:   "kodema execution list [--project <id>] [--task <id>] [--pipeline <name|id>] [--state <state>] [--output <table|json>]",
+		summary: "List executions in a project",
+		description: `Lists executions for --project (or KODEMA_PROJECT) via execution.list.
+
+Flags:
+  --project <id>         Project ID (defaults to global --project or KODEMA_PROJECT)
+  --task <id>            Filter by task ID
+  --pipeline <name|id>   Filter by pipeline name or ID
+  --state <state>        Filter by execution state (queued, running, succeeded, failed, cancelled)
+  --output <table|json>  Output format`,
+	},
+	"cancel": {
+		usage:   "kodema cancel <execution-id> [--expected-version <v>] [--idempotency-key <k>] [--output <table|json>]",
+		summary: "Cancel a running or queued execution",
+		description: `Cancels <execution-id> via execution.cancel. When --expected-version is omitted,
+inspects the execution to read its current version and generates an idempotency key.`,
+	},
+	"service": {
+		usage:   "kodema service <create|list|update|enable|disable|credential> [arguments]",
+		summary: "Manage project service accounts and service credentials",
+		description: `Subcommands:
+  create      kodema service create <service-id> [--project <id>] [--role <r>[,<r>...]]
+  list        kodema service list [--project <id>]
+  update      kodema service update <service-id> [--project <id>] [--role <r>[,<r>...]] [--expected-version <v>]
+  enable      kodema service enable <service-id> [--project <id>] [--expected-version <v>]
+  disable     kodema service disable <service-id> [--project <id>] [--expected-version <v>]
+  credential  kodema service credential <issue|rotate|revoke> <service-id> [flags]`,
+	},
+	"service create": {
+		usage:       "kodema service create <service-id> [--project <id>] [--role <r>[,<r>...]] [--output <table|json>]",
+		summary:     "Create a project service account",
+		description: `Creates a service account via service.create with an auto-generated idempotency key.`,
+	},
+	"service list": {
+		usage:       "kodema service list [--project <id>] [--output <table|json>]",
+		summary:     "List project service accounts",
+		description: `Lists service accounts for --project (or KODEMA_PROJECT) via service.list.`,
+	},
+	"service update": {
+		usage:       "kodema service update <service-id> [--project <id>] [--role <r>[,<r>...]] [--expected-version <v>]",
+		summary:     "Replace a service account's role set",
+		description: `Updates a service account's roles via service.update. Looks up the current version via service.list when --expected-version is omitted.`,
+	},
+	"service enable": {
+		usage:       "kodema service enable <service-id> [--project <id>] [--expected-version <v>]",
+		summary:     "Enable a disabled service account",
+		description: `Enables a service account via service.enable. Looks up the current version via service.list when --expected-version is omitted.`,
+	},
+	"service disable": {
+		usage:       "kodema service disable <service-id> [--project <id>] [--expected-version <v>]",
+		summary:     "Disable a service account and revoke its credentials",
+		description: `Disables a service account via service.disable. Looks up the current version via service.list when --expected-version is omitted.`,
+	},
+	"service credential": {
+		usage:   "kodema service credential <issue|rotate|revoke> <service-id> [flags]",
+		summary: "Issue, rotate, or revoke service account credentials",
+		description: `Subcommands:
+  issue    kodema service credential issue <service-id> [--ttl <duration|sec>] [--project <id>] [--expected-version <v>]
+  rotate   kodema service credential rotate <service-id> [--ttl <duration|sec>] [--project <id>] [--expected-version <v>]
+  revoke   kodema service credential revoke <service-id> [--project <id>] [--expected-version <v>]`,
+	},
+	"service credential issue": {
+		usage:   "kodema service credential issue <service-id> [--ttl <duration|sec> | --ttl-seconds <n>] [--project <id>] [--expected-version <v>]",
+		summary: "Issue a one-time credential token for a service account",
+		description: `Issues a service credential via service.credential.issue (default TTL: 3600s).
+Looks up the service version via service.list when --expected-version is omitted.`,
+	},
+	"service credential rotate": {
+		usage:   "kodema service credential rotate <service-id> [--ttl <duration|sec> | --ttl-seconds <n>] [--project <id>] [--expected-version <v>]",
+		summary: "Rotate a service account's credential token",
+		description: `Rotates a service credential via service.credential.rotate (default TTL: 3600s).
+Looks up the service version via service.list when --expected-version is omitted.`,
+	},
+	"service credential revoke": {
+		usage:   "kodema service credential revoke <service-id> [--project <id>] [--expected-version <v>]",
+		summary: "Revoke a service account's active credential",
+		description: `Revokes a service credential via service.credential.revoke.
+Looks up the service version via service.list when --expected-version is omitted.`,
+	},
+	"secret": {
+		usage:   "kodema secret <set|list|delete> [arguments]",
+		summary: "Set, list, and delete project secrets",
+		description: `Subcommands:
+  set      kodema secret set <name> [<value> | --value <v> | --value-file <path> | --stdin] [--project <id>]
+  list     kodema secret list [--project <id>]
+  delete   kodema secret delete <name> [--project <id>] [--expected-version <v>]`,
+	},
+	"secret set": {
+		usage:       "kodema secret set <name> [<value> | --value <v> | --value-file <path> | --stdin] [--project <id>] [--expected-version <v>] [--output <table|json>]",
+		summary:     "Write a project secret value",
+		description: `Stores a project secret via secret.write. Pass --expected-version <v> to update an existing secret. The value is never printed back to stdout or stderr.`,
+	},
+	"secret list": {
+		usage:       "kodema secret list [--project <id>] [--output <table|json>]",
+		summary:     "List project secret metadata (names and versions, never values)",
+		description: `Lists secret metadata for --project (or KODEMA_PROJECT) via secret.metadata.list.`,
+	},
+	"secret delete": {
+		usage:   "kodema secret delete <name> [--project <id>] [--expected-version <v>] [--output <table|json>]",
+		summary: "Delete a project secret",
+		description: `Deletes a project secret via secret.delete. Reads current metadata version via
+secret.metadata.read automatically when --expected-version is omitted.`,
 	},
 	"run": {
 		usage:   "kodema run <file> [--project <id>] [--input <k=v>] [-d|--detach]",
@@ -244,25 +390,58 @@ Flags:
   -d, --detach     Print the execution ID and exit 0 immediately without waiting`,
 	},
 	"inspect": {
-		usage:       "kodema inspect <execution-id>",
+		usage:       "kodema inspect <execution-id> [--output <table|json>]",
 		summary:     "Inspect an execution and its actions",
-		description: `Invokes execution.inspect once for <execution-id>.`,
+		description: `Invokes execution.inspect once for <execution-id> and renders a human-readable summary and action table (or raw JSON with --output json).`,
 	},
 	"watch": {
-		usage:       "kodema watch <execution-id>",
+		usage:       "kodema watch <execution-id> [--output <table|json>]",
 		summary:     "Poll execution.inspect until the execution reaches a terminal status",
-		description: `Polls execution.inspect until succeeded (exit 0) or failed/cancelled (exit 1).`,
+		description: `Polls execution.inspect until succeeded (exit 0) or failed/cancelled (exit 1), emitting a snapshot only when version or action state changes.`,
 	},
 	"call": {
-		usage:       "kodema call <operation> [--input=<json>] [--expected-version=<n>] [--idempotency-key=<k>]",
-		summary:     "Invoke any registered Kodema API operation directly",
-		description: `Dispatches a raw public operation envelope over the configured REST client.`,
+		usage:   "kodema call <operation> [--input <json>] [--expected-version <n>] [--idempotency-key <k>] [--project <id>] [--output <table|json>]\n  kodema call --list [--output <table|json>]\n  kodema call --schema <operation>",
+		summary: "Invoke any registered Kodema API operation or discover operations and schemas",
+		description: `Dispatches a raw public operation envelope over the configured REST client, or
+inspects the compiled operation catalog and JSON Schemas offline.
+
+Flags:
+  --list                     List all registered public API operations (offline)
+  --schema <operation>       Print the JSON Schema for an operation (offline)
+  --input <json>             JSON object payload for the operation
+  --expected-version <n>     Optimistic concurrency version
+  --idempotency-key <key>    Caller idempotency key
+  --project <id>             Default project_id injected into project-scoped inputs
+  --output <table|json>      Output format`,
 	},
 	"git": {
 		usage:   "kodema git <subcommand> [arguments]",
-		summary: "Git credential helper for registered trusted origins",
-		description: `Subcommands:
-  credential   kodema git credential <get|store|erase> [<url>]`,
+		summary: "Configure Git credentials, run the credential helper, or manage the Git service",
+		description: `Client subcommands:
+  configure             Configure per-repo or global Git credential helper and CA for a Kodema origin
+  credential            Git credential helper for registered trusted origins
+
+Server / installation subcommands:
+  serve                 Run the independent Git smart-HTTP service
+  hook                  Run one native Git hook callback
+  provision-tenant      Create the tenant's trusted admin repository
+  provision-repository  Initialize a repository and commit its default access rules`,
+	},
+	"git configure": {
+		usage:   "kodema git configure [--origin <https://...>] [--ca-file <path>] [--session <path>] [--local | --global] [--print]",
+		summary: "Configure Git credential helper and optional TLS CA for a Kodema origin",
+		description: `Configures Git's credential.<origin>.helper (clearing inherited helpers first)
+and optional http.<origin>.sslCAInfo for a Kodema Git origin. Defaults to --local
+(per-repository) configuration; pass --global for user-wide config or --print to
+print the git config commands without executing them.
+
+Flags:
+  --origin <url>      Trusted Git origin (defaults to --trusted-origin or --server)
+  --ca-file <path>    PEM CA bundle file for http.<origin>.sslCAInfo and helper --ca-file
+  --session <path>    Optional session file passed to the credential helper
+  --local             Configure the current repository (default)
+  --global            Configure global Git settings (~/.gitconfig)
+  --print             Print git config commands without executing git`,
 	},
 	"git credential": {
 		usage:   "kodema git credential <get|store|erase> [<url>]",
@@ -335,15 +514,19 @@ Commands:
   inbox       List pending approvals, waiting tasks, and failed tasks
   approve     Approve a waiting execution request action
   reject      Reject a waiting execution request action
+  cancel      Cancel a running or queued execution
   logs        Read or stream decoded execution action logs
   inspect     Inspect an execution
   watch       Poll an execution until it reaches a terminal state
-  task        Create, run, list, show, start, reply to, and cancel tasks
-  pipeline    Apply local pipeline YAML files
+  execution   List, inspect, watch, and cancel executions
+  task        Create, run, list, show, start, ask, reply to, and cancel tasks
+  pipeline    Apply local pipeline YAML files or list stored pipelines
+  service     Manage project service accounts and credentials
+  secret      Set, list, and delete project secrets
   member      List, grant, and revoke project memberships
   mcp         Run the MCP stdio bridge or install editor configuration
-  call        Invoke any registered public API operation directly
-  git         Git credential helper for trusted origins
+  call        Invoke any registered public API operation (or --list / --schema)
+  git         Configure Git credentials, credential helper, or Git service
   output      Submit the outputs of the running container action
   version     Print version and source revision
   help        Show help for kodema or a command
@@ -377,9 +560,16 @@ func runHelp(out, errOut io.Writer, args []string) int {
 		writeCommandSummary(out)
 		return ExitSuccess
 	}
-	if len(filtered) >= 2 {
+	if len(filtered) == 3 {
+		compound := filtered[0] + " " + filtered[1] + " " + filtered[2]
+		if topic, ok := helpTopics[compound]; ok {
+			writeTopicHelp(out, topic)
+			return ExitSuccess
+		}
+	}
+	if len(filtered) == 2 {
 		compound := filtered[0] + " " + filtered[1]
-		if topic, ok := helpTopics[compound]; ok && len(filtered) == 2 {
+		if topic, ok := helpTopics[compound]; ok {
 			writeTopicHelp(out, topic)
 			return ExitSuccess
 		}

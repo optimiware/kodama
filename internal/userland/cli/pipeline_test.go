@@ -67,7 +67,9 @@ func TestRunPipelineApply(t *testing.T) {
 	}}
 	ports, out, errOut := testPorts(transport)
 	ports.Files = filesystem
-	code := cli.Run(context.Background(), testConfig(), []string{"pipeline", "apply", directory}, ports)
+	tableCfg := testConfig()
+	tableCfg.Output = cli.OutputTable
+	code := cli.Run(context.Background(), tableCfg, []string{"pipeline", "apply", directory}, ports)
 	if code != cli.ExitSuccess {
 		t.Fatalf("exit code = %d; want %d (stderr: %s)", code, cli.ExitSuccess, errOut.String())
 	}
@@ -137,7 +139,7 @@ func TestRunPipelineApply(t *testing.T) {
 	}}
 	singlePorts, singleOut, singleErr := testPorts(single)
 	singlePorts.Files = filesystem
-	if code := cli.Run(context.Background(), testConfig(), []string{"pipeline", "apply", directory + "/z.yaml"}, singlePorts); code != cli.ExitSuccess {
+	if code := cli.Run(context.Background(), tableCfg, []string{"pipeline", "apply", directory + "/z.yaml"}, singlePorts); code != cli.ExitSuccess {
 		t.Fatalf("single file exit code = %d (stderr: %s)", code, singleErr.String())
 	}
 	if keys := pipelineKeys(t, single.recorded()); len(keys) != 1 || keys["z"] != firstKeys["z"] {
@@ -145,6 +147,24 @@ func TestRunPipelineApply(t *testing.T) {
 	}
 	if singleOut.String() != "applied z (pipeline_id=pipeline-z1)\n" {
 		t.Fatalf("single file stdout = %q", singleOut.String())
+	}
+
+	// With --output json, applying one file emits valid JSON with pipeline_id and version.
+	jsonPorts, jsonOut, jsonErr := testPorts(single)
+	jsonPorts.Files = filesystem
+	if code := cli.Run(context.Background(), testConfig(), []string{"pipeline", "apply", directory + "/z.yaml"}, jsonPorts); code != cli.ExitSuccess {
+		t.Fatalf("single file json exit code = %d (stderr: %s)", code, jsonErr.String())
+	}
+	var appliedJSON struct {
+		Name       string `json:"name"`
+		PipelineID string `json:"pipeline_id"`
+		Version    uint64 `json:"version"`
+	}
+	if err := json.Unmarshal(jsonOut.Bytes(), &appliedJSON); err != nil {
+		t.Fatalf("single file json invalid (%q): %v", jsonOut.String(), err)
+	}
+	if appliedJSON.Name != "z" || appliedJSON.PipelineID != "pipeline-z1" || appliedJSON.Version != 1 {
+		t.Fatalf("appliedJSON = %+v; want name=z pipeline_id=pipeline-z1 version=1", appliedJSON)
 	}
 }
 
@@ -169,7 +189,9 @@ func TestRunPipelineApplyPartialFailure(t *testing.T) {
 	}}
 	ports, out, errOut := testPorts(transport)
 	ports.Files = filesystem
-	code := cli.Run(context.Background(), testConfig(), []string{"pipeline", "apply", directory}, ports)
+	tableCfg := testConfig()
+	tableCfg.Output = cli.OutputTable
+	code := cli.Run(context.Background(), tableCfg, []string{"pipeline", "apply", directory}, ports)
 	if code != cli.ExitFailure {
 		t.Fatalf("exit code = %d; want %d", code, cli.ExitFailure)
 	}

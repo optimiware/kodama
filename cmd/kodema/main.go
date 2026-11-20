@@ -25,19 +25,14 @@ const installationText = `installation commands:
   down          stop the local Kodema (--purge removes its state)
   status        inspect the local Kodema
   serve         run the Shell composition (--profile development, test or production)
-  git serve     run the independent Git smart-HTTP service
-  git hook      run one native Git hook callback
-  git provision-tenant  create the tenant's trusted admin repository
-  git provision-repository  initialize a repository and commit its default access rules
   auth serve    run the built-in OIDC provider and social login broker
   auth principal-id  derive the human principal id for an OIDC issuer and subject
   agent         run one bounded native-agent run
   services      run one independent service adapter
   migrate       apply database migrations and set role passwords (administrator)
   bootstrap-admin  create the first tenant and administrator from an OIDC token
-  version       print the version and source revision of this binary
 
-Run "kodema <command> --help" for the flags of an installation command.
+Run "kodema <command> --help" for the flags of an installation command (see "kodema help git" for Git service commands).
 `
 
 // runner is one dispatched subcommand.

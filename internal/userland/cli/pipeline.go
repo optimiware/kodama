@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"text/tabwriter"
 	"unicode/utf8"
 
 	"github.com/optimiware/kodema/api"
@@ -31,29 +32,75 @@ type pipelineFile struct {
 	path string
 }
 
-// runPipeline applies every local pipeline file. It never claims directory
-// atomicity: each file is attempted in sorted order and every failure is
-// visible on stderr.
-func runPipeline(ctx context.Context, config Config, args []string, ports Ports) int {
-	if len(args) != 2 || args[0] != "apply" {
-		return usage(ports.Err, "pipeline requires 'apply <directory|file>'")
+// pipelineApplyRecord is one applied pipeline summary emitted in JSON mode.
+type pipelineApplyRecord struct {
+	Name       string `json:"name"`
+	PipelineID string `json:"pipeline_id,omitempty"`
+	Version    uint64 `json:"version,omitempty"`
+}
+
+// runPipeline dispatches `kodema pipeline <apply|list>`.
+func runPipeline(ctx context.Context, config Config, args []string, ports Ports, deps CommandDeps) int {
+	if len(args) == 0 {
+		return usage(ports.Err, "pipeline requires a subcommand (apply|list)")
+	}
+	if args[0] == "-h" || args[0] == "--help" || args[0] == "help" {
+		return runHelp(ports.Out, ports.Err, append([]string{"pipeline"}, args[1:]...))
+	}
+	switch args[0] {
+	case "apply":
+		return runPipelineApply(ctx, config, args[1:], ports, deps)
+	case "list", "ls":
+		return runPipelineList(ctx, config, args[1:], ports, deps)
+	default:
+		return usage(ports.Err, fmt.Sprintf("unknown pipeline subcommand %q (want apply or list)", args[0]))
+	}
+}
+
+// runPipelineApply applies every local pipeline file in a directory, or one
+// file. It never claims directory atomicity: each file is attempted in sorted
+// order and every failure is visible on stderr.
+func runPipelineApply(ctx context.Context, config Config, args []string, ports Ports, deps CommandDeps) int {
+	if hasHelpFlag(args) {
+		return runHelp(ports.Out, ports.Err, []string{"pipeline", "apply"})
+	}
+	var (
+		projectFlag string
+		outputFlag  string
+	)
+	spec := newArgSpec()
+	spec.stringFlag(&projectFlag, "--project", "-p")
+	spec.stringFlag(&outputFlag, "--output")
+	positionals, _, err := spec.parse(args)
+	if err != nil {
+		return usage(ports.Err, err.Error())
+	}
+	if len(positionals) != 1 || strings.TrimSpace(positionals[0]) == "" {
+		return usage(ports.Err, "pipeline apply requires <directory|file>")
+	}
+	format, err := resolveOutputFormat(outputFlag, config)
+	if err != nil {
+		return usage(ports.Err, err.Error())
 	}
 	if err := config.Validate(); err != nil {
 		return usage(ports.Err, err.Error())
 	}
-	if config.Project == "" {
+	projectID := resolveProject(projectFlag, config, deps)
+	if projectID == "" {
 		return usage(ports.Err, "pipeline apply requires a configured project")
 	}
-	directory := args[1]
+	directory := positionals[0]
 	if ports.Files == nil {
 		return failure(ports.Err, fmt.Errorf("no filesystem is configured"))
 	}
 	if ports.Client == nil {
 		return failure(ports.Err, fmt.Errorf("no public client is configured"))
 	}
+	singleFile := false
 	entries, err := ports.Files.ReadDir(directory)
 	if err != nil {
 		// Not a readable directory: try it as one pipeline file.
+		singleFile = true
 		entries = []DirEntry{{Name: filepath.Base(directory)}}
 		directory = filepath.Dir(directory)
 	}
@@ -66,6 +113,7 @@ func runPipeline(ctx context.Context, config Config, args []string, ports Ports)
 		counts[file.base]++
 	}
 	failed := false
+	records := make([]pipelineApplyRecord, 0, len(files))
 	for _, file := range files {
 		if counts[file.base] > 1 {
 			fmt.Fprintf(ports.Err, "failed %s: duplicate pipeline mapping for %s\n", file.name, file.base)
@@ -84,7 +132,7 @@ func runPipeline(ctx context.Context, config Config, args []string, ports Ports)
 			continue
 		}
 		input, err := json.Marshal(pipelineApplyInput{
-			Project:  config.Project,
+			Project:  projectID,
 			Pipeline: file.base,
 			YAML:     data,
 		})
@@ -97,7 +145,7 @@ func runPipeline(ctx context.Context, config Config, args []string, ports Ports)
 			Operation: "pipeline.apply",
 			Request: api.Request{
 				Input:          input,
-				IdempotencyKey: pipelineKey(config.Project, file.base, data),
+				IdempotencyKey: pipelineKey(projectID, file.base, data),
 			},
 		}
 		if err := invocation.Validate(); err != nil {
@@ -112,11 +160,35 @@ func runPipeline(ctx context.Context, config Config, args []string, ports Ports)
 			continue
 		}
 		var applied api.PipelineApplyResult
-		if json.Unmarshal(result.Body, &applied) == nil && applied.PipelineID != "" {
-			fmt.Fprintf(ports.Out, "applied %s (pipeline_id=%s)\n", file.base, applied.PipelineID)
-			continue
+		_ = json.Unmarshal(result.Body, &applied)
+		records = append(records, pipelineApplyRecord{
+			Name:       file.base,
+			PipelineID: applied.PipelineID,
+			Version:    applied.Version,
+		})
+		if format != OutputJSON {
+			if applied.PipelineID != "" {
+				fmt.Fprintf(ports.Out, "applied %s (pipeline_id=%s)\n", file.base, applied.PipelineID)
+				continue
+			}
+			fmt.Fprintf(ports.Out, "applied %s\n", file.base)
 		}
-		fmt.Fprintf(ports.Out, "applied %s\n", file.base)
+	}
+	if format == OutputJSON {
+		if singleFile {
+			if len(records) == 1 {
+				if err := json.NewEncoder(ports.Out).Encode(records[0]); err != nil {
+					return failure(ports.Err, err)
+				}
+			}
+		} else {
+			payload := struct {
+				Pipelines []pipelineApplyRecord `json:"pipelines"`
+			}{Pipelines: records}
+			if err := json.NewEncoder(ports.Out).Encode(payload); err != nil {
+				return failure(ports.Err, err)
+			}
+		}
 	}
 	if failed {
 		return ExitFailure
@@ -130,6 +202,138 @@ const (
 	runFailureStderrMaxLines = 50
 	runFailureStderrMaxBytes = 8 << 10
 )
+
+func runPipelineList(ctx context.Context, config Config, args []string, ports Ports, deps CommandDeps) int {
+	if hasHelpFlag(args) {
+		return runHelp(ports.Out, ports.Err, []string{"pipeline", "list"})
+	}
+	var (
+		projectFlag string
+		outputFlag  string
+	)
+	spec := newArgSpec()
+	spec.stringFlag(&projectFlag, "--project", "-p")
+	spec.stringFlag(&outputFlag, "--output")
+	positionals, _, err := spec.parse(args)
+	if err != nil {
+		return usage(ports.Err, err.Error())
+	}
+	if len(positionals) > 0 {
+		return usage(ports.Err, fmt.Sprintf("unexpected argument %q", positionals[0]))
+	}
+	format, err := resolveOutputFormat(outputFlag, config)
+	if err != nil {
+		return usage(ports.Err, err.Error())
+	}
+	if err := config.Validate(); err != nil {
+		return usage(ports.Err, err.Error())
+	}
+	projectID := resolveProject(projectFlag, config, deps)
+	if projectID == "" {
+		return usage(ports.Err, "pipeline list requires --project <id> or KODEMA_PROJECT")
+	}
+	if err := (api.PipelineListRequest{ProjectID: projectID}).Validate(); err != nil {
+		return usage(ports.Err, publicMessage(err))
+	}
+	if ports.Client == nil {
+		return failure(ports.Err, fmt.Errorf("no public client is configured"))
+	}
+
+	pipelines, firstBody, pages, err := fetchAllPipelines(ctx, ports, projectID)
+	if err != nil {
+		return failure(ports.Err, err)
+	}
+	if format == OutputJSON {
+		if pages == 1 {
+			if err := renderResult(ports.Out, OutputJSON, api.Result{Operation: "pipeline.list", Body: firstBody}); err != nil {
+				return failure(ports.Err, err)
+			}
+			return ExitSuccess
+		}
+		if pipelines == nil {
+			pipelines = []api.PipelineSummaryView{}
+		}
+		combined, err := json.Marshal(api.PipelineListResult{Pipelines: pipelines})
+		if err != nil {
+			return failure(ports.Err, err)
+		}
+		if err := renderResult(ports.Out, OutputJSON, api.Result{Operation: "pipeline.list", Body: combined}); err != nil {
+			return failure(ports.Err, err)
+		}
+		return ExitSuccess
+	}
+
+	tw := tabwriter.NewWriter(ports.Out, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(tw, "PIPELINE\tNAME\tVERSION")
+	for _, p := range pipelines {
+		fmt.Fprintf(tw, "%s\t%s\t%d\n", orDash(p.PipelineID), orDash(p.Name), p.Version)
+	}
+	if err := tw.Flush(); err != nil {
+		return failure(ports.Err, err)
+	}
+	return ExitSuccess
+}
+
+func fetchAllPipelines(ctx context.Context, ports Ports, projectID string) ([]api.PipelineSummaryView, json.RawMessage, int, error) {
+	var (
+		all       []api.PipelineSummaryView
+		firstBody json.RawMessage
+		pages     int
+		cursor    string
+	)
+	for {
+		req := api.PipelineListRequest{ProjectID: projectID}
+		if cursor != "" {
+			req.Page = &api.Page{Cursor: cursor}
+		}
+		input, err := json.Marshal(req)
+		if err != nil {
+			return nil, nil, pages, err
+		}
+		invocation := api.Invocation{
+			Operation: "pipeline.list",
+			Request:   api.Request{Input: input},
+		}
+		if err := invocation.Validate(); err != nil {
+			return nil, nil, pages, err
+		}
+		result, err := ports.Client.Invoke(ctx, invocation)
+		if err != nil {
+			return nil, nil, pages, err
+		}
+		pages++
+		if pages == 1 {
+			firstBody = result.Body
+		}
+		var page api.PipelineListResult
+		if len(result.Body) > 0 {
+			if err := json.Unmarshal(result.Body, &page); err != nil {
+				return nil, nil, pages, fmt.Errorf("invalid pipeline.list response: %w", err)
+			}
+		}
+		all = append(all, page.Pipelines...)
+		if page.NextCursor == "" {
+			break
+		}
+		cursor = page.NextCursor
+	}
+	return all, firstBody, pages, nil
+}
+
+// resolvePipelineIDByName searches pipeline.list in projectID for a stored
+// pipeline whose name matches target and returns its pipeline_id.
+func resolvePipelineIDByName(ctx context.Context, ports Ports, projectID, target string) (string, bool, error) {
+	pipelines, _, _, err := fetchAllPipelines(ctx, ports, projectID)
+	if err != nil {
+		return "", false, err
+	}
+	for _, p := range pipelines {
+		if p.Name == target {
+			return p.PipelineID, true, nil
+		}
+	}
+	return "", false, nil
+}
 
 // runRun starts one local pipeline file inline through pipeline.start and
 // follows the execution to its end (unless --detach is set). Container stdout

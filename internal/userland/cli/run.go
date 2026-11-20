@@ -1,13 +1,14 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"strconv"
 	"strings"
+	"text/tabwriter"
 	"time"
 
 	"github.com/optimiware/kodema/api"
@@ -57,7 +58,7 @@ func RunWithDeps(ctx context.Context, config Config, args []string, ports Ports,
 		if hasHelpFlag(args[1:]) {
 			return runHelp(ports.Out, ports.Err, []string{"call"})
 		}
-		return runCall(ctx, config, args[1:], ports)
+		return runCall(ctx, config, args[1:], ports, deps)
 	case "inspect":
 		if hasHelpFlag(args[1:]) {
 			return runHelp(ports.Out, ports.Err, []string{"inspect"})
@@ -68,6 +69,10 @@ func RunWithDeps(ctx context.Context, config Config, args []string, ports Ports,
 			return runHelp(ports.Out, ports.Err, []string{"watch"})
 		}
 		return runWatch(ctx, config, args[1:], ports)
+	case "cancel":
+		return runCancel(ctx, config, args[1:], ports, deps)
+	case "execution":
+		return runExecution(ctx, config, args[1:], ports, deps)
 	case "run":
 		if hasHelpFlag(args[1:]) {
 			return runHelp(ports.Out, ports.Err, []string{"run"})
@@ -83,6 +88,10 @@ func RunWithDeps(ctx context.Context, config Config, args []string, ports Ports,
 		return runReject(ctx, config, args[1:], ports, deps)
 	case "task":
 		return runTask(ctx, config, args[1:], ports, deps)
+	case "service":
+		return runService(ctx, config, args[1:], ports, deps)
+	case "secret":
+		return runSecret(ctx, config, args[1:], ports, deps)
 	case "whoami":
 		return runWhoami(ctx, config, args[1:], ports, deps)
 	case "member":
@@ -110,12 +119,9 @@ func RunWithDeps(ctx context.Context, config Config, args []string, ports Ports,
 		}
 		return runSession(ctx, config, args[1:], ports, deps.Login)
 	case "pipeline":
-		if hasHelpFlag(args[1:]) {
-			return runHelp(ports.Out, ports.Err, []string{"pipeline"})
-		}
-		return runPipeline(ctx, config, args[1:], ports)
+		return runPipeline(ctx, config, args[1:], ports, deps)
 	case "git":
-		return runGit(ctx, config, args[1:], ports)
+		return runGit(ctx, config, args[1:], ports, deps)
 	case "output":
 		return runOutput(ctx, config, args[1:], ports, deps)
 	case "version":
@@ -128,44 +134,96 @@ func RunWithDeps(ctx context.Context, config Config, args []string, ports Ports,
 	}
 }
 
-// runCall dispatches one served operation with optional input, version and key.
-func runCall(ctx context.Context, config Config, args []string, ports Ports) int {
-	if len(args) == 0 {
-		return usage(ports.Err, "call requires an operation")
+// runCall dispatches one served operation with optional input, version and key,
+// or answers offline operation discovery (--list / --schema <op>).
+func runCall(ctx context.Context, config Config, args []string, ports Ports, deps CommandDeps) int {
+	var (
+		listFlag        bool
+		schemaFlag      string
+		inputFlag       string
+		expectedVerRaw  string
+		idempotencyFlag string
+		projectFlag     string
+		outputFlag      string
+	)
+	spec := newArgSpec()
+	spec.boolFlag(&listFlag, "--list")
+	spec.stringFlag(&schemaFlag, "--schema")
+	spec.stringFlag(&inputFlag, "--input")
+	spec.stringFlag(&expectedVerRaw, "--expected-version")
+	spec.stringFlag(&idempotencyFlag, "--idempotency-key")
+	spec.stringFlag(&projectFlag, "--project", "-p")
+	spec.stringFlag(&outputFlag, "--output")
+	positionals, seen, err := spec.parse(args)
+	if err != nil {
+		return usage(ports.Err, err.Error())
+	}
+	format, err := resolveOutputFormat(outputFlag, config)
+	if err != nil {
+		return usage(ports.Err, err.Error())
+	}
+
+	if listFlag && seen["--schema"] {
+		return usage(ports.Err, "specify only one of --list or --schema")
+	}
+	if listFlag {
+		if len(positionals) > 0 {
+			return usage(ports.Err, fmt.Sprintf("unexpected argument %q", positionals[0]))
+		}
+		return runCallList(ports, format)
+	}
+	if seen["--schema"] {
+		op := strings.TrimSpace(schemaFlag)
+		if op == "" && len(positionals) == 1 {
+			op = strings.TrimSpace(positionals[0])
+			positionals = nil
+		}
+		if len(positionals) > 0 {
+			return usage(ports.Err, fmt.Sprintf("unexpected argument %q", positionals[0]))
+		}
+		if op == "" {
+			return usage(ports.Err, "call --schema requires an operation name")
+		}
+		return runCallSchema(ports, op)
+	}
+
+	if len(positionals) == 0 {
+		return usage(ports.Err, "call requires an operation (or --list / --schema <op>)")
+	}
+	if len(positionals) > 1 {
+		return usage(ports.Err, fmt.Sprintf("unexpected argument %q", positionals[1]))
 	}
 	if err := config.Validate(); err != nil {
 		return usage(ports.Err, err.Error())
 	}
-	operation := args[0]
+	operation := positionals[0]
 	if _, ok := api.LookupRoute(operation); !ok {
-		return usage(ports.Err, fmt.Sprintf("unknown operation %q", operation))
+		return usage(ports.Err, fmt.Sprintf("unknown operation %q (run 'kodema call --list' to see available operations)", operation))
 	}
+
 	var request api.Request
-	seen := make(map[string]bool, 3)
-	for _, argument := range args[1:] {
-		name, value, ok := strings.Cut(argument, "=")
-		if !ok || !strings.HasPrefix(name, "--") {
-			return usage(ports.Err, fmt.Sprintf("unexpected argument %q", argument))
+	if seen["--input"] {
+		request.Input = json.RawMessage(inputFlag)
+	}
+	if seen["--expected-version"] {
+		version, verErr := parsePositiveVersion(expectedVerRaw, "--expected-version")
+		if verErr != nil {
+			return usage(ports.Err, verErr.Error())
 		}
-		if seen[name] {
-			return usage(ports.Err, fmt.Sprintf("flag %q is repeated", name))
-		}
-		seen[name] = true
-		switch name {
-		case "--input":
-			request.Input = json.RawMessage(value)
-		case "--expected-version":
-			version, err := strconv.ParseUint(value, 10, 64)
-			if err != nil {
-				return usage(ports.Err, fmt.Sprintf("expected version %q is not a positive integer", value))
+		request.ExpectedVersion = version
+	}
+	if seen["--idempotency-key"] {
+		request.IdempotencyKey = idempotencyFlag
+	}
+
+	if field := operationRouteParamField(operation, "project"); field != "" {
+		if projectID := resolveProject(projectFlag, config, deps); projectID != "" {
+			if updated, ok := injectDefaultStringField(request.Input, field, projectID); ok {
+				request.Input = updated
 			}
-			request.ExpectedVersion = &version
-		case "--idempotency-key":
-			request.IdempotencyKey = value
-		default:
-			return usage(ports.Err, fmt.Sprintf("unknown flag %q", name))
 		}
 	}
+
 	invocation := api.Invocation{Operation: operation, Request: request}
 	if err := invocation.Validate(); err != nil {
 		return usage(ports.Err, publicMessage(err))
@@ -177,16 +235,151 @@ func runCall(ctx context.Context, config Config, args []string, ports Ports) int
 	if err != nil {
 		return failure(ports.Err, err)
 	}
-	if err := renderResult(ports.Out, config.Output, result); err != nil {
+	if err := renderResult(ports.Out, format, result); err != nil {
 		return failure(ports.Err, err)
 	}
 	return ExitSuccess
 }
 
+func runCallList(ports Ports, format OutputFormat) int {
+	type opSummary struct {
+		Operation               string `json:"operation"`
+		Method                  string `json:"method"`
+		Path                    string `json:"path"`
+		MCPTool                 string `json:"mcp_tool"`
+		RequiresIdempotencyKey  bool   `json:"requires_idempotency_key"`
+		RequiresExpectedVersion bool   `json:"requires_expected_version"`
+	}
+	codecs := make(map[string]api.OperationCodec)
+	for _, codec := range api.OperationCodecs() {
+		codecs[codec.Operation] = codec
+	}
+	routes := api.Routes()
+	items := make([]opSummary, 0, len(routes))
+	for _, route := range routes {
+		codec := codecs[route.Operation]
+		items = append(items, opSummary{
+			Operation:               route.Operation,
+			Method:                  string(route.Method),
+			Path:                    route.Path,
+			MCPTool:                 route.MCPTool,
+			RequiresIdempotencyKey:  codec.RequiresIdempotencyKey,
+			RequiresExpectedVersion: codec.RequiresExpectedVersion,
+		})
+	}
+	if format == OutputJSON {
+		payload := struct {
+			Operations []opSummary `json:"operations"`
+		}{Operations: items}
+		if err := json.NewEncoder(ports.Out).Encode(payload); err != nil {
+			return failure(ports.Err, err)
+		}
+		return ExitSuccess
+	}
+	tw := tabwriter.NewWriter(ports.Out, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(tw, "OPERATION\tMETHOD\tPATH\tFLAGS")
+	for _, item := range items {
+		var flags []string
+		if item.RequiresIdempotencyKey {
+			flags = append(flags, "idempotency-key")
+		}
+		if item.RequiresExpectedVersion {
+			flags = append(flags, "expected-version")
+		}
+		flagText := "-"
+		if len(flags) > 0 {
+			flagText = strings.Join(flags, ",")
+		}
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", item.Operation, item.Method, item.Path, flagText)
+	}
+	if err := tw.Flush(); err != nil {
+		return failure(ports.Err, err)
+	}
+	return ExitSuccess
+}
+
+func runCallSchema(ports Ports, operation string) int {
+	raw, err := api.OperationInputSchema(operation)
+	if err != nil {
+		return usage(ports.Err, publicMessage(err))
+	}
+	var pretty bytes.Buffer
+	if err := json.Indent(&pretty, raw, "", "  "); err != nil {
+		if _, werr := ports.Out.Write(append(raw, '\n')); werr != nil {
+			return failure(ports.Err, werr)
+		}
+		return ExitSuccess
+	}
+	pretty.WriteByte('\n')
+	if _, err := ports.Out.Write(pretty.Bytes()); err != nil {
+		return failure(ports.Err, err)
+	}
+	return ExitSuccess
+}
+
+func operationRouteParamField(operation, paramName string) string {
+	for _, codec := range api.OperationCodecs() {
+		if codec.Operation != operation {
+			continue
+		}
+		for _, p := range codec.RouteParams {
+			if p.Name == paramName {
+				return p.Field
+			}
+		}
+	}
+	return ""
+}
+
+// injectDefaultStringField fills a top-level string field into an empty or
+// valid JSON object input when the field is absent. Invalid JSON or non-object
+// inputs are returned unchanged so normal validation reports the error.
+func injectDefaultStringField(raw json.RawMessage, field, value string) (json.RawMessage, bool) {
+	if field == "" || strings.Contains(field, ".") || value == "" {
+		return raw, false
+	}
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 {
+		encoded, err := json.Marshal(map[string]string{field: value})
+		if err != nil {
+			return raw, false
+		}
+		return encoded, true
+	}
+	var object map[string]json.RawMessage
+	if err := json.Unmarshal(trimmed, &object); err != nil || object == nil {
+		return raw, false
+	}
+	if _, exists := object[field]; exists {
+		return raw, false
+	}
+	encodedVal, err := json.Marshal(value)
+	if err != nil {
+		return raw, false
+	}
+	object[field] = encodedVal
+	encoded, err := json.Marshal(object)
+	if err != nil {
+		return raw, false
+	}
+	return encoded, true
+}
+
 // runInspect reads one execution once and renders it.
 func runInspect(ctx context.Context, config Config, args []string, ports Ports) int {
-	if len(args) != 1 || args[0] == "" {
+	var outputFlag string
+	spec := newArgSpec()
+	spec.stringFlag(&outputFlag, "--output")
+	positionals, _, err := spec.parse(args)
+	if err != nil {
+		return usage(ports.Err, err.Error())
+	}
+	if len(positionals) != 1 || positionals[0] == "" {
 		return usage(ports.Err, "inspect requires exactly one execution")
+	}
+	format, err := resolveOutputFormat(outputFlag, config)
+	if err != nil {
+		return usage(ports.Err, err.Error())
 	}
 	if err := config.Validate(); err != nil {
 		return usage(ports.Err, err.Error())
@@ -194,7 +387,7 @@ func runInspect(ctx context.Context, config Config, args []string, ports Ports) 
 	if ports.Client == nil {
 		return failure(ports.Err, fmt.Errorf("no public client is configured"))
 	}
-	invocation, err := executionInvocation(args[0])
+	invocation, err := executionInvocation(positionals[0])
 	if err != nil {
 		return usage(ports.Err, publicMessage(err))
 	}
@@ -202,16 +395,35 @@ func runInspect(ctx context.Context, config Config, args []string, ports Ports) 
 	if err != nil {
 		return failure(ports.Err, err)
 	}
-	if err := renderResult(ports.Out, config.Output, result); err != nil {
+	if format == OutputTable {
+		if err := renderExecutionInspectTable(ports.Out, result); err != nil {
+			return failure(ports.Err, err)
+		}
+		return ExitSuccess
+	}
+	if err := renderResult(ports.Out, OutputJSON, result); err != nil {
 		return failure(ports.Err, err)
 	}
 	return ExitSuccess
 }
 
-// runWatch polls execution.inspect until a terminal status or cancellation.
+// runWatch polls execution.inspect until a terminal status or cancellation,
+// emitting a snapshot only when the execution's version or observable state
+// changes.
 func runWatch(ctx context.Context, config Config, args []string, ports Ports) int {
-	if len(args) != 1 || args[0] == "" {
+	var outputFlag string
+	spec := newArgSpec()
+	spec.stringFlag(&outputFlag, "--output")
+	positionals, _, err := spec.parse(args)
+	if err != nil {
+		return usage(ports.Err, err.Error())
+	}
+	if len(positionals) != 1 || positionals[0] == "" {
 		return usage(ports.Err, "watch requires exactly one execution")
+	}
+	format, err := resolveOutputFormat(outputFlag, config)
+	if err != nil {
+		return usage(ports.Err, err.Error())
 	}
 	if err := config.Validate(); err != nil {
 		return usage(ports.Err, err.Error())
@@ -219,10 +431,14 @@ func runWatch(ctx context.Context, config Config, args []string, ports Ports) in
 	if ports.Client == nil {
 		return failure(ports.Err, fmt.Errorf("no public client is configured"))
 	}
-	invocation, err := executionInvocation(args[0])
+	invocation, err := executionInvocation(positionals[0])
 	if err != nil {
 		return usage(ports.Err, publicMessage(err))
 	}
+	var (
+		lastFingerprint string
+		rendered        bool
+	)
 	for {
 		if ctx.Err() != nil {
 			return watchCanceled(ports.Err)
@@ -234,8 +450,22 @@ func runWatch(ctx context.Context, config Config, args []string, ports Ports) in
 			}
 			return failure(ports.Err, err)
 		}
-		if err := renderResult(ports.Out, config.Output, result); err != nil {
-			return failure(ports.Err, err)
+		fp := executionInspectFingerprint(result.Body)
+		if !rendered || fp != lastFingerprint {
+			if format == OutputTable {
+				if rendered {
+					fmt.Fprintln(ports.Out)
+				}
+				if err := renderExecutionInspectTable(ports.Out, result); err != nil {
+					return failure(ports.Err, err)
+				}
+			} else {
+				if err := renderResult(ports.Out, OutputJSON, result); err != nil {
+					return failure(ports.Err, err)
+				}
+			}
+			lastFingerprint = fp
+			rendered = true
 		}
 		status, ok := executionStatus(result.Body)
 		if !ok {

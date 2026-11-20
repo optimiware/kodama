@@ -34,6 +34,9 @@ type whoamiView struct {
 	Roles       []string `json:"roles,omitempty"`
 	Issuer      string   `json:"issuer,omitempty"`
 	Subject     string   `json:"subject,omitempty"`
+	Username    string   `json:"username,omitempty"`
+	Email       string   `json:"email,omitempty"`
+	Name        string   `json:"name,omitempty"`
 }
 
 // runWhoami displays the caller's principal identity via principal.whoami, or
@@ -164,6 +167,23 @@ func renderWhoamiServerResult(out interface{ Write([]byte) (int, error) }, forma
 	if view.PrincipalID == "" && fallback.PrincipalID != "" {
 		view.PrincipalID = fallback.PrincipalID
 	}
+	if view.PrincipalID != "" && fallback.PrincipalID == view.PrincipalID {
+		if view.Issuer == "" {
+			view.Issuer = fallback.Issuer
+		}
+		if view.Subject == "" {
+			view.Subject = fallback.Subject
+		}
+		if view.Username == "" {
+			view.Username = fallback.Username
+		}
+		if view.Email == "" {
+			view.Email = fallback.Email
+		}
+		if view.Name == "" {
+			view.Name = fallback.Name
+		}
+	}
 	if view.PrincipalID == "" {
 		return renderTable(out, result)
 	}
@@ -196,6 +216,15 @@ func writeWhoamiTable(out interface{ Write([]byte) (int, error) }, view whoamiVi
 			fmt.Fprintf(out, "roles\t%s\n", strings.Join(view.Roles, ","))
 		}
 	}
+	if view.Username != "" {
+		fmt.Fprintf(out, "username\t%s\n", view.Username)
+	}
+	if view.Email != "" {
+		fmt.Fprintf(out, "email\t%s\n", view.Email)
+	}
+	if view.Name != "" {
+		fmt.Fprintf(out, "name\t%s\n", view.Name)
+	}
 	if view.Issuer != "" {
 		fmt.Fprintf(out, "issuer\t%s\n", view.Issuer)
 	}
@@ -204,97 +233,124 @@ func writeWhoamiTable(out interface{ Write([]byte) (int, error) }, view whoamiVi
 	}
 }
 
+func formatWhoamiLabel(view whoamiView) string {
+	switch {
+	case view.Username != "" && view.Email != "":
+		return fmt.Sprintf("%s <%s>", view.Username, view.Email)
+	case view.Username != "":
+		return view.Username
+	case view.Email != "":
+		return view.Email
+	case view.Name != "":
+		return view.Name
+	case view.Subject != "":
+		return view.Subject
+	default:
+		return ""
+	}
+}
+
 func deriveOfflineWhoami(ctx context.Context, config Config, ports Ports, deps CommandDeps, offlineOnly bool) (whoamiView, bool) {
+	fromToken := func(token, fallbackIssuer string) (whoamiView, bool) {
+		claims, ok := parseJWTClaims(token)
+		if !ok {
+			return whoamiView{}, false
+		}
+		iss := claims.Issuer
+		if iss == "" {
+			iss = strings.TrimSpace(fallbackIssuer)
+		}
+		if iss == "" || claims.Subject == "" {
+			return whoamiView{}, false
+		}
+		id, deriveErr := DeriveOIDCPrincipalID(iss, claims.Subject)
+		if deriveErr != nil {
+			return whoamiView{}, false
+		}
+		return whoamiView{
+			PrincipalID: id,
+			Kind:        "human",
+			Issuer:      iss,
+			Subject:     claims.Subject,
+			Username:    claims.Username,
+			Email:       claims.Email,
+			Name:        claims.Name,
+		}, true
+	}
 	if deps.Login.Store != nil {
 		if record, err := deps.Login.Store.LoadRecord(ctx); err == nil {
-			iss, sub, ok := parseJWTIssuerSubject(record.Token)
-			if iss == "" {
-				iss = strings.TrimSpace(record.Issuer)
-			}
-			if ok && iss != "" && sub != "" {
-				if id, deriveErr := DeriveOIDCPrincipalID(iss, sub); deriveErr == nil {
-					return whoamiView{
-						PrincipalID: id,
-						Kind:        "human",
-						Issuer:      iss,
-						Subject:     sub,
-					}, true
-				}
+			if view, ok := fromToken(record.Token, record.Issuer); ok {
+				return view, true
 			}
 		}
 	}
 	if ports.Session != nil {
 		if cred, err := ports.Session.Load(ctx); err == nil {
-			if iss, sub, ok := parseJWTIssuerSubject(cred.Token); ok && iss != "" && sub != "" {
-				if id, deriveErr := DeriveOIDCPrincipalID(iss, sub); deriveErr == nil {
-					return whoamiView{
-						PrincipalID: id,
-						Kind:        "human",
-						Issuer:      iss,
-						Subject:     sub,
-					}, true
-				}
+			if view, ok := fromToken(cred.Token, ""); ok {
+				return view, true
 			}
 		}
 	}
 	if config.CredentialFile != "" && ports.Files != nil {
 		if data, err := ports.Files.ReadFile(config.CredentialFile); err == nil {
-			if iss, sub, ok := parseJWTIssuerSubject(strings.TrimSpace(string(data))); ok && iss != "" && sub != "" {
-				if id, deriveErr := DeriveOIDCPrincipalID(iss, sub); deriveErr == nil {
-					return whoamiView{
-						PrincipalID: id,
-						Kind:        "human",
-						Issuer:      iss,
-						Subject:     sub,
-					}, true
-				}
+			if view, ok := fromToken(strings.TrimSpace(string(data)), ""); ok {
+				return view, true
 			}
 		}
 	}
 	if !offlineOnly && ports.Credential != nil {
 		if cred, err := ports.Credential.Credential(ctx); err == nil {
-			if iss, sub, ok := parseJWTIssuerSubject(cred.Token); ok && iss != "" && sub != "" {
-				if id, deriveErr := DeriveOIDCPrincipalID(iss, sub); deriveErr == nil {
-					return whoamiView{
-						PrincipalID: id,
-						Kind:        "human",
-						Issuer:      iss,
-						Subject:     sub,
-					}, true
-				}
+			if view, ok := fromToken(cred.Token, ""); ok {
+				return view, true
 			}
 		}
 	}
 	return whoamiView{}, false
 }
 
-// parseJWTIssuerSubject decodes the payload claims of a compact JWT to extract
-// iss and sub for local principal-ID derivation.
-func parseJWTIssuerSubject(token string) (string, string, bool) {
+type jwtDisplayClaims struct {
+	Issuer   string
+	Subject  string
+	Username string
+	Email    string
+	Name     string
+}
+
+// parseJWTClaims decodes the payload claims of a compact JWT to extract iss,
+// sub and optional human-readable display claims for local display.
+func parseJWTClaims(token string) (jwtDisplayClaims, bool) {
 	parts := strings.Split(strings.TrimSpace(token), ".")
 	if len(parts) != 3 || parts[1] == "" {
-		return "", "", false
+		return jwtDisplayClaims{}, false
 	}
 	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
 	if err != nil {
 		payload, err = base64.URLEncoding.DecodeString(parts[1])
 		if err != nil {
-			return "", "", false
+			return jwtDisplayClaims{}, false
 		}
 	}
 	var claims struct {
-		Issuer  string `json:"iss"`
-		Subject string `json:"sub"`
+		Issuer            string `json:"iss"`
+		Subject           string `json:"sub"`
+		PreferredUsername string `json:"preferred_username"`
+		Email             string `json:"email"`
+		Name              string `json:"name"`
 	}
 	if err := json.Unmarshal(payload, &claims); err != nil {
-		return "", "", false
+		return jwtDisplayClaims{}, false
 	}
-	iss := strings.TrimSpace(claims.Issuer)
-	sub := strings.TrimSpace(claims.Subject)
-	if iss == "" && sub == "" {
-		return "", "", false
+	out := jwtDisplayClaims{
+		Issuer:   strings.TrimSpace(claims.Issuer),
+		Subject:  strings.TrimSpace(claims.Subject),
+		Username: strings.TrimSpace(claims.PreferredUsername),
+		Email:    strings.TrimSpace(claims.Email),
+		Name:     strings.TrimSpace(claims.Name),
 	}
-	return iss, sub, true
+	if out.Issuer == "" && out.Subject == "" {
+		return jwtDisplayClaims{}, false
+	}
+	return out, true
 }
 
 func operationRequiresRouteParam(operation, paramName string) bool {
@@ -391,11 +447,26 @@ func runMemberList(ctx context.Context, config Config, args []string, ports Port
 		return ExitSuccess
 	}
 
+	selfView, hasSelf := deriveOfflineWhoami(ctx, config, ports, deps, false)
+	selfLabel := ""
+	if hasSelf {
+		selfLabel = formatWhoamiLabel(selfView)
+	}
+
 	tw := tabwriter.NewWriter(ports.Out, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "PRINCIPAL\tROLES\tVERSION")
+	fmt.Fprintln(tw, "PRINCIPAL\tLABEL\tROLES\tVERSION")
 	for _, member := range memberships {
-		fmt.Fprintf(tw, "%s\t%s\t%d\n",
+		label := "-"
+		if hasSelf && member.PrincipalID == selfView.PrincipalID {
+			if selfLabel != "" {
+				label = selfLabel + " (you)"
+			} else {
+				label = "(you)"
+			}
+		}
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%d\n",
 			member.PrincipalID,
+			label,
 			strings.Join(member.Roles, ","),
 			member.Version,
 		)
@@ -765,15 +836,15 @@ func resolveOIDCIssuer(ctx context.Context, config Config, ports Ports, deps Com
 			if iss := strings.TrimSpace(record.Issuer); iss != "" {
 				return iss, nil
 			}
-			if iss, _, ok := parseJWTIssuerSubject(record.Token); ok && iss != "" {
-				return iss, nil
+			if claims, ok := parseJWTClaims(record.Token); ok && claims.Issuer != "" {
+				return claims.Issuer, nil
 			}
 		}
 	}
 	if ports.Credential != nil {
 		if cred, err := ports.Credential.Credential(ctx); err == nil {
-			if iss, _, ok := parseJWTIssuerSubject(cred.Token); ok && iss != "" {
-				return iss, nil
+			if claims, ok := parseJWTClaims(cred.Token); ok && claims.Issuer != "" {
+				return claims.Issuer, nil
 			}
 		}
 	}

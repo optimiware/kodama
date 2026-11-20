@@ -194,3 +194,32 @@ func TestUpCLISecretRuleFlags(t *testing.T) {
 		})
 	}
 }
+
+func TestUpDownStatusHelpUsesDoubleDashFlags(t *testing.T) {
+	cases := []struct {
+		name  string
+		entry func(context.Context, []string, io.Writer, io.Writer) int
+		want  []string
+	}{
+		{"up", runUpEntry, []string{"--name", "--listen", "--state-dir", "--foreground"}},
+		{"down", runDownEntry, []string{"--name", "--purge", "--state-dir"}},
+		{"status", runStatusEntry, []string{"--name", "--json", "--state-dir"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var out, errBuf bytes.Buffer
+			code := tc.entry(context.Background(), []string{"--help"}, &out, &errBuf)
+			if code != 0 {
+				t.Fatalf("%s --help exit = %d; stderr=%q", tc.name, code, errBuf.String())
+			}
+			if errBuf.Len() != 0 {
+				t.Fatalf("%s --help wrote to stderr: %q", tc.name, errBuf.String())
+			}
+			for _, flagName := range tc.want {
+				if !strings.Contains(out.String(), flagName) {
+					t.Fatalf("%s --help missing double-dash flag %q:\n%s", tc.name, flagName, out.String())
+				}
+			}
+		})
+	}
+}
