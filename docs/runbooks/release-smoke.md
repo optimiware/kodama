@@ -199,14 +199,15 @@ not printed.
 `TestE2E_InstallationAccess` proves, before a long scenario run:
 
 1. the four personas carry four distinct derived principal ids in the
-   descriptor and each has its real project membership: role-appropriate public
-   operations succeed (admin, engineer and operator read `execution.list`, the
-   reviewer reads its `task.inbox`). The installed server is project-scoped, so
-   the preflight never calls the tenant-scoped `membership.list`; the committed
-   grants are verified at install time on the tenant-wide setup server;
-2. a role-absent operation is refused with the public `forbidden` code: an
-   engineer cannot read `resource.binding.read`, a reviewer cannot read
-   `execution.list` and an operator cannot read `pipeline.read`;
+   descriptor and each has its real project membership: every project member
+   can read project operational state (admin, engineer, reviewer and operator
+   read `execution.list`, and the reviewer reads its `task.inbox`). The
+   installed server is project-scoped, so the preflight never calls the
+   tenant-scoped `membership.list`; the committed grants are verified at
+   install time on the tenant-wide setup server;
+2. a role-absent mutation is refused with the public `forbidden` code: an
+   engineer cannot call `service.create`, a reviewer cannot call `task.create`
+   and an operator cannot call `secret.write`;
 3. the host reads the served Git repository over authenticated HTTPS;
 4. one tools-image workload materializes the installation's **public** CA
    certificate at `/workspace/w49-ca.crt` and proves verified HTTPS access to

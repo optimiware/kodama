@@ -353,10 +353,11 @@ expect_status() {
 }
 
 # persona_access_checks proves each acquired persona token carries a real
-# distinct membership: one role-appropriate operation succeeds and one the role
-# lacks is refused. The installed server is project-scoped, so membership.list
-# itself is tenant-scoped and stays an install-time verification (it ran on the
-# tenant-wide setup server).
+# distinct membership: every project member can read project operational state,
+# while role-gated mutations are refused for personas lacking those roles. The
+# installed server is project-scoped, so membership.list itself is tenant-scoped
+# and stays an install-time verification (it ran on the tenant-wide setup
+# server).
 persona_access_checks() {
 	expect_status admin GET "/api/v1/projects/${PROJECT}/executions" \
 		"$(jq -cn --arg project "$PROJECT" '{project_id: $project}')" 200
@@ -364,19 +365,24 @@ persona_access_checks() {
 		"$(jq -cn --arg project "$PROJECT" '{project_id: $project}')" 200
 	expect_status reviewer GET "/api/v1/projects/${PROJECT}/inbox" \
 		"$(jq -cn --arg project "$PROJECT" '{project_id: $project, kinds: ["request"]}')" 200
+	expect_status reviewer GET "/api/v1/projects/${PROJECT}/executions" \
+		"$(jq -cn --arg project "$PROJECT" '{project_id: $project}')" 200
 	expect_status operator GET "/api/v1/projects/${PROJECT}/inbox" \
 		"$(jq -cn --arg project "$PROJECT" '{project_id: $project, kinds: ["failed_task"]}')" 200
-	# The reviewer has no execution-read role.
-	expect_status reviewer GET "/api/v1/projects/${PROJECT}/executions" \
-		"$(jq -cn --arg project "$PROJECT" '{project_id: $project}')" 403
+	expect_status operator GET "/api/v1/projects/${PROJECT}/executions" \
+		"$(jq -cn --arg project "$PROJECT" '{project_id: $project}')" 200
 	# A reviewer cannot start a pipeline; a missing pipeline keeps the refusal
 	# side-effect free even if a defect admitted it.
 	expect_status reviewer POST "/api/v1/projects/${PROJECT}/pipelines/smoke-denied-${run}/start" \
 		"$(jq -cn --arg project "$PROJECT" '{project_id: $project, pipeline_id: "smoke-denied-'"${run}"'"}')" 403
-	# An engineer cannot create projects.
+	# An engineer cannot create services or projects.
+	expect_status engineer POST "/api/v1/projects/${PROJECT}/services" \
+		"$(jq -cn --arg project "$PROJECT" --arg service "smoke-denied-${run}" '{project_id: $project, service_id: $service, roles: ["viewer"]}')" 403
 	expect_status engineer POST "/api/v1/tenants/${TENANT}/projects" \
 		"$(jq -cn --arg tenant "$TENANT" '{tenant_id: $tenant, project_id: "smoke-denied-'"${run}"'", name: "smoke denied"}')" 403
-	# An operator cannot create projects.
+	# An operator cannot write secrets or create projects.
+	expect_status operator PUT "/api/v1/projects/${PROJECT}/secrets/SMOKE_DENIED" \
+		"$(jq -cn --arg project "$PROJECT" '{project_id: $project, secret_id: "SMOKE_DENIED", value: "refused"}')" 403
 	expect_status operator POST "/api/v1/tenants/${TENANT}/projects" \
 		"$(jq -cn --arg tenant "$TENANT" '{tenant_id: $tenant, project_id: "smoke-denied-'"${run}"'", name: "smoke denied"}')" 403
 }
