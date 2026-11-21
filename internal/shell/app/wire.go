@@ -438,6 +438,7 @@ func wireApp(ctx context.Context, builder *builder, environment *environment) (*
 		Asks:           taskAdapter,
 		Replies:        taskAdapter,
 		Cancels:        taskAdapter,
+		Completes:      taskAdapter,
 		Progress:       taskAdapter,
 		DefaultTimeout: cfg.DefaultActionTimeout,
 	})

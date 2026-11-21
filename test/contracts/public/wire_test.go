@@ -388,8 +388,8 @@ func TestEventEnvelopeRoundTrip(t *testing.T) {
 
 	publicTypes := api.EventTypes()
 	domainTypes := event.Types()
-	if len(publicTypes) != 19 {
-		t.Fatalf("public event types = %v; want the 19 canonical domain types", publicTypes)
+	if len(publicTypes) != 20 {
+		t.Fatalf("public event types = %v; want the 20 canonical domain types", publicTypes)
 	}
 	domainSet := make(map[string]bool, len(domainTypes))
 	for _, domainType := range domainTypes {

@@ -13,7 +13,7 @@ import (
 type Tool = api.MCPTool
 
 // toolCatalog is the deterministic declaration built once from the declared
-// route inventory: exactly the 61 registry operations in registry order, each
+// route inventory: exactly the 62 registry operations in registry order, each
 // with the field-level api.OperationInputSchema of its operation. A
 // construction failure is retained so the edge refuses instead of advertising a
 // placeholder.
@@ -69,7 +69,7 @@ var toolDescriptions = map[string]string{
 	// Tasks and conversation handoffs.
 	"task.create":           "Create an open task in a project with optional pipeline and inputs.",
 	"task.read":             "Read full task state, conversation messages, execution history and any open question.",
-	"task.list":             "List tasks in a project with optional status filter and pagination.",
+	"task.list":             "List tasks in a project with optional status and parent_id filters and pagination.",
 	"task.edit":             "Update a task's title, description and metadata at an expected version.",
 	"task.comment":          "Append a durable comment and optional references to a task.",
 	"task.select_pipeline":  "Select or update the pipeline and inputs bound to an open task.",
@@ -79,6 +79,7 @@ var toolDescriptions = map[string]string{
 	"task.ask":              "Ask an assigned role or service question on a task and pause execution.",
 	"task.reply":            "Answer a waiting task's outstanding question and queue a replacement execution.",
 	"task.cancel":           "Cancel a task and any nonterminal execution bound to it.",
+	"task.complete":         "Explicitly mark an open task done at an expected lifecycle version.",
 	"task.history":          "Read paginated task history entries across executions, messages and questions.",
 	"task.inbox":            "Query actionable inbox items (requests, waiting tasks, failed tasks) in a project.",
 
@@ -87,7 +88,7 @@ var toolDescriptions = map[string]string{
 	"execution.list":            "List executions in a project with optional task, pipeline and state filters.",
 	"execution.cancel":          "Cancel a running or queued execution at an expected version.",
 	"execution.action.outputs":  "Submit declared outputs from the active running container action.",
-	"execution.request.resolve": "Resolve an active assigned request action with pass or fail and optional outputs.",
+	"execution.request.resolve": "Resolve an active assigned request action with pass, revise, or fail and optional outputs.",
 	"execution.logs.read":       "Read retained stdout or stderr log chunks for an execution action.",
 
 	// Verification and verified resource reports.

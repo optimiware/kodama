@@ -518,6 +518,7 @@ func newHarness(t *testing.T) *harness {
 		Asks:           taskAdapter,
 		Replies:        taskAdapter,
 		Cancels:        taskAdapter,
+		Completes:      taskAdapter,
 		Progress:       taskAdapter,
 		DefaultTimeout: 5 * time.Minute,
 	})

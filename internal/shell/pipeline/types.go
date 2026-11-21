@@ -205,19 +205,21 @@ type PushTrigger struct {
 // the admitted environment defaults from the definition's `env` mapping; they
 // are copied into the snapshot so later definition edits cannot change them.
 type SnapshotInput struct {
-	YAML         []byte
-	Inputs       map[id.InputKey]string
-	Env          []definition.EnvVar
-	Budget       *definition.Budget
-	Images       []PinnedImage
-	SecretNames  []id.SecretName
-	Requirements []string
-	TaskID       id.TaskID
-	Title        string
-	Description  string
-	Conversation []byte
-	References   []string
-	Metadata     map[string]string
+	YAML          []byte
+	Inputs        map[id.InputKey]string
+	Env           []definition.EnvVar
+	Budget        *definition.Budget
+	Images        []PinnedImage
+	SecretNames   []id.SecretName
+	Requirements  []string
+	TaskID        id.TaskID
+	ParentID      id.TaskID
+	Title         string
+	Description   string
+	Conversation  []byte
+	References    []string
+	Metadata      map[string]string
+	CompletesTask *bool
 }
 
 // Snapshot is the immutable admitted definition. It owns copies of every input
@@ -228,20 +230,24 @@ type SnapshotInput struct {
 // present and empty, which Conversation/HasConversation preserve and the JSON
 // form keeps distinct (null versus an empty string). Title and Description
 // record the admitted task title and description for task-associated runs.
+// CompletesTask records whether execution success completes the owning task
+// (defaulting to true when nil/omitted).
 type Snapshot struct {
-	YAMLSHA256   [32]byte               `json:"yaml_sha256"`
-	Inputs       map[id.InputKey]string `json:"inputs,omitempty"`
-	Env          []definition.EnvVar    `json:"env,omitempty"`
-	Budget       *definition.Budget     `json:"budget,omitempty"`
-	Images       []PinnedImage          `json:"images,omitempty"`
-	SecretNames  []id.SecretName        `json:"secret_names,omitempty"`
-	Requirements []string               `json:"requirements,omitempty"`
-	TaskID       id.TaskID              `json:"task_id,omitempty"`
-	Title        string                 `json:"title,omitempty"`
-	Description  string                 `json:"description,omitempty"`
-	Conversation []byte                 `json:"conversation"`
-	References   []string               `json:"references,omitempty"`
-	Metadata     map[string]string      `json:"metadata,omitempty"`
+	YAMLSHA256    [32]byte               `json:"yaml_sha256"`
+	Inputs        map[id.InputKey]string `json:"inputs,omitempty"`
+	Env           []definition.EnvVar    `json:"env,omitempty"`
+	Budget        *definition.Budget     `json:"budget,omitempty"`
+	Images        []PinnedImage          `json:"images,omitempty"`
+	SecretNames   []id.SecretName        `json:"secret_names,omitempty"`
+	Requirements  []string               `json:"requirements,omitempty"`
+	TaskID        id.TaskID              `json:"task_id,omitempty"`
+	ParentID      id.TaskID              `json:"parent_id,omitempty"`
+	Title         string                 `json:"title,omitempty"`
+	Description   string                 `json:"description,omitempty"`
+	Conversation  []byte                 `json:"conversation"`
+	References    []string               `json:"references,omitempty"`
+	Metadata      map[string]string      `json:"metadata,omitempty"`
+	CompletesTask *bool                  `json:"completes_task,omitempty"`
 
 	yaml []byte
 }
@@ -280,21 +286,41 @@ func NewSnapshot(input SnapshotInput) (Snapshot, error) {
 	}
 	yaml := append([]byte(nil), input.YAML...)
 	return Snapshot{
-		YAMLSHA256:   sha256.Sum256(yaml),
-		Inputs:       cloneInputs(input.Inputs),
-		Env:          cloneEnv(input.Env),
-		Budget:       budget,
-		Images:       append([]PinnedImage(nil), input.Images...),
-		SecretNames:  append([]id.SecretName(nil), input.SecretNames...),
-		Requirements: append([]string(nil), input.Requirements...),
-		TaskID:       input.TaskID,
-		Title:        input.Title,
-		Description:  input.Description,
-		Conversation: cloneBytes(input.Conversation),
-		References:   append([]string(nil), input.References...),
-		Metadata:     cloneMetadata(input.Metadata),
-		yaml:         yaml,
+		YAMLSHA256:    sha256.Sum256(yaml),
+		Inputs:        cloneInputs(input.Inputs),
+		Env:           cloneEnv(input.Env),
+		Budget:        budget,
+		Images:        append([]PinnedImage(nil), input.Images...),
+		SecretNames:   append([]id.SecretName(nil), input.SecretNames...),
+		Requirements:  append([]string(nil), input.Requirements...),
+		TaskID:        input.TaskID,
+		ParentID:      input.ParentID,
+		Title:         input.Title,
+		Description:   input.Description,
+		Conversation:  cloneBytes(input.Conversation),
+		References:    append([]string(nil), input.References...),
+		Metadata:      cloneMetadata(input.Metadata),
+		CompletesTask: cloneOptionalBool(input.CompletesTask),
+		yaml:          yaml,
 	}, nil
+}
+
+// CompletesTaskOnSuccess reports whether this execution completing with
+// succeeded state marks its owning open task done. Omitted/nil defaults to true
+// for backwards compatibility.
+func (snapshot Snapshot) CompletesTaskOnSuccess() bool {
+	if snapshot.CompletesTask == nil {
+		return true
+	}
+	return *snapshot.CompletesTask
+}
+
+func cloneOptionalBool(value *bool) *bool {
+	if value == nil {
+		return nil
+	}
+	copied := *value
+	return &copied
 }
 
 // YAMLBytes returns a copy of the exact admitted YAML bytes.

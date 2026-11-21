@@ -17,6 +17,7 @@ func EventTypes() []string {
 		"task.question",
 		"task.reply",
 		"task.cancelled",
+		"task.completed",
 		"execution.queued",
 		"execution.started",
 		"execution.succeeded",

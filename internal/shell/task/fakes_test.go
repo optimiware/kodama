@@ -495,6 +495,7 @@ type fakePorts struct {
 	asks       []task.AskUnit
 	replies    []task.ReplyUnit
 	cancels    []task.CancelUnit
+	completes  []task.CompleteUnit
 	progresses []task.ProgressUnit
 
 	createFn   func(task.CreateUnit) (task.CreateResult, error)
@@ -503,6 +504,7 @@ type fakePorts struct {
 	askFn      func(task.AskUnit) (task.AskResult, error)
 	replyFn    func(task.ReplyUnit) (task.ReplyResult, error)
 	cancelFn   func(task.CancelUnit) (task.CancelResult, error)
+	completeFn func(task.CompleteUnit) (task.CompleteResult, error)
 	progressFn func(task.ProgressUnit) (task.ProgressResult, error)
 }
 
@@ -594,6 +596,17 @@ func (ports *fakePorts) Cancel(_ context.Context, unit task.CancelUnit) (task.Ca
 	return task.CancelResult{LifecycleVersion: unit.ExpectedLifecycleVersion + 1}, nil
 }
 
+func (ports *fakePorts) Complete(_ context.Context, unit task.CompleteUnit) (task.CompleteResult, error) {
+	ports.mu.Lock()
+	ports.completes = append(ports.completes, unit)
+	callback := ports.completeFn
+	ports.mu.Unlock()
+	if callback != nil {
+		return callback(unit)
+	}
+	return task.CompleteResult{LifecycleVersion: unit.ExpectedLifecycleVersion + 1}, nil
+}
+
 func (ports *fakePorts) Apply(_ context.Context, unit task.ProgressUnit) (task.ProgressResult, error) {
 	ports.mu.Lock()
 	ports.progresses = append(ports.progresses, unit)
@@ -609,7 +622,7 @@ func (ports *fakePorts) totalCalls() int {
 	ports.mu.Lock()
 	defer ports.mu.Unlock()
 	return len(ports.creates) + len(ports.edits) + len(ports.starts) + len(ports.asks) +
-		len(ports.replies) + len(ports.cancels) + len(ports.progresses)
+		len(ports.replies) + len(ports.cancels) + len(ports.completes) + len(ports.progresses)
 }
 
 func (ports *fakePorts) lastCreate(t *testing.T) task.CreateUnit {

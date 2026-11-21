@@ -21,8 +21,8 @@ func TestHumanGrantMatrixAllowsExactlyTheDeclaredRoles(t *testing.T) {
 	ctx := context.Background()
 
 	operations := authorize.Operations()
-	if len(operations) != 61 {
-		t.Fatalf("registry has %d operations; want the declared 61", len(operations))
+	if len(operations) != 62 {
+		t.Fatalf("registry has %d operations; want the declared 62", len(operations))
 	}
 
 	for _, operation := range operations {
@@ -167,6 +167,7 @@ func TestExecutionAuthorityNeverCoversAdministrationResolutionOrReply(t *testing
 		"service.credential.issue",
 		"task.reply",
 		"task.cancel",
+		"task.complete",
 		"execution.request.resolve",
 	}
 	for _, name := range neverExecution {

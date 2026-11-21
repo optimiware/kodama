@@ -654,6 +654,32 @@ func TestReplyOpenTaskLostResponseReachesPort(t *testing.T) {
 	}
 }
 
+// TestReplyPreservesPredecessorCompletesTask proves a paused execution started
+// with a per-start completes_task override keeps that setting across
+// task.ask -> task.reply rather than silently reverting to the pipeline default.
+func TestReplyPreservesPredecessorCompletesTask(t *testing.T) {
+	env := newTestEnv(t)
+	actor := humanActor(reviewerPrincipal, tenancy.RoleReviewer)
+	value := waitingTask(t)
+	env.reader.put(value)
+	falseVal := false
+	env.executions.put(task.ExecutionView{
+		ID:            executionOne,
+		Version:       2,
+		State:         kernel.ExecutionCancelled,
+		StopEvidence:  confirmedStop(),
+		CompletesTask: &falseVal,
+	})
+
+	_, err := env.service.Reply(t.Context(), replyCommand(actor, 4, questionID, 1, "Continue stage"))
+	requireNoError(t, err, "Reply")
+
+	admitReq := env.admission.requestsSnapshot()[0]
+	if admitReq.CompletesTask == nil || *admitReq.CompletesTask {
+		t.Fatalf("admit CompletesTask = %v; want pointer to false", admitReq.CompletesTask)
+	}
+}
+
 // TestCancelCommitsCancelledTask proves cancel is one unit: cancelled state,
 // execution cancellation at its expected version, credential revocation,
 // event and publish.

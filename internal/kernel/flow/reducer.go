@@ -537,25 +537,34 @@ func reduceAnswer(execution kernel.Execution, fact AnswerFact) (kernel.Execution
 		commit.Output = OutputChange{Action: OutputDiscard}
 		commit.PendingCancellations = pendingCancellations(execution, action.ID)
 		commit.InvalidateCredential = true
+		reason := "answer_rejected"
 		detail := "request action was answered with a failing decision"
+		if answer.Decision == kernel.DecisionRevise {
+			reason = kernel.FailureReasonNeedsRevision
+			detail = "request action requested revision"
+		}
 		if trimmed := strings.TrimSpace(answer.Note); trimmed != "" {
 			detail = trimmed
-		} else if reason := strings.TrimSpace(answer.Outputs[id.OutputKey("reason")]); reason != "" {
-			detail = reason
+		} else if feedback := strings.TrimSpace(answer.Outputs[id.OutputKey("feedback")]); feedback != "" {
+			detail = feedback
+		} else if outReason := strings.TrimSpace(answer.Outputs[id.OutputKey("reason")]); outReason != "" {
+			detail = outReason
+		} else if comment := strings.TrimSpace(answer.Outputs[id.OutputKey("comment")]); comment != "" {
+			detail = comment
 		}
 		commit.Failure = &kernel.Failure{
 			Kind:   kernel.FailureRuntime,
-			Reason: "answer_rejected",
+			Reason: reason,
 			Detail: detail,
 		}
-		// A failing answer settles the execution without a later Reconcile
-		// pass, so the pending cleanup intent/progress must travel in this
-		// same commit. The answered action is a request, so this commit
+		// A failing or revision answer settles the execution without a later
+		// Reconcile pass, so the pending cleanup intent/progress must travel in
+		// this same commit. The answered action is a request, so this commit
 		// requests no new stop; earlier container workloads keep their own
 		// persisted stop evidence and cleanup confirms termination before
 		// removal.
 		workload := firstEffectWorkload(execution)
-		commit.Cleanup = &CleanupIntent{WorkloadID: workload, WorkspaceID: execution.WorkspaceID, Reason: "answer_rejected"}
+		commit.Cleanup = &CleanupIntent{WorkloadID: workload, WorkspaceID: execution.WorkspaceID, Reason: reason}
 		commit.CleanupUpdate = &CleanupUpdate{State: kernel.CleanupPending, WorkloadID: workload, WorkspaceID: execution.WorkspaceID}
 	}
 

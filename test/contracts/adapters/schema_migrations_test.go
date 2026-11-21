@@ -82,6 +82,7 @@ var expectedForeignKeys = []string{
 	"task_messages_project",
 	"task_messages_task",
 	"task_messages_tenant",
+	"tasks_parent",
 	"tasks_project",
 	"tasks_tenant",
 	"verifications_action",

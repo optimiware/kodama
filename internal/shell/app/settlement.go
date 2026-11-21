@@ -8,6 +8,7 @@ import (
 	"github.com/optimiware/kodema/internal/id"
 	"github.com/optimiware/kodema/internal/kernel"
 	"github.com/optimiware/kodema/internal/shell/store"
+	"github.com/optimiware/kodema/internal/shell/store/units/execution/snapshotdoc"
 	"github.com/optimiware/kodema/internal/shell/task"
 	"github.com/optimiware/kodema/internal/shell/tenancy"
 )
@@ -284,6 +285,15 @@ func (settlement *taskSettlement) observeTask(ctx context.Context, scope tenancy
 	}
 	if kernel.ExecutionState(executionState) != kernel.ExecutionSucceeded {
 		return nil
+	}
+	if rawSnapshot, ok := execution.Values["snapshot"].([]byte); ok && len(rawSnapshot) > 0 {
+		admitted, err := snapshotdoc.Decode(rawSnapshot)
+		if err != nil {
+			return err
+		}
+		if !admitted.Snapshot.CompletesTaskOnSuccess() {
+			return nil
+		}
 	}
 	executionTask, err := settlementText(execution, "task_id")
 	if err != nil {

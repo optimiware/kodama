@@ -206,6 +206,9 @@ func TestVerifyRefusesNonMatchingEvidence(t *testing.T) {
 		{"failed decision", mutatedEvidence(func(evidence *verify.Evidence) {
 			evidence.Decision = request.DecisionFail
 		})},
+		{"revise decision", mutatedEvidence(func(evidence *verify.Evidence) {
+			evidence.Decision = request.DecisionRevise
+		})},
 		{"service assignment", mutatedEvidence(func(evidence *verify.Evidence) {
 			evidence.Assignment = request.Assignment{Kind: request.AssignmentService, ServiceID: testServiceID}
 		})},

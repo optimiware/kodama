@@ -210,6 +210,7 @@ func newTaskServiceEnv(t *testing.T) *taskServiceEnv {
 		Asks:           tasks,
 		Replies:        tasks,
 		Cancels:        tasks,
+		Completes:      tasks,
 		Progress:       tasks,
 		DefaultTimeout: 5 * time.Minute,
 	})

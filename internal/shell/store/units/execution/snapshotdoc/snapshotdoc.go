@@ -100,19 +100,21 @@ func Decode(data []byte) (Admitted, error) {
 		return Admitted{}, fault.New(fault.InternalFailure, fmt.Sprintf("execution snapshot version %d is not supported", document.Version))
 	}
 	snapshot, err := pipeline.NewSnapshot(pipeline.SnapshotInput{
-		YAML:         document.YAML,
-		Inputs:       document.Snapshot.Inputs,
-		Env:          document.Snapshot.Env,
-		Budget:       document.Snapshot.Budget,
-		Images:       document.Snapshot.Images,
-		SecretNames:  document.Snapshot.SecretNames,
-		Requirements: document.Snapshot.Requirements,
-		TaskID:       document.Snapshot.TaskID,
-		Title:        document.Snapshot.Title,
-		Description:  document.Snapshot.Description,
-		Conversation: document.Snapshot.Conversation,
-		References:   document.Snapshot.References,
-		Metadata:     document.Snapshot.Metadata,
+		YAML:          document.YAML,
+		Inputs:        document.Snapshot.Inputs,
+		Env:           document.Snapshot.Env,
+		Budget:        document.Snapshot.Budget,
+		Images:        document.Snapshot.Images,
+		SecretNames:   document.Snapshot.SecretNames,
+		Requirements:  document.Snapshot.Requirements,
+		TaskID:        document.Snapshot.TaskID,
+		ParentID:      document.Snapshot.ParentID,
+		Title:         document.Snapshot.Title,
+		Description:   document.Snapshot.Description,
+		Conversation:  document.Snapshot.Conversation,
+		References:    document.Snapshot.References,
+		Metadata:      document.Snapshot.Metadata,
+		CompletesTask: document.Snapshot.CompletesTask,
 	})
 	if err != nil {
 		return Admitted{}, fault.Wrap(fault.InternalFailure, "execution snapshot could not be rebuilt", err)

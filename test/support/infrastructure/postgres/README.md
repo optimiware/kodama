@@ -342,6 +342,8 @@ a changed written table set cannot leave the documentation stale.
 | `task.cancel` | audit, events, receipts, tasks |
 | `task.cancel.loser` | none |
 | `task.cancel.replay` | none |
+| `task.complete` | audit, events, receipts, tasks |
+| `task.complete.replay` | none |
 | `task.create` | audit, events, receipts, tasks |
 | `task.create.loser` | none |
 | `task.create.replay` | none |

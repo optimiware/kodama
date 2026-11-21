@@ -233,6 +233,7 @@ var wantRoutes = []wantRoute{
 	{"task.ask", api.MethodPost, "/api/v1/tasks/{task}/ask"},
 	{"task.reply", api.MethodPost, "/api/v1/tasks/{task}/reply"},
 	{"task.cancel", api.MethodPost, "/api/v1/tasks/{task}/cancel"},
+	{"task.complete", api.MethodPost, "/api/v1/tasks/{task}/complete"},
 	{"task.history", api.MethodGet, "/api/v1/tasks/{task}/history"},
 	{"task.inbox", api.MethodGet, "/api/v1/projects/{project}/inbox"},
 
@@ -276,8 +277,8 @@ var fixedRoutes = []fixedRoute{
 // invented operation, and the registry schema names.
 func TestRouteInventoryAndOperationParity(t *testing.T) {
 	operations := authorize.Operations()
-	if len(operations) != 61 {
-		t.Fatalf("the operation registry has %d operations; the public contract pins 61", len(operations))
+	if len(operations) != 62 {
+		t.Fatalf("the operation registry has %d operations; the public contract pins 62", len(operations))
 	}
 	if len(wantRoutes) != len(operations) {
 		t.Fatalf("pinned route table has %d rows; the registry has %d operations", len(wantRoutes), len(operations))

@@ -56,13 +56,24 @@ type PipelineReader interface {
 }
 
 // ExecutionView is the authoritative current execution fact a task operation
-// needs: its version and whether its workloads are confirmed stopped. It is
-// read evidence for one operation, never durable permission.
+// needs: its version, state, whether its workloads are confirmed stopped, and
+// whether its admitted snapshot completes the task on success. It is read
+// evidence for one operation, never durable permission.
 type ExecutionView struct {
-	ID           id.ExecutionID
-	Version      uint64
-	State        kernel.ExecutionState
-	StopEvidence kernel.StopEvidence
+	ID            id.ExecutionID
+	Version       uint64
+	State         kernel.ExecutionState
+	StopEvidence  kernel.StopEvidence
+	CompletesTask *bool
+}
+
+// CompletesTaskOnSuccess reports whether execution success marks the owning
+// open task done. Omitted/nil defaults to true for backwards compatibility.
+func (view ExecutionView) CompletesTaskOnSuccess() bool {
+	if view.CompletesTask == nil {
+		return true
+	}
+	return *view.CompletesTask
 }
 
 // ExecutionReader reads one scoped execution view.
@@ -119,6 +130,7 @@ type Reader interface {
 type CreateUnit struct {
 	Owner            tenancy.Scope             `json:"owner"`
 	TaskID           id.TaskID                 `json:"task_id"`
+	ParentID         id.TaskID                 `json:"parent_id,omitempty"`
 	Title            string                    `json:"title"`
 	Description      string                    `json:"description,omitempty"`
 	Metadata         map[string]string         `json:"metadata,omitempty"`
@@ -250,16 +262,18 @@ type ProgressStatus struct {
 // CreateCommand is one authorized task creation. Start asks for
 // create-and-start: creation plus admission in one commit unit.
 type CreateCommand struct {
-	Actor       authorize.Principal
-	Scope       tenancy.Scope
-	Title       string
-	Description string
-	Metadata    []byte
-	PipelineID  pipeline.PipelineID
-	Inputs      map[id.InputKey]string
-	Start       bool
-	CallerKey   string
-	Content     receipt.Content
+	Actor         authorize.Principal
+	Scope         tenancy.Scope
+	ParentID      id.TaskID
+	Title         string
+	Description   string
+	Metadata      []byte
+	PipelineID    pipeline.PipelineID
+	Inputs        map[id.InputKey]string
+	Start         bool
+	CompletesTask *bool
+	CallerKey     string
+	Content       receipt.Content
 }
 
 // EditCommand is one authorized task edit.
@@ -290,6 +304,7 @@ type StartCommand struct {
 	ExpectedLifecycleVersion uint64
 	PipelineID               pipeline.PipelineID
 	Inputs                   map[id.InputKey]string
+	CompletesTask            *bool
 	CallerKey                string
 	Content                  receipt.Content
 }
@@ -305,6 +320,7 @@ type RestartCommand struct {
 	Reason                   string
 	PipelineID               pipeline.PipelineID
 	Inputs                   map[id.InputKey]string
+	CompletesTask            *bool
 	CallerKey                string
 	Content                  receipt.Content
 }
@@ -345,6 +361,17 @@ type CancelCommand struct {
 	Content                  receipt.Content
 }
 
+// CompleteCommand is one authorized explicit task completion.
+type CompleteCommand struct {
+	Actor                    authorize.Principal
+	Scope                    tenancy.Scope
+	TaskID                   id.TaskID
+	ExpectedLifecycleVersion uint64
+	Reason                   string
+	CallerKey                string
+	Content                  receipt.Content
+}
+
 // HistoryCommand is one authorized history read.
 type HistoryCommand struct {
 	Actor  authorize.Principal
@@ -377,6 +404,7 @@ type ServiceConfig struct {
 	Asks           AskPort
 	Replies        ReplyPort
 	Cancels        CancelPort
+	Completes      CompletePort
 	Progress       ProgressPort
 	DefaultTimeout time.Duration
 }

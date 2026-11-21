@@ -107,37 +107,53 @@ Flags:
   --output <k=v>     Declared request response output pair (repeatable)`,
 	},
 	"reject": {
-		usage:   "kodema reject <execution-id> [--action <id>] --reason <text> [--output <k=v>]",
+		usage:   "kodema reject <execution-id> [--action <id>] --reason <text> [--decision fail|revise] [--output <k=v>]",
 		summary: "Reject a waiting execution request action",
-		description: `Resolves a waiting request action on <execution-id> with decision "fail".
+		description: `Resolves a waiting request action on <execution-id> with decision "fail" (or "revise" with --decision revise).
 When --action is omitted, inspects the execution and selects the single waiting request action.
 
 Flags:
-  --action <id>     Waiting request action ID (auto-detected when omitted)
-  --reason <text>   Required rejection reason (persisted as decision note)
-  --output <k=v>    Declared request response output pair (repeatable)`,
+  --action <id>             Waiting request action ID (auto-detected when omitted)
+  --reason <text>           Required rejection reason (persisted as decision note)
+  --decision fail|revise    Resolution decision (default: fail)
+  --output <k=v>            Declared request response output pair (repeatable)`,
+	},
+	"revise": {
+		usage:   "kodema revise <execution-id> [--action <id>] --reason <text> [--output <k=v>]",
+		summary: "Request revision on a waiting execution request action",
+		description: `Resolves a waiting request action on <execution-id> with decision "revise".
+Records a domain revision rejection (needs_revision), appends the reviewer feedback
+atomically to the task's conversation messages, and keeps the task open without
+escalating to the operator failure inbox.
+
+Flags:
+  --action <id>                   Waiting request action ID (auto-detected when omitted)
+  --reason, --feedback <text>     Required revision feedback (persisted as note and task message)
+  --output <k=v>                  Declared request response output pair (repeatable)`,
 	},
 	"task": {
 		usage:   "kodema task <subcommand> [arguments]",
-		summary: "Create, run, list, inspect, start, restart, ask, reply to, and manage tasks",
+		summary: "Create, run, list, inspect, start, restart, ask, reply to, complete, and cancel tasks",
 		description: `Subcommands:
-  create   kodema task create --project <id> --title <t> [--description <d>] [--pipeline <name|id>] [--input <k=v>] [--meta|--metadata <k=v>]
-  run      kodema task run --project <id> --title <t> --pipeline <name|id> [--description <d>] [--input <k=v>] [--meta|--metadata <k=v>]
-  list     kodema task list --project <id>
-  show     kodema task show <task-id>
-  start    kodema task start <task-id> [--pipeline <name|id>] [--input <k=v>...] [--input-from-output <k=action.output>...] [--expected-version <v>]
-  restart  kodema task restart <task-id> [--reason <text>] [--pipeline <name|id>] [--input <k=v>...] [--input-from-output <k=action.output>...] [--expected-version <v>]
-  ask      kodema task ask [<task-id>] --question <text> --to <assignment> [--ref <ref>...]
-  reply    kodema task reply <task-id> --answer <text>
-  cancel   kodema task cancel <task-id> [--expected-version <v>]`,
+  create    kodema task create --project <id> --title <t> [--parent <task-id>] [--description <d>] [--pipeline <name|id>] [--input <k=v>] [--meta|--metadata <k=v>]
+  run       kodema task run --project <id> --title <t> --pipeline <name|id> [--parent <task-id>] [--description <d>] [--input <k=v>] [--meta|--metadata <k=v>] [--completes-task=false|--no-complete]
+  list      kodema task list --project <id> [--state <state>] [--parent <task-id>]
+  show      kodema task show <task-id>
+  start     kodema task start <task-id> [--pipeline <name|id>] [--input <k=v>...] [--input-from-output <k=action.output>...] [--completes-task=false|--no-complete] [--expected-version <v>]
+  restart   kodema task restart <task-id> [--reason <text>] [--pipeline <name|id>] [--input <k=v>...] [--input-from-output <k=action.output>...] [--completes-task=false|--no-complete] [--expected-version <v>]
+  ask       kodema task ask [<task-id>] --question <text> --to <assignment> [--ref <ref>...]
+  reply     kodema task reply <task-id> --answer <text>
+  complete  kodema task complete <task-id> [--version <v>] [--reason <text>]
+  cancel    kodema task cancel <task-id> [--expected-version <v>]`,
 	},
 	"task create": {
-		usage:   "kodema task create [--project <id>] --title <t> [--description <d>] [--pipeline <name|id>] [--input <k=v>] [--meta <k=v>]",
+		usage:   "kodema task create [--project <id>] --title <t> [--parent <task-id>] [--description <d>] [--pipeline <name|id>] [--input <k=v>] [--meta <k=v>]",
 		summary: "Create an open task in a project",
 		description: `Invokes task.create with an auto-generated idempotency key.
 
 Flags:
   --project <id>              Project ID (defaults to global --project or KODEMA_PROJECT)
+  --parent <task-id>          Optional parent task ID in the same project
   --title <text>              Task title (required)
   --description <text>        Optional task description
   --pipeline <name|id>        Optional selected pipeline name or ID
@@ -145,23 +161,26 @@ Flags:
   --meta, --metadata <k=v>    Task metadata string key=value pair (repeatable)`,
 	},
 	"task run": {
-		usage:   "kodema task run [--project <id>] --title <t> --pipeline <name|id> [--description <d>] [--input <k=v>] [--meta <k=v>]",
+		usage:   "kodema task run [--project <id>] --title <t> --pipeline <name|id> [--parent <task-id>] [--description <d>] [--input <k=v>] [--meta <k=v>] [--completes-task=false|--no-complete]",
 		summary: "Create and immediately start a task on a pipeline",
 		description: `Invokes task.create_and_start with an auto-generated idempotency key.
 Accepts either a stored pipeline ID (pipeline-...) or a pipeline name (resolved via pipeline.list).
 
 Flags:
   --project <id>              Project ID (defaults to global --project or KODEMA_PROJECT)
+  --parent <task-id>          Optional parent task ID in the same project
   --title <text>              Task title (required)
   --pipeline <name|id>        Pipeline name or ID to run (required)
   --description <text>        Optional task description
   --input <k=v>               Pipeline input key=value pair (repeatable)
-  --meta, --metadata <k=v>    Task metadata string key=value pair (repeatable)`,
+  --meta, --metadata <k=v>    Task metadata string key=value pair (repeatable)
+  --completes-task <bool>     Override whether execution success marks the task done
+  --no-complete               Keep the task open after execution success (alias for --completes-task=false)`,
 	},
 	"task list": {
-		usage:       "kodema task list [--project <id>]",
+		usage:       "kodema task list [--project <id>] [--state <state>] [--parent <task-id>]",
 		summary:     "List tasks in a project",
-		description: `Lists tasks for --project (or KODEMA_PROJECT).`,
+		description: `Lists tasks for --project (or KODEMA_PROJECT), optionally filtered by --state and/or --parent.`,
 	},
 	"task show": {
 		usage:       "kodema task show <task-id>",
@@ -227,6 +246,17 @@ Flags:
 		usage:       "kodema task cancel <task-id> [--expected-version <v>]",
 		summary:     "Cancel a task",
 		description: `Reads the current lifecycle version when --expected-version is omitted and invokes task.cancel.`,
+	},
+	"task complete": {
+		usage:   "kodema task complete <task-id> [--version <v>] [--reason <text>]",
+		summary: "Explicitly mark an open task done",
+		description: `Reads the current lifecycle version when --version / --expected-version is omitted and invokes task.complete.
+
+Flags:
+  --version, --expected-version <v>  Task lifecycle version (auto-fetched when omitted)
+  --reason <text>                    Optional completion summary/reason
+  --idempotency-key <key>            Explicit idempotency key
+  --output <table|json>              Output format`,
 	},
 	"member": {
 		usage:   "kodema member <subcommand> [arguments]",

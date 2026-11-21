@@ -11,6 +11,7 @@ import (
 	"github.com/optimiware/kodema/internal/kernel"
 	"github.com/optimiware/kodema/internal/kernel/flow"
 	"github.com/optimiware/kodema/internal/shell/request"
+	"github.com/optimiware/kodema/internal/shell/store"
 	"github.com/optimiware/kodema/internal/shell/store/memory"
 	"github.com/optimiware/kodema/internal/shell/store/units/execution/snapshotdoc"
 	"github.com/optimiware/kodema/internal/shell/tenancy"
@@ -355,5 +356,81 @@ func TestResolvePersistsAnswerNoteAndInspectProjectsReasonWithoutOutputs(t *test
 	}
 	if len(view.Actions[0].Outputs) != 0 {
 		t.Fatalf("Inspect failed request promoted outputs = %+v; want empty", view.Actions[0].Outputs)
+	}
+}
+
+type lockRecordingExecutor struct {
+	store.Executor
+	units []store.Unit
+}
+
+func (r *lockRecordingExecutor) Execute(ctx context.Context, scope tenancy.Scope, unit store.Unit) (store.UnitResult, error) {
+	r.units = append(r.units, unit)
+	return r.Executor.Execute(ctx, scope, unit)
+}
+
+func TestResolveReviseLocksTaskBeforeAppendingMessage(t *testing.T) {
+	clock := testNow
+	_, backend := newStoreWithClock(t, func() time.Time { return clock })
+	recorder := &lockRecordingExecutor{Executor: backend}
+	adapter := New(recorder, backend)
+	scope := projectScope()
+
+	// Seed a task and a task-associated running request execution.
+	if _, err := backend.Execute(context.Background(), scope, store.Unit{
+		Writes: []store.Write{{
+			Table:  tableTasks,
+			ID:     "task-rev-1",
+			Insert: true,
+			Values: map[string]any{
+				"content_version":   int64(1),
+				"lifecycle_version": int64(1),
+				"state":             "open",
+				"initiator_id":      "user-1",
+				"title":             "Needs review",
+				"created_at":        testNow,
+			},
+		}},
+	}); err != nil {
+		t.Fatalf("seed task: %v", err)
+	}
+	action := startedRequestExecution(t, adapter, backend, scope, "exec-rev-1")
+	if _, err := backend.Execute(context.Background(), scope, store.Unit{
+		Writes: []store.Write{{
+			Table:         tableExecutions,
+			ID:            "exec-rev-1",
+			ExpectVersion: 2,
+			Values:        map[string]any{"task_id": "task-rev-1"},
+		}},
+	}); err != nil {
+		t.Fatalf("link execution to task: %v", err)
+	}
+	// Reload version after linking task_id (version is now 3).
+	recorder.units = nil
+	unit := firstResolveUnit(t, adapter, scope, "exec-rev-1", action, request.DecisionRevise, kernel.Outputs{"decision": "revise"}, "resolve-rev-1", "f", testNow)
+	unit.Note = "Please add unit tests"
+	unit.Commit.Answer.Note = unit.Note
+	if _, err := adapter.Resolve(context.Background(), unit); err != nil {
+		t.Fatalf("Resolve revise: %v", err)
+	}
+	if len(recorder.units) != 1 {
+		t.Fatalf("executed units = %d; want 1", len(recorder.units))
+	}
+	var lockedTask bool
+	for _, lock := range recorder.units[0].Locks {
+		if lock.Table == tableTasks && len(lock.IDs) == 1 && lock.IDs[0] == "task-rev-1" {
+			lockedTask = true
+			break
+		}
+	}
+	if !lockedTask {
+		t.Fatalf("revise resolve unit missing tasks[task-rev-1] lock (locks = %+v)", recorder.units[0].Locks)
+	}
+	msgRow, err := backend.Read(context.Background(), scope, tableTaskMessages, reviseMessageID("exec-rev-1", action))
+	if err != nil {
+		t.Fatalf("read appended task_messages row: %v", err)
+	}
+	if msgRow.Values["task_id"] != "task-rev-1" || msgRow.Values["body"] != "Please add unit tests" {
+		t.Fatalf("task_messages row = %+v; want task-rev-1 / Please add unit tests", msgRow.Values)
 	}
 }

@@ -2,9 +2,14 @@ package executionstore
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"sort"
+	"strings"
 
 	"github.com/optimiware/kodema/internal/fault"
 	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/kernel"
 	"github.com/optimiware/kodema/internal/shell/event"
 	"github.com/optimiware/kodema/internal/shell/request"
 	"github.com/optimiware/kodema/internal/shell/store"
@@ -194,6 +199,49 @@ func (s *Store) Resolve(ctx context.Context, unit request.ResolveUnit) (request.
 	}
 	plan.locks = append(plan.locks, authority...)
 
+	// When a request action on a task-associated execution resolves as revise,
+	// atomically append the reviewer's feedback to the task's conversation
+	// messages so the next execution receives it in /kodema/task.json.
+	if unit.Decision == request.DecisionRevise {
+		execRow, readErr := s.executor.Read(ctx, scope, tableExecutions, string(unit.ExecutionID))
+		if readErr == nil {
+			taskID, taskErr := rowString(execRow.Values, "task_id")
+			if taskErr != nil {
+				return request.ResolveResult{}, taskErr
+			}
+			if taskID != "" {
+				if _, existErr := s.executor.Read(ctx, scope, tableTasks, taskID); existErr == nil {
+					// Lock tasks[taskID] explicitly so planLocks orders it (rank 6)
+					// ahead of executions[execID] (rank 8), preventing a PostgreSQL
+					// 40P01 lock-order deadlock against concurrent task.cancel /
+					// task.ask / task.restart when the task_messages FK acquires
+					// FOR KEY SHARE on tasks[taskID].
+					plan.locks = append(plan.locks, store.Lock{
+						Table: tableTasks,
+						IDs:   []string{taskID},
+					})
+					body := reviseFeedbackBody(unit.Note, unit.Response)
+					plan.writes = append(plan.writes, store.Write{
+						Table:  tableTaskMessages,
+						ID:     reviseMessageID(unit.ExecutionID, unit.ActionID),
+						Insert: true,
+						Values: map[string]any{
+							"task_id":   taskID,
+							"author_id": string(unit.Actor),
+							"at":        unit.At,
+							"body":      body,
+							"refs":      nil,
+						},
+					})
+				} else if class, ok := fault.ClassOf(existErr); !ok || class != fault.NotFound {
+					return request.ResolveResult{}, existErr
+				}
+			}
+		} else if class, ok := fault.ClassOf(readErr); !ok || class != fault.NotFound {
+			return request.ResolveResult{}, readErr
+		}
+	}
+
 	committed, err := s.executor.Execute(ctx, scope, store.Unit{
 		Locks:   plan.locks,
 		Writes:  plan.writes,
@@ -213,4 +261,41 @@ func (s *Store) Resolve(ctx context.Context, unit request.ResolveUnit) (request.
 		return replayed, nil
 	}
 	return result, nil
+}
+
+// reviseMessageID derives a deterministic, bounded task_messages row identity
+// for the reviewer feedback appended when a request action resolves as revise.
+func reviseMessageID(executionID id.ExecutionID, actionID id.ActionID) string {
+	sum := sha256.Sum256([]byte("task-message:revise:" + string(executionID) + ":" + string(actionID)))
+	return "msg-rev-" + hex.EncodeToString(sum[:16])
+}
+
+// reviseFeedbackBody extracts the human-readable revision feedback from a
+// revise resolution's note or declared response outputs.
+func reviseFeedbackBody(note string, response kernel.Outputs) string {
+	if trimmed := strings.TrimSpace(note); trimmed != "" {
+		return trimmed
+	}
+	for _, key := range []id.OutputKey{"feedback", "reason", "comment"} {
+		if value := strings.TrimSpace(response[key]); value != "" {
+			return value
+		}
+	}
+	if len(response) > 0 {
+		keys := make([]string, 0, len(response))
+		for key := range response {
+			keys = append(keys, string(key))
+		}
+		sort.Strings(keys)
+		parts := make([]string, 0, len(keys))
+		for _, key := range keys {
+			if value := strings.TrimSpace(response[id.OutputKey(key)]); value != "" {
+				parts = append(parts, key+": "+value)
+			}
+		}
+		if len(parts) > 0 {
+			return strings.Join(parts, "\n")
+		}
+	}
+	return "Revision requested"
 }

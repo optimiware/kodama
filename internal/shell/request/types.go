@@ -98,13 +98,15 @@ type Decision string
 const (
 	// DecisionPass succeeds the request action.
 	DecisionPass Decision = "pass"
+	// DecisionRevise rejects the request action as a domain revision request.
+	DecisionRevise Decision = "revise"
 	// DecisionFail fails the request action while retaining the answer.
 	DecisionFail Decision = "fail"
 )
 
 // Valid reports whether the decision is one of the declared decisions.
 func (decision Decision) Valid() bool {
-	return decision == DecisionPass || decision == DecisionFail
+	return decision == DecisionPass || decision == DecisionRevise || decision == DecisionFail
 }
 
 // KernelDecision maps the Shell decision to the Kernel decision carried by the
@@ -114,6 +116,8 @@ func (decision Decision) KernelDecision() (kernel.Decision, bool) {
 	switch decision {
 	case DecisionPass:
 		return kernel.DecisionPass, true
+	case DecisionRevise:
+		return kernel.DecisionRevise, true
 	case DecisionFail:
 		return kernel.DecisionFail, true
 	default:
@@ -292,7 +296,7 @@ func (unit ResolveUnit) Validate() error {
 		if unit.Commit.NextExecutionState != kernel.ExecutionRunning && unit.Commit.NextExecutionState != kernel.ExecutionSucceeded {
 			return fault.New(fault.InvalidInput, fmt.Sprintf("passing kernel answer commits next execution state %q, not running or succeeded", unit.Commit.NextExecutionState))
 		}
-	case kernel.DecisionFail:
+	case kernel.DecisionFail, kernel.DecisionRevise:
 		if unit.Commit.NextActionState != kernel.ActionFailed {
 			return fault.New(fault.InvalidInput, fmt.Sprintf("failing kernel answer commits next action state %q, not %q", unit.Commit.NextActionState, kernel.ActionFailed))
 		}

@@ -25,6 +25,7 @@ func TestSchemaPersistsDomainFacts(t *testing.T) {
 
 	recordMappings := map[string][]columnRef{
 		"task.Task.ID":               {{"tasks", "id"}},
+		"task.Task.ParentID":         {{"tasks", "parent_id"}},
 		"task.Task.Scope":            {{"tasks", "tenant_id"}, {"tasks", "project_id"}},
 		"task.Task.Title":            {{"tasks", "title"}},
 		"task.Task.Description":      {{"tasks", "description"}},

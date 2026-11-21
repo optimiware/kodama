@@ -30,12 +30,13 @@ const (
 	MaxReferences = 256
 )
 
-// TaskCreateRequest is the task.create input. The description and pipeline are
-// optional: a task may be created open with neither, and only task.start
-// requires a selected pipeline. The project is carried explicitly for MCP
-// callers and is optional for REST callers whose route supplies it.
+// TaskCreateRequest is the task.create input. The description, parent_id and
+// pipeline are optional: a task may be created open without them, and only
+// task.start requires a selected pipeline. The project is carried explicitly
+// for MCP callers and is optional for REST callers whose route supplies it.
 type TaskCreateRequest struct {
 	ProjectID   string            `json:"project_id,omitempty" schema:"id"`
+	ParentID    string            `json:"parent_id,omitempty" schema:"id"`
 	Title       string            `json:"title"`
 	Description string            `json:"description,omitempty"`
 	PipelineID  string            `json:"pipeline_id,omitempty" schema:"id"`
@@ -43,11 +44,14 @@ type TaskCreateRequest struct {
 	Metadata    map[string]string `json:"metadata,omitempty"`
 }
 
-// Validate checks the title, optional description, optional pipeline identity,
-// inputs and bounded metadata.
+// Validate checks the title, optional parent_id, optional description,
+// optional pipeline identity, inputs and bounded metadata.
 func (request TaskCreateRequest) Validate() error {
 	if request.ProjectID != "" && !validID(request.ProjectID) {
 		return invalid("project_id is invalid")
+	}
+	if request.ParentID != "" && !validID(request.ParentID) {
+		return invalid("parent_id is invalid")
 	}
 	if request.Title == "" {
 		return invalid("task title is empty")
@@ -154,6 +158,7 @@ func (question TaskQuestion) Validate() error {
 // history and the outstanding question, so task.reply needs no second read.
 type TaskReadResult struct {
 	TaskID           string            `json:"task_id"`
+	ParentID         string            `json:"parent_id,omitempty" schema:"id"`
 	Title            string            `json:"title"`
 	Description      string            `json:"description,omitempty"`
 	State            string            `json:"state"`
@@ -174,6 +179,9 @@ type TaskReadResult struct {
 func (result TaskReadResult) Validate() error {
 	if !validID(result.TaskID) {
 		return invalid("task_id is invalid")
+	}
+	if result.ParentID != "" && !validID(result.ParentID) {
+		return invalid("parent_id is invalid")
 	}
 	if result.Title == "" {
 		return invalid("task title is empty")
@@ -320,11 +328,13 @@ func (result TaskSelectPipelineResult) Validate() error {
 // MCP callers and is optional for REST callers whose route supplies it.
 // Optional pipeline_id and inputs atomically switch the task's selected
 // pipeline and/or inputs before admitting the new execution in the same
-// transaction.
+// transaction. Optional completes_task overrides whether execution success
+// marks the task done (defaulting to the pipeline definition or true).
 type TaskStartRequest struct {
-	TaskID     string            `json:"task_id,omitempty" schema:"id"`
-	PipelineID string            `json:"pipeline_id,omitempty" schema:"id"`
-	Inputs     map[string]string `json:"inputs,omitempty"`
+	TaskID        string            `json:"task_id,omitempty" schema:"id"`
+	PipelineID    string            `json:"pipeline_id,omitempty" schema:"id"`
+	Inputs        map[string]string `json:"inputs,omitempty"`
+	CompletesTask *bool             `json:"completes_task,omitempty"`
 }
 
 // Validate checks the optional task identity, optional pipeline identity and
@@ -360,12 +370,14 @@ func (result TaskStartResult) Validate() error {
 // active nonterminal execution on the task as superseded (recording the
 // optional reason without fabricating a review rejection), optionally updates
 // the selected pipeline and/or inputs, and queues a fresh replacement
-// execution.
+// execution. Optional completes_task overrides whether execution success marks
+// the task done.
 type TaskRestartRequest struct {
-	TaskID     string            `json:"task_id,omitempty" schema:"id"`
-	Reason     string            `json:"reason,omitempty"`
-	PipelineID string            `json:"pipeline_id,omitempty" schema:"id"`
-	Inputs     map[string]string `json:"inputs,omitempty"`
+	TaskID        string            `json:"task_id,omitempty" schema:"id"`
+	Reason        string            `json:"reason,omitempty"`
+	PipelineID    string            `json:"pipeline_id,omitempty" schema:"id"`
+	Inputs        map[string]string `json:"inputs,omitempty"`
+	CompletesTask *bool             `json:"completes_task,omitempty"`
 }
 
 // Validate checks the optional task identity, optional bounded UTF-8 reason,
@@ -413,19 +425,24 @@ func (result TaskRestartResult) Validate() error {
 // carried explicitly for MCP callers and is optional for REST callers whose
 // route supplies it.
 type TaskCreateAndStartRequest struct {
-	ProjectID   string            `json:"project_id,omitempty" schema:"id"`
-	Title       string            `json:"title"`
-	Description string            `json:"description,omitempty"`
-	PipelineID  string            `json:"pipeline_id" schema:"id"`
-	Inputs      map[string]string `json:"inputs,omitempty"`
-	Metadata    map[string]string `json:"metadata,omitempty"`
+	ProjectID     string            `json:"project_id,omitempty" schema:"id"`
+	ParentID      string            `json:"parent_id,omitempty" schema:"id"`
+	Title         string            `json:"title"`
+	Description   string            `json:"description,omitempty"`
+	PipelineID    string            `json:"pipeline_id" schema:"id"`
+	Inputs        map[string]string `json:"inputs,omitempty"`
+	Metadata      map[string]string `json:"metadata,omitempty"`
+	CompletesTask *bool             `json:"completes_task,omitempty"`
 }
 
-// Validate checks the optional project identity, title, optional description,
-// pipeline identity, inputs and bounded metadata.
+// Validate checks the optional project identity, optional parent identity,
+// title, optional description, pipeline identity, inputs and bounded metadata.
 func (request TaskCreateAndStartRequest) Validate() error {
 	if request.ProjectID != "" && !validID(request.ProjectID) {
 		return invalid("project_id is invalid")
+	}
+	if request.ParentID != "" && !validID(request.ParentID) {
+		return invalid("parent_id is invalid")
 	}
 	if request.Title == "" {
 		return invalid("task title is empty")
@@ -579,6 +596,41 @@ func (result TaskCancelResult) Validate() error {
 	return nil
 }
 
+// TaskCompleteRequest is the task.complete input. The task is carried
+// explicitly for MCP callers and is optional for REST callers whose route
+// supplies it. Reason records an optional bounded UTF-8 completion note.
+type TaskCompleteRequest struct {
+	TaskID string `json:"task_id,omitempty" schema:"id"`
+	Reason string `json:"reason,omitempty"`
+}
+
+// Validate checks an optional bounded task identity and optional UTF-8 reason.
+func (request TaskCompleteRequest) Validate() error {
+	if request.TaskID != "" && !validID(request.TaskID) {
+		return invalid("task_id is invalid")
+	}
+	if !utf8.ValidString(request.Reason) {
+		return invalid("complete reason is not valid UTF-8")
+	}
+	if len(request.Reason) > MaxSubjectValueBytes {
+		return invalid("complete reason is %d bytes; at most %d are allowed", len(request.Reason), MaxSubjectValueBytes)
+	}
+	return nil
+}
+
+// TaskCompleteResult is the task.complete result.
+type TaskCompleteResult struct {
+	LifecycleVersion uint64 `json:"lifecycle_version" schema:"version"`
+}
+
+// Validate checks the committed lifecycle version.
+func (result TaskCompleteResult) Validate() error {
+	if result.LifecycleVersion == 0 {
+		return invalid("task lifecycle version must be positive")
+	}
+	return nil
+}
+
 // TaskHistoryRequest is the task.history input. The task is carried explicitly
 // for MCP callers and is optional for REST callers whose route supplies it.
 type TaskHistoryRequest struct {
@@ -682,17 +734,21 @@ func (result TaskHistoryResult) Validate() error {
 type TaskListRequest struct {
 	ProjectID string `json:"project_id,omitempty" schema:"id"`
 	Status    string `json:"status,omitempty"`
+	ParentID  string `json:"parent_id,omitempty" schema:"id"`
 	Page      *Page  `json:"page,omitempty"`
 }
 
-// Validate checks the optional project identity, optional task state filter
-// and page bounds.
+// Validate checks the optional project identity, optional task state filter,
+// optional parent filter and page bounds.
 func (request TaskListRequest) Validate() error {
 	if request.ProjectID != "" && !validID(request.ProjectID) {
 		return invalid("project_id is invalid")
 	}
 	if request.Status != "" && !validTaskState(request.Status) {
 		return invalid("unknown task status %q", request.Status)
+	}
+	if request.ParentID != "" && !validID(request.ParentID) {
+		return invalid("parent_id is invalid")
 	}
 	if request.Page != nil {
 		return request.Page.Validate()
@@ -703,6 +759,7 @@ func (request TaskListRequest) Validate() error {
 // TaskSummaryView is one scoped task summary observation in task.list.
 type TaskSummaryView struct {
 	TaskID           string `json:"task_id"`
+	ParentID         string `json:"parent_id,omitempty" schema:"id"`
 	Title            string `json:"title"`
 	State            string `json:"state"`
 	SelectedPipeline string `json:"selected_pipeline,omitempty" schema:"id"`
@@ -711,11 +768,14 @@ type TaskSummaryView struct {
 	LifecycleVersion uint64 `json:"lifecycle_version" schema:"version"`
 }
 
-// Validate checks the task identity, title, state, optional pipeline/execution
-// identities and both versions.
+// Validate checks the task identity, optional parent identity, title, state,
+// optional pipeline/execution identities and both versions.
 func (view TaskSummaryView) Validate() error {
 	if !validID(view.TaskID) {
 		return invalid("task_id is invalid")
+	}
+	if view.ParentID != "" && !validID(view.ParentID) {
+		return invalid("parent_id is invalid")
 	}
 	if view.Title == "" {
 		return invalid("task title is empty")

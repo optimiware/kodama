@@ -16,7 +16,7 @@ import (
 // runTask dispatches the ergonomic `kodema task` subcommands.
 func runTask(ctx context.Context, config Config, args []string, ports Ports, deps CommandDeps) int {
 	if len(args) == 0 {
-		return usage(ports.Err, "task requires a subcommand (create|run|list|show|start|restart|ask|reply|cancel)")
+		return usage(ports.Err, "task requires a subcommand (create|run|list|show|start|restart|ask|reply|cancel|complete)")
 	}
 	if args[0] == "-h" || args[0] == "--help" || args[0] == "help" {
 		return runHelp(ports.Out, ports.Err, append([]string{"task"}, args[1:]...))
@@ -38,6 +38,8 @@ func runTask(ctx context.Context, config Config, args []string, ports Ports, dep
 		return runTaskReply(ctx, config, args[1:], ports, deps)
 	case "cancel":
 		return runTaskCancel(ctx, config, args[1:], ports, deps)
+	case "complete":
+		return runTaskComplete(ctx, config, args[1:], ports, deps)
 	case "list", "ls":
 		return runTaskList(ctx, config, args[1:], ports, deps)
 	default:
@@ -55,6 +57,7 @@ func runTaskCreate(ctx context.Context, config Config, args []string, ports Port
 	}
 	var (
 		projectFlag        string
+		parentFlag         string
 		titleFlag          string
 		descFlag           string
 		pipelineFlag       string
@@ -62,22 +65,33 @@ func runTaskCreate(ctx context.Context, config Config, args []string, ports Port
 		idempotencyKeyFlag string
 		inputPairs         []string
 		metaPairs          []string
+		completesTaskFlag  bool
+		noCompleteFlag     bool
 	)
 	spec := newArgSpec()
 	spec.stringFlag(&projectFlag, "--project", "-p")
+	spec.stringFlag(&parentFlag, "--parent", "--parent-id")
 	spec.stringFlag(&titleFlag, "--title", "-t")
 	spec.stringFlag(&descFlag, "--description", "-d")
 	spec.stringFlag(&pipelineFlag, "--pipeline")
 	spec.listFlag(&inputPairs, "--input")
 	spec.listFlag(&metaPairs, "--meta", "--metadata")
+	if start {
+		spec.boolFlag(&completesTaskFlag, "--completes-task")
+		spec.boolFlag(&noCompleteFlag, "--no-complete")
+	}
 	spec.stringFlag(&outputFlag, "--output")
 	spec.stringFlag(&idempotencyKeyFlag, "--idempotency-key")
-	positionals, _, err := spec.parse(args)
+	positionals, seen, err := spec.parse(args)
 	if err != nil {
 		return usage(ports.Err, err.Error())
 	}
 	if len(positionals) > 0 {
 		return usage(ports.Err, fmt.Sprintf("unexpected argument %q", positionals[0]))
+	}
+	completesTask, err := resolveCompletesTaskFlag(seen, completesTaskFlag, noCompleteFlag)
+	if err != nil {
+		return usage(ports.Err, err.Error())
 	}
 	format, err := resolveOutputFormat(outputFlag, config)
 	if err != nil {
@@ -133,12 +147,14 @@ func runTaskCreate(ctx context.Context, config Config, args []string, ports Port
 		if start {
 			operation = "task.create_and_start"
 			req := api.TaskCreateAndStartRequest{
-				ProjectID:   projectID,
-				Title:       titleFlag,
-				Description: descFlag,
-				PipelineID:  pipelineID,
-				Inputs:      inputs,
-				Metadata:    metadata,
+				ProjectID:     projectID,
+				ParentID:      strings.TrimSpace(parentFlag),
+				Title:         titleFlag,
+				Description:   descFlag,
+				PipelineID:    pipelineID,
+				Inputs:        inputs,
+				Metadata:      metadata,
+				CompletesTask: completesTask,
 			}
 			if err := req.Validate(); err != nil {
 				return api.Invocation{}, usage(ports.Err, publicMessage(err))
@@ -151,6 +167,7 @@ func runTaskCreate(ctx context.Context, config Config, args []string, ports Port
 			operation = "task.create"
 			req := api.TaskCreateRequest{
 				ProjectID:   projectID,
+				ParentID:    strings.TrimSpace(parentFlag),
 				Title:       titleFlag,
 				Description: descFlag,
 				PipelineID:  pipelineID,
@@ -267,6 +284,9 @@ func runTaskShow(ctx context.Context, config Config, args []string, ports Ports)
 		return renderTableFallback(ports, rawResult)
 	}
 	fmt.Fprintf(ports.Out, "task_id\t%s\ntitle\t%s\nstate\t%s\n", readView.TaskID, readView.Title, readView.State)
+	if readView.ParentID != "" {
+		fmt.Fprintf(ports.Out, "parent_id\t%s\n", readView.ParentID)
+	}
 	if readView.Description != "" {
 		fmt.Fprintf(ports.Out, "description\t%s\n", singleLine(readView.Description, 120))
 	}
@@ -296,6 +316,8 @@ func runTaskStart(ctx context.Context, config Config, args []string, ports Ports
 		pipelineFlag       string
 		inputPairs         []string
 		outputInputPairs   []string
+		completesTaskFlag  bool
+		noCompleteFlag     bool
 		expectedVerRaw     string
 		outputFlag         string
 		idempotencyKeyFlag string
@@ -305,15 +327,21 @@ func runTaskStart(ctx context.Context, config Config, args []string, ports Ports
 	spec.stringFlag(&pipelineFlag, "--pipeline")
 	spec.listFlag(&inputPairs, "--input")
 	spec.listFlag(&outputInputPairs, "--input-from-output")
+	spec.boolFlag(&completesTaskFlag, "--completes-task")
+	spec.boolFlag(&noCompleteFlag, "--no-complete")
 	spec.stringFlag(&expectedVerRaw, "--expected-version")
 	spec.stringFlag(&outputFlag, "--output")
 	spec.stringFlag(&idempotencyKeyFlag, "--idempotency-key")
-	positionals, _, err := spec.parse(args)
+	positionals, seen, err := spec.parse(args)
 	if err != nil {
 		return usage(ports.Err, err.Error())
 	}
 	if len(positionals) != 1 || strings.TrimSpace(positionals[0]) == "" {
 		return usage(ports.Err, "task start requires <task-id>")
+	}
+	completesTask, err := resolveCompletesTaskFlag(seen, completesTaskFlag, noCompleteFlag)
+	if err != nil {
+		return usage(ports.Err, err.Error())
 	}
 	taskID := strings.TrimSpace(positionals[0])
 	expectedVer, err := parsePositiveVersion(expectedVerRaw, "--expected-version")
@@ -373,9 +401,10 @@ func runTaskStart(ctx context.Context, config Config, args []string, ports Ports
 
 	buildInvocation := func(pipelineID string) (api.Invocation, int) {
 		req := api.TaskStartRequest{
-			TaskID:     taskID,
-			PipelineID: pipelineID,
-			Inputs:     inputs,
+			TaskID:        taskID,
+			PipelineID:    pipelineID,
+			Inputs:        inputs,
+			CompletesTask: completesTask,
 		}
 		if err := req.Validate(); err != nil {
 			return api.Invocation{}, usage(ports.Err, publicMessage(err))
@@ -445,6 +474,8 @@ func runTaskRestart(ctx context.Context, config Config, args []string, ports Por
 		pipelineFlag       string
 		inputPairs         []string
 		outputInputPairs   []string
+		completesTaskFlag  bool
+		noCompleteFlag     bool
 		expectedVerRaw     string
 		outputFlag         string
 		idempotencyKeyFlag string
@@ -455,15 +486,21 @@ func runTaskRestart(ctx context.Context, config Config, args []string, ports Por
 	spec.stringFlag(&pipelineFlag, "--pipeline")
 	spec.listFlag(&inputPairs, "--input")
 	spec.listFlag(&outputInputPairs, "--input-from-output")
+	spec.boolFlag(&completesTaskFlag, "--completes-task")
+	spec.boolFlag(&noCompleteFlag, "--no-complete")
 	spec.stringFlag(&expectedVerRaw, "--expected-version")
 	spec.stringFlag(&outputFlag, "--output")
 	spec.stringFlag(&idempotencyKeyFlag, "--idempotency-key")
-	positionals, _, err := spec.parse(args)
+	positionals, seen, err := spec.parse(args)
 	if err != nil {
 		return usage(ports.Err, err.Error())
 	}
 	if len(positionals) != 1 || strings.TrimSpace(positionals[0]) == "" {
 		return usage(ports.Err, "task restart requires <task-id>")
+	}
+	completesTask, err := resolveCompletesTaskFlag(seen, completesTaskFlag, noCompleteFlag)
+	if err != nil {
+		return usage(ports.Err, err.Error())
 	}
 	taskID := strings.TrimSpace(positionals[0])
 	expectedVer, err := parsePositiveVersion(expectedVerRaw, "--expected-version")
@@ -523,10 +560,11 @@ func runTaskRestart(ctx context.Context, config Config, args []string, ports Por
 
 	buildInvocation := func(pipelineID string) (api.Invocation, int) {
 		req := api.TaskRestartRequest{
-			TaskID:     taskID,
-			Reason:     reasonFlag,
-			PipelineID: pipelineID,
-			Inputs:     inputs,
+			TaskID:        taskID,
+			Reason:        reasonFlag,
+			PipelineID:    pipelineID,
+			Inputs:        inputs,
+			CompletesTask: completesTask,
 		}
 		if err := req.Validate(); err != nil {
 			return api.Invocation{}, usage(ports.Err, publicMessage(err))
@@ -1074,6 +1112,109 @@ func runTaskCancel(ctx context.Context, config Config, args []string, ports Port
 	return ExitSuccess
 }
 
+func runTaskComplete(ctx context.Context, config Config, args []string, ports Ports, deps CommandDeps) int {
+	if hasHelpFlag(args) {
+		return runHelp(ports.Out, ports.Err, []string{"task", "complete"})
+	}
+	var (
+		reasonFlag         string
+		expectedVerRaw     string
+		outputFlag         string
+		idempotencyKeyFlag string
+	)
+	spec := newArgSpec()
+	spec.stringFlag(&reasonFlag, "--reason")
+	spec.stringFlag(&expectedVerRaw, "--expected-version", "--version")
+	spec.stringFlag(&outputFlag, "--output")
+	spec.stringFlag(&idempotencyKeyFlag, "--idempotency-key")
+	positionals, _, err := spec.parse(args)
+	if err != nil {
+		return usage(ports.Err, err.Error())
+	}
+	if len(positionals) != 1 || strings.TrimSpace(positionals[0]) == "" {
+		return usage(ports.Err, "task complete requires <task-id>")
+	}
+	taskID := strings.TrimSpace(positionals[0])
+	expectedVer, err := parsePositiveVersion(expectedVerRaw, "--expected-version")
+	if err != nil {
+		return usage(ports.Err, err.Error())
+	}
+	format, err := resolveOutputFormat(outputFlag, config)
+	if err != nil {
+		return usage(ports.Err, err.Error())
+	}
+	if err := config.Validate(); err != nil {
+		return usage(ports.Err, err.Error())
+	}
+	req := api.TaskCompleteRequest{TaskID: taskID, Reason: reasonFlag}
+	if err := req.Validate(); err != nil {
+		return usage(ports.Err, publicMessage(err))
+	}
+	if ports.Client == nil {
+		return failure(ports.Err, fmt.Errorf("no public client is configured"))
+	}
+
+	if expectedVer == nil {
+		_, readView, readErr := fetchTaskRead(ctx, ports, taskID)
+		if readErr != nil {
+			return failure(ports.Err, readErr)
+		}
+		if readView.LifecycleVersion > 0 {
+			v := readView.LifecycleVersion
+			expectedVer = &v
+		}
+	}
+
+	input, err := json.Marshal(req)
+	if err != nil {
+		return failure(ports.Err, err)
+	}
+	key, err := makeIdempotencyKey(idempotencyKeyFlag, "task.complete", deps.Login.Random)
+	if err != nil {
+		return failure(ports.Err, err)
+	}
+	invocation := api.Invocation{
+		Operation: "task.complete",
+		Request: api.Request{
+			Input:           input,
+			ExpectedVersion: expectedVer,
+			IdempotencyKey:  key,
+		},
+	}
+	if err := invocation.Validate(); err != nil {
+		return usage(ports.Err, publicMessage(err))
+	}
+	result, err := ports.Client.Invoke(ctx, invocation)
+	if err != nil {
+		return failure(ports.Err, err)
+	}
+	if format == OutputJSON {
+		if err := renderResult(ports.Out, OutputJSON, result); err != nil {
+			return failure(ports.Err, err)
+		}
+		return ExitSuccess
+	}
+	var completed api.TaskCompleteResult
+	_ = json.Unmarshal(result.Body, &completed)
+	fmt.Fprintf(ports.Out, "completed task %s (lifecycle_version=%d)\n", taskID, completed.LifecycleVersion)
+	return ExitSuccess
+}
+
+func resolveCompletesTaskFlag(seen map[string]bool, completesTaskFlag, noCompleteFlag bool) (*bool, error) {
+	if seen["--completes-task"] && seen["--no-complete"] {
+		return nil, fmt.Errorf("specify only one of --completes-task or --no-complete")
+	}
+	if seen["--no-complete"] {
+		v := !noCompleteFlag
+		return &v, nil
+	}
+	if seen["--completes-task"] {
+		v := completesTaskFlag
+		return &v, nil
+	}
+	return nil, nil
+}
+
 func runTaskList(ctx context.Context, config Config, args []string, ports Ports, deps CommandDeps) int {
 	if hasHelpFlag(args) {
 		return runHelp(ports.Out, ports.Err, []string{"task", "list"})
@@ -1081,11 +1222,13 @@ func runTaskList(ctx context.Context, config Config, args []string, ports Ports,
 	var (
 		projectFlag string
 		stateFlag   string
+		parentFlag  string
 		outputFlag  string
 	)
 	spec := newArgSpec()
 	spec.stringFlag(&projectFlag, "--project", "-p")
 	spec.stringFlag(&stateFlag, "--state", "--status")
+	spec.stringFlag(&parentFlag, "--parent", "--parent-id")
 	spec.stringFlag(&outputFlag, "--output")
 	positionals, _, err := spec.parse(args)
 	if err != nil {
@@ -1112,6 +1255,7 @@ func runTaskList(ctx context.Context, config Config, args []string, ports Ports,
 	req := api.TaskListRequest{
 		ProjectID: projectID,
 		Status:    stateFlag,
+		ParentID:  strings.TrimSpace(parentFlag),
 	}
 	if err := req.Validate(); err != nil {
 		return usage(ports.Err, publicMessage(err))

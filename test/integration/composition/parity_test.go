@@ -257,8 +257,8 @@ func TestMCPToolsListEqualsTheRegistry(t *testing.T) {
 		t.Fatalf("decode tools/list: %v", err)
 	}
 	routes := api.Routes()
-	if len(catalog.Tools) != 61 || len(catalog.Tools) != len(routes) {
-		t.Fatalf("tools/list returned %d tools; want 61 declared routes", len(catalog.Tools))
+	if len(catalog.Tools) != 62 || len(catalog.Tools) != len(routes) {
+		t.Fatalf("tools/list returned %d tools; want 62 declared routes", len(catalog.Tools))
 	}
 	for index, route := range routes {
 		tool := catalog.Tools[index]

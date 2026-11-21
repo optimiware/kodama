@@ -89,6 +89,7 @@ type AdmittedAction = pipeline.AdmittedAction
 // Task is one conversation and its lifecycle state.
 type Task struct {
 	ID               id.TaskID              `json:"id"`
+	ParentID         id.TaskID              `json:"parent_id,omitempty"`
 	Scope            tenancy.Scope          `json:"scope"`
 	Title            string                 `json:"title"`
 	Description      string                 `json:"description,omitempty"`
@@ -249,6 +250,26 @@ type CancelUnit struct {
 
 // CancelResult is the committed cancellation result.
 type CancelResult struct {
+	LifecycleVersion uint64 `json:"lifecycle_version"`
+	Replayed         bool   `json:"replayed"`
+}
+
+// CompleteUnit is the complete atomic explicit-task-completion commit unit.
+type CompleteUnit struct {
+	Owner                    tenancy.Scope             `json:"owner"`
+	TaskID                   id.TaskID                 `json:"task_id"`
+	ExpectedLifecycleVersion uint64                    `json:"expected_lifecycle_version"`
+	ExpectedExecutionVersion uint64                    `json:"expected_execution_version,omitempty"`
+	Reason                   string                    `json:"reason,omitempty"`
+	Receipt                  receipt.Record            `json:"receipt"`
+	Audit                    []event.Audit             `json:"audit"`
+	Events                   []event.Envelope          `json:"events"`
+	Authority                []authorize.AuthorityRead `json:"authority"`
+	PostCommit               []event.PostCommitEffect  `json:"post_commit"`
+}
+
+// CompleteResult is the committed explicit-completion result.
+type CompleteResult struct {
 	LifecycleVersion uint64 `json:"lifecycle_version"`
 	Replayed         bool   `json:"replayed"`
 }

@@ -8,6 +8,8 @@
 package postgres
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"reflect"
 	"regexp"
 	"slices"
@@ -482,5 +484,70 @@ func TestMigrationsDefaultEventPublishSequence(t *testing.T) {
 	}
 	if !regexp.MustCompile(`create\s+sequence`).MatchString(sql) {
 		t.Error("migrations do not create the event publication sequence")
+	}
+}
+
+func TestMigration0008PreservesBaselineAndAppliesAdditiveChanges(t *testing.T) {
+	migrations := Migrations()
+	if len(migrations) != 8 {
+		t.Fatalf("Migrations() count = %d; want 8", len(migrations))
+	}
+	if migrations[7].Name != "0008_task_review_lifecycle.sql" {
+		t.Fatalf("migration 8 name = %q; want 0008_task_review_lifecycle.sql", migrations[7].Name)
+	}
+	// Baseline 0002..0004 stay frozen without 0008 additions so existing v0.6.0
+	// databases do not observe a rewritten migration checksum.
+	baselineTables := normalizeSQL(migrations[1].SQL)
+	if strings.Contains(baselineTables, "parent_id") {
+		t.Error("0002_tables.sql must stay frozen without parent_id (belongs in 0008)")
+	}
+	baselineConstraints := normalizeSQL(migrations[2].SQL)
+	if strings.Contains(baselineConstraints, "'revise'") || strings.Contains(baselineConstraints, "tasks_parent") {
+		t.Error("0003_constraints.sql must stay frozen without 0008 constraints")
+	}
+	mig8 := normalizeSQL(migrations[7].SQL)
+	for _, want := range []string{
+		"alter table tasks add column parent_id text",
+		"constraint tasks_parent foreign key (tenant_id, project_id, parent_id) references tasks (tenant_id, project_id, id)",
+		"constraint tasks_no_self_parent check (parent_id is null or parent_id <> id)",
+		"create index tasks_scope_parent on tasks (tenant_id, project_id, parent_id)",
+		"alter table actions drop constraint actions_request_decision",
+		"constraint actions_request_decision check (request_decision is null or request_decision in ('pass', 'revise', 'fail'))",
+	} {
+		if !strings.Contains(mig8, want) {
+			t.Errorf("0008_task_review_lifecycle.sql missing %q:\n%s", want, migrations[7].SQL)
+		}
+	}
+}
+
+// TestFrozenBaselineMigrationChecksums pins the exact SHA-256 checksums of the
+// frozen v0.6.0 baseline migrations (0001..0006) so any accidental edit to an
+// already-released migration fails immediately.
+func TestFrozenBaselineMigrationChecksums(t *testing.T) {
+	pinned := []struct {
+		name     string
+		checksum string
+	}{
+		{name: "0001_roles.sql", checksum: "sha256:16ff68c981af933970dc4457bac7bfa6e8f821b7eac515a954d0f68bc0be84a6"},
+		{name: "0002_tables.sql", checksum: "sha256:f768b8ee9e5dc5693f55f72db750baa6aba312f19aa2c52733149e7c0054323d"},
+		{name: "0003_constraints.sql", checksum: "sha256:175c066344eefdc5740210a4b66efc4bdfced78a48c65d9fb640f0113834ad8f"},
+		{name: "0004_indexes.sql", checksum: "sha256:8c3443ebf7b1bf5d2d866044ca907d46845345cd774901e2dee6399cebf705ec"},
+		{name: "0005_row_level_security.sql", checksum: "sha256:8364206dd9e02eac1ea7da5e6d646a6dadf43b945d8d4340f57622214f07f67a"},
+		{name: "0006_privileges.sql", checksum: "sha256:d9c8f9c14cd78219f3c27aab8c4d65fd083b79d1a697e8e3fa4d6ec6aad4e7ae"},
+	}
+	migrations := Migrations()
+	if len(migrations) < len(pinned) {
+		t.Fatalf("Migrations() count = %d; want at least %d", len(migrations), len(pinned))
+	}
+	for index, want := range pinned {
+		got := migrations[index]
+		if got.Name != want.name {
+			t.Fatalf("migration[%d].Name = %q; want %q", index, got.Name, want.name)
+		}
+		sum := sha256.Sum256([]byte(got.SQL))
+		digest := "sha256:" + hex.EncodeToString(sum[:])
+		if digest != want.checksum {
+			t.Errorf("%s checksum = %q; want %q", got.Name, digest, want.checksum)
+		}
 	}
 }

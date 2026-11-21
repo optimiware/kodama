@@ -21,15 +21,16 @@ import (
 
 // Table names come only from the declared schema design.
 const (
-	tableExecutions  = "executions"
-	tableActions     = "actions"
-	tableCleanup     = "cleanup"
-	tablePipelines   = "pipelines"
-	tableTasks       = "tasks"
-	tableServices    = "services"
-	tableBindings    = "resource_bindings"
-	tableMemberships = "memberships"
-	tableResources   = "resources"
+	tableExecutions   = "executions"
+	tableActions      = "actions"
+	tableCleanup      = "cleanup"
+	tablePipelines    = "pipelines"
+	tableTasks        = "tasks"
+	tableTaskMessages = "task_messages"
+	tableServices     = "services"
+	tableBindings     = "resource_bindings"
+	tableMemberships  = "memberships"
+	tableResources    = "resources"
 )
 
 // answerMetaMagic distinguishes a structured answer metadata envelope (carrying
@@ -114,7 +115,7 @@ func definitionSnapshot(admitted snapshotdoc.Admitted) (*definition.Snapshot, er
 	var taskFiles map[string][]byte
 	if snapshot.TaskID != "" && snapshot.HasConversation() {
 		var err error
-		taskFiles, err = workspace.BuildTaskFiles(snapshot.TaskID, snapshot.Title, snapshot.Description, snapshot.Metadata)
+		taskFiles, err = workspace.BuildTaskFilesWithParent(snapshot.TaskID, snapshot.ParentID, snapshot.Title, snapshot.Description, snapshot.Metadata)
 		if err != nil {
 			return nil, err
 		}

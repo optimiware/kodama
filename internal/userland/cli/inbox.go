@@ -379,22 +379,35 @@ func runApprove(ctx context.Context, config Config, args []string, ports Ports, 
 	if hasHelpFlag(args) {
 		return runHelp(ports.Out, ports.Err, []string{"approve"})
 	}
-	return runResolveDecision(ctx, config, args, ports, deps, true)
+	return runResolveDecision(ctx, config, args, ports, deps, "pass", "approve")
 }
 
-// runReject resolves a waiting request action with decision "fail".
+// runReject resolves a waiting request action with decision "fail" (or "revise"
+// when --decision revise is passed).
 func runReject(ctx context.Context, config Config, args []string, ports Ports, deps CommandDeps) int {
 	if hasHelpFlag(args) {
 		return runHelp(ports.Out, ports.Err, []string{"reject"})
 	}
-	return runResolveDecision(ctx, config, args, ports, deps, false)
+	return runResolveDecision(ctx, config, args, ports, deps, "fail", "reject")
 }
 
-func runResolveDecision(ctx context.Context, config Config, args []string, ports Ports, deps CommandDeps, approve bool) int {
+// runRevise resolves a waiting request action with decision "revise", recording
+// a domain revision rejection and appending reviewer feedback to the task
+// conversation.
+func runRevise(ctx context.Context, config Config, args []string, ports Ports, deps CommandDeps) int {
+	if hasHelpFlag(args) {
+		return runHelp(ports.Out, ports.Err, []string{"revise"})
+	}
+	return runResolveDecision(ctx, config, args, ports, deps, "revise", "revise")
+}
+
+func runResolveDecision(ctx context.Context, config Config, args []string, ports Ports, deps CommandDeps, defaultDecision, cmdName string) int {
+	approve := defaultDecision == "pass"
 	var (
 		actionFlag         string
 		commentFlag        string
 		reasonFlag         string
+		decisionFlag       string
 		allowStaleFlag     bool
 		candidateFlag      string
 		expectedVerRaw     string
@@ -410,7 +423,10 @@ func runResolveDecision(ctx context.Context, config Config, args []string, ports
 		spec.boolFlag(&allowStaleFlag, "--allow-stale")
 		spec.stringFlag(&candidateFlag, "--candidate")
 	} else {
-		spec.stringFlag(&reasonFlag, "--reason", "-r")
+		spec.stringFlag(&reasonFlag, "--reason", "-r", "--comment", "-m", "--feedback")
+		if cmdName == "reject" {
+			spec.stringFlag(&decisionFlag, "--decision")
+		}
 	}
 	spec.listFlag(&rawOutputs, "--output")
 	spec.listFlag(&outputPairs, "--response-output", "--action-output")
@@ -421,16 +437,19 @@ func runResolveDecision(ctx context.Context, config Config, args []string, ports
 	if err != nil {
 		return usage(ports.Err, err.Error())
 	}
-	cmdName := "approve"
-	if !approve {
-		cmdName = "reject"
-	}
 	if len(positionals) != 1 || strings.TrimSpace(positionals[0]) == "" {
 		return usage(ports.Err, fmt.Sprintf("%s requires <execution-id>", cmdName))
 	}
 	executionID := strings.TrimSpace(positionals[0])
+	decision := defaultDecision
+	if seen["--decision"] {
+		decision = strings.TrimSpace(decisionFlag)
+		if decision != "fail" && decision != "revise" {
+			return usage(ports.Err, fmt.Sprintf("reject --decision must be fail or revise, got %q", decision))
+		}
+	}
 	if !approve && strings.TrimSpace(reasonFlag) == "" {
-		return usage(ports.Err, "reject requires --reason <text>")
+		return usage(ports.Err, fmt.Sprintf("%s requires --reason <text>", cmdName))
 	}
 	candidateCheck := strings.TrimSpace(candidateFlag)
 	if approve && seen["--candidate"] && candidateCheck == "" {
@@ -521,15 +540,14 @@ func runResolveDecision(ctx context.Context, config Config, args []string, ports
 		if outputs == nil {
 			outputs = make(map[string]string, 1)
 		}
-		if _, exists := outputs["reason"]; !exists {
-			outputs["reason"] = reasonFlag
-			implicitKey = "reason"
+		defaultKey := "reason"
+		if decision == "revise" {
+			defaultKey = "feedback"
 		}
-	}
-
-	decision := "pass"
-	if !approve {
-		decision = "fail"
+		if _, exists := outputs[defaultKey]; !exists {
+			outputs[defaultKey] = reasonFlag
+			implicitKey = defaultKey
+		}
 	}
 
 	req := api.ExecutionRequestResolveRequest{
@@ -548,9 +566,9 @@ func runResolveDecision(ctx context.Context, config Config, args []string, ports
 	result, err := invokeResolveRequest(ctx, ports, deps, req, expectedExecVer, idempotencyKeyFlag)
 	if err != nil && implicitKey != "" &&
 		strings.Contains(err.Error(), fmt.Sprintf("response key %q is not declared", implicitKey)) {
-		// If the pipeline's request schema declared no comment/reason output key,
+		// If the pipeline's request schema declared no comment/reason/feedback output key,
 		// retry once without the undeclared output key while preserving req.Note
-		// so the rejection reason or approval comment is always persisted.
+		// so the rejection reason, revision feedback, or approval comment is always persisted.
 		delete(outputs, implicitKey)
 		if len(outputs) == 0 {
 			outputs = nil
@@ -571,7 +589,8 @@ func runResolveDecision(ctx context.Context, config Config, args []string, ports
 
 	var resolved api.ExecutionRequestResolveResult
 	_ = json.Unmarshal(result.Body, &resolved)
-	if approve {
+	switch decision {
+	case "pass":
 		if note != "" {
 			fmt.Fprintf(ports.Out, "approved execution %s action %s (decision=%s, comment=%q, execution_version=%d, action_version=%d)\n",
 				executionID, actionID, decision, note, resolved.ExecutionVersion, resolved.ActionVersion)
@@ -579,7 +598,10 @@ func runResolveDecision(ctx context.Context, config Config, args []string, ports
 			fmt.Fprintf(ports.Out, "approved execution %s action %s (decision=%s, execution_version=%d, action_version=%d)\n",
 				executionID, actionID, decision, resolved.ExecutionVersion, resolved.ActionVersion)
 		}
-	} else {
+	case "revise":
+		fmt.Fprintf(ports.Out, "requested revision on execution %s action %s (decision=%s, reason=%q, execution_version=%d, action_version=%d)\n",
+			executionID, actionID, decision, reasonFlag, resolved.ExecutionVersion, resolved.ActionVersion)
+	default:
 		fmt.Fprintf(ports.Out, "rejected execution %s action %s (decision=%s, reason=%q, execution_version=%d, action_version=%d)\n",
 			executionID, actionID, decision, reasonFlag, resolved.ExecutionVersion, resolved.ActionVersion)
 	}

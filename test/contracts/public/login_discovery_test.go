@@ -242,8 +242,8 @@ func TestDiscoveryRouteIsOutsideOperationRegistry(t *testing.T) {
 	}
 
 	codecs := api.OperationCodecs()
-	if len(codecs) != 61 {
-		t.Fatalf("OperationCodecs() has %d entries; want exactly the 61 registry operations", len(codecs))
+	if len(codecs) != 62 {
+		t.Fatalf("OperationCodecs() has %d entries; want exactly the 62 registry operations", len(codecs))
 	}
 	for _, route := range api.Routes() {
 		if route.Path == api.DiscoveryPath {

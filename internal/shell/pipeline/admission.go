@@ -78,6 +78,7 @@ func (action AdmittedAction) Validate() error {
 // metadata carried by one admission. TaskID is empty for a task-free inline run.
 type TaskContext struct {
 	TaskID       id.TaskID
+	ParentID     id.TaskID
 	Title        string
 	Description  string
 	Conversation []byte
@@ -89,12 +90,15 @@ type TaskContext struct {
 // or the identity of a stored pipeline to select. When both are present, the
 // supplied exact YAML bytes are authoritative: the push trigger resumes a
 // persisted first selection rather than re-reading an edited definition.
+// CompletesTask optionally overrides the pipeline YAML's completes_task setting
+// (defaulting to true when neither specifies it).
 type AdmitRequest struct {
 	Scope          tenancy.Scope
 	Definition     Definition
 	Inputs         map[id.InputKey]string
 	Requirements   []string
 	Task           TaskContext
+	CompletesTask  *bool
 	DefaultTimeout time.Duration
 }
 
@@ -160,11 +164,13 @@ func (service *AdmissionService) Admit(ctx context.Context, request AdmitRequest
 	// Task title, description and conversation belong to a task. A task-free
 	// admission carries none, even if a caller supplied stray values.
 	var (
+		parentID     id.TaskID
 		title        string
 		description  string
 		conversation []byte
 	)
 	if request.Task.TaskID != "" {
+		parentID = request.Task.ParentID
 		title = request.Task.Title
 		description = request.Task.Description
 		conversation = request.Task.Conversation
@@ -173,20 +179,29 @@ func (service *AdmissionService) Admit(ctx context.Context, request AdmitRequest
 	if err != nil {
 		return AdmissionResult{}, err
 	}
+	completesTask := true
+	if parsed.completesTask != nil {
+		completesTask = *parsed.completesTask
+	}
+	if request.CompletesTask != nil {
+		completesTask = *request.CompletesTask
+	}
 	snapshot, err := NewSnapshot(SnapshotInput{
-		YAML:         selected.YAML,
-		Inputs:       request.Inputs,
-		Env:          parsed.pipeline.Env,
-		Budget:       parsed.pipeline.Budget,
-		Images:       images,
-		SecretNames:  secretNames,
-		Requirements: request.Requirements,
-		TaskID:       request.Task.TaskID,
-		Title:        title,
-		Description:  description,
-		Conversation: conversation,
-		References:   request.Task.References,
-		Metadata:     metadata,
+		YAML:          selected.YAML,
+		Inputs:        request.Inputs,
+		Env:           parsed.pipeline.Env,
+		Budget:        parsed.pipeline.Budget,
+		Images:        images,
+		SecretNames:   secretNames,
+		Requirements:  request.Requirements,
+		TaskID:        request.Task.TaskID,
+		ParentID:      parentID,
+		Title:         title,
+		Description:   description,
+		Conversation:  conversation,
+		References:    request.Task.References,
+		Metadata:      metadata,
+		CompletesTask: &completesTask,
 	})
 	if err != nil {
 		return AdmissionResult{}, err
@@ -374,6 +389,11 @@ func validateTaskContext(task TaskContext) (map[string]string, error) {
 	if task.TaskID != "" {
 		if _, err := id.ParseTaskID(string(task.TaskID)); err != nil {
 			return nil, fault.Wrap(fault.InvalidInput, "task id is invalid", err)
+		}
+	}
+	if task.ParentID != "" {
+		if _, err := id.ParseTaskID(string(task.ParentID)); err != nil {
+			return nil, fault.Wrap(fault.InvalidInput, "parent task id is invalid", err)
 		}
 	}
 	if len(task.Conversation) > maxTaskConversationBytes {

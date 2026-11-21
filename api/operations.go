@@ -123,6 +123,7 @@ var operationCodecSpecs = map[string]operationCodecSpec{
 	"task.ask":              newOperationSpec[TaskAskRequest, TaskAskResult](true),
 	"task.reply":            newOperationSpec[TaskReplyRequest, TaskReplyResult](true),
 	"task.cancel":           newOperationSpec[TaskCancelRequest, TaskCancelResult](true),
+	"task.complete":         newOperationSpec[TaskCompleteRequest, TaskCompleteResult](true),
 	"task.history":          newOperationSpec[TaskHistoryRequest, TaskHistoryResult](false),
 	"task.inbox":            newOperationSpec[TaskInboxRequest, TaskInboxResult](false),
 
@@ -189,6 +190,7 @@ var expectedVersionRequired = map[string]bool{
 	"task.ask":                  true,
 	"task.reply":                true,
 	"task.cancel":               true,
+	"task.complete":             true,
 	"execution.cancel":          true,
 	"execution.action.outputs":  true,
 }

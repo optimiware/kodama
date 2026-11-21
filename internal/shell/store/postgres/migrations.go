@@ -36,12 +36,12 @@ func Migrations() []Migration {
 
 // buildMigrations renders the baseline schema (0001..0006) plus incremental
 // migrations appended after the baseline. Baseline migrations 0001..0006 are
-// frozen and never rewritten once a release has applied them; post-baseline
-// schema additions are excluded from the baseline render and emitted in their
-// own sequentially numbered migrations.
+// frozen at the v0.6.0 schema shape so existing databases never observe a
+// rewritten migration checksum; post-baseline schema additions live in
+// sequentially numbered migrations 0007+.
 func buildMigrations() []Migration {
-	design := store.SchemaDesign()
-	tables := migrationTableOrder(baselineTables(design.Tables))
+	design := baselineSchemaDesign()
+	tables := migrationTableOrder(design.Tables)
 	return []Migration{
 		{Name: "0001_roles.sql", SQL: renderRolesMigration(design)},
 		{Name: "0002_tables.sql", SQL: renderTablesMigration(design, tables)},
@@ -50,38 +50,81 @@ func buildMigrations() []Migration {
 		{Name: "0005_row_level_security.sql", SQL: renderSecurityMigration(design)},
 		{Name: "0006_privileges.sql", SQL: renderPrivilegesMigration(design)},
 		{Name: "0007_model_usage_action_id.sql", SQL: renderModelUsageActionIDMigration()},
+		{Name: "0008_task_review_lifecycle.sql", SQL: renderTaskReviewLifecycleMigration()},
 	}
 }
 
-// baselineTables strips post-baseline schema additions so migrations 0001..0006
-// preserve their frozen SQL and checksums across upgrades.
-func baselineTables(tables []store.Table) []store.Table {
-	out := make([]store.Table, len(tables))
-	for i, table := range tables {
-		if table.Name != store.ModelUsageTable {
-			out[i] = table
-			continue
-		}
-		cloned := table
-		cols := make([]store.Column, 0, len(table.Columns))
-		for _, col := range table.Columns {
-			if col.Name == "action_id" {
-				continue
+// baselineSchemaDesign returns the frozen 0001..0006 baseline declaration
+// prior to incremental migrations 0007+ so baseline checksums stay immutable.
+func baselineSchemaDesign() store.Schema {
+	design := store.SchemaDesign()
+	tables := make([]store.Table, len(design.Tables))
+	copy(tables, design.Tables)
+	for index := range tables {
+		switch tables[index].Name {
+		case store.ModelUsageTable:
+			cols := make([]store.Column, 0, len(tables[index].Columns))
+			for _, col := range tables[index].Columns {
+				if col.Name == "action_id" {
+					continue
+				}
+				cols = append(cols, col)
 			}
-			cols = append(cols, col)
-		}
-		fks := make([]store.ForeignKey, 0, len(table.ForeignKeys))
-		for _, fk := range table.ForeignKeys {
-			if fk.Name == "model_usage_action" {
-				continue
+			fks := make([]store.ForeignKey, 0, len(tables[index].ForeignKeys))
+			for _, fk := range tables[index].ForeignKeys {
+				if fk.Name == "model_usage_action" {
+					continue
+				}
+				fks = append(fks, fk)
 			}
-			fks = append(fks, fk)
+			tables[index].Columns = cols
+			tables[index].ForeignKeys = fks
+		case "tasks":
+			columns := make([]store.Column, 0, len(tables[index].Columns))
+			for _, col := range tables[index].Columns {
+				if col.Name == "parent_id" {
+					continue
+				}
+				columns = append(columns, col)
+			}
+			tables[index].Columns = columns
+			fks := make([]store.ForeignKey, 0, len(tables[index].ForeignKeys))
+			for _, fk := range tables[index].ForeignKeys {
+				if fk.Name == "tasks_parent" {
+					continue
+				}
+				fks = append(fks, fk)
+			}
+			tables[index].ForeignKeys = fks
+			checks := make([]store.Check, 0, len(tables[index].Checks))
+			for _, chk := range tables[index].Checks {
+				if chk.Name == "tasks_no_self_parent" {
+					continue
+				}
+				checks = append(checks, chk)
+			}
+			tables[index].Checks = checks
+			indexes := make([]store.Index, 0, len(tables[index].Indexes))
+			for _, idx := range tables[index].Indexes {
+				if idx.Name == "tasks_scope_parent" {
+					continue
+				}
+				indexes = append(indexes, idx)
+			}
+			tables[index].Indexes = indexes
+		case "actions":
+			checks := make([]store.Check, len(tables[index].Checks))
+			copy(checks, tables[index].Checks)
+			for ci := range checks {
+				if checks[ci].Name == "actions_request_decision" {
+					checks[ci].Expression = "request_decision IS NULL OR request_decision IN ('pass', 'fail')"
+				}
+			}
+			tables[index].Checks = checks
 		}
-		cloned.Columns = cols
-		cloned.ForeignKeys = fks
-		out[i] = cloned
 	}
-	return out
+	design.Tables = tables
+	return design
 }
 
 // renderModelUsageActionIDMigration renders incremental migration 0007 adding
@@ -93,6 +136,19 @@ func renderModelUsageActionIDMigration() string {
 	builder.WriteString("ALTER TABLE model_usage ADD COLUMN action_id TEXT;\n")
 	builder.WriteString("ALTER TABLE model_usage ADD CONSTRAINT model_usage_action FOREIGN KEY (tenant_id, project_id, action_id) REFERENCES actions (tenant_id, project_id, id);\n")
 	return builder.String()
+}
+
+// renderTaskReviewLifecycleMigration renders incremental migration 0008 adding
+// optional task parent hierarchy (scoped composite FK + non-self check + index)
+// and extending request decisions to support the 3-way pass|revise|fail vocabulary.
+func renderTaskReviewLifecycleMigration() string {
+	return "-- Migration 0008: task parent hierarchy and 3-way request decisions.\n" +
+		"ALTER TABLE tasks ADD COLUMN parent_id TEXT;\n" +
+		"ALTER TABLE tasks ADD CONSTRAINT tasks_parent FOREIGN KEY (tenant_id, project_id, parent_id) REFERENCES tasks (tenant_id, project_id, id);\n" +
+		"ALTER TABLE tasks ADD CONSTRAINT tasks_no_self_parent CHECK (parent_id IS NULL OR parent_id <> id);\n" +
+		"CREATE INDEX tasks_scope_parent ON tasks (tenant_id, project_id, parent_id);\n" +
+		"ALTER TABLE actions DROP CONSTRAINT actions_request_decision;\n" +
+		"ALTER TABLE actions ADD CONSTRAINT actions_request_decision CHECK (request_decision IS NULL OR request_decision IN ('pass', 'revise', 'fail'));\n"
 }
 
 // migrationTableOrder returns the schema tables so every referenced table is

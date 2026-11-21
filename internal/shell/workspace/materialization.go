@@ -37,6 +37,7 @@ const (
 
 type taskSpecDocument struct {
 	ID          id.TaskID         `json:"id"`
+	ParentID    id.TaskID         `json:"parent_id,omitempty"`
 	Title       string            `json:"title"`
 	Description string            `json:"description"`
 	Metadata    map[string]string `json:"metadata"`
@@ -48,6 +49,14 @@ type taskSpecDocument struct {
 // spec.json (structured JSON object combining id, title, description and
 // metadata). For a task-free execution (empty taskID), it returns nil.
 func BuildTaskFiles(taskID id.TaskID, title, description string, metadata map[string]string) (map[string][]byte, error) {
+	return BuildTaskFilesWithParent(taskID, "", title, description, metadata)
+}
+
+// BuildTaskFilesWithParent builds the deterministic read-only file set
+// materialized under /kodema/task/ for a task-associated execution, including
+// optional parent_id in spec.json when set. For a task-free execution (empty
+// taskID), it returns nil.
+func BuildTaskFilesWithParent(taskID, parentID id.TaskID, title, description string, metadata map[string]string) (map[string][]byte, error) {
 	if taskID == "" {
 		return nil, nil
 	}
@@ -59,6 +68,7 @@ func BuildTaskFiles(taskID id.TaskID, title, description string, metadata map[st
 	}
 	specJSON, err := marshalCompactJSON(taskSpecDocument{
 		ID:          taskID,
+		ParentID:    parentID,
 		Title:       title,
 		Description: description,
 		Metadata:    meta,

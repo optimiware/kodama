@@ -32,6 +32,8 @@ const (
 	TypeTaskReply Type = "task.reply"
 	// TypeTaskCancelled reports an explicit task cancellation.
 	TypeTaskCancelled Type = "task.cancelled"
+	// TypeTaskCompleted reports an explicit task completion.
+	TypeTaskCompleted Type = "task.completed"
 	// TypeExecutionQueued reports an admitted queued execution.
 	TypeExecutionQueued Type = "execution.queued"
 	// TypeExecutionStarted reports an execution that left queued.
@@ -75,6 +77,7 @@ var types = [...]Type{
 	TypeTaskQuestion,
 	TypeTaskReply,
 	TypeTaskCancelled,
+	TypeTaskCompleted,
 	TypeExecutionQueued,
 	TypeExecutionStarted,
 	TypeExecutionSucceeded,
