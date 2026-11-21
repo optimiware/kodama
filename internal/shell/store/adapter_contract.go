@@ -1073,6 +1073,7 @@ func SchemaDesign() Schema {
 					column("operation", "text", false),
 					column("subject", "jsonb", false),
 					column("requested_approval", "jsonb", true),
+					column("decision_id", "text", true),
 					column("result", "text", false),
 					column("approved", "boolean", false),
 					column("created_at", "timestamptz", false),
@@ -1266,12 +1267,57 @@ func SchemaDesign() Schema {
 				RowLevelSecurity:      true,
 				ForceRowLevelSecurity: true,
 			},
+			{
+				Name:       "approval_decisions",
+				PrimaryKey: primaryKey("id"),
+				Columns: []Column{
+					column("id", "text", false),
+					column("tenant_id", "text", false),
+					column("project_id", "text", false),
+					column("task_id", "text", true),
+					column("execution_id", "text", false),
+					column("action_id", "text", false),
+					column("assignment", "text", false),
+					column("operation", "text", true),
+					column("resource_id", "text", true),
+					column("subject", "jsonb", false),
+					column("approver", "text", false),
+					column("resolved_at", "timestamptz", false),
+					column("expires_at", "timestamptz", false),
+					column("revoked_at", "timestamptz", true),
+					column("revoked_reason", "text", true),
+					column("version", "bigint", false),
+				},
+				ForeignKeys: []ForeignKey{
+					foreignKey("approval_decisions_tenant", []string{"tenant_id"}, "tenants", []string{"id"}),
+					foreignKey("approval_decisions_project", []string{"tenant_id", "project_id"}, "projects", []string{"tenant_id", "id"}),
+					foreignKey("approval_decisions_task", []string{"tenant_id", "project_id", "task_id"}, "tasks", []string{"tenant_id", "project_id", "id"}),
+					foreignKey("approval_decisions_execution", []string{"tenant_id", "project_id", "execution_id"}, "executions", []string{"tenant_id", "project_id", "id"}),
+					foreignKey("approval_decisions_action", []string{"tenant_id", "project_id", "action_id"}, "actions", []string{"tenant_id", "project_id", "id"}),
+				},
+				Unique: []UniqueConstraint{
+					unique("approval_decisions_scope_id", false, "tenant_id", "project_id", "id"),
+					unique("approval_decisions_scope_action", false, "tenant_id", "project_id", "execution_id", "action_id"),
+				},
+				Checks: []Check{
+					check("approval_decisions_assignment_role", "assignment LIKE 'role/%'"),
+					check("approval_decisions_expiry", "expires_at > resolved_at"),
+					check("approval_decisions_revocation_pair", "(revoked_at IS NULL) = (revoked_reason IS NULL)"),
+				},
+				Indexes: []Index{
+					index("approval_decisions_scope_task", false, "", "tenant_id", "project_id", "task_id"),
+					index("approval_decisions_scope_execution", false, "", "tenant_id", "project_id", "execution_id"),
+				},
+				RowLevelSecurity:      true,
+				ForceRowLevelSecurity: true,
+			},
 		},
 	}
 }
 
-// Table names of the model-usage, content-record and event-consumption tables.
-// They are declared here so an adapter never spells one as free text.
+// Table names of the model-usage, content-record, event-consumption and
+// approval-decisions tables. They are declared here so an adapter never spells
+// one as free text.
 const (
 	// ModelUsageTable is the attributable model-usage table.
 	ModelUsageTable = "model_usage"
@@ -1279,6 +1325,9 @@ const (
 	ContentRecordsTable = "content_records"
 	// EventConsumptionsTable is the durable trigger event-completion marker.
 	EventConsumptionsTable = "event_consumptions"
+	// ApprovalDecisionsTable is the immutable persisted cross-execution approval
+	// decisions table.
+	ApprovalDecisionsTable = "approval_decisions"
 )
 
 // Operation is one SQL privilege a non-owner role may hold.

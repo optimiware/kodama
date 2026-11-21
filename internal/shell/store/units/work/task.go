@@ -1154,6 +1154,41 @@ func (adapter *Task) Cancel(ctx context.Context, unit task.CancelUnit) (task.Can
 			locks = append(locks, cancelLocks...)
 			writes = append(writes, cancelWrites...)
 		}
+		// Atomically revoke any active approval decisions belonging to this
+		// task so cross-execution verification immediately rejects them.
+		decisionRows, err := scanAll(ctx, adapter.scanner, unit.Owner, store.ScanQuery{
+			Table:   store.ApprovalDecisionsTable,
+			Equals:  map[string]any{"task_id": string(unit.TaskID)},
+			OrderBy: []store.Order{{Column: "id"}},
+			Limit:   store.MaxQueryLimit,
+		})
+		if err != nil {
+			return task.CancelResult{}, err
+		}
+		for _, decisionRow := range decisionRows {
+			if decisionRow.Values["revoked_at"] != nil {
+				continue
+			}
+			decisionID := textValue(decisionRow, "id")
+			ver := versionValue(decisionRow, "version")
+			if decisionID == "" || ver == 0 {
+				continue
+			}
+			locks = append(locks, store.Lock{
+				Table:         store.ApprovalDecisionsTable,
+				IDs:           []string{decisionID},
+				ExpectVersion: ver,
+			})
+			writes = append(writes, store.Write{
+				Table:         store.ApprovalDecisionsTable,
+				ID:            decisionID,
+				ExpectVersion: ver,
+				Values: map[string]any{
+					"revoked_at":     unit.Receipt.At,
+					"revoked_reason": "task_cancelled",
+				},
+			})
+		}
 	}
 	authority, err := authorityLocks(ctx, adapter.executor, adapter.scanner, unit.Authority, authorityContext{TaskID: unit.TaskID})
 	if err != nil {

@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/id"
 )
 
 // The native hook environment contract. The HTTP front handler places only an
@@ -39,6 +40,9 @@ const (
 	// PushOptionApprovedCandidate names the approved candidate commit OID push
 	// option.
 	PushOptionApprovedCandidate = "kodema.approved_candidate"
+	// PushOptionDecisionID names the cross-execution approval decision ID push
+	// option.
+	PushOptionDecisionID = "kodema.decision_id"
 )
 
 // ActorSource resolves the opaque backend handle to the forwarded actor
@@ -376,7 +380,7 @@ func (hook *Hook) buildRequests(ctx context.Context, updates []hookUpdate) ([]Up
 	if err != nil || credential == "" || len(credential) > api.MaxCredentialBytes {
 		return nil, errMalformedHook
 	}
-	approvedBase, approvedCandidate, err := hook.parsePushOptions()
+	approvedBase, approvedCandidate, decisionID, err := hook.parsePushOptions()
 	if err != nil {
 		return nil, err
 	}
@@ -390,6 +394,7 @@ func (hook *Hook) buildRequests(ctx context.Context, updates []hookUpdate) ([]Up
 			Candidate:         update.new,
 			ApprovedBase:      approvedBase,
 			ApprovedCandidate: approvedCandidate,
+			DecisionID:        decisionID,
 			ActorCredential:   credential,
 			SourceEventID:     hook.sourceEventID(pushID, repository, update),
 		})
@@ -398,64 +403,75 @@ func (hook *Hook) buildRequests(ctx context.Context, updates []hookUpdate) ([]Up
 }
 
 // parsePushOptions reads Git's GIT_PUSH_OPTION_COUNT and GIT_PUSH_OPTION_<i>
-// environment variables and extracts the optional kodema.approved_base and
-// kodema.approved_candidate commit OIDs. Non-kodema push options are ignored.
-// Duplicate, unknown, half-specified, or malformed kodema push options fail
-// closed with a sanitized RefusalError.
-func (hook *Hook) parsePushOptions() (string, string, error) {
+// environment variables and extracts the optional kodema.approved_base,
+// kodema.approved_candidate and kodema.decision_id push options. Non-kodema
+// push options are ignored. Duplicate/conflicting, unknown, half-specified, or
+// malformed kodema push options fail closed with a sanitized RefusalError.
+func (hook *Hook) parsePushOptions() (string, string, string, error) {
 	rawCount, ok := hook.lookup(EnvPushOptionCount)
 	if !ok || rawCount == "" {
-		return "", "", nil
+		return "", "", "", nil
 	}
 	count, err := strconv.Atoi(rawCount)
 	if err != nil || count < 0 || count > maxHookPushOptions || strconv.Itoa(count) != rawCount {
-		return "", "", invalidPushOptionError("invalid push option count")
+		return "", "", "", invalidPushOptionError("invalid push option count")
 	}
 	var (
 		approvedBase      string
 		approvedCandidate string
+		decisionID        string
 		seenBase          bool
 		seenCandidate     bool
+		seenDecisionID    bool
 	)
 	for index := 0; index < count; index++ {
 		option, exists := hook.lookup(EnvPushOptionPrefix + strconv.Itoa(index))
 		if !exists {
-			return "", "", invalidPushOptionError("missing push option entry")
+			return "", "", "", invalidPushOptionError("missing push option entry")
 		}
 		if !strings.HasPrefix(option, "kodema.") {
 			continue
 		}
 		key, value, hasEq := strings.Cut(option, "=")
 		if !hasEq {
-			return "", "", invalidPushOptionError("malformed kodema push option")
+			return "", "", "", invalidPushOptionError("malformed kodema push option")
 		}
 		switch key {
 		case PushOptionApprovedBase:
 			if seenBase {
-				return "", "", invalidPushOptionError("duplicate push option kodema.approved_base")
+				return "", "", "", invalidPushOptionError("duplicate push option kodema.approved_base")
 			}
 			if !validStrictCommitOID(value) {
-				return "", "", invalidPushOptionError("kodema.approved_base must be a 40-hex commit oid")
+				return "", "", "", invalidPushOptionError("kodema.approved_base must be a 40-hex commit oid")
 			}
 			seenBase = true
 			approvedBase = value
 		case PushOptionApprovedCandidate:
 			if seenCandidate {
-				return "", "", invalidPushOptionError("duplicate push option kodema.approved_candidate")
+				return "", "", "", invalidPushOptionError("duplicate push option kodema.approved_candidate")
 			}
 			if !validStrictCommitOID(value) {
-				return "", "", invalidPushOptionError("kodema.approved_candidate must be a 40-hex commit oid")
+				return "", "", "", invalidPushOptionError("kodema.approved_candidate must be a 40-hex commit oid")
 			}
 			seenCandidate = true
 			approvedCandidate = value
+		case PushOptionDecisionID:
+			if _, err := id.ParseDecisionID(value); err != nil {
+				return "", "", "", invalidPushOptionError("kodema.decision_id is invalid")
+			}
+			if seenDecisionID && decisionID != value {
+				return "", "", "", invalidPushOptionError("conflicting duplicate push option kodema.decision_id")
+			}
+			seenDecisionID = true
+			decisionID = value
 		default:
-			return "", "", invalidPushOptionError("unknown kodema push option")
+			return "", "", "", invalidPushOptionError("unknown kodema push option")
 		}
 	}
 	if seenBase != seenCandidate {
-		return "", "", invalidPushOptionError("kodema.approved_base and kodema.approved_candidate must be provided together")
+		return "", "", "", invalidPushOptionError("kodema.approved_base and kodema.approved_candidate must be provided together")
 	}
-	return approvedBase, approvedCandidate, nil
+	return approvedBase, approvedCandidate, decisionID, nil
 }
 
 func invalidPushOptionError(detail string) error {

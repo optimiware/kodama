@@ -226,9 +226,14 @@ func (effects *GitMergeEffects) Execute(ctx context.Context, operation MergeOper
 	if remoteCommit == "" {
 		expected = ""
 	}
-	pushResult, pushErr := effects.command(ctx, workDir, env,
-		"push", "--porcelain", "--force-with-lease="+operation.Key.Ref+":"+expected,
+	pushArgs := []string{"push", "--porcelain"}
+	if operation.DecisionID != "" {
+		pushArgs = append(pushArgs, "-o", "kodema.decision_id="+string(operation.DecisionID))
+	}
+	pushArgs = append(pushArgs,
+		"--force-with-lease="+operation.Key.Ref+":"+expected,
 		"origin", resultCommit+":"+operation.Key.Ref)
+	pushResult, pushErr := effects.command(ctx, workDir, env, pushArgs...)
 	pushFailure := pushErr
 	if pushFailure == nil && pushResult.ExitCode != 0 {
 		pushFailure = fmt.Errorf("git push exited %d: %s", pushResult.ExitCode, commandDetail(pushResult))
@@ -326,6 +331,11 @@ func (effects *GitMergeEffects) validateOperation(operation MergeOperation) erro
 	}
 	if strings.TrimSpace(operation.Base) == "" || strings.TrimSpace(operation.Candidate) == "" {
 		return fmt.Errorf("merge operation needs a base and candidate")
+	}
+	if operation.DecisionID != "" {
+		if _, err := id.ParseDecisionID(string(operation.DecisionID)); err != nil {
+			return fmt.Errorf("merge operation decision identity %q is invalid: %w", operation.DecisionID, err)
+		}
 	}
 	return nil
 }

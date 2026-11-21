@@ -98,6 +98,7 @@ type ActionView struct {
 	StagedOutputsSet bool
 	Stop             kernel.StopEvidence
 	Decision         string
+	DecisionID       id.DecisionID
 	Actor            id.PrincipalID
 	AnsweredAt       time.Time
 	Note             string

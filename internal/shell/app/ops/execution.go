@@ -174,6 +174,7 @@ func executionHandlers(deps Dependencies) map[authorizeOperation]ops.Handler {
 			return respond(call, api.ExecutionRequestResolveResult{
 				ExecutionVersion: committed.ExecutionVersion,
 				ActionVersion:    committed.ActionVersion,
+				DecisionID:       string(committed.DecisionID),
 			})
 		}),
 		"execution.logs.read": handlerFunc(func(ctx context.Context, call ops.AuthorizedCall) (api.Result, error) {
@@ -311,6 +312,7 @@ func inspectAction(action execution.ActionView) (api.ExecutionAction, error) {
 		TimeoutSeconds: int64(action.Timeout / time.Second),
 		Outputs:        stringsOf(action.Outputs),
 		Decision:       action.Decision,
+		DecisionID:     string(action.DecisionID),
 		Actor:          string(action.Actor),
 		Note:           action.Note,
 	}

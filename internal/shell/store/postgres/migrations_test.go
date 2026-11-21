@@ -489,8 +489,8 @@ func TestMigrationsDefaultEventPublishSequence(t *testing.T) {
 
 func TestMigration0008PreservesBaselineAndAppliesAdditiveChanges(t *testing.T) {
 	migrations := Migrations()
-	if len(migrations) != 8 {
-		t.Fatalf("Migrations() count = %d; want 8", len(migrations))
+	if len(migrations) < 8 {
+		t.Fatalf("Migrations() count = %d; want at least 8", len(migrations))
 	}
 	if migrations[7].Name != "0008_task_review_lifecycle.sql" {
 		t.Fatalf("migration 8 name = %q; want 0008_task_review_lifecycle.sql", migrations[7].Name)
@@ -516,6 +516,46 @@ func TestMigration0008PreservesBaselineAndAppliesAdditiveChanges(t *testing.T) {
 	} {
 		if !strings.Contains(mig8, want) {
 			t.Errorf("0008_task_review_lifecycle.sql missing %q:\n%s", want, migrations[7].SQL)
+		}
+	}
+}
+
+func TestMigration0009PreservesBaselineAndAddsApprovalDecisions(t *testing.T) {
+	migrations := Migrations()
+	if len(migrations) != 9 {
+		t.Fatalf("Migrations() count = %d; want 9", len(migrations))
+	}
+	if migrations[8].Name != "0009_approval_decisions.sql" {
+		t.Fatalf("migration 9 name = %q; want 0009_approval_decisions.sql", migrations[8].Name)
+	}
+	baselineTables := normalizeSQL(migrations[1].SQL)
+	if strings.Contains(baselineTables, "approval_decisions") || strings.Contains(baselineTables, "decision_id") {
+		t.Error("0002_tables.sql must stay frozen without approval_decisions or verifications.decision_id")
+	}
+	mig9 := normalizeSQL(migrations[8].SQL)
+	for _, want := range []string{
+		"create table approval_decisions",
+		"constraint approval_decisions_scope_id unique (tenant_id, project_id, id)",
+		"constraint approval_decisions_scope_action unique (tenant_id, project_id, execution_id, action_id)",
+		"constraint approval_decisions_tenant foreign key (tenant_id) references tenants (id)",
+		"constraint approval_decisions_project foreign key (tenant_id, project_id) references projects (tenant_id, id)",
+		"constraint approval_decisions_task foreign key (tenant_id, project_id, task_id) references tasks (tenant_id, project_id, id)",
+		"constraint approval_decisions_execution foreign key (tenant_id, project_id, execution_id) references executions (tenant_id, project_id, id)",
+		"constraint approval_decisions_action foreign key (tenant_id, project_id, action_id) references actions (tenant_id, project_id, id)",
+		"constraint approval_decisions_assignment_role check (assignment like 'role/%')",
+		"constraint approval_decisions_expiry check (expires_at > resolved_at)",
+		"constraint approval_decisions_revocation_pair check ((revoked_at is null) = (revoked_reason is null))",
+		"create index approval_decisions_scope_task on approval_decisions (tenant_id, project_id, task_id)",
+		"create index approval_decisions_scope_execution on approval_decisions (tenant_id, project_id, execution_id)",
+		"alter table approval_decisions enable row level security",
+		"alter table approval_decisions force row level security",
+		"create policy approval_decisions_scope on approval_decisions",
+		"alter table approval_decisions owner to kodema_owner",
+		"grant select, insert, update, delete on approval_decisions to kodema_runtime",
+		"alter table verifications add column decision_id text",
+	} {
+		if !strings.Contains(mig9, want) {
+			t.Errorf("0009_approval_decisions.sql missing %q:\n%s", want, migrations[8].SQL)
 		}
 	}
 }

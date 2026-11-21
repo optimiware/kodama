@@ -104,8 +104,20 @@ func (ids *IDs) NewUsageID() (gateway.UsageID, error) {
 	return gateway.UsageID(value), err
 }
 
+// NewDecisionID allocates one immutable approval decision identity.
+func (ids *IDs) NewDecisionID() (id.DecisionID, error) {
+	value, err := ids.allocateWithSeparator("dec", "_")
+	return id.DecisionID(value), err
+}
+
 // allocate draws one secure random payload and renders the prefixed identity.
 func (ids *IDs) allocate(prefix string) (string, error) {
+	return ids.allocateWithSeparator(prefix, "-")
+}
+
+// allocateWithSeparator draws one secure random payload and renders the
+// prefixed identity with the supplied separator.
+func (ids *IDs) allocateWithSeparator(prefix, separator string) (string, error) {
 	if ids == nil || ids.random == nil {
 		return "", fault.New(fault.InternalFailure, "identity allocator is not configured")
 	}
@@ -116,5 +128,5 @@ func (ids *IDs) allocate(prefix string) (string, error) {
 	if err != nil {
 		return "", fault.Wrap(fault.InternalFailure, "identity allocation failed", err)
 	}
-	return prefix + "-" + hex.EncodeToString(raw[:]), nil
+	return prefix + separator + hex.EncodeToString(raw[:]), nil
 }

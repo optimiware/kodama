@@ -591,13 +591,20 @@ func runResolveDecision(ctx context.Context, config Config, args []string, ports
 	_ = json.Unmarshal(result.Body, &resolved)
 	switch decision {
 	case "pass":
-		if note != "" {
-			fmt.Fprintf(ports.Out, "approved execution %s action %s (decision=%s, comment=%q, execution_version=%d, action_version=%d)\n",
-				executionID, actionID, decision, note, resolved.ExecutionVersion, resolved.ActionVersion)
-		} else {
-			fmt.Fprintf(ports.Out, "approved execution %s action %s (decision=%s, execution_version=%d, action_version=%d)\n",
-				executionID, actionID, decision, resolved.ExecutionVersion, resolved.ActionVersion)
+		var fields []string
+		fields = append(fields, "decision="+decision)
+		if resolved.DecisionID != "" {
+			fields = append(fields, "decision_id="+resolved.DecisionID)
 		}
+		if note != "" {
+			fields = append(fields, fmt.Sprintf("comment=%q", note))
+		}
+		fields = append(fields,
+			fmt.Sprintf("execution_version=%d", resolved.ExecutionVersion),
+			fmt.Sprintf("action_version=%d", resolved.ActionVersion),
+		)
+		fmt.Fprintf(ports.Out, "approved execution %s action %s (%s)\n",
+			executionID, actionID, strings.Join(fields, ", "))
 	case "revise":
 		fmt.Fprintf(ports.Out, "requested revision on execution %s action %s (decision=%s, reason=%q, execution_version=%d, action_version=%d)\n",
 			executionID, actionID, decision, reasonFlag, resolved.ExecutionVersion, resolved.ActionVersion)

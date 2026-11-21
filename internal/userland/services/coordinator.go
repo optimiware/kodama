@@ -422,6 +422,7 @@ func (coordinator *Coordinator) operation(record CoordinationRecord) MergeOperat
 		OperationID: record.Claim.OperationID,
 		Base:        record.Request.Base,
 		Candidate:   record.Request.Candidate,
+		DecisionID:  record.Request.DecisionID,
 	}
 }
 

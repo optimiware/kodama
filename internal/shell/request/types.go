@@ -204,6 +204,73 @@ type ActivationResult struct {
 	Replayed         bool      `json:"replayed"`
 }
 
+// ApprovalDecisionTTL defaults and bounds for immutable approval decisions.
+const (
+	// DefaultDecisionTTL is the default validity window of an immutable
+	// persisted human approval decision.
+	DefaultDecisionTTL = 72 * time.Hour
+	// MaxDecisionTTL bounds configured approval decision TTLs.
+	MaxDecisionTTL = 30 * 24 * time.Hour
+)
+
+// ApprovalDecision is the immutable persisted approval decision record created
+// atomically when a human role/<role> request resolves with decision=pass.
+// Service assignments and non-pass resolutions never create one.
+type ApprovalDecision struct {
+	ID          id.DecisionID      `json:"id"`
+	Scope       tenancy.Scope      `json:"scope"`
+	TaskID      id.TaskID          `json:"task_id,omitempty"`
+	ExecutionID id.ExecutionID     `json:"execution_id"`
+	ActionID    id.ActionID        `json:"action_id"`
+	Assignment  Assignment         `json:"assignment"`
+	Operation   string             `json:"operation,omitempty"`
+	ResourceID  string             `json:"resource_id,omitempty"`
+	Subject     definition.Subject `json:"subject"`
+	Approver    id.PrincipalID     `json:"approver"`
+	ResolvedAt  time.Time          `json:"resolved_at"`
+	ExpiresAt   time.Time          `json:"expires_at"`
+}
+
+// Validate checks every structural invariant of an approval decision record.
+func (decision ApprovalDecision) Validate() error {
+	if _, err := id.ParseDecisionID(string(decision.ID)); err != nil {
+		return fault.Wrap(fault.InvalidInput, "approval decision id is invalid", err)
+	}
+	if err := decision.Scope.Validate(); err != nil {
+		return err
+	}
+	if !decision.Scope.ProjectScoped() {
+		return fault.New(fault.InvalidInput, "approval decision must be project-scoped")
+	}
+	if decision.TaskID != "" {
+		if _, err := id.ParseTaskID(string(decision.TaskID)); err != nil {
+			return fault.Wrap(fault.InvalidInput, "approval decision task id is invalid", err)
+		}
+	}
+	if _, err := id.ParseExecutionID(string(decision.ExecutionID)); err != nil {
+		return fault.Wrap(fault.InvalidInput, "approval decision execution id is invalid", err)
+	}
+	if _, err := id.ParseActionID(string(decision.ActionID)); err != nil {
+		return fault.Wrap(fault.InvalidInput, "approval decision action id is invalid", err)
+	}
+	if !decision.Assignment.Valid() || decision.Assignment.Kind != AssignmentRole {
+		return fault.New(fault.InvalidInput, "approval decision requires a human role assignment")
+	}
+	if decision.Subject.Len() == 0 {
+		return fault.New(fault.InvalidInput, "approval decision requires a resolved subject")
+	}
+	if _, err := id.ParsePrincipalID(string(decision.Approver)); err != nil {
+		return fault.Wrap(fault.InvalidInput, "approval decision approver is invalid", err)
+	}
+	if decision.ResolvedAt.IsZero() {
+		return fault.New(fault.InvalidInput, "approval decision resolved_at is zero")
+	}
+	if !decision.ExpiresAt.After(decision.ResolvedAt) {
+		return fault.New(fault.InvalidInput, "approval decision expires_at must be after resolved_at")
+	}
+	return nil
+}
+
 // ResolveUnit is the complete atomic request-resolution commit unit.
 //
 // Decision and Response are the authorized answer; Actor is the verified
@@ -229,6 +296,7 @@ type ResolveUnit struct {
 	Assignment               Assignment                `json:"assignment"`
 	At                       time.Time                 `json:"at"`
 	IdempotencyKey           string                    `json:"idempotency_key"`
+	ApprovalDecision         *ApprovalDecision         `json:"approval_decision,omitempty"`
 	Commit                   flow.Commit               `json:"commit"`
 	Receipt                  receipt.Record            `json:"receipt"`
 	Audit                    []event.Audit             `json:"audit"`
@@ -304,6 +372,35 @@ func (unit ResolveUnit) Validate() error {
 			return fault.New(fault.InvalidInput, fmt.Sprintf("failing kernel answer commits next execution state %q, not %q", unit.Commit.NextExecutionState, kernel.ExecutionFailed))
 		}
 	}
+	if unit.ApprovalDecision != nil {
+		if unit.Decision != DecisionPass {
+			return fault.New(fault.InvalidInput, "approval decision is only permitted for pass resolutions")
+		}
+		if unit.Assignment.Kind != AssignmentRole {
+			return fault.New(fault.InvalidInput, "approval decision is only permitted for human role assignments")
+		}
+		if err := unit.ApprovalDecision.Validate(); err != nil {
+			return err
+		}
+		if unit.ApprovalDecision.Scope != unit.Owner {
+			return fault.New(fault.InvalidInput, "approval decision scope does not match resolve unit owner")
+		}
+		if unit.ApprovalDecision.ExecutionID != unit.ExecutionID {
+			return fault.New(fault.InvalidInput, "approval decision execution id does not match resolve unit")
+		}
+		if unit.ApprovalDecision.ActionID != unit.ActionID {
+			return fault.New(fault.InvalidInput, "approval decision action id does not match resolve unit")
+		}
+		if unit.ApprovalDecision.Assignment != unit.Assignment {
+			return fault.New(fault.InvalidInput, "approval decision assignment does not match resolve unit")
+		}
+		if unit.ApprovalDecision.Approver != unit.Actor {
+			return fault.New(fault.InvalidInput, "approval decision approver does not match resolve actor")
+		}
+		if !unit.ApprovalDecision.ResolvedAt.Equal(unit.At) {
+			return fault.New(fault.InvalidInput, "approval decision resolved_at does not match resolve time")
+		}
+	}
 	return nil
 }
 
@@ -353,9 +450,10 @@ func (unit ResolveUnit) ValidateReplay() error {
 
 // ResolveResult is the committed resolution result.
 type ResolveResult struct {
-	ExecutionVersion uint64   `json:"execution_version"`
-	ActionVersion    uint64   `json:"action_version"`
-	Decision         Decision `json:"decision"`
-	Result           []byte   `json:"result,omitempty"`
-	Replayed         bool     `json:"replayed"`
+	ExecutionVersion uint64        `json:"execution_version"`
+	ActionVersion    uint64        `json:"action_version"`
+	Decision         Decision      `json:"decision"`
+	DecisionID       id.DecisionID `json:"decision_id,omitempty"`
+	Result           []byte        `json:"result,omitempty"`
+	Replayed         bool          `json:"replayed"`
 }

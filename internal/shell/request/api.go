@@ -24,6 +24,12 @@ type IDSource interface {
 	NewReceiptID() (id.ReceiptID, error)
 }
 
+// DecisionIDSource is the optional deterministic allocator for immutable
+// approval decision identities. Production compositions implement it on IDs.
+type DecisionIDSource interface {
+	NewDecisionID() (id.DecisionID, error)
+}
+
 // StateReader loads one scoped execution aggregate. An execution owned by
 // another tenant/project is reported as not_found, never returned.
 type StateReader interface {
@@ -109,6 +115,7 @@ type Config struct {
 	Activations ActivationPort
 	Resolutions ResolvePort
 	RefHeads    RefHeadReader
+	DecisionTTL time.Duration
 }
 
 // Service builds complete request activation and resolution commit units. It
@@ -123,4 +130,5 @@ type Service struct {
 	activations ActivationPort
 	resolutions ResolvePort
 	refHeads    RefHeadReader
+	decisionTTL time.Duration
 }

@@ -408,6 +408,9 @@ func formatInspectedActionDetail(action inspectedAction) string {
 		}
 		parts = append(parts, decision)
 	}
+	if action.DecisionID != "" {
+		parts = append(parts, "decision_id="+action.DecisionID)
+	}
 	if strings.TrimSpace(action.Note) != "" {
 		parts = append(parts, fmt.Sprintf("note=%q", singleLine(action.Note, 120)))
 	}
@@ -461,7 +464,7 @@ func executionInspectFingerprint(body json.RawMessage) string {
 			fmt.Fprintf(&b, "|f=%s:%s:%s", inspected.Failure.Kind, inspected.Failure.Reason, inspected.Failure.Detail)
 		}
 		for _, act := range inspected.Actions {
-			fmt.Fprintf(&b, "|a=%s:%s:%d:%s", act.ActionID, act.effectiveState(), act.Version, act.Decision)
+			fmt.Fprintf(&b, "|a=%s:%s:%d:%s:%s", act.ActionID, act.effectiveState(), act.Version, act.Decision, act.DecisionID)
 		}
 		return b.String()
 	}
