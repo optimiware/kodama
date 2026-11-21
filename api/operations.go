@@ -149,6 +149,10 @@ var operationCodecSpecs = map[string]operationCodecSpec{
 	// Optional model/tool surfaces.
 	"model.invoke": newOperationSpec[ModelInvokeRequest, ChatCompletionResponse](false),
 	"tool.invoke":  newOperationSpec[ToolInvokeRequest, ToolInvokeResult](false),
+
+	// Project-scoped, content-addressed immutable KV store.
+	"kv.put": newOperationSpec[KVPutRequest, KVPutResult](false),
+	"kv.get": newOperationSpec[KVGetRequest, KVGetResult](false),
 }
 
 // OperationCodecs returns every registered operation codec in the registry
@@ -386,13 +390,17 @@ func YAMLOperations() []string {
 	return append([]string(nil), yamlOperations...)
 }
 
-// MaxEnvelopeBytes returns the request envelope bound of one operation. The
-// three YAML-carrying operations accept MaxYAMLRequestBytes because a 1 MiB
-// document expands to about 1.4 MiB of base64; every other operation keeps the
-// default MaxRequestBytes. An unknown operation gets the default bound.
+// MaxEnvelopeBytes returns the request envelope bound of one operation.
+// kv.put accepts MaxKVRequestBytes (24 MiB) to carry up to 16 MiB payloads;
+// the three YAML-carrying operations accept MaxYAMLRequestBytes (2 MiB);
+// every other operation keeps the default MaxRequestBytes (1 MiB).
+// An unknown operation gets the default bound.
 func MaxEnvelopeBytes(operation string) int {
 	if resolved, ok := MCPToolOperationName(operation); ok {
 		operation = resolved
+	}
+	if operation == "kv.put" {
+		return MaxKVRequestBytes
 	}
 	for _, candidate := range yamlOperations {
 		if candidate == operation {
@@ -400,6 +408,19 @@ func MaxEnvelopeBytes(operation string) int {
 		}
 	}
 	return MaxRequestBytes
+}
+
+// MaxOperationResponseBytes returns the response envelope bound of one
+// operation. kv.get accepts MaxKVResponseBytes (24 MiB) to return up to
+// 16 MiB payloads; every other operation keeps MaxResponseBytes (8 MiB).
+func MaxOperationResponseBytes(operation string) int {
+	if resolved, ok := MCPToolOperationName(operation); ok {
+		operation = resolved
+	}
+	if operation == "kv.get" {
+		return MaxKVResponseBytes
+	}
+	return MaxResponseBytes
 }
 
 // DecodeOperationRequest decodes one bounded request envelope for a named
@@ -470,6 +491,7 @@ var routeParamFields = map[string]string{
 	"action":    "action_id",
 	"model":     "model",
 	"tool":      "tool",
+	"key":       "key",
 }
 
 // routeParamFieldOverrides records operations whose body already carries a

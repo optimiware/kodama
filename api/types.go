@@ -39,6 +39,18 @@ const (
 	// MaxInlineYAMLEncodedBytes bounds the base64 encoding of one inline YAML
 	// document, which is what the wire member advertises.
 	MaxInlineYAMLEncodedBytes = (MaxInlineYAMLBytes + 2) / 3 * 4
+	// MaxKVValueBytes bounds one immutable KV object payload (16 MiB).
+	MaxKVValueBytes = 16 << 20
+	// MaxKVRequestBytes bounds one kv.put request envelope (24 MiB): a 16 MiB
+	// payload expands to ~21.33 MiB of base64 plus envelope metadata.
+	MaxKVRequestBytes = 24 << 20
+	// MaxKVResponseBytes bounds one kv.get response envelope (24 MiB).
+	MaxKVResponseBytes = 24 << 20
+	// MaxKVInlineTextBytes bounds the payload size for which kv.get also
+	// populates the convenience UTF-8 text field alongside data_base64 (1 MiB).
+	MaxKVInlineTextBytes = 1 << 20
+	// MaxKVContentTypeBytes bounds the optional MIME content_type of a KV object.
+	MaxKVContentTypeBytes = 256
 	// MaxEventDataBytes bounds one event payload (64 KiB).
 	MaxEventDataBytes = 64 << 10
 	// MaxIdempotencyKeyBytes bounds one caller-supplied idempotency key.

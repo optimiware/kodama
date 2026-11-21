@@ -639,6 +639,42 @@ Looks up the service version via service.list when --expected-version is omitted
 		description: `Deletes a project secret via secret.delete. Reads current metadata version via
 secret.metadata.read automatically when --expected-version is omitted.`,
 	},
+	"kv": {
+		usage:   "kodema kv <put|get> [arguments]",
+		summary: "Store and retrieve project-scoped immutable content-addressed KV objects",
+		description: `Subcommands:
+  put   kodema kv put [<file>|-] [--project <id>] [--content-type <mime>] [--output <table|json>]
+  get   kodema kv get <key> [--project <id>] [--out <file>] [--output <table|json>]
+
+Keys are derived server-side from SHA-256(bytes) in the canonical form
+kv:sha256:<64-lowercase-hex> (maximum payload 16 MiB). Inside a workload
+container ($KODEMA_EXECUTION set), --project is resolved automatically when
+omitted.`,
+	},
+	"kv put": {
+		usage:   "kodema kv put [<file>|-] [--project <id>] [--content-type <mime>] [--output <table|json>]",
+		summary: "Store bounded immutable bytes in the project KV store and print the kv:sha256 key",
+		description: `Reads bytes from <file> (or standard input when '-' or omitted), uploads them
+via kv.put (maximum 16 MiB), and prints the resulting kv:sha256:<hex> key to
+stdout (or structured metadata JSON with --output json). Re-putting identical
+bytes in the same project is idempotent and returns the same key.
+
+Flags:
+  --project, -p <id>       Project ID (auto-resolved inside workload containers)
+  --content-type <mime>    Optional MIME content type (default: application/octet-stream)
+  --output <table|json>    Output format`,
+	},
+	"kv get": {
+		usage:   "kodema kv get <key> [--project <id>] [--out <file>] [--output <table|json>]",
+		summary: "Retrieve immutable bytes for a kv:sha256 key from the project KV store",
+		description: `Fetches the immutable payload for <key> via kv.get and writes the exact raw
+bytes to stdout (or to --out <file>), or JSON metadata+content with --output json.
+
+Flags:
+  --project, -p <id>       Project ID (auto-resolved inside workload containers)
+  --out <file>             Write exact retrieved bytes to <file> instead of stdout
+  --output <table|json>    Output format`,
+	},
 	"run": {
 		usage:   "kodema run <file> [--project <id>] [--input <k=v>] [-d|--detach]",
 		summary: "Run one local pipeline file and follow it to its end",
@@ -835,6 +871,7 @@ Commands:
   repo        Provision and list managed Git repositories in a project
   service     Manage project service accounts and credentials
   secret      Set, list, and delete project secrets
+  kv          Store and retrieve project-scoped content-addressed KV objects
   member      List, grant, and revoke project memberships
   mcp         Run the MCP stdio bridge or install editor configuration
   docs        Read or install embedded Kodema documentation offline

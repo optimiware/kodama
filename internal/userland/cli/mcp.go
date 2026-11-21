@@ -20,7 +20,7 @@ import (
 	"github.com/optimiware/kodema/client"
 )
 
-const maxMCPStdioMessageBytes = 4 << 20
+const maxMCPStdioMessageBytes = api.MaxKVRequestBytes
 
 var errMCPRedirectRefused = errors.New("MCP redirect refused")
 
@@ -140,7 +140,7 @@ func runMCPStdio(ctx context.Context, config Config, args []string, ports Ports,
 			continue
 		}
 
-		respBody, readErr := readBoundedMCP(response.Body, api.MaxResponseBytes)
+		respBody, readErr := readBoundedMCP(response.Body, 3*api.MaxKVResponseBytes)
 		_ = response.Body.Close()
 		if readErr != nil {
 			fail(payload, fmt.Errorf("MCP response is unreadable or oversized"))

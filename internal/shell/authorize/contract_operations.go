@@ -5,7 +5,7 @@ import (
 	"github.com/optimiware/kodema/internal/shell/tenancy"
 )
 
-// This file is the declared operation registry: 62 operations in 12 families.
+// This file is the declared operation registry: 64 operations in 13 families.
 // Schema names follow one convention so REST/MCP parity checks can enumerate
 // the registry without a second table:
 //
@@ -340,6 +340,14 @@ var registry = []Operation{
 	operation("tool.invoke", FamilyTool, ScopeProject,
 		[]tenancy.Role{tenancy.RoleEngineer}, []tenancy.Role{tenancy.RoleEngineer}, ExecConfiguredTools,
 		[]AuthorityCheck{CheckMembership, CheckExecutionRunning, CheckActionDeadline}, ReceiptNone, invokeErrors()),
+
+	// Project-scoped, content-addressed immutable KV store.
+	withAnyEnabledService(operation("kv.put", FamilyKV, ScopeProject,
+		[]tenancy.Role{tenancy.RoleEngineer, tenancy.RoleOperator, tenancy.RoleReviewer}, nil, ExecProjectKV,
+		[]AuthorityCheck{CheckMembership, CheckExecutionRunning, CheckActionDeadline}, ReceiptNone, withClasses(mutationErrors(), fault.DeadlineExpired))),
+	withAnyEnabledService(operation("kv.get", FamilyKV, ScopeProject,
+		allHumanRoles(), nil, ExecProjectKV,
+		[]AuthorityCheck{CheckMembership}, ReceiptNone, readErrors())),
 }
 
 var registryByName = func() map[OperationName]Operation {

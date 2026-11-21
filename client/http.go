@@ -231,14 +231,14 @@ func (transport *HTTPTransport) decode(operation string, response *http.Response
 	}
 	max := transport.MaxResponseBytes
 	if max <= 0 {
-		max = api.MaxResponseBytes
+		max = api.MaxOperationResponseBytes(operation)
 	}
 	data, err := readBounded(response.Body, max)
 	if err != nil {
 		return api.Result{}, fault.New(fault.InternalFailure, "the response body is unreadable or oversized"), false
 	}
 	if response.StatusCode == api.HTTPStatusSuccess {
-		result, err := api.DecodeResult(data)
+		result, err := api.DecodeOperationResult(operation, data)
 		if err != nil {
 			return api.Result{}, fault.New(fault.InternalFailure, "the response is not a valid public result"), false
 		}

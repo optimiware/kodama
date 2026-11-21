@@ -42,8 +42,10 @@ func TestDecodeOperationRequestEnvelopeBoundaries(t *testing.T) {
 		{"pipeline.apply", api.MaxYAMLRequestBytes},
 		{"pipeline.update", api.MaxYAMLRequestBytes},
 		{"pipeline.start", api.MaxYAMLRequestBytes},
+		{"kv.put", api.MaxKVRequestBytes},
 		{"task.create", api.MaxRequestBytes},
 		{"pipeline.read", api.MaxRequestBytes},
+		{"kv.get", api.MaxRequestBytes},
 	}
 	for _, testCase := range cases {
 		t.Run(testCase.operation+"/at-bound", func(t *testing.T) {
@@ -110,6 +112,7 @@ func TestDecodeMCPToolsCallEnvelopeBoundaries(t *testing.T) {
 		name  string
 		bound int
 	}{
+		{"kv.put", api.MaxKVRequestBytes},
 		{"pipeline.start", api.MaxYAMLRequestBytes},
 		{"task.create", api.MaxRequestBytes},
 	}
@@ -135,10 +138,10 @@ func TestDecodeMCPToolsCallEnvelopeBoundaries(t *testing.T) {
 		})
 	}
 
-	// The hard 2 MiB cap refuses garbage by size before the JSON parse.
-	garbage := bytes.Repeat([]byte("x"), api.MaxYAMLRequestBytes+1)
+	// The hard KV cap refuses garbage by size before the JSON parse.
+	garbage := bytes.Repeat([]byte("x"), api.MaxKVRequestBytes+1)
 	_, err := api.DecodeMCPToolsCall(garbage)
-	requireInvalidInput(t, err, "invalid JSON above the hard 2 MiB cap")
+	requireInvalidInput(t, err, "invalid JSON above the hard KV cap")
 	if !strings.Contains(err.Error(), "at most") || strings.Contains(err.Error(), "invalid JSON") {
 		t.Errorf("above-cap garbage refusal = %q; want the size refusal before parsing", err)
 	}
@@ -380,14 +383,14 @@ func TestYAMLOperationsAndRoutesReturnCopies(t *testing.T) {
 	}
 
 	canonical := api.Routes()
-	if len(canonical) != 62 {
-		t.Fatalf("Routes() has %d rows; want 62", len(canonical))
+	if len(canonical) != 64 {
+		t.Fatalf("Routes() has %d rows; want 64", len(canonical))
 	}
 	canonical[0].Operation = "mutated"
 	_ = append(canonical, api.Route{Operation: "mutated"})
 	again := api.Routes()
-	if len(again) != 62 {
-		t.Errorf("Routes() after caller append has %d rows; want the unchanged 62", len(again))
+	if len(again) != 64 {
+		t.Errorf("Routes() after caller append has %d rows; want the unchanged 64", len(again))
 	}
 	if again[0].Operation != "tenant.create" {
 		t.Errorf("Routes()[0] after caller mutation = %q; want tenant.create", again[0].Operation)

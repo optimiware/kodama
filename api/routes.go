@@ -14,7 +14,7 @@ type routeSpec struct {
 	path      string
 }
 
-// routeSpecs is the route inventory: exactly the 62 registered operations,
+// routeSpecs is the route inventory: exactly the 64 registered operations,
 // one method/path and one MCP tool each. The six product-fixed S08 endpoints
 // appear verbatim.
 var routeSpecs = []routeSpec{
@@ -99,12 +99,16 @@ var routeSpecs = []routeSpec{
 	// Optional model/tool surfaces.
 	{"model.invoke", MethodPost, "/api/v1/projects/{project}/models/{model}/invoke"},
 	{"tool.invoke", MethodPost, "/api/v1/projects/{project}/tools/{tool}/invoke"},
+
+	// Project-scoped, content-addressed immutable KV store.
+	{"kv.put", MethodPost, "/api/v1/projects/{project}/kv"},
+	{"kv.get", MethodGet, "/api/v1/projects/{project}/kv/{key}"},
 }
 
 // alternateRouteSpecs is the additive second REST binding of an operation. An
 // alternate is a second binding, never a second operation: it keeps the
 // operation name, MCP tool and schema names, and api.Routes() stays exactly the
-// 62 canonical operations.
+// 64 canonical operations.
 var alternateRouteSpecs = []routeSpec{
 	// pipeline.start accepts inline YAML on a task-free executions route; the
 	// canonical stored-pipeline route is unchanged.

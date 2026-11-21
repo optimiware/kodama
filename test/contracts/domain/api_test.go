@@ -448,6 +448,7 @@ func TestAuthorityVocabulary(t *testing.T) {
 		authorize.FamilyEvent,
 		authorize.FamilyModel,
 		authorize.FamilyTool,
+		authorize.FamilyKV,
 	}
 	if !reflect.DeepEqual(families, wantFamilies) {
 		t.Fatalf("Families() = %v; want %v", families, wantFamilies)
@@ -513,6 +514,7 @@ func TestAuthorityVocabulary(t *testing.T) {
 		authorize.ExecOwnEvents,
 		authorize.ExecConfiguredModels,
 		authorize.ExecConfiguredTools,
+		authorize.ExecProjectKV,
 	} {
 		if !permission.Valid() {
 			t.Fatalf("execution permission %q reported invalid", permission)

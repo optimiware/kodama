@@ -772,8 +772,8 @@ func TestMCPInitializeAndToolsListRequireAuthenticationWhenPrincipalsConfigured(
 	if err := json.Unmarshal(listResp.Result, &listResult); err != nil {
 		t.Fatalf("decode tools/list result: %v", err)
 	}
-	if len(listResult.Tools) != 62 {
-		t.Fatalf("tools/list count = %d; want 62", len(listResult.Tools))
+	if len(listResult.Tools) != 64 {
+		t.Fatalf("tools/list count = %d; want 64", len(listResult.Tools))
 	}
 	if got := router.callCount(); got != 0 {
 		t.Fatalf("router calls = %d; want 0 for initialize and tools/list", got)

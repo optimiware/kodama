@@ -253,6 +253,9 @@ var wantRoutes = []wantRoute{
 
 	{"model.invoke", api.MethodPost, "/api/v1/projects/{project}/models/{model}/invoke"},
 	{"tool.invoke", api.MethodPost, "/api/v1/projects/{project}/tools/{tool}/invoke"},
+
+	{"kv.put", api.MethodPost, "/api/v1/projects/{project}/kv"},
+	{"kv.get", api.MethodGet, "/api/v1/projects/{project}/kv/{key}"},
 }
 
 // fixedRoute is one product-fixed endpoint from S08. These paths may not change
@@ -277,8 +280,8 @@ var fixedRoutes = []fixedRoute{
 // invented operation, and the registry schema names.
 func TestRouteInventoryAndOperationParity(t *testing.T) {
 	operations := authorize.Operations()
-	if len(operations) != 62 {
-		t.Fatalf("the operation registry has %d operations; the public contract pins 62", len(operations))
+	if len(operations) != 64 {
+		t.Fatalf("the operation registry has %d operations; the public contract pins 64", len(operations))
 	}
 	if len(wantRoutes) != len(operations) {
 		t.Fatalf("pinned route table has %d rows; the registry has %d operations", len(wantRoutes), len(operations))
@@ -351,6 +354,7 @@ func TestRoutePathsAndFixedEndpoints(t *testing.T) {
 		"tenant": true, "project": true, "principal": true, "binding": true,
 		"pipeline": true, "secret": true, "service": true, "task": true,
 		"execution": true, "action": true, "model": true, "tool": true,
+		"key": true,
 	}
 	seen := make(map[string]bool, len(wantRoutes))
 	for _, route := range api.Routes() {

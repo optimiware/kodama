@@ -13,7 +13,7 @@ import (
 type Tool = api.MCPTool
 
 // toolCatalog is the deterministic declaration built once from the declared
-// route inventory: exactly the 62 registry operations in registry order, each
+// route inventory: exactly the 64 registry operations in registry order, each
 // with the field-level api.OperationInputSchema of its operation. A
 // construction failure is retained so the edge refuses instead of advertising a
 // placeholder.
@@ -103,6 +103,10 @@ var toolDescriptions = map[string]string{
 	// Optional model/tool surfaces.
 	"model.invoke": "Invoke a configured upstream chat completion model for a project.",
 	"tool.invoke":  "Invoke a configured external MCP proxy tool for a project.",
+
+	// Project-scoped, content-addressed immutable KV store.
+	"kv.put": "Store bounded immutable bytes (text or data_base64, up to 16 MiB) in a project's content-addressed KV store and return its server-derived kv:sha256:<hex> key.",
+	"kv.get": "Read an immutable value and metadata by its kv:sha256:<hex> key from a project's content-addressed KV store.",
 }
 
 // buildToolCatalog derives the catalog from api.Routes so the MCP tool inventory

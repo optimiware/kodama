@@ -72,8 +72,8 @@ func TestEveryRegistryOperationRoutesOnceThroughRESTAndMCP(t *testing.T) {
 	operations := authorize.Operations()
 	routes := api.Routes()
 
-	if len(operations) != 62 {
-		t.Fatalf("registry operations = %d; want 62", len(operations))
+	if len(operations) != 64 {
+		t.Fatalf("registry operations = %d; want 64", len(operations))
 	}
 	if len(routes) != len(operations) {
 		t.Fatalf("routes = %d; want %d", len(routes), len(operations))

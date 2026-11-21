@@ -82,7 +82,7 @@ func NewEdge(config Config) (*Edge, error) {
 // operation's api.MaxEnvelopeBytes bound. Every other method keeps the declared
 // 1 MiB bound.
 func (edge *Edge) Handle(ctx context.Context, credential string, body []byte) []byte {
-	if len(body) > api.MaxYAMLRequestBytes {
+	if len(body) > api.MaxKVRequestBytes {
 		return encodeError(nil, api.CodeInvalidInput, "MCP request exceeds the maximum allowed size")
 	}
 
@@ -339,7 +339,7 @@ func (edge *Edge) handleToolsCall(ctx context.Context, credential string, id jso
 	if err != nil {
 		return encodeError(id, api.CodeInternalFailure, "internal failure")
 	}
-	if len(rawResult) > api.MaxResponseBytes {
+	if len(rawResult) > api.MaxOperationResponseBytes(operation) {
 		return encodeError(id, api.CodeInternalFailure,
 			"MCP result exceeds the maximum allowed size")
 	}

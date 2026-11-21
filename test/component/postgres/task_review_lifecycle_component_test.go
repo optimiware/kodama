@@ -320,16 +320,16 @@ func TestMigration0008IncrementalUpgradeFromBaselineOnPostgreSQL(t *testing.T) {
 	pgtest.RequireSQLState(t, err, "23514", "pre-0008 actions_request_decision rejects revise")
 
 	// 3. Apply incremental 0007..0008 on top of the existing 0001..0006 database.
-	upgraded, err := runner.Apply(ctx, 0)
+	upgraded, err := runner.Apply(ctx, 8)
 	if err != nil {
 		t.Fatalf("apply incremental 0007..0008: %v", err)
 	}
 	if len(upgraded) != 2 || upgraded[0].Name != "0007_model_usage_action_id.sql" || upgraded[1].Name != "0008_task_review_lifecycle.sql" {
 		t.Fatalf("upgraded = %+v; want [0007_model_usage_action_id.sql, 0008_task_review_lifecycle.sql]", upgraded)
 	}
-	again, err := runner.Apply(ctx, 0)
+	again, err := runner.Apply(ctx, 8)
 	if err != nil || len(again) != 0 {
-		t.Fatalf("re-run after 0007 = %d (err=%v); want 0", len(again), err)
+		t.Fatalf("re-run after 0008 = %d (err=%v); want 0", len(again), err)
 	}
 
 	// 4. Verify existing rows remain intact and new 0007 capabilities work under RLS.

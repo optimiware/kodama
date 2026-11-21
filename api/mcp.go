@@ -112,8 +112,8 @@ func NegotiateMCPProtocolVersion(requested string) (string, error) {
 
 // maxMCPCallToolResultBytes bounds an encoded MCP CallToolResult envelope,
 // which carries both the JSON text block and structuredContent for one
-// MaxResponseBytes result.
-const maxMCPCallToolResultBytes = 3 * MaxResponseBytes
+// bounded operation result (up to MaxKVResponseBytes for kv.get).
+const maxMCPCallToolResultBytes = 3 * MaxKVResponseBytes
 
 // MCPRequest is one MCP JSON-RPC request or notification.
 type MCPRequest struct {
@@ -380,15 +380,15 @@ func DecodeMCPRequest(data []byte) (MCPRequest, error) {
 	return request, nil
 }
 
-// DecodeMCPToolsCall decodes one MCP tools/call body under the YAML-aware
-// envelope rule: a hard 2 MiB cap applies before decoding, then the named
-// operation's MaxEnvelopeBytes bound decides (2 MiB for the three YAML-carrying
-// operations, the default 1 MiB otherwise). Both underscore MCP tool names and
-// canonical dotted operation names are accepted and normalized to the canonical
-// operation name.
+// DecodeMCPToolsCall decodes one MCP tools/call body under the per-operation
+// envelope rule: a hard MaxKVRequestBytes cap applies before decoding, then the
+// named operation's MaxEnvelopeBytes bound decides (24 MiB for kv.put, 2 MiB
+// for the three YAML-carrying operations, the default 1 MiB otherwise). Both
+// underscore MCP tool names and canonical dotted operation names are accepted
+// and normalized to the canonical operation name.
 func DecodeMCPToolsCall(data []byte) (MCPToolsCallParams, error) {
-	if len(data) > MaxYAMLRequestBytes {
-		return MCPToolsCallParams{}, invalid("MCP request is %d bytes; at most %d are allowed", len(data), MaxYAMLRequestBytes)
+	if len(data) > MaxKVRequestBytes {
+		return MCPToolsCallParams{}, invalid("MCP request is %d bytes; at most %d are allowed", len(data), MaxKVRequestBytes)
 	}
 	var request MCPRequest
 	if err := decodeStrict(data, &request); err != nil {
@@ -784,8 +784,8 @@ func DecodeMCPResult(data []byte) (Result, error) {
 }
 
 func decodeBoundedDirectResult(data []byte) (Result, error) {
-	if len(data) > MaxResponseBytes {
-		return Result{}, invalid("MCP result is %d bytes; at most %d are allowed", len(data), MaxResponseBytes)
+	if len(data) > MaxKVResponseBytes {
+		return Result{}, invalid("MCP result is %d bytes; at most %d are allowed", len(data), MaxKVResponseBytes)
 	}
 	var result Result
 	if err := decodeStrict(data, &result); err != nil {
@@ -793,6 +793,9 @@ func decodeBoundedDirectResult(data []byte) (Result, error) {
 	}
 	if err := result.Validate(); err != nil {
 		return Result{}, err
+	}
+	if bound := MaxOperationResponseBytes(result.Operation); len(data) > bound {
+		return Result{}, invalid("MCP result is %d bytes; at most %d are allowed", len(data), bound)
 	}
 	return result, nil
 }

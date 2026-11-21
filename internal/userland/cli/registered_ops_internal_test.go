@@ -63,4 +63,14 @@ func TestRenderWhoamiServerResultAndTaskListTable(t *testing.T) {
 			t.Fatalf("task.list table missing %q:\n%s", want, tableOut.String())
 		}
 	}
+
+	var callListOut, callListErr bytes.Buffer
+	if code := runCallList(Ports{Out: &callListOut, Err: &callListErr}, OutputTable); code != ExitSuccess {
+		t.Fatalf("runCallList exit = %d; stderr=%q", code, callListErr.String())
+	}
+	for _, want := range []string{"kv.put", "/api/v1/projects/{project}/kv", "kv.get", "/api/v1/projects/{project}/kv/{key}"} {
+		if !strings.Contains(callListOut.String(), want) {
+			t.Fatalf("call --list missing %q:\n%s", want, callListOut.String())
+		}
+	}
 }

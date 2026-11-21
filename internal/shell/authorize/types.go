@@ -55,6 +55,8 @@ const (
 	FamilyModel Family = "model"
 	// FamilyTool covers the optional configured tool surface.
 	FamilyTool Family = "tool"
+	// FamilyKV covers the project-scoped content-addressed immutable KV store.
+	FamilyKV Family = "kv"
 )
 
 var families = [...]Family{
@@ -70,6 +72,7 @@ var families = [...]Family{
 	FamilyEvent,
 	FamilyModel,
 	FamilyTool,
+	FamilyKV,
 }
 
 // Families returns every operation family in declaration order.
@@ -236,6 +239,9 @@ const (
 	ExecConfiguredModels ExecutionPermission = "configured_models"
 	// ExecConfiguredTools grants invoking configured tools.
 	ExecConfiguredTools ExecutionPermission = "configured_tools"
+	// ExecProjectKV grants reading and writing immutable content-addressed KV
+	// objects in the execution's own project scope while active and unexpired.
+	ExecProjectKV ExecutionPermission = "project_kv"
 )
 
 var executionPermissions = [...]ExecutionPermission{
@@ -247,6 +253,7 @@ var executionPermissions = [...]ExecutionPermission{
 	ExecOwnEvents,
 	ExecConfiguredModels,
 	ExecConfiguredTools,
+	ExecProjectKV,
 }
 
 // ExecutionPermissions returns every execution permission in declaration

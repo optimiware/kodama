@@ -89,6 +89,7 @@ func TestHandlerCallsTheCapabilityWithTheCompleteCommand(t *testing.T) {
 		Executions:     h.executions,
 		Receipts:       mustReceiptLookup(t, h.store),
 		Secrets:        h.secrets,
+		KV:             h.kv,
 		Services:       h.services,
 		Credentials:    h.credentials,
 		Tasks:          h.taskService,

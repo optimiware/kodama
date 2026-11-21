@@ -1144,6 +1144,39 @@
         ],
         "next_cursor": "djEKdHNrLTE"
       }
+    },
+    {
+      "operation": "kv.put",
+      "request": {
+        "project_id": "prj-1",
+        "text": "hello",
+        "content_type": "text/plain; charset=utf-8"
+      },
+      "result": {
+        "key": "kv:sha256:2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824",
+        "project_id": "prj-1",
+        "size_bytes": 5,
+        "content_type": "text/plain; charset=utf-8",
+        "created_at": "2026-01-02T03:04:05Z",
+        "existed": false
+      }
+    },
+    {
+      "operation": "kv.get",
+      "request": {
+        "project_id": "prj-1",
+        "key": "kv:sha256:2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+      },
+      "result": {
+        "key": "kv:sha256:2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824",
+        "project_id": "prj-1",
+        "size_bytes": 5,
+        "content_type": "text/plain; charset=utf-8",
+        "created_by": "prn-1",
+        "created_at": "2026-01-02T03:04:05Z",
+        "data_base64": "aGVsbG8=",
+        "text": "hello"
+      }
     }
   ]
 }

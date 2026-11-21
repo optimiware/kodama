@@ -203,8 +203,8 @@ func TestMCPToolsCallYAMLEnvelopeBound(t *testing.T) {
 // advertises a oneOf, matching api.OperationInputSchema.
 func TestMCPPipelineStartOneOfParity(t *testing.T) {
 	catalog := mcp.ToolCatalog()
-	if len(catalog) != 62 {
-		t.Fatalf("catalog tools = %d; want 62", len(catalog))
+	if len(catalog) != 64 {
+		t.Fatalf("catalog tools = %d; want 64", len(catalog))
 	}
 
 	found := 0
@@ -220,6 +220,26 @@ func TestMCPPipelineStartOneOfParity(t *testing.T) {
 			t.Fatalf("%s input member: %v", tool.Name, err)
 		}
 		rawOneOf, hasOneOf := input["oneOf"]
+		if tool.Name == "kv_put" {
+			var kvBranches []struct {
+				Required []string `json:"required"`
+			}
+			if err := json.Unmarshal(rawOneOf, &kvBranches); err != nil {
+				t.Fatalf("kv_put oneOf: %v", err)
+			}
+			kvNames := make([]string, 0, len(kvBranches))
+			for _, branch := range kvBranches {
+				if len(branch.Required) != 1 {
+					t.Fatalf("kv_put oneOf branch requires %v; want exactly one member", branch.Required)
+				}
+				kvNames = append(kvNames, branch.Required[0])
+			}
+			sort.Strings(kvNames)
+			if !reflect.DeepEqual(kvNames, []string{"data_base64", "text"}) {
+				t.Fatalf("kv_put oneOf selects %v; want data_base64 or text", kvNames)
+			}
+			continue
+		}
 		if tool.Name != "pipeline_start" {
 			if hasOneOf {
 				t.Fatalf("%s advertises an unexpected oneOf: %s", tool.Name, rawOneOf)

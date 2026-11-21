@@ -55,8 +55,8 @@ func TestGitReadVerifyShape(t *testing.T) {
 	if route, ok := api.LookupRoute("git.read"); ok {
 		t.Fatalf("git.read is also a public route %+v", route)
 	}
-	if len(api.Routes()) != 62 {
-		t.Fatalf("api.Routes() has %d rows; want 62", len(api.Routes()))
+	if len(api.Routes()) != 64 {
+		t.Fatalf("api.Routes() has %d rows; want 64", len(api.Routes()))
 	}
 	for _, route := range api.Routes() {
 		if route.Operation == "git.read" || route.MCPTool == "git.read" {

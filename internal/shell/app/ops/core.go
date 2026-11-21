@@ -72,7 +72,7 @@ func inputCodec(codec api.OperationCodec) ops.Codec {
 		for _, name := range routeParamNamesOf(route.Path) {
 			value, ok := jsonField(body, routeFieldOf(codec, name))
 			if !ok || value == "" {
-				value = "placeholder"
+				value = routeParamPlaceholder(name)
 			}
 			params[name] = value
 		}
@@ -102,6 +102,16 @@ func preliminaryRoute(codec api.OperationCodec, body json.RawMessage) (api.Route
 		}
 	}
 	return api.Route{}, false
+}
+
+// routeParamPlaceholder returns a syntactically valid placeholder for one
+// route parameter omitted from a REST body during pre-handler input validation.
+// The handler always binds and validates the concrete route target afterwards.
+func routeParamPlaceholder(name string) string {
+	if name == "key" {
+		return api.KVKeyPrefix + "0000000000000000000000000000000000000000000000000000000000000000"
+	}
+	return "placeholder"
 }
 
 // routeFieldOf returns the canonical request field of one route parameter.

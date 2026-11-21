@@ -151,6 +151,7 @@
     "actions",
     "cleanup",
     "verifications",
+    "kv_objects",
     "receipts",
     "audit",
     "events"
@@ -636,6 +637,87 @@
         }
       ],
       "project_nullable": true,
+      "forced_rls": true
+    },
+    {
+      "name": "kv_objects",
+      "required_columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "tenant_id",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "project_id",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "key",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "content_type",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "size_bytes",
+          "type": "bigint",
+          "nullable": false
+        },
+        {
+          "name": "data",
+          "type": "bytea",
+          "nullable": false
+        },
+        {
+          "name": "created_by",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "created_at",
+          "type": "timestamptz",
+          "nullable": false
+        }
+      ],
+      "checks": [
+        {
+          "name": "kv_objects_size_bounds",
+          "contains": [
+            "size_bytes",
+            "16777216",
+            "octet_length"
+          ]
+        },
+        {
+          "name": "kv_objects_key_format",
+          "contains": [
+            "kv:sha256:"
+          ]
+        }
+      ],
+      "indexes": [
+        {
+          "name": "kv_objects_scope_created",
+          "columns": [
+            "tenant_id",
+            "project_id",
+            "created_at",
+            "id"
+          ],
+          "unique": false,
+          "predicate": ""
+        }
+      ],
+      "project_nullable": false,
       "forced_rls": true
     }
   ],

@@ -11,6 +11,7 @@ import (
 	"github.com/optimiware/kodema/internal/shell/event"
 	"github.com/optimiware/kodema/internal/shell/execution"
 	"github.com/optimiware/kodema/internal/shell/inbox"
+	"github.com/optimiware/kodema/internal/shell/kv"
 	"github.com/optimiware/kodema/internal/shell/log"
 	"github.com/optimiware/kodema/internal/shell/mcpproxy"
 	"github.com/optimiware/kodema/internal/shell/pipeline"
@@ -55,6 +56,8 @@ type Dependencies struct {
 	Receipts ReceiptLookup
 	// Secrets is the real secret management service.
 	Secrets SecretManagement
+	// KV is the real project-scoped content-addressed immutable KV service.
+	KV KVStore
 	// Authority is the optional current-authority reader used by handlers whose
 	// underlying read seam does not confirm registry authority checks itself.
 	Authority authorize.AuthorityReader
@@ -162,6 +165,12 @@ type SecretManagement interface {
 	Delete(context.Context, secret.DeleteCommand) error
 	Get(context.Context, tenancy.Scope, secret.SecretID) (secret.Metadata, error)
 	GetByName(context.Context, tenancy.Scope, id.SecretName) (secret.Metadata, error)
+}
+
+// KVStore is the project-scoped content-addressed immutable KV surface.
+type KVStore interface {
+	Put(context.Context, kv.PutCommand) (kv.PutResult, error)
+	Get(context.Context, kv.GetCommand) (kv.Object, error)
 }
 
 // ServiceAdministration is the service-account administration surface.
