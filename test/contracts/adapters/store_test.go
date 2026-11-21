@@ -246,6 +246,7 @@ func TestSchemaLockOrder(t *testing.T) {
 		"actions",
 		"cleanup",
 		"verifications",
+		"kv_objects",
 		"receipts",
 		"audit",
 		"events",

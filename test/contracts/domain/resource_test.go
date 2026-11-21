@@ -64,8 +64,8 @@ func TestResourceVocabularyOrder(t *testing.T) {
 // never accepts git.read, while a repository binding may declare it next to
 // git.ref.update.
 func TestGitReadIsNotAPublicOperationAndBindingsDeclareIt(t *testing.T) {
-	if len(authorize.Operations()) != 62 {
-		t.Fatalf("public registry has %d operations; want 62", len(authorize.Operations()))
+	if len(authorize.Operations()) != 64 {
+		t.Fatalf("public registry has %d operations; want 64", len(authorize.Operations()))
 	}
 	for _, operation := range authorize.Operations() {
 		if operation.Name == "git.read" || operation.Name == "git.ref.update" {

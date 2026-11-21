@@ -106,6 +106,8 @@ func RunWithDeps(ctx context.Context, config Config, args []string, ports Ports,
 		return runService(ctx, config, args[1:], ports, deps)
 	case "secret":
 		return runSecret(ctx, config, args[1:], ports, deps)
+	case "kv":
+		return runKV(ctx, config, args[1:], ports, deps)
 	case "whoami":
 		return runWhoami(ctx, config, args[1:], ports, deps)
 	case "member":

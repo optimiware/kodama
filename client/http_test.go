@@ -247,8 +247,8 @@ func routeInput(route api.Route) (json.RawMessage, string) {
 // GET/DELETE, expected version, idempotency key and the bearer header.
 func TestHTTPTransportBindsAllRoutes(t *testing.T) {
 	routes := api.Routes()
-	if len(routes) != 62 {
-		t.Fatalf("api.Routes() length = %d; want 62", len(routes))
+	if len(routes) != 64 {
+		t.Fatalf("api.Routes() length = %d; want 64", len(routes))
 	}
 	for _, route := range routes {
 		t.Run(route.Operation, func(t *testing.T) {

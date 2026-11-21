@@ -51,6 +51,7 @@ func buildMigrations() []Migration {
 		{Name: "0006_privileges.sql", SQL: renderPrivilegesMigration(design)},
 		{Name: "0007_model_usage_action_id.sql", SQL: renderModelUsageActionIDMigration()},
 		{Name: "0008_task_review_lifecycle.sql", SQL: renderTaskReviewLifecycleMigration()},
+		{Name: "0009_kv_store.sql", SQL: renderKVStoreMigration()},
 	}
 }
 
@@ -58,8 +59,13 @@ func buildMigrations() []Migration {
 // prior to incremental migrations 0007+ so baseline checksums stay immutable.
 func baselineSchemaDesign() store.Schema {
 	design := store.SchemaDesign()
-	tables := make([]store.Table, len(design.Tables))
-	copy(tables, design.Tables)
+	tables := make([]store.Table, 0, len(design.Tables))
+	for _, table := range design.Tables {
+		if table.Name == store.KVObjectsTable {
+			continue
+		}
+		tables = append(tables, table)
+	}
 	for index := range tables {
 		switch tables[index].Name {
 		case store.ModelUsageTable:
@@ -149,6 +155,73 @@ func renderTaskReviewLifecycleMigration() string {
 		"CREATE INDEX tasks_scope_parent ON tasks (tenant_id, project_id, parent_id);\n" +
 		"ALTER TABLE actions DROP CONSTRAINT actions_request_decision;\n" +
 		"ALTER TABLE actions ADD CONSTRAINT actions_request_decision CHECK (request_decision IS NULL OR request_decision IN ('pass', 'revise', 'fail'));\n"
+}
+
+// renderKVStoreMigration renders incremental migration 0009 adding the
+// project-scoped, content-addressed immutable kv_objects table with composite
+// ownership foreign keys, forced row-level security, and write-once runtime
+// role privileges (SELECT and INSERT only).
+func renderKVStoreMigration() string {
+	design := store.SchemaDesign()
+	var kvTable store.Table
+	found := false
+	for _, table := range design.Tables {
+		if table.Name == store.KVObjectsTable {
+			kvTable = table
+			found = true
+			break
+		}
+	}
+	if !found {
+		panic("postgres: SchemaDesign is missing " + store.KVObjectsTable)
+	}
+	var builder strings.Builder
+	builder.WriteString("-- Migration 0009: project-scoped, content-addressed immutable KV store.\n")
+	builder.WriteString(renderCreateTable(kvTable))
+	for _, unique := range kvTable.Unique {
+		nulls := ""
+		if unique.NullsNotDistinct {
+			nulls = " NULLS NOT DISTINCT"
+		}
+		builder.WriteString(fmt.Sprintf(
+			"ALTER TABLE %s ADD CONSTRAINT %s UNIQUE%s (%s);\n",
+			kvTable.Name, unique.Name, nulls, strings.Join(unique.Columns, ", "),
+		))
+	}
+	for _, key := range kvTable.ForeignKeys {
+		builder.WriteString(fmt.Sprintf(
+			"ALTER TABLE %s ADD CONSTRAINT %s FOREIGN KEY (%s) REFERENCES %s (%s);\n",
+			kvTable.Name, key.Name,
+			strings.Join(key.Columns, ", "), key.References,
+			strings.Join(key.ReferencedColumns, ", "),
+		))
+	}
+	for _, check := range kvTable.Checks {
+		builder.WriteString(fmt.Sprintf(
+			"ALTER TABLE %s ADD CONSTRAINT %s CHECK (%s);\n",
+			kvTable.Name, check.Name, check.Expression,
+		))
+	}
+	for _, idx := range kvTable.Indexes {
+		unique := ""
+		if idx.Unique {
+			unique = "UNIQUE "
+		}
+		builder.WriteString(fmt.Sprintf(
+			"CREATE %sINDEX %s ON %s (%s)",
+			unique, idx.Name, kvTable.Name, strings.Join(idx.Columns, ", "),
+		))
+		if idx.Predicate != "" {
+			builder.WriteString(" WHERE " + idx.Predicate)
+		}
+		builder.WriteString(";\n")
+	}
+	builder.WriteString(fmt.Sprintf("ALTER TABLE %s ENABLE ROW LEVEL SECURITY;\n", kvTable.Name))
+	builder.WriteString(fmt.Sprintf("ALTER TABLE %s FORCE ROW LEVEL SECURITY;\n", kvTable.Name))
+	builder.WriteString(renderPolicy(kvTable) + "\n")
+	builder.WriteString(fmt.Sprintf("ALTER TABLE %s OWNER TO %s;\n", kvTable.Name, design.OwnerRole))
+	builder.WriteString(fmt.Sprintf("GRANT SELECT, INSERT ON %s TO %s;\n", kvTable.Name, design.RuntimeRole))
+	return builder.String()
 }
 
 // migrationTableOrder returns the schema tables so every referenced table is

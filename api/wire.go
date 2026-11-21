@@ -61,3 +61,21 @@ func DecodeResult(data []byte) (Result, error) {
 	}
 	return result, nil
 }
+
+// DecodeOperationResult decodes one bounded result envelope using the
+// operation's response size bound (MaxKVResponseBytes for kv.get,
+// MaxResponseBytes otherwise).
+func DecodeOperationResult(operation string, data []byte) (Result, error) {
+	bound := MaxOperationResponseBytes(operation)
+	if len(data) > bound {
+		return Result{}, invalid("response body is %d bytes; at most %d are allowed", len(data), bound)
+	}
+	var result Result
+	if err := decodeStrict(data, &result); err != nil {
+		return Result{}, err
+	}
+	if err := result.Validate(); err != nil {
+		return Result{}, err
+	}
+	return result, nil
+}

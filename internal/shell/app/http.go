@@ -84,7 +84,7 @@ func (handler *publicHandler) serveMCP(writer http.ResponseWriter, request *http
 	if request.Body == nil {
 		request.Body = http.NoBody
 	}
-	body, err := io.ReadAll(io.LimitReader(request.Body, api.MaxYAMLRequestBytes+1))
+	body, err := io.ReadAll(io.LimitReader(request.Body, api.MaxKVRequestBytes+1))
 	if err != nil {
 		writeHTTPError(writer, fault.New(fault.InternalFailure, "internal failure"))
 		return

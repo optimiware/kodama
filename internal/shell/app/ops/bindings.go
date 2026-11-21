@@ -32,6 +32,7 @@ func Bindings(deps Dependencies) ([]ops.Binding, error) {
 		verifyHandlers,
 		eventHandlers,
 		modelHandlers,
+		kvHandlers,
 	} {
 		for operation, handler := range family(deps) {
 			if handler == nil {
@@ -84,6 +85,7 @@ func (deps Dependencies) validate() error {
 		{"execution operations", deps.Executions},
 		{"receipt lookup", deps.Receipts},
 		{"secret management", deps.Secrets},
+		{"kv store", deps.KV},
 		{"service administration", deps.Services},
 		{"credential administration", deps.Credentials},
 		{"task operations", deps.Tasks},

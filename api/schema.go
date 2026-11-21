@@ -93,10 +93,10 @@ func addRequiredInputFields(input map[string]any, params []RouteParam) {
 }
 
 // inputSelectionBranches advertises the exclusive input selections of an
-// operation whose request requires exactly one of two members. Only
-// pipeline.start selects a stored pipeline or inline YAML.
+// operation whose request requires exactly one of two members.
 var inputSelectionBranches = map[string][]string{
 	"pipeline.start": {"pipeline_id", "yaml"},
+	"kv.put":         {"text", "data_base64"},
 }
 
 // schemaForType projects one Go type into a JSON Schema object. Nested declared
@@ -210,6 +210,10 @@ func schemaForField(field reflect.StructField, seen map[reflect.Type]bool) map[s
 		schema["minLength"] = 1
 		schema["maxLength"] = MaxToolNameBytes
 		schema["pattern"] = "^[A-Za-z0-9_-]+$"
+	case "kv_key":
+		schema["minLength"] = KVKeyLength
+		schema["maxLength"] = KVKeyLength
+		schema["pattern"] = "^kv:sha256:[0-9a-f]{64}$"
 	}
 	return schema
 }

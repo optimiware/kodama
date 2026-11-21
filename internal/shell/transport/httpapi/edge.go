@@ -147,7 +147,7 @@ func (edge *Edge) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 		writeError(writer, fault.New(fault.InternalFailure, "internal failure"))
 		return
 	}
-	if len(encoded) > api.MaxResponseBytes {
+	if len(encoded) > api.MaxOperationResponseBytes(route.Operation) {
 		writeError(writer, fault.New(fault.InternalFailure, "internal failure"))
 		return
 	}

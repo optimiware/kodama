@@ -21,8 +21,8 @@ func TestHumanGrantMatrixAllowsExactlyTheDeclaredRoles(t *testing.T) {
 	ctx := context.Background()
 
 	operations := authorize.Operations()
-	if len(operations) != 62 {
-		t.Fatalf("registry has %d operations; want the declared 62", len(operations))
+	if len(operations) != 64 {
+		t.Fatalf("registry has %d operations; want the declared 64", len(operations))
 	}
 
 	for _, operation := range operations {

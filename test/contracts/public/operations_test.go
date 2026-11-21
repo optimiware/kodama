@@ -155,6 +155,10 @@ var operationCases = []operationCase{
 
 	// Optional tool surface.
 	{operation: "tool.invoke", request: api.ToolInvokeRequest{}, result: api.ToolInvokeResult{}},
+
+	// Project-scoped, content-addressed immutable KV store.
+	{operation: "kv.put", request: api.KVPutRequest{}, result: api.KVPutResult{}},
+	{operation: "kv.get", request: api.KVGetRequest{}, result: api.KVGetResult{}},
 }
 
 // zeroValidRequestFields are required request fields whose zero value is a
@@ -193,6 +197,9 @@ var zeroValidResultFields = map[string]bool{
 	"events":              true,
 	"has_more":            true,
 	"replayed":            true,
+	"size_bytes":          true,
+	"existed":             true,
+	"data_base64":         true,
 }
 
 // replayFlagOperations are the operations whose result may legitimately carry

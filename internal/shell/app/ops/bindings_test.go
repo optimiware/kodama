@@ -18,8 +18,8 @@ import (
 func TestEveryRegistryOperationHasARealBinding(t *testing.T) {
 	h := newHarness(t)
 	operations := authorize.Operations()
-	if len(operations) != 62 {
-		t.Fatalf("registry operations = %d; want 62", len(operations))
+	if len(operations) != 64 {
+		t.Fatalf("registry operations = %d; want 64", len(operations))
 	}
 	if len(h.bindingsTable) != len(operations) {
 		t.Fatalf("bindings = %d; want %d", len(h.bindingsTable), len(operations))
@@ -52,6 +52,7 @@ func TestBindingsRefusesIncompleteDependencies(t *testing.T) {
 		Executions:     h.executions,
 		Receipts:       mustReceiptLookup(t, h.store),
 		Secrets:        h.secrets,
+		KV:             h.kv,
 		Services:       h.services,
 		Credentials:    h.credentials,
 		Tasks:          h.taskService,

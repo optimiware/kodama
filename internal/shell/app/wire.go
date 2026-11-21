@@ -18,6 +18,7 @@ import (
 	shellExecution "github.com/optimiware/kodema/internal/shell/execution"
 	"github.com/optimiware/kodema/internal/shell/gateway"
 	"github.com/optimiware/kodema/internal/shell/inbox"
+	"github.com/optimiware/kodema/internal/shell/kv"
 	shellLog "github.com/optimiware/kodema/internal/shell/log"
 	"github.com/optimiware/kodema/internal/shell/pipeline"
 	"github.com/optimiware/kodema/internal/shell/request"
@@ -247,6 +248,15 @@ func wireApp(ctx context.Context, builder *builder, environment *environment) (*
 		Scanner:        environment.scanner,
 		Cipher:         environment.cipher,
 		Lookup:         secretLookup,
+	})
+	if err != nil {
+		return nil, err
+	}
+	kvService, err := kv.NewService(kv.Config{
+		Clock:    clock,
+		IDs:      ids,
+		Executor: notifyingStore,
+		Scanner:  environment.scanner,
 	})
 	if err != nil {
 		return nil, err
@@ -631,6 +641,7 @@ func wireApp(ctx context.Context, builder *builder, environment *environment) (*
 		Executions:     executionService,
 		Receipts:       receiptLookup,
 		Secrets:        secretManager,
+		KV:             kvService,
 		Authority:      identityAdapter,
 		Scanner:        environment.scanner,
 		Services:       serviceAdmin,

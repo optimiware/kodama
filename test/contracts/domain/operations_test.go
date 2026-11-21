@@ -326,6 +326,14 @@ func expectedOperations() []expectedOperation {
 		eop("tool.invoke", authorize.FamilyTool, authorize.ScopeProject,
 			roles(engineer), roles(engineer), authorize.ExecConfiguredTools,
 			checks(authorize.CheckMembership, authorize.CheckExecutionRunning, authorize.CheckActionDeadline), authorize.ReceiptNone, invokeErrors()),
+
+		// Project-scoped, content-addressed immutable KV store.
+		anySvc(eop("kv.put", authorize.FamilyKV, authorize.ScopeProject,
+			roles(engineer, operator, reviewer), roles(), authorize.ExecProjectKV,
+			checks(authorize.CheckMembership, authorize.CheckExecutionRunning, authorize.CheckActionDeadline), authorize.ReceiptNone, append(mutationErrors(), fault.DeadlineExpired))),
+		anySvc(eop("kv.get", authorize.FamilyKV, authorize.ScopeProject,
+			allHumans, roles(), authorize.ExecProjectKV,
+			checks(authorize.CheckMembership), authorize.ReceiptNone, readErrors())),
 	}
 }
 

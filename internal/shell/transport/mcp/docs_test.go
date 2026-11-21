@@ -116,9 +116,9 @@ func TestMCPResourcesListAndRead(t *testing.T) {
 		}
 	}
 
-	// Tool catalog parity remains untouched (62 operations).
-	if got := len(mcp.ToolCatalog()); got != 62 {
-		t.Fatalf("ToolCatalog length = %d; want 62", got)
+	// Tool catalog parity remains untouched (64 operations).
+	if got := len(mcp.ToolCatalog()); got != 64 {
+		t.Fatalf("ToolCatalog length = %d; want 64", got)
 	}
 	if got := router.callCount(); got != 0 {
 		t.Fatalf("router calls = %d; want 0", got)
