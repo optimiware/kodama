@@ -34,12 +34,14 @@ func Migrations() []Migration {
 	return migrations
 }
 
-// buildMigrations renders the baseline schema from the declaration data. A
-// later schema change is appended as a new migration; these six are not
-// regenerated once a release has applied them.
+// buildMigrations renders the baseline schema (0001..0006) plus incremental
+// migrations appended after the baseline. Baseline migrations 0001..0006 are
+// frozen and never rewritten once a release has applied them; post-baseline
+// schema additions are excluded from the baseline render and emitted in their
+// own sequentially numbered migrations.
 func buildMigrations() []Migration {
 	design := store.SchemaDesign()
-	tables := migrationTableOrder(design.Tables)
+	tables := migrationTableOrder(baselineTables(design.Tables))
 	return []Migration{
 		{Name: "0001_roles.sql", SQL: renderRolesMigration(design)},
 		{Name: "0002_tables.sql", SQL: renderTablesMigration(design, tables)},
@@ -47,7 +49,50 @@ func buildMigrations() []Migration {
 		{Name: "0004_indexes.sql", SQL: renderIndexesMigration(tables)},
 		{Name: "0005_row_level_security.sql", SQL: renderSecurityMigration(design)},
 		{Name: "0006_privileges.sql", SQL: renderPrivilegesMigration(design)},
+		{Name: "0007_model_usage_action_id.sql", SQL: renderModelUsageActionIDMigration()},
 	}
+}
+
+// baselineTables strips post-baseline schema additions so migrations 0001..0006
+// preserve their frozen SQL and checksums across upgrades.
+func baselineTables(tables []store.Table) []store.Table {
+	out := make([]store.Table, len(tables))
+	for i, table := range tables {
+		if table.Name != store.ModelUsageTable {
+			out[i] = table
+			continue
+		}
+		cloned := table
+		cols := make([]store.Column, 0, len(table.Columns))
+		for _, col := range table.Columns {
+			if col.Name == "action_id" {
+				continue
+			}
+			cols = append(cols, col)
+		}
+		fks := make([]store.ForeignKey, 0, len(table.ForeignKeys))
+		for _, fk := range table.ForeignKeys {
+			if fk.Name == "model_usage_action" {
+				continue
+			}
+			fks = append(fks, fk)
+		}
+		cloned.Columns = cols
+		cloned.ForeignKeys = fks
+		out[i] = cloned
+	}
+	return out
+}
+
+// renderModelUsageActionIDMigration renders incremental migration 0007 adding
+// nullable action_id attribution and its composite ownership foreign key to
+// model_usage for per-action LLM budget accounting.
+func renderModelUsageActionIDMigration() string {
+	var builder strings.Builder
+	builder.WriteString("-- Migration 0007: nullable action_id attribution column on model_usage.\n")
+	builder.WriteString("ALTER TABLE model_usage ADD COLUMN action_id TEXT;\n")
+	builder.WriteString("ALTER TABLE model_usage ADD CONSTRAINT model_usage_action FOREIGN KEY (tenant_id, project_id, action_id) REFERENCES actions (tenant_id, project_id, id);\n")
+	return builder.String()
 }
 
 // migrationTableOrder returns the schema tables so every referenced table is

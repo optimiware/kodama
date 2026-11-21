@@ -82,6 +82,7 @@ func TestSchemaPersistsKernelAndGatewayEvidence(t *testing.T) {
 		"gateway.UsageRecord.Scope":         {{"model_usage", "tenant_id"}, {"model_usage", "project_id"}},
 		"gateway.UsageRecord.PrincipalID":   {{"model_usage", "principal_id"}},
 		"gateway.UsageRecord.ExecutionID":   {{"model_usage", "execution_id"}},
+		"gateway.UsageRecord.ActionID":      {{"model_usage", "action_id"}},
 		"gateway.UsageRecord.Model":         {{"model_usage", "model"}},
 		"gateway.UsageRecord.UpstreamModel": {{"model_usage", "upstream_model"}},
 		"gateway.UsageRecord.Outcome":       {{"model_usage", "outcome"}},

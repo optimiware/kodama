@@ -282,3 +282,51 @@ func formatProxyUsageModels(providerName, requestedModel, responseModel string) 
 	}
 	return providerName + "/" + effective, effective
 }
+
+// ensureOpenAIStreamIncludeUsage injects `"stream_options": {"include_usage": true}`
+// into streaming OpenAI-compatible `/chat/completions` JSON request bodies when
+// `stream_options.include_usage` is unset, so upstream providers report token
+// usage in the final SSE chunk instead of omitting usage on streamed calls.
+func ensureOpenAIStreamIncludeUsage(upstreamPath string, body []byte) []byte {
+	if len(body) == 0 {
+		return body
+	}
+	if upstreamPath != "/chat/completions" && !strings.HasSuffix(upstreamPath, "/chat/completions") {
+		return body
+	}
+	var payload map[string]json.RawMessage
+	if err := json.Unmarshal(body, &payload); err != nil || payload == nil {
+		return body
+	}
+	rawStream, hasStream := payload["stream"]
+	if !hasStream {
+		return body
+	}
+	var streaming bool
+	if err := json.Unmarshal(rawStream, &streaming); err != nil || !streaming {
+		return body
+	}
+	rawOpts, hasOpts := payload["stream_options"]
+	if !hasOpts || bytes.Equal(bytes.TrimSpace(rawOpts), []byte("null")) {
+		payload["stream_options"] = json.RawMessage(`{"include_usage":true}`)
+	} else {
+		var opts map[string]json.RawMessage
+		if err := json.Unmarshal(rawOpts, &opts); err != nil || opts == nil {
+			return body
+		}
+		if existing, ok := opts["include_usage"]; ok && !bytes.Equal(bytes.TrimSpace(existing), []byte("null")) {
+			return body
+		}
+		opts["include_usage"] = json.RawMessage("true")
+		encodedOpts, err := json.Marshal(opts)
+		if err != nil {
+			return body
+		}
+		payload["stream_options"] = encodedOpts
+	}
+	updated, err := json.Marshal(payload)
+	if err != nil {
+		return body
+	}
+	return updated
+}

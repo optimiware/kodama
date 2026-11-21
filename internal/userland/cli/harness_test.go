@@ -49,10 +49,104 @@ func TestHarnessExecHelperProcess(t *testing.T) {
 	case "proxy-checks":
 		runHarnessHelperProxyChecks()
 		os.Exit(0)
+	case "edge-checks":
+		runHarnessHelperEdgeChecks()
+		os.Exit(0)
+	case "abort-check":
+		runHarnessHelperAbortCheck()
+		os.Exit(0)
+	case "single-call":
+		runHarnessHelperSingleCall()
+		os.Exit(0)
+	case "print-env":
+		fmt.Printf("OPENAI_BASE_URL=%s\n", os.Getenv("OPENAI_BASE_URL"))
+		fmt.Printf("CUSTOM_ONLY=%s\n", os.Getenv("CUSTOM_ONLY"))
+		os.Exit(0)
 	default:
 		fmt.Fprintf(os.Stderr, "unknown helper mode %q\n", mode)
 		os.Exit(99)
 	}
+}
+
+func runHarnessHelperSingleCall() {
+	openAIBase := os.Getenv("OPENAI_BASE_URL")
+	openAIKey := os.Getenv("OPENAI_API_KEY")
+	client := &http.Client{Timeout: 10 * time.Second}
+	req, _ := http.NewRequest(http.MethodPost, openAIBase+"/chat/completions", strings.NewReader(`{"model":"gpt-4o"}`))
+	req.Header.Set("Authorization", "Bearer "+openAIKey)
+	resp, err := client.Do(req)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "single-call request error: %v\n", err)
+		os.Exit(40)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	fmt.Printf("STATUS=%d BODY=%s\n", resp.StatusCode, strings.TrimSpace(string(body)))
+}
+
+func runHarnessHelperEdgeChecks() {
+	proxyURL := os.Getenv("KODEMA_HARNESS_PROXY_URL")
+	key := os.Getenv("OPENAI_API_KEY")
+	// Use a raw TCP connection for traversal tests so net/http's URL cleaner
+	// doesn't normalize ".." before it reaches the loopback proxy.
+	host := strings.TrimPrefix(proxyURL, "http://")
+	traversalPaths := []string{
+		"/llm/openai/../admin",
+		"/llm/openai/v1/..%2fadmin",
+		"/llm/openai/v1/%2fsecret",
+		"/llm/openai/v1/%5csecret",
+		"/llm/openai/v1/%00secret",
+		"/llm/openai/",
+		"/llm/",
+	}
+	for _, rawPath := range traversalPaths {
+		conn, err := net.DialTimeout("tcp", host, 5*time.Second)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "dial %s: %v\n", host, err)
+			os.Exit(50)
+		}
+		_, _ = fmt.Fprintf(conn, "POST %s HTTP/1.1\r\nHost: %s\r\nAuthorization: Bearer %s\r\nContent-Length: 0\r\nConnection: close\r\n\r\n", rawPath, host, key)
+		reader := bufio.NewReader(conn)
+		statusLine, err := reader.ReadString('\n')
+		_ = conn.Close()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "read status for %q: %v\n", rawPath, err)
+			os.Exit(51)
+		}
+		if !strings.Contains(statusLine, " 404 ") && !strings.Contains(statusLine, " 400 ") {
+			fmt.Fprintf(os.Stderr, "traversal path %q returned %q; want 404 or 400\n", rawPath, strings.TrimSpace(statusLine))
+			os.Exit(52)
+		}
+	}
+	fmt.Fprintln(os.Stdout, "edge-checks-passed")
+}
+
+func runHarnessHelperAbortCheck() {
+	anthropicBase := os.Getenv("ANTHROPIC_BASE_URL")
+	key := os.Getenv("ANTHROPIC_API_KEY")
+	client := &http.Client{Timeout: 10 * time.Second}
+	req, _ := http.NewRequest(http.MethodPost, anthropicBase+"/v1/messages", strings.NewReader(`{"model":"claude-sonnet-4","stream":true}`))
+	req.Header.Set("x-api-key", key)
+	resp, err := client.Do(req)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "abort-check dial error: %v\n", err)
+		os.Exit(60)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		fmt.Fprintf(os.Stderr, "abort-check status = %d; want 200 before mid-stream abort\n", resp.StatusCode)
+		os.Exit(61)
+	}
+	data, readErr := io.ReadAll(resp.Body)
+	if readErr == nil {
+		fmt.Fprintf(os.Stderr, "abort-check received clean EOF (%q); want truncated stream error\n", string(data))
+		os.Exit(62)
+	}
+	if !strings.Contains(string(data), "chunk-1") {
+		fmt.Fprintf(os.Stderr, "abort-check missing first chunk before abort: %q\n", string(data))
+		os.Exit(63)
+	}
+	fmt.Fprintln(os.Stdout, "abort-detected-cleanly")
 }
 
 func runHarnessHelperProxyChecks() {
@@ -495,12 +589,27 @@ func TestHarnessExec_PropagatesExitCodeAndSignalShutdown(t *testing.T) {
 	})
 
 	t.Run("usage errors", func(t *testing.T) {
+		badCAFile := filepath.Join(t.TempDir(), "bad.pem")
+		if err := os.WriteFile(badCAFile, []byte("not-a-pem-cert"), 0o600); err != nil {
+			t.Fatalf("write bad ca: %v", err)
+		}
+		caDir := t.TempDir()
 		cases := [][]string{
 			{"harness"},
 			{"harness", "unknown"},
 			{"harness", "exec"},
 			{"harness", "exec", "--"},
 			{"harness", "exec", "--unknown-flag", "--", "true"},
+			{"harness", "exec", "--server=", "--", "true"},
+			{"harness", "exec", "--server", "", "--", "true"},
+			{"harness", "exec", "--ca-file=", "--", "true"},
+			{"harness", "exec", "--ca-file", "", "--", "true"},
+			{"harness", "exec", "--ca-file", "   ", "--", "true"},
+			{"harness", "exec", "--ca-file", filepath.Join(t.TempDir(), "missing.pem"), "--", "true"},
+			{"harness", "exec", "--ca-file", caDir, "--", "true"},
+			{"harness", "exec", "--ca-file", badCAFile, "--", "true"},
+			{"harness", "exec", "--token-file=", "--", "true"},
+			{"harness", "exec", "--token-file", "", "--", "true"},
 		}
 		for _, args := range cases {
 			var out, errOut bytes.Buffer
@@ -514,6 +623,236 @@ func TestHarnessExec_PropagatesExitCodeAndSignalShutdown(t *testing.T) {
 			if code != cli.ExitUsage {
 				t.Errorf("args %v: exit code = %d; want %d (stderr=%q)", args, code, cli.ExitUsage, errOut.String())
 			}
+		}
+	})
+}
+
+func TestHarnessExec_SecurityAndEdgeCases(t *testing.T) {
+	t.Run("missing, empty, and oversized token files return 503 without hitting upstream", func(t *testing.T) {
+		var upstreamCalls atomic.Int32
+		upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			upstreamCalls.Add(1)
+			w.WriteHeader(http.StatusOK)
+		}))
+		defer upstream.Close()
+
+		dir := t.TempDir()
+		emptyTok := filepath.Join(dir, "empty")
+		_ = os.WriteFile(emptyTok, []byte("   \n"), 0o600)
+		oversizedTok := filepath.Join(dir, "oversized")
+		_ = os.WriteFile(oversizedTok, bytes.Repeat([]byte("a"), 70<<10), 0o600)
+		missingTok := filepath.Join(dir, "missing")
+
+		t.Setenv("KODEMA_TEST_HARNESS_HELPER", "1")
+		t.Setenv("KODEMA_TEST_HARNESS_MODE", "single-call")
+
+		for _, tc := range []struct {
+			name string
+			path string
+		}{
+			{"missing", missingTok},
+			{"empty", emptyTok},
+			{"oversized", oversizedTok},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				var out, errOut bytes.Buffer
+				code := cli.RunWithDeps(
+					context.Background(),
+					cli.Config{},
+					[]string{
+						"harness", "exec",
+						"--server", upstream.URL,
+						"--token-file", tc.path,
+						"--",
+						os.Args[0], "-test.run=^TestHarnessExecHelperProcess$",
+					},
+					cli.Ports{Out: &out, Err: &errOut},
+					cli.CommandDeps{},
+				)
+				if code != 0 {
+					t.Fatalf("exit code = %d; stderr=%q", code, errOut.String())
+				}
+				if !strings.Contains(out.String(), "STATUS=503") || !strings.Contains(out.String(), "dependency_unavailable") {
+					t.Fatalf("unexpected response for %s token file: %q", tc.name, out.String())
+				}
+			})
+		}
+		if got := upstreamCalls.Load(); got != 0 {
+			t.Fatalf("upstream received %d calls for bad token files; want 0", got)
+		}
+	})
+
+	t.Run("path traversal attempts on /llm/* are rejected without dialing upstream", func(t *testing.T) {
+		var upstreamCalls atomic.Int32
+		upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			upstreamCalls.Add(1)
+			w.WriteHeader(http.StatusOK)
+		}))
+		defer upstream.Close()
+
+		tokFile := filepath.Join(t.TempDir(), "token")
+		_ = os.WriteFile(tokFile, []byte("kodex.exec-1.tok"), 0o600)
+
+		t.Setenv("KODEMA_TEST_HARNESS_HELPER", "1")
+		t.Setenv("KODEMA_TEST_HARNESS_MODE", "edge-checks")
+
+		var out, errOut bytes.Buffer
+		code := cli.RunWithDeps(
+			context.Background(),
+			cli.Config{},
+			[]string{
+				"harness", "exec",
+				"--server", upstream.URL,
+				"--token-file", tokFile,
+				"--",
+				os.Args[0], "-test.run=^TestHarnessExecHelperProcess$",
+			},
+			cli.Ports{Out: &out, Err: &errOut},
+			cli.CommandDeps{},
+		)
+		if code != 0 || !strings.Contains(out.String(), "edge-checks-passed") {
+			t.Fatalf("traversal check failed: code=%d out=%q err=%q", code, out.String(), errOut.String())
+		}
+		if got := upstreamCalls.Load(); got != 0 {
+			t.Fatalf("upstream received %d calls on traversal attempts; want 0", got)
+		}
+	})
+
+	t.Run("mid-stream upstream abort aborts downstream connection instead of clean EOF", func(t *testing.T) {
+		upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "text/event-stream")
+			// Advertise a Content-Length larger than what we write before closing
+			// the raw socket so the proxy's resp.Body.Read receives io.ErrUnexpectedEOF.
+			w.Header().Set("Content-Length", "1024")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("data: {\"text\":\"chunk-1\"}\n\n"))
+			if f, ok := w.(http.Flusher); ok {
+				f.Flush()
+			}
+			if hj, ok := w.(http.Hijacker); ok {
+				if conn, _, err := hj.Hijack(); err == nil {
+					_ = conn.Close()
+				}
+			}
+		}))
+		defer upstream.Close()
+
+		tokFile := filepath.Join(t.TempDir(), "token")
+		_ = os.WriteFile(tokFile, []byte("kodex.exec-1.tok"), 0o600)
+
+		t.Setenv("KODEMA_TEST_HARNESS_HELPER", "1")
+		t.Setenv("KODEMA_TEST_HARNESS_MODE", "abort-check")
+
+		var out, errOut bytes.Buffer
+		code := cli.RunWithDeps(
+			context.Background(),
+			cli.Config{},
+			[]string{
+				"harness", "exec",
+				"--server", upstream.URL,
+				"--token-file", tokFile,
+				"--",
+				os.Args[0], "-test.run=^TestHarnessExecHelperProcess$",
+			},
+			cli.Ports{Out: &out, Err: &errOut},
+			cli.CommandDeps{},
+		)
+		if code != 0 || !strings.Contains(out.String(), "abort-detected-cleanly") {
+			t.Fatalf("mid-stream abort check failed: code=%d out=%q err=%q", code, out.String(), errOut.String())
+		}
+	})
+
+	t.Run("ambient HTTP_PROXY and deps.HTTP do not hijack upstream calls", func(t *testing.T) {
+		var poisonHits atomic.Int32
+		poisonProxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			poisonHits.Add(1)
+			w.WriteHeader(http.StatusTeapot)
+		}))
+		defer poisonProxy.Close()
+
+		upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"direct":true}`))
+		}))
+		defer upstream.Close()
+
+		tokFile := filepath.Join(t.TempDir(), "token")
+		_ = os.WriteFile(tokFile, []byte("kodex.exec-1.tok"), 0o600)
+
+		t.Setenv("HTTP_PROXY", poisonProxy.URL)
+		t.Setenv("HTTPS_PROXY", poisonProxy.URL)
+		t.Setenv("NO_PROXY", "")
+		t.Setenv("KODEMA_TEST_HARNESS_HELPER", "1")
+		t.Setenv("KODEMA_TEST_HARNESS_MODE", "single-call")
+
+		// Even if deps.HTTP is populated (like clientcmd sets for REST/MCP),
+		// harness exec must construct its own Proxy:nil upstream transport!
+		proxyUsingTransport := http.DefaultTransport.(*http.Transport).Clone()
+		var out, errOut bytes.Buffer
+		code := cli.RunWithDeps(
+			context.Background(),
+			cli.Config{},
+			[]string{
+				"harness", "exec",
+				"--server", upstream.URL,
+				"--token-file", tokFile,
+				"--",
+				os.Args[0], "-test.run=^TestHarnessExecHelperProcess$",
+			},
+			cli.Ports{Out: &out, Err: &errOut},
+			cli.CommandDeps{HTTP: proxyUsingTransport},
+		)
+		if code != 0 || !strings.Contains(out.String(), `"direct":true`) {
+			t.Fatalf("direct upstream call failed: code=%d out=%q err=%q", code, out.String(), errOut.String())
+		}
+		if got := poisonHits.Load(); got != 0 {
+			t.Fatalf("ambient HTTP_PROXY hijacked %d upstream calls; want 0", got)
+		}
+	})
+
+	t.Run("honors deps.Environ and pre-cancelled context", func(t *testing.T) {
+		// Pre-cancelled context fails immediately before launching child.
+		cancelled, cancel := context.WithCancel(context.Background())
+		cancel()
+		var out, errOut bytes.Buffer
+		code := cli.RunWithDeps(
+			cancelled,
+			cli.Config{ServerURL: "https://kodema.example.test"},
+			[]string{"harness", "exec", "--", os.Args[0], "-test.run=^TestHarnessExecHelperProcess$"},
+			cli.Ports{Out: &out, Err: &errOut},
+			cli.CommandDeps{},
+		)
+		if code != cli.ExitFailure {
+			t.Fatalf("cancelled ctx exit code = %d; want %d", code, cli.ExitFailure)
+		}
+
+		// deps.Environ controls child environment without reading os.Environ().
+		out.Reset()
+		errOut.Reset()
+		code = cli.RunWithDeps(
+			context.Background(),
+			cli.Config{ServerURL: "https://kodema.example.test"},
+			[]string{"harness", "exec", "--", os.Args[0], "-test.run=^TestHarnessExecHelperProcess$"},
+			cli.Ports{Out: &out, Err: &errOut},
+			cli.CommandDeps{
+				Environ: func() []string {
+					return []string{
+						"KODEMA_TEST_HARNESS_HELPER=1",
+						"KODEMA_TEST_HARNESS_MODE=print-env",
+						"CUSTOM_ONLY=from-deps-environ",
+						"KODEMA_LLM_OPENAI_BASE_URL=https://kodema.example.test/llm/openai/custom-v2",
+					}
+				},
+			},
+		)
+		if code != 0 {
+			t.Fatalf("deps.Environ exit code = %d; stderr=%q", code, errOut.String())
+		}
+		if !strings.Contains(out.String(), "CUSTOM_ONLY=from-deps-environ") {
+			t.Fatalf("child did not receive deps.Environ variable: %q", out.String())
+		}
+		if !strings.Contains(out.String(), "/llm/openai/custom-v2") {
+			t.Fatalf("child did not rewrite provider base URL from deps.Environ: %q", out.String())
 		}
 	})
 }

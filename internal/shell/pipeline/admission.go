@@ -60,6 +60,12 @@ func (action AdmittedAction) Validate() error {
 		if action.Container == nil || action.Request != nil {
 			return fault.New(fault.InvalidInput, "container action requires exactly one container declaration")
 		}
+		if err := definition.ValidateCaches(action.Container.Caches); err != nil {
+			return err
+		}
+		if err := definition.ValidateBudget(action.Container.Budget); err != nil {
+			return err
+		}
 	case definition.ActionKindRequest:
 		if action.Request == nil || action.Container != nil {
 			return fault.New(fault.InvalidInput, "request action requires exactly one request declaration")

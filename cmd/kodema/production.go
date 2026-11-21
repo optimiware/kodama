@@ -451,6 +451,7 @@ func newProductionTenantAdapter(getenv productionEnv, cluster *driverkube.Cluste
 		Cleanup:          runtimekube.CleanupPolicy{Attempts: 3, Backoff: time.Second},
 		WorkloadCA:       runtimekube.WorkloadCAConfig{SecretName: strings.TrimSpace(getenv("KODEMA_WORKLOAD_CA_SECRET"))},
 		ImagePullSecrets: imagePullSecrets,
+		CacheClaimName:   strings.TrimSpace(getenv("KODEMA_WORKLOAD_CACHE_CLAIM")),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("kubernetes runtime: %w", err)

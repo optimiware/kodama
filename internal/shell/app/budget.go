@@ -61,9 +61,16 @@ func (reader *scopedBudgetReader) ReadExecutionBudget(
 		result.TaskID = id.TaskID(rawTaskID)
 	}
 
-	if snapBytes, ok := row.Values["snapshot"].([]byte); ok && len(snapBytes) > 0 {
-		admitted, decErr := snapshotdoc.Decode(snapBytes)
-		if decErr == nil {
+	if rawSnap, exists := row.Values["snapshot"]; exists && rawSnap != nil {
+		snapBytes, ok := rawSnap.([]byte)
+		if !ok {
+			return gateway.ExecutionBudgetContext{}, fault.New(fault.InternalFailure, "execution snapshot has invalid type")
+		}
+		if len(snapBytes) > 0 {
+			admitted, decErr := snapshotdoc.Decode(snapBytes)
+			if decErr != nil {
+				return gateway.ExecutionBudgetContext{}, fault.Wrap(fault.InternalFailure, "execution snapshot is corrupt", decErr)
+			}
 			if result.TaskID == "" && admitted.Snapshot.TaskID != "" {
 				result.TaskID = admitted.Snapshot.TaskID
 			}
@@ -71,7 +78,10 @@ func (reader *scopedBudgetReader) ReadExecutionBudget(
 				result.Pipeline = budgetLimitsFromDefinition(admitted.Snapshot.Budget)
 			}
 			if actionID != "" {
-				actionIdx, hasIdx := reader.actionIndex(ctx, scope, actionID)
+				actionIdx, hasIdx, idxErr := reader.actionIndex(ctx, scope, actionID)
+				if idxErr != nil {
+					return gateway.ExecutionBudgetContext{}, idxErr
+				}
 				if hasIdx && actionIdx >= 0 && actionIdx < len(admitted.Actions) {
 					admittedAction := admitted.Actions[actionIdx]
 					if admittedAction.Container != nil && admittedAction.Container.Budget != nil {
@@ -82,60 +92,36 @@ func (reader *scopedBudgetReader) ReadExecutionBudget(
 		}
 	}
 
-	if result.TaskID != "" && reader.scanner != nil {
-		siblings, err := reader.taskExecutionIDs(ctx, scope, result.TaskID)
-		if err != nil {
-			return gateway.ExecutionBudgetContext{}, err
-		}
-		if len(siblings) > 0 {
-			result.SiblingExecutions = siblings
-		}
-	}
 	return result, nil
 }
 
-func (reader *scopedBudgetReader) actionIndex(ctx context.Context, scope tenancy.Scope, actionID id.ActionID) (int, bool) {
+func (reader *scopedBudgetReader) actionIndex(ctx context.Context, scope tenancy.Scope, actionID id.ActionID) (int, bool, error) {
 	row, err := reader.executor.Read(ctx, scope, "actions", string(actionID))
 	if err != nil {
-		return 0, false
+		if class, ok := fault.ClassOf(err); ok && class == fault.NotFound {
+			return 0, false, nil
+		}
+		return 0, false, err
 	}
 	switch v := row.Values["index"].(type) {
 	case int64:
-		return int(v), true
+		return int(v), true, nil
 	case int:
-		return v, true
+		return v, true, nil
 	default:
-		return 0, false
+		return 0, false, fault.New(fault.InternalFailure, "action row index is invalid")
 	}
 }
 
-func (reader *scopedBudgetReader) taskExecutionIDs(ctx context.Context, scope tenancy.Scope, taskID id.TaskID) ([]id.ExecutionID, error) {
-	var (
-		after string
-		out   []id.ExecutionID
-	)
-	for {
-		page, err := reader.scanner.Query(ctx, scope, store.ScanQuery{
-			Table:   "executions",
-			Equals:  map[string]any{"task_id": string(taskID)},
-			OrderBy: []store.Order{{Column: "created_at"}, {Column: "id"}},
-			After:   after,
-			Limit:   store.MaxQueryLimit,
-		})
-		if err != nil {
-			return nil, err
-		}
-		for _, row := range page.Rows {
-			if rawID, ok := row.Values["id"].(string); ok && rawID != "" {
-				out = append(out, id.ExecutionID(rawID))
-			}
-		}
-		if !page.HasMore {
-			break
-		}
-		after = page.Next
+func (reader *scopedBudgetReader) ReadTaskExecutions(
+	ctx context.Context,
+	scope tenancy.Scope,
+	taskID id.TaskID,
+) ([]id.ExecutionID, error) {
+	if reader == nil || reader.scanner == nil || !scope.ProjectScoped() || taskID == "" {
+		return nil, nil
 	}
-	return out, nil
+	return gateway.QueryTaskExecutionIDs(ctx, reader.scanner, scope, taskID)
 }
 
 func (reader *scopedBudgetReader) ReadUsageTotals(

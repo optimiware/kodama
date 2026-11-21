@@ -31,3 +31,29 @@ func TestBuildJobManifestRendersCacheSubPathAndEmptyDir(t *testing.T) {
 		t.Fatalf("missing emptyDir cache mount in rendered manifest: %s", text)
 	}
 }
+
+func TestBuildJobManifestRejectsUnsafeVolumeSubPath(t *testing.T) {
+	badSubPaths := []string{
+		"/etc/passwd",
+		"../escape",
+		"caches/../escape",
+		".",
+		"caches/.",
+		"caches//double",
+		"caches/trailing/",
+		`caches\backslash`,
+		" leading-space",
+		"   ",
+	}
+	for _, subPath := range badSubPaths {
+		t.Run(subPath, func(t *testing.T) {
+			job := w31Job()
+			job.Spec.Volumes = []runtimekube.Volume{
+				{Name: "cache-bad", MountPath: "/kodema/cache/go-mod", ClaimName: "shared-cache", SubPath: subPath},
+			}
+			if _, err := buildJobManifest(job); err == nil {
+				t.Fatalf("buildJobManifest accepted unsafe SubPath %q; want invalid_input", subPath)
+			}
+		})
+	}
+}

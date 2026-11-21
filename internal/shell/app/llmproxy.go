@@ -339,13 +339,14 @@ func (handler *llmProxyHandler) ServeHTTP(writer http.ResponseWriter, request *h
 	if request.Method == http.MethodPost {
 		requestedModel = extractRequestedModel(body)
 		if handler.budgets != nil {
-			modelLabel, _ := formatProxyUsageModels(provider.name, requestedModel, "")
+			modelLabel, upstreamModel := formatProxyUsageModels(provider.name, requestedModel, "")
 			releaseBudget, budgetErr := handler.budgets.CheckAndAcquire(ctx, gateway.BudgetCheckRequest{
-				Scope:       scope,
-				PrincipalID: admitted.Principal.ID,
-				ExecutionID: admitted.ExecutionID,
-				ActionID:    admitted.ActionID,
-				Model:       modelLabel,
+				Scope:         scope,
+				PrincipalID:   admitted.Principal.ID,
+				ExecutionID:   admitted.ExecutionID,
+				ActionID:      admitted.ActionID,
+				Model:         modelLabel,
+				UpstreamModel: upstreamModel,
 			})
 			if budgetErr != nil {
 				writeHTTPError(writer, budgetErr)
@@ -353,6 +354,7 @@ func (handler *llmProxyHandler) ServeHTTP(writer http.ResponseWriter, request *h
 			}
 			defer releaseBudget()
 		}
+		body = ensureOpenAIStreamIncludeUsage(upstreamPath, body)
 	}
 
 	providerSecret, err := handler.resolveProviderSecret(ctx, scope, provider.secretName)
@@ -583,6 +585,7 @@ func (handler *llmProxyHandler) recordUsage(
 		Scope:         scope,
 		PrincipalID:   admitted.Principal.ID,
 		ExecutionID:   admitted.ExecutionID,
+		ActionID:      admitted.ActionID,
 		Model:         modelLabel,
 		UpstreamModel: upstreamModel,
 		Outcome:       outcome,

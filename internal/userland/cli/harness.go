@@ -111,6 +111,9 @@ func parseHarnessExecArgs(args []string) (harnessExecOptions, error) {
 				i++
 				value = args[i]
 			}
+			if strings.TrimSpace(value) == "" {
+				return opts, fmt.Errorf("flag %s requires a non-empty value", name)
+			}
 			opts.serverURL = value
 		case "--ca-file":
 			if !hasEq {
@@ -119,6 +122,9 @@ func parseHarnessExecArgs(args []string) (harnessExecOptions, error) {
 				}
 				i++
 				value = args[i]
+			}
+			if strings.TrimSpace(value) == "" {
+				return opts, fmt.Errorf("flag %s requires a non-empty value", name)
 			}
 			opts.caFile = value
 			opts.caFlagSet = true
@@ -129,6 +135,9 @@ func parseHarnessExecArgs(args []string) (harnessExecOptions, error) {
 				}
 				i++
 				value = args[i]
+			}
+			if strings.TrimSpace(value) == "" {
+				return opts, fmt.Errorf("flag %s requires a non-empty value", name)
 			}
 			opts.tokenFile = value
 		default:
@@ -195,8 +204,8 @@ func runHarnessExec(ctx context.Context, config Config, args []string, ports Por
 	}
 
 	var transport http.RoundTripper
-	if deps.HTTP != nil && !opts.caFlagSet {
-		transport = deps.HTTP
+	if deps.HarnessHTTP != nil && !opts.caFlagSet {
+		transport = deps.HarnessHTTP
 	} else {
 		built, buildErr := newHarnessUpstreamTransport(caFile)
 		if buildErr != nil {
@@ -204,6 +213,10 @@ func runHarnessExec(ctx context.Context, config Config, args []string, ports Por
 		}
 		defer built.CloseIdleConnections()
 		transport = built
+	}
+
+	if err := ctx.Err(); err != nil {
+		return failure(ports.Err, fmt.Errorf("harness exec cancelled: %w", err))
 	}
 
 	localKey, err := generateHarnessLocalKey()
@@ -249,8 +262,12 @@ func runHarnessExec(ctx context.Context, config Config, args []string, ports Por
 	}
 	defer shutdownServer()
 
+	if err := ctx.Err(); err != nil {
+		return failure(ports.Err, fmt.Errorf("harness exec cancelled: %w", err))
+	}
+
 	proxyOrigin := "http://" + listener.Addr().String()
-	childEnv := buildHarnessChildEnv(os.Environ(), proxyOrigin, localKey)
+	childEnv := buildHarnessChildEnv(collectHarnessParentEnv(deps), proxyOrigin, localKey)
 
 	cmd := exec.Command(opts.cmdArgs[0], opts.cmdArgs[1:]...)
 	cmd.Env = childEnv
@@ -379,6 +396,45 @@ func generateHarnessLocalKey() (string, error) {
 		return "", err
 	}
 	return "kodema-local-" + hex.EncodeToString(buf[:]), nil
+}
+
+func collectHarnessParentEnv(deps CommandDeps) []string {
+	if deps.Environ != nil {
+		return deps.Environ()
+	}
+	base := os.Environ()
+	if deps.Env == nil {
+		return base
+	}
+	out := make([]string, 0, len(base)+3)
+	seen := make(map[string]bool, len(base))
+	for _, entry := range base {
+		key, _, ok := strings.Cut(entry, "=")
+		if !ok {
+			continue
+		}
+		seen[key] = true
+		if val := deps.Env(key); val != "" {
+			out = append(out, key+"="+val)
+		} else if strings.HasPrefix(key, "KODEMA_LLM_") && strings.HasSuffix(key, "_BASE_URL") {
+			continue
+		} else {
+			out = append(out, entry)
+		}
+	}
+	for _, key := range []string{
+		"KODEMA_LLM_OPENAI_BASE_URL",
+		"KODEMA_LLM_ANTHROPIC_BASE_URL",
+		"KODEMA_LLM_OPENCODE_BASE_URL",
+	} {
+		if seen[key] {
+			continue
+		}
+		if val := deps.Env(key); val != "" {
+			out = append(out, key+"="+val)
+		}
+	}
+	return out
 }
 
 // buildHarnessChildEnv constructs the child process environment with provider
@@ -529,6 +585,9 @@ func (p *harnessLoopbackProxy) ServeHTTP(writer http.ResponseWriter, request *ht
 			}
 		}
 		if readErr != nil {
+			if !errors.Is(readErr, io.EOF) {
+				panic(http.ErrAbortHandler)
+			}
 			return
 		}
 	}

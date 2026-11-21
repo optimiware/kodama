@@ -8,6 +8,7 @@ import (
 
 	"github.com/optimiware/kodema/internal/fault"
 	"github.com/optimiware/kodema/internal/id"
+	"github.com/optimiware/kodema/internal/kernel/definition"
 	"github.com/optimiware/kodema/internal/shell/pipeline"
 	"github.com/optimiware/kodema/internal/shell/tenancy"
 )
@@ -169,5 +170,48 @@ actions:
 				t.Fatalf("%s: fault class = %q (%v); want invalid_input (err=%v)", tc.name, class, ok, err)
 			}
 		})
+	}
+}
+
+func TestAdmittedActionValidateChecksCachesAndBudget(t *testing.T) {
+	validBase := func() pipeline.AdmittedAction {
+		return pipeline.AdmittedAction{
+			Index:   0,
+			Name:    "build",
+			Kind:    definition.ActionKindContainer,
+			Timeout: time.Minute,
+			Container: &definition.Container{
+				Image:    "reg/img@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+				Commands: []string{"true"},
+			},
+		}
+	}
+
+	if err := validBase().Validate(); err != nil {
+		t.Fatalf("validBase().Validate(): %v", err)
+	}
+
+	badCache := validBase()
+	badCache.Container.Caches = []string{"../escape"}
+	if err := badCache.Validate(); err == nil {
+		t.Fatal("AdmittedAction.Validate accepted invalid cache name")
+	}
+
+	dupCache := validBase()
+	dupCache.Container.Caches = []string{"npm", "npm"}
+	if err := dupCache.Validate(); err == nil {
+		t.Fatal("AdmittedAction.Validate accepted duplicate cache names")
+	}
+
+	badBudget := validBase()
+	badBudget.Container.Budget = &definition.Budget{MaxTokens: -1}
+	if err := badBudget.Validate(); err == nil {
+		t.Fatal("AdmittedAction.Validate accepted negative budget max_tokens")
+	}
+
+	emptyBudget := validBase()
+	emptyBudget.Container.Budget = &definition.Budget{}
+	if err := emptyBudget.Validate(); err == nil {
+		t.Fatal("AdmittedAction.Validate accepted zero-value budget")
 	}
 }

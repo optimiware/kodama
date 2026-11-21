@@ -60,6 +60,7 @@ var expectedForeignKeys = []string{
 	"executions_tenant",
 	"memberships_project",
 	"memberships_tenant",
+	"model_usage_action",
 	"model_usage_execution",
 	"model_usage_project",
 	"model_usage_tenant",

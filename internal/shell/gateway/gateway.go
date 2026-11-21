@@ -158,11 +158,12 @@ func (gateway *Gateway) Invoke(ctx context.Context, invocation Invocation) (api.
 	}
 	if current.execution && gateway.budgets != nil {
 		releaseBudget, err := gateway.budgets.CheckAndAcquire(ctx, BudgetCheckRequest{
-			Scope:       scope,
-			PrincipalID: current.principal.ID,
-			ExecutionID: current.admitted.ExecutionID,
-			ActionID:    current.admitted.ActionID,
-			Model:       model.Model,
+			Scope:         scope,
+			PrincipalID:   current.principal.ID,
+			ExecutionID:   current.admitted.ExecutionID,
+			ActionID:      current.admitted.ActionID,
+			Model:         model.Model,
+			UpstreamModel: model.UpstreamModel,
 		})
 		if err != nil {
 			return api.ChatCompletionResponse{}, err
@@ -200,7 +201,7 @@ func (gateway *Gateway) Invoke(ctx context.Context, invocation Invocation) (api.
 	response, err := gateway.deps.Transport.RoundTrip(request)
 	if err != nil {
 		if cancelled(ctx, callCtx) {
-			return api.ChatCompletionResponse{}, gateway.settleFailure(ctx, scope, current.principal, model, usageID, UsageUncertain, api.ChatUsage{}, deadlineFault())
+			return api.ChatCompletionResponse{}, gateway.settleFailure(ctx, scope, current, model, usageID, UsageUncertain, api.ChatUsage{}, deadlineFault())
 		}
 		// A transport error that is not provably pre-write may have followed a
 		// written request: a reset, an EOF waiting for headers or a GOAWAY after
@@ -209,52 +210,52 @@ func (gateway *Gateway) Invoke(ctx context.Context, invocation Invocation) (api.
 		// than as a definitive failure. Only the transport, which owns the dial
 		// and the socket, can prove that no request bytes were written.
 		if preWrite, ok := gateway.deps.Transport.(PreWriteFailure); ok && preWrite.PrecedesWrite(err) {
-			return api.ChatCompletionResponse{}, gateway.settleFailure(ctx, scope, current.principal, model, usageID, UsageFailed, api.ChatUsage{},
+			return api.ChatCompletionResponse{}, gateway.settleFailure(ctx, scope, current, model, usageID, UsageFailed, api.ChatUsage{},
 				fault.Wrap(fault.DependencyUnavailable, "the configured model provider is unreachable", err))
 		}
-		return api.ChatCompletionResponse{}, gateway.settleFailure(ctx, scope, current.principal, model, usageID, UsageUncertain, api.ChatUsage{},
+		return api.ChatCompletionResponse{}, gateway.settleFailure(ctx, scope, current, model, usageID, UsageUncertain, api.ChatUsage{},
 			fault.Wrap(fault.UncertainExternalEffect, "the model provider call was lost after dispatch", err))
 	}
 	if response == nil || response.Body == nil {
 		// A transport that reports no response after being handed the request
 		// cannot prove the provider saw nothing, so the attempt stays uncertain
 		// and non-replayable rather than a definitive failure.
-		return api.ChatCompletionResponse{}, gateway.settleFailure(ctx, scope, current.principal, model, usageID, UsageUncertain, api.ChatUsage{},
+		return api.ChatCompletionResponse{}, gateway.settleFailure(ctx, scope, current, model, usageID, UsageUncertain, api.ChatUsage{},
 			fault.New(fault.UncertainExternalEffect, "the configured model provider returned no response after dispatch"))
 	}
 	defer func() { _ = response.Body.Close() }()
 
 	if response.StatusCode < 200 || response.StatusCode > 299 {
-		return api.ChatCompletionResponse{}, gateway.settleFailure(ctx, scope, current.principal, model, usageID, UsageFailed, api.ChatUsage{},
+		return api.ChatCompletionResponse{}, gateway.settleFailure(ctx, scope, current, model, usageID, UsageFailed, api.ChatUsage{},
 			fault.New(fault.DependencyUnavailable, "the configured model provider refused the call"))
 	}
 	if !isJSONContentType(response.Header.Get("Content-Type")) {
-		return api.ChatCompletionResponse{}, gateway.settleFailure(ctx, scope, current.principal, model, usageID, UsageFailed, api.ChatUsage{},
+		return api.ChatCompletionResponse{}, gateway.settleFailure(ctx, scope, current, model, usageID, UsageFailed, api.ChatUsage{},
 			fault.New(fault.DependencyUnavailable, "the configured model provider returned a non-JSON body"))
 	}
 
 	raw, readErr := io.ReadAll(io.LimitReader(response.Body, int64(model.MaxResponseBytes)+1))
 	if readErr != nil {
 		if cancelled(ctx, callCtx) {
-			return api.ChatCompletionResponse{}, gateway.settleFailure(ctx, scope, current.principal, model, usageID, UsageUncertain, api.ChatUsage{}, deadlineFault())
+			return api.ChatCompletionResponse{}, gateway.settleFailure(ctx, scope, current, model, usageID, UsageUncertain, api.ChatUsage{}, deadlineFault())
 		}
-		return api.ChatCompletionResponse{}, gateway.settleFailure(ctx, scope, current.principal, model, usageID, UsageUncertain, api.ChatUsage{},
+		return api.ChatCompletionResponse{}, gateway.settleFailure(ctx, scope, current, model, usageID, UsageUncertain, api.ChatUsage{},
 			fault.Wrap(fault.UncertainExternalEffect, "the model provider response was lost after dispatch", readErr))
 	}
 	if len(raw) > model.MaxResponseBytes {
-		return api.ChatCompletionResponse{}, gateway.settleFailure(ctx, scope, current.principal, model, usageID, UsageFailed, api.ChatUsage{},
+		return api.ChatCompletionResponse{}, gateway.settleFailure(ctx, scope, current, model, usageID, UsageFailed, api.ChatUsage{},
 			fault.New(fault.DependencyUnavailable, "the model provider response exceeds the configured bound"))
 	}
 	var completion api.ChatCompletionResponse
 	if err := json.Unmarshal(raw, &completion); err != nil {
-		return api.ChatCompletionResponse{}, gateway.settleFailure(ctx, scope, current.principal, model, usageID, UsageFailed, api.ChatUsage{},
+		return api.ChatCompletionResponse{}, gateway.settleFailure(ctx, scope, current, model, usageID, UsageFailed, api.ChatUsage{},
 			fault.Wrap(fault.DependencyUnavailable, "the model provider response is malformed", err))
 	}
 	if err := completion.Validate(); err != nil {
-		return api.ChatCompletionResponse{}, gateway.settleFailure(ctx, scope, current.principal, model, usageID, UsageFailed, api.ChatUsage{},
+		return api.ChatCompletionResponse{}, gateway.settleFailure(ctx, scope, current, model, usageID, UsageFailed, api.ChatUsage{},
 			fault.Wrap(fault.DependencyUnavailable, "the model provider completion is invalid", err))
 	}
-	if err := gateway.settle(ctx, scope, current.principal, model, usageID, UsageSucceeded, completion.Usage); err != nil {
+	if err := gateway.settle(ctx, scope, current, model, usageID, UsageSucceeded, completion.Usage); err != nil {
 		return api.ChatCompletionResponse{}, unattributed(nil, err)
 	}
 	gateway.recordContent(ctx, scope, current.principal, model, body, raw)
@@ -506,14 +507,14 @@ func (gateway *Gateway) resolveSecret(ctx context.Context, scope tenancy.Scope, 
 func (gateway *Gateway) settleFailure(
 	ctx context.Context,
 	scope tenancy.Scope,
-	principal authorize.Principal,
+	current caller,
 	model ModelConfig,
 	usageID UsageID,
 	outcome UsageOutcome,
 	usage api.ChatUsage,
 	primary error,
 ) error {
-	if err := gateway.settle(ctx, scope, principal, model, usageID, outcome, usage); err != nil {
+	if err := gateway.settle(ctx, scope, current, model, usageID, outcome, usage); err != nil {
 		return unattributed(primary, err)
 	}
 	return primary
@@ -541,7 +542,7 @@ func unattributed(outcome, cause error) error {
 func (gateway *Gateway) settle(
 	ctx context.Context,
 	scope tenancy.Scope,
-	principal authorize.Principal,
+	current caller,
 	model ModelConfig,
 	usageID UsageID,
 	outcome UsageOutcome,
@@ -551,11 +552,16 @@ func (gateway *Gateway) settle(
 	if !known {
 		usage = api.ChatUsage{}
 	}
+	var actionID id.ActionID
+	if current.execution {
+		actionID = current.admitted.ActionID
+	}
 	record := UsageRecord{
 		ID:            usageID,
 		Scope:         scope,
-		PrincipalID:   principal.ID,
-		ExecutionID:   principal.ExecutionID,
+		PrincipalID:   current.principal.ID,
+		ExecutionID:   current.principal.ExecutionID,
+		ActionID:      actionID,
 		Model:         model.Model,
 		UpstreamModel: model.UpstreamModel,
 		Outcome:       outcome,

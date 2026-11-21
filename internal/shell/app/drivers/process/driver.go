@@ -32,8 +32,10 @@ import (
 	"syscall"
 
 	"github.com/optimiware/kodema/internal/fault"
+	"github.com/optimiware/kodema/internal/kernel/definition"
 	"github.com/optimiware/kodema/internal/kernel/engine"
 	"github.com/optimiware/kodema/internal/shell/runtime/process"
+	"github.com/optimiware/kodema/internal/shell/workspace"
 )
 
 const (
@@ -193,6 +195,17 @@ func (d *Driver) Spawn(ctx context.Context, request process.SpawnRequest) (proce
 	// request carries an empty environment.
 	cmd.Env = make([]string, 0, len(request.Env))
 	cmd.Env = append(cmd.Env, request.Env...)
+	if len(request.Caches) > 0 {
+		cacheEnv, cacheErr := prepareSpawnCaches(request.Root, request.Caches)
+		if cacheErr != nil {
+			_ = stdout.Close()
+			_ = stderr.Close()
+			intent.State = stateRefused
+			_ = d.persistLocked(intent)
+			return process.SpawnResult{Outcome: process.SpawnRefused, Group: request.Group, Detail: "cache directories could not be prepared"}, cacheErr
+		}
+		cmd.Env = mergeEnvOverrides(cmd.Env, cacheEnv)
+	}
 	cmd.Stdin = nil
 	stdoutWriter := &boundedWriter{file: stdout, limit: d.maxOutput}
 	stdoutWriter.onTruncate = func() {
@@ -632,7 +645,124 @@ func validateSpawnRequest(request process.SpawnRequest) error {
 	if !filepath.IsAbs(request.StdoutPath) || !filepath.IsAbs(request.StderrPath) {
 		return fault.New(fault.InvalidInput, "spawn request capture paths are not absolute")
 	}
+	if len(request.Caches) > 0 {
+		if !filepath.IsAbs(request.Root) {
+			return fault.New(fault.InvalidInput, "spawn request root is not absolute")
+		}
+		seen := make(map[string]bool, len(request.Caches))
+		for _, cache := range request.Caches {
+			if err := definition.ValidateCacheName(cache.Name); err != nil {
+				return err
+			}
+			if seen[cache.Name] {
+				return fault.New(fault.InvalidInput, "spawn request declares duplicate cache "+cache.Name)
+			}
+			seen[cache.Name] = true
+			if !filepath.IsAbs(cache.HostPath) {
+				return fault.New(fault.InvalidInput, "spawn request cache host path is not absolute")
+			}
+			wantMount, err := workspace.CachePath(cache.Name)
+			if err != nil {
+				return err
+			}
+			if cache.MountPath != wantMount {
+				return fault.New(fault.InvalidInput, "spawn request cache mount path does not match /kodema/cache/"+cache.Name)
+			}
+		}
+	}
 	return nil
+}
+
+// prepareSpawnCaches ensures each non-authoritative host cache directory exists
+// (refusing symlinks), links it under <root>/kodema/cache/<name>, and returns
+// the cache environment variables (KODEMA_CACHE_DIR plus KODEMA_CACHE_<NAME>)
+// exposed to the spawned process. Removing <root> removes only the symlinks,
+// leaving the host cache directories intact across executions.
+func prepareSpawnCaches(root string, caches []process.CacheMount) ([]string, error) {
+	cleanRoot := filepath.Clean(root)
+	cacheRoot, err := ensureConfinedCacheRoot(cleanRoot)
+	if err != nil {
+		return nil, err
+	}
+	env := make([]string, 0, len(caches)+1)
+	env = append(env, "KODEMA_CACHE_DIR="+cacheRoot)
+	for _, cache := range caches {
+		cleanHost := filepath.Clean(cache.HostPath)
+		info, statErr := os.Lstat(cleanHost)
+		switch {
+		case statErr == nil:
+			if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+				return nil, fault.New(fault.Forbidden, "cache host path is not a confined directory")
+			}
+		case errors.Is(statErr, os.ErrNotExist):
+			if err := os.MkdirAll(cleanHost, 0o755); err != nil {
+				return nil, fault.Wrap(fault.DependencyUnavailable, "cache directory creation failed", err)
+			}
+		default:
+			return nil, fault.Wrap(fault.DependencyUnavailable, "cache directory is unreachable", statErr)
+		}
+
+		linkPath := filepath.Join(cacheRoot, cache.Name)
+		if existing, lerr := os.Lstat(linkPath); lerr == nil {
+			if existing.Mode()&os.ModeSymlink == 0 {
+				return nil, fault.New(fault.Forbidden, "cache mount target exists and is not a symlink")
+			}
+			if err := os.Remove(linkPath); err != nil {
+				return nil, fault.Wrap(fault.DependencyUnavailable, "stale cache link removal failed", err)
+			}
+		} else if !errors.Is(lerr, os.ErrNotExist) {
+			return nil, fault.Wrap(fault.DependencyUnavailable, "cache mount target is unreachable", lerr)
+		}
+		if err := os.Symlink(cleanHost, linkPath); err != nil {
+			return nil, fault.Wrap(fault.DependencyUnavailable, "cache symlink creation failed", err)
+		}
+		env = append(env, cacheEnvVarName(cache.Name)+"="+linkPath)
+	}
+	return env, nil
+}
+
+func ensureConfinedCacheRoot(root string) (string, error) {
+	current := root
+	for _, segment := range []string{"", "kodema", "cache"} {
+		if segment != "" {
+			current = filepath.Join(current, segment)
+		}
+		info, err := os.Lstat(current)
+		switch {
+		case err == nil:
+			if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+				return "", fault.New(fault.Forbidden, "cache root path is not a confined directory")
+			}
+		case errors.Is(err, os.ErrNotExist):
+			if err := os.MkdirAll(current, 0o755); err != nil {
+				return "", fault.Wrap(fault.DependencyUnavailable, "cache root directory creation failed", err)
+			}
+		default:
+			return "", fault.Wrap(fault.DependencyUnavailable, "cache root directory is unreachable", err)
+		}
+	}
+	return current, nil
+}
+
+func cacheEnvVarName(cacheName string) string {
+	return "KODEMA_CACHE_" + strings.ToUpper(strings.ReplaceAll(cacheName, "-", "_"))
+}
+
+func mergeEnvOverrides(base []string, overrides []string) []string {
+	overrideKeys := make(map[string]bool, len(overrides))
+	for _, entry := range overrides {
+		if key, _, ok := strings.Cut(entry, "="); ok {
+			overrideKeys[key] = true
+		}
+	}
+	out := make([]string, 0, len(base)+len(overrides))
+	for _, entry := range base {
+		if key, _, ok := strings.Cut(entry, "="); ok && overrideKeys[key] {
+			continue
+		}
+		out = append(out, entry)
+	}
+	return append(out, overrides...)
 }
 
 // openOutput creates one bounded capture file without following a symlink.
