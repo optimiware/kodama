@@ -856,6 +856,7 @@ var mcpErrorCodes = []struct {
 	{CodeUnsupportedCapability, -32012},
 	{CodeDependencyUnavailable, -32013},
 	{CodeUncertainExternalEffect, -32014},
+	{CodeBudgetExceeded, -32015},
 	{CodeInternalFailure, -32603},
 }
 
@@ -882,6 +883,7 @@ func IsMCPToolErrorCode(code string) bool {
 		CodeVersionConflict,
 		CodeChangedIdempotencyContent,
 		CodeDeadlineExpired,
+		CodeBudgetExceeded,
 		CodeUnsupportedCapability,
 		CodeDependencyUnavailable,
 		CodeUncertainExternalEffect:

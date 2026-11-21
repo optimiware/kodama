@@ -171,6 +171,7 @@ func (service *AdmissionService) Admit(ctx context.Context, request AdmitRequest
 		YAML:         selected.YAML,
 		Inputs:       request.Inputs,
 		Env:          parsed.pipeline.Env,
+		Budget:       parsed.pipeline.Budget,
 		Images:       images,
 		SecretNames:  secretNames,
 		Requirements: request.Requirements,
@@ -245,6 +246,12 @@ func (service *AdmissionService) admitActions(ctx context.Context, pipeline defi
 			}
 			if _, err := script.Render(container.Commands); err != nil {
 				return nil, nil, nil, fault.Wrap(fault.InvalidInput, fmt.Sprintf("action %q container commands are invalid", action.Name), err)
+			}
+			if err := definition.ValidateCaches(container.Caches); err != nil {
+				return nil, nil, nil, err
+			}
+			if err := definition.ValidateBudget(container.Budget); err != nil {
+				return nil, nil, nil, err
 			}
 			image := container.Image
 			resolved, err := service.resolver.Resolve(ctx, ResolveRequest{Reference: image})
@@ -338,9 +345,14 @@ func cloneContainer(container definition.Container) definition.Container {
 	cloned.Env = append([]definition.EnvVar(nil), container.Env...)
 	cloned.Secrets = append([]id.SecretName(nil), container.Secrets...)
 	cloned.Outputs = append([]id.OutputKey(nil), container.Outputs...)
+	cloned.Caches = append([]string(nil), container.Caches...)
 	if container.Resources != nil {
 		resources := *container.Resources
 		cloned.Resources = &resources
+	}
+	if container.Budget != nil {
+		budget := *container.Budget
+		cloned.Budget = &budget
 	}
 	return cloned
 }

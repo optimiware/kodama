@@ -86,6 +86,10 @@ type ModelsConfig struct {
 	// Providers lists the configured upstream providers exposed on the
 	// workload-only streaming LLM proxy (/llm/{provider}/*).
 	Providers []ModelProviderConfig
+	// Budgets configures optional default execution/task LLM token and USD
+	// spend limits plus per-model token pricing rates enforced before upstream
+	// dispatch across both the model gateway and the streaming LLM proxy.
+	Budgets gateway.BudgetConfig
 	// SecretRules is the model-gateway secret-name allow-list. It is a separate
 	// consumer policy from Config.SecretRules (the workload allow-list), so a
 	// workload rule can never authorize a provider credential.
@@ -118,6 +122,8 @@ func (config *ModelsConfig) validate(profile Profile) error {
 		if err := config.gatewayConfig().Validate(); err != nil {
 			return err
 		}
+	} else if err := config.Budgets.Validate(); err != nil {
+		return err
 	}
 	seenProviders := make(map[providerScopeKey]bool, len(config.Providers))
 	for index, provider := range config.Providers {
@@ -504,5 +510,10 @@ func (config *ModelsConfig) gatewayConfig() gateway.Config {
 	return gateway.Config{
 		Enabled: true,
 		Models:  append([]gateway.ModelConfig(nil), config.Models...),
+		Budgets: gateway.BudgetConfig{
+			DefaultExecution: config.Budgets.DefaultExecution,
+			DefaultTask:      config.Budgets.DefaultTask,
+			Pricing:          append([]gateway.ModelPricing(nil), config.Budgets.Pricing...),
+		},
 	}
 }

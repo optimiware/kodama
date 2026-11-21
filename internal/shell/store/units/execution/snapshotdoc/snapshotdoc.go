@@ -103,6 +103,7 @@ func Decode(data []byte) (Admitted, error) {
 		YAML:         document.YAML,
 		Inputs:       document.Snapshot.Inputs,
 		Env:          document.Snapshot.Env,
+		Budget:       document.Snapshot.Budget,
 		Images:       document.Snapshot.Images,
 		SecretNames:  document.Snapshot.SecretNames,
 		Requirements: document.Snapshot.Requirements,

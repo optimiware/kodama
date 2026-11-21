@@ -362,7 +362,7 @@ func hoistGlobalFlags(args []string) []string {
 		return args
 	}
 	subcmd := args[subcmdIdx]
-	if subcmd == "help" || subcmd == "version" {
+	if subcmd == "help" || subcmd == "version" || subcmd == "harness" {
 		return args
 	}
 	isGitConfigure := subcmd == "git" && subcmdIdx+1 < len(args) && args[subcmdIdx+1] == "configure"

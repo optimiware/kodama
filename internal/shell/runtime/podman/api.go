@@ -529,6 +529,22 @@ func WorkspaceVolumeName(workspace id.WorkspaceID) (string, error) {
 	return "kodema-workspace-" + stableDigest(string(workspace)), nil
 }
 
+// CacheVolumeName returns the deterministic Podman named volume for one
+// tenant/project-scoped non-authoritative cache key. Podman creates it empty on
+// first mount if missing or evicted, and Remove/Release never delete it.
+func CacheVolumeName(key string) (string, error) {
+	if len(key) < 16 || len(key) > 64 {
+		return "", fault.New(fault.InvalidInput, "cache key is invalid")
+	}
+	for index := 0; index < len(key); index++ {
+		ch := key[index]
+		if !((ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f')) {
+			return "", fault.New(fault.InvalidInput, "cache key is invalid")
+		}
+	}
+	return "kodema-cache-" + key, nil
+}
+
 // stableDigest returns a short deterministic, DNS-safe digest of a stable
 // identity. Names are derived only from persisted identities, never from
 // randomness, so a retry finds the same object.

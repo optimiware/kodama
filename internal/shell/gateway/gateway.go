@@ -16,6 +16,7 @@ import (
 	"github.com/optimiware/kodema/internal/shell/authorize"
 	"github.com/optimiware/kodema/internal/shell/identity"
 	"github.com/optimiware/kodema/internal/shell/secret"
+	"github.com/optimiware/kodema/internal/shell/store"
 	"github.com/optimiware/kodema/internal/shell/tenancy"
 )
 
@@ -27,6 +28,7 @@ type Gateway struct {
 	enabled    bool
 	deps       Dependencies
 	executions ExecutionReader
+	budgets    *BudgetTracker
 	models     map[modelKey]ModelConfig
 }
 
@@ -63,7 +65,23 @@ func New(config Config, dependencies Dependencies, configure ...Option) (*Gatewa
 	for _, model := range config.Models {
 		models[modelKey{scope: model.Scope, model: model.Model}] = model
 	}
-	return &Gateway{enabled: true, deps: dependencies, executions: resolved.executions, models: models}, nil
+	budgets := resolved.budgets
+	if budgets == nil {
+		reader := resolved.budgetReader
+		if reader == nil {
+			if scanner, ok := dependencies.Store.(store.Scanner); ok {
+				reader = &StoreBudgetReader{Scanner: scanner}
+			}
+		}
+		if reader != nil {
+			var err error
+			budgets, err = NewBudgetTracker(config.Budgets, config.Models, reader, resolved.budgetEvents)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+	return &Gateway{enabled: true, deps: dependencies, executions: resolved.executions, budgets: budgets, models: models}, nil
 }
 
 // validateDependencies refuses an incomplete enabled composition.
@@ -137,6 +155,19 @@ func (gateway *Gateway) Invoke(ctx context.Context, invocation Invocation) (api.
 	}
 	if err := ctx.Err(); err != nil {
 		return api.ChatCompletionResponse{}, deadlineFault()
+	}
+	if current.execution && gateway.budgets != nil {
+		releaseBudget, err := gateway.budgets.CheckAndAcquire(ctx, BudgetCheckRequest{
+			Scope:       scope,
+			PrincipalID: current.principal.ID,
+			ExecutionID: current.admitted.ExecutionID,
+			ActionID:    current.admitted.ActionID,
+			Model:       model.Model,
+		})
+		if err != nil {
+			return api.ChatCompletionResponse{}, err
+		}
+		defer releaseBudget()
 	}
 	credential, err := gateway.resolveSecret(ctx, scope, model.SecretName)
 	if err != nil {

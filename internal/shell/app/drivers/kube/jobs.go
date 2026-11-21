@@ -86,6 +86,7 @@ type resourcesBody struct {
 type volumeMountBody struct {
 	Name      string `json:"name"`
 	MountPath string `json:"mountPath"`
+	SubPath   string `json:"subPath,omitempty"`
 	ReadOnly  bool   `json:"readOnly,omitempty"`
 }
 
@@ -186,6 +187,7 @@ func buildJobManifest(job runtimekube.Job) (jobManifestBody, error) {
 		mounts = append(mounts, volumeMountBody{
 			Name:      volume.Name,
 			MountPath: volume.MountPath,
+			SubPath:   volume.SubPath,
 			ReadOnly:  volume.ReadOnly,
 		})
 	}

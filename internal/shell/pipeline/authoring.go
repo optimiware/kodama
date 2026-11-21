@@ -5,6 +5,8 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"math"
+	"strconv"
 	"strings"
 	"time"
 
@@ -304,7 +306,7 @@ func parsePipeline(root *yaml.Node) (parsedDocument, error) {
 	if err != nil {
 		return parsedDocument{}, err
 	}
-	var inputsNode, envNode, actionsNode, onNode, repositoryNode, serviceNode *yaml.Node
+	var inputsNode, envNode, actionsNode, onNode, repositoryNode, serviceNode, budgetNode *yaml.Node
 	for _, entry := range entries {
 		switch entry.key {
 		case "inputs":
@@ -319,6 +321,8 @@ func parsePipeline(root *yaml.Node) (parsedDocument, error) {
 			serviceNode = entry.value
 		case "on":
 			onNode = entry.value
+		case "budget":
+			budgetNode = entry.value
 		default:
 			return parsedDocument{}, invalidInputf("pipeline has unknown field %q", entry.key)
 		}
@@ -334,6 +338,13 @@ func parsePipeline(root *yaml.Node) (parsedDocument, error) {
 	env, err := parseEnv(envNode, "pipeline env")
 	if err != nil {
 		return parsedDocument{}, err
+	}
+	var budget *definition.Budget
+	if budgetNode != nil {
+		budget, err = parseBudget(budgetNode, "pipeline")
+		if err != nil {
+			return parsedDocument{}, err
+		}
 	}
 	actions, err := parseActions(actionsNode)
 	if err != nil {
@@ -387,7 +398,7 @@ func parsePipeline(root *yaml.Node) (parsedDocument, error) {
 	}
 
 	parsed := parsedDocument{
-		pipeline: definition.Pipeline{Inputs: inputs, Env: env, Actions: actions},
+		pipeline: definition.Pipeline{Inputs: inputs, Env: env, Budget: budget, Actions: actions},
 		inputs:   specs,
 		push:     push,
 	}
@@ -524,7 +535,7 @@ func parseAction(index int, node *yaml.Node) (definition.Action, error) {
 	if err != nil {
 		return definition.Action{}, err
 	}
-	var nameNode, imageNode, requestNode, subjectNode, commandsNode, envNode, secretsNode, timeoutNode, outputsNode, resourcesNode *yaml.Node
+	var nameNode, imageNode, requestNode, subjectNode, commandsNode, envNode, secretsNode, timeoutNode, outputsNode, resourcesNode, cachesNode, budgetNode *yaml.Node
 	for _, entry := range entries {
 		switch entry.key {
 		case "name":
@@ -547,6 +558,10 @@ func parseAction(index int, node *yaml.Node) (definition.Action, error) {
 			outputsNode = entry.value
 		case "resources":
 			resourcesNode = entry.value
+		case "caches":
+			cachesNode = entry.value
+		case "budget":
+			budgetNode = entry.value
 		default:
 			return definition.Action{}, invalidInputf("%s has unknown field %q", label, entry.key)
 		}
@@ -617,15 +632,37 @@ func parseAction(index int, node *yaml.Node) (definition.Action, error) {
 				return definition.Action{}, err
 			}
 		}
+		var caches []string
+		if cachesNode != nil {
+			caches, err = parseCaches(cachesNode, label)
+			if err != nil {
+				return definition.Action{}, err
+			}
+		}
+		var budget *definition.Budget
+		if budgetNode != nil {
+			budget, err = parseBudget(budgetNode, label)
+			if err != nil {
+				return definition.Action{}, err
+			}
+		}
 		action.Container = &definition.Container{
 			Image:     image,
 			Commands:  commands,
 			Env:       env,
 			Secrets:   secrets,
 			Outputs:   outputs,
+			Caches:    caches,
 			Resources: resources,
+			Budget:    budget,
 		}
 	} else {
+		if cachesNode != nil {
+			return definition.Action{}, invalidInputf("%s request action cannot declare caches", label)
+		}
+		if budgetNode != nil {
+			return definition.Action{}, invalidInputf("%s request action cannot declare budget", label)
+		}
 		if commandsNode != nil || envNode != nil || secretsNode != nil || resourcesNode != nil {
 			return definition.Action{}, invalidInputf("%s request action declares container fields", label)
 		}
@@ -706,6 +743,64 @@ func parseResources(node *yaml.Node, label string) (*definition.Resources, error
 		return nil, err
 	}
 	return resources, nil
+}
+
+func parseCaches(node *yaml.Node, label string) ([]string, error) {
+	items, err := sequenceNodes(node, label+" caches")
+	if err != nil {
+		return nil, err
+	}
+	caches := make([]string, 0, len(items))
+	for index, item := range items {
+		text, err := scalarValue(item, fmt.Sprintf("%s cache %d", label, index))
+		if err != nil {
+			return nil, err
+		}
+		caches = append(caches, text)
+	}
+	if err := definition.ValidateCaches(caches); err != nil {
+		return nil, err
+	}
+	return caches, nil
+}
+
+func parseBudget(node *yaml.Node, label string) (*definition.Budget, error) {
+	entries, err := mappingEntries(node, label+" budget")
+	if err != nil {
+		return nil, err
+	}
+	if len(entries) == 0 {
+		return nil, invalidInputf("%s budget must specify at least one of max_tokens or max_cost_usd", label)
+	}
+	budget := &definition.Budget{}
+	for _, entry := range entries {
+		switch entry.key {
+		case "max_tokens":
+			if entry.value == nil || entry.value.Kind != yaml.ScalarNode || entry.value.Tag != "!!int" {
+				return nil, invalidInputf("%s budget.max_tokens must be a positive integer", label)
+			}
+			parsed, err := strconv.ParseInt(entry.value.Value, 10, 64)
+			if err != nil {
+				return nil, invalidInputWrap(label+" budget.max_tokens is invalid", err)
+			}
+			budget.MaxTokens = parsed
+		case "max_cost_usd":
+			if entry.value == nil || entry.value.Kind != yaml.ScalarNode || (entry.value.Tag != "!!int" && entry.value.Tag != "!!float") {
+				return nil, invalidInputf("%s budget.max_cost_usd must be a positive number", label)
+			}
+			parsed, err := strconv.ParseFloat(entry.value.Value, 64)
+			if err != nil || math.IsNaN(parsed) || math.IsInf(parsed, 0) {
+				return nil, invalidInputf("%s budget.max_cost_usd must be a finite number", label)
+			}
+			budget.MaxCostUSD = parsed
+		default:
+			return nil, invalidInputf("%s budget has unknown field %q", label, entry.key)
+		}
+	}
+	if err := definition.ValidateBudget(budget); err != nil {
+		return nil, err
+	}
+	return budget, nil
 }
 
 // resourceMemoryValue accepts a YAML string or integer scalar for memory (for

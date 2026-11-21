@@ -94,6 +94,8 @@ const (
 	CodeChangedIdempotencyContent = "changed_idempotency_content"
 	// CodeDeadlineExpired reports work refused at or past its deadline.
 	CodeDeadlineExpired = "deadline_expired"
+	// CodeBudgetExceeded reports an LLM token or cost budget limit reached or exceeded.
+	CodeBudgetExceeded = "budget_exceeded"
 	// CodeUnsupportedCapability reports admitted work the adapter cannot run.
 	CodeUnsupportedCapability = "unsupported_capability"
 	// CodeDependencyUnavailable reports an unavailable external dependency.
@@ -113,6 +115,7 @@ var errorCodes = []string{
 	CodeVersionConflict,
 	CodeChangedIdempotencyContent,
 	CodeDeadlineExpired,
+	CodeBudgetExceeded,
 	CodeUnsupportedCapability,
 	CodeDependencyUnavailable,
 	CodeUncertainExternalEffect,

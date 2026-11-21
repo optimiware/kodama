@@ -403,9 +403,14 @@ func cloneContainer(value *definition.Container) definition.Container {
 	clone.Env = append([]definition.EnvVar(nil), value.Env...)
 	clone.Secrets = append([]id.SecretName(nil), value.Secrets...)
 	clone.Outputs = append([]id.OutputKey(nil), value.Outputs...)
+	clone.Caches = append([]string(nil), value.Caches...)
 	if value.Resources != nil {
 		resources := *value.Resources
 		clone.Resources = &resources
+	}
+	if value.Budget != nil {
+		budget := *value.Budget
+		clone.Budget = &budget
 	}
 	return clone
 }

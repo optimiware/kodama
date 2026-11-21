@@ -112,8 +112,8 @@ import (
 func TestFaultClassification(t *testing.T) {
 	classes := fault.Classes()
 	codes := fault.Codes()
-	if len(classes) != 11 || len(codes) != 11 {
-		t.Fatalf("fault table has %d classes and %d codes; want 11 and 11", len(classes), len(codes))
+	if len(classes) != 12 || len(codes) != 12 {
+		t.Fatalf("fault table has %d classes and %d codes; want 12 and 12", len(classes), len(codes))
 	}
 	want := []fault.Class{
 		fault.InvalidInput,
@@ -123,6 +123,7 @@ func TestFaultClassification(t *testing.T) {
 		fault.VersionConflict,
 		fault.ChangedIdempotencyContent,
 		fault.DeadlineExpired,
+		fault.BudgetExceeded,
 		fault.UnsupportedCapability,
 		fault.DependencyUnavailable,
 		fault.UncertainExternalEffect,

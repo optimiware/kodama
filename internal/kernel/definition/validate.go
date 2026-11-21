@@ -47,6 +47,9 @@ func Validate(p Pipeline) error {
 	if err := validateEnv("pipeline env", p.Env); err != nil {
 		return err
 	}
+	if err := ValidateBudget(p.Budget); err != nil {
+		return err
+	}
 
 	indices := make(map[id.ActionName]int, len(p.Actions))
 	outputs := make(map[id.ActionName]map[id.OutputKey]bool, len(p.Actions))
@@ -177,6 +180,12 @@ func validateContainer(action Action) error {
 		return err
 	}
 	if err := validateContainerResources(action.Name, container.Resources); err != nil {
+		return err
+	}
+	if err := validateContainerCaches(string(action.Name), container.Caches); err != nil {
+		return err
+	}
+	if err := validateContainerBudget(string(action.Name), container.Budget); err != nil {
 		return err
 	}
 	return validateOutputKeys(action.Name, container.Outputs)

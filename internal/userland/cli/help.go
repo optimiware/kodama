@@ -740,6 +740,31 @@ Flags:
   --execution <id>     Execution ID (default: $KODEMA_EXECUTION)
   --action <name>      Action name (default: $KODEMA_ACTION)`,
 	},
+	"harness": {
+		usage:   "kodema harness exec [flags] -- <cmd...>",
+		summary: "Run a coding-agent harness behind a loopback LLM proxy",
+		description: `Subcommands:
+  exec   kodema harness exec [--server <url>] [--ca-file <path>] [--token-file <path>] -- <cmd...>`,
+	},
+	"harness exec": {
+		usage:   "kodema harness exec [--server <url>] [--ca-file <path>] [--token-file <path>] -- <cmd...>",
+		summary: "Run a child command with a loopback LLM reverse proxy that handles TLS CA trust and live token rotation",
+		description: `Starts an ephemeral loopback-only HTTP reverse proxy on 127.0.0.1:0 for the
+lifetime of <cmd...>, forwarding /llm/<provider>/* to $KODEMA_URL/llm/<provider>/*
+over TLS trusting --ca-file ($KODEMA_CA_FILE).
+
+On every upstream request, the proxy reads the current execution token fresh from
+--token-file (default $KODEMA_TOKEN_FILE or /kodema/secrets/KODEMA_TOKEN) so live
+token rotations never cause 401 errors. Exports OPENAI_BASE_URL, OPENAI_API_KEY,
+ANTHROPIC_BASE_URL, ANTHROPIC_API_KEY, OPENCODE_BASE_URL, OPENCODE_API_KEY,
+KODEMA_HARNESS_PROXY_URL, and rewritten KODEMA_LLM_<NAME>_BASE_URL variables to
+the child process with a random per-invocation local dummy API key.
+
+Flags:
+  --server, --url <url>   Kodema server base URL (default: $KODEMA_URL / $KODEMA_SERVER)
+  --ca-file <path>        PEM CA certificate bundle for TLS trust (default: $KODEMA_CA_FILE)
+  --token-file <path>     Execution token file read fresh per request (default: /kodema/secrets/KODEMA_TOKEN)`,
+	},
 	"version": {
 		usage:       "kodema version",
 		summary:     "Print kodema version and source revision",
@@ -787,6 +812,7 @@ Commands:
   call        Invoke any registered public API operation (or --list / --schema)
   git         Configure Git credentials, credential helper, or Git service
   output      Submit the outputs of the running container action
+  harness     Run a coding-agent harness behind a loopback LLM proxy
   version     Print version and source revision
   help        Show help for kodema or a command
 

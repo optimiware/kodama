@@ -76,6 +76,16 @@ type SecretValue struct {
 	Value string
 }
 
+// CacheMount is one optional named non-authoritative cache directory mounted
+// writable at /kodema/cache/<Name>. Name comes from Container.Caches; Key is
+// an opaque, Shell-assigned scope identifier (for example a deterministic
+// digest of tenant_id, project_id and name) so caches are never shared across
+// tenants or projects. The Kernel never interprets Key.
+type CacheMount struct {
+	Name string
+	Key  string
+}
+
 // PrepareRequest materializes activation data once per workload and attaches
 // the execution's existing workspace. Preparation failure prevents start.
 type PrepareRequest struct {
@@ -91,6 +101,9 @@ type PrepareRequest struct {
 	// pipeline-level environment defaults merged under the action environment
 	// (action precedence, defaults first in declaration order).
 	Container definition.Container
+	// Caches are the declared non-authoritative container caches. The Kernel
+	// copies declared names; the Shell activation layer assigns each scoped Key.
+	Caches []CacheMount
 	// Secrets are resolved activation-time values for the declared names.
 	Secrets []SecretValue
 	// Inputs are the admitted input values.

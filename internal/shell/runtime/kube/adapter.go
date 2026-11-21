@@ -71,6 +71,9 @@ func (a *Adapter) Prepare(ctx context.Context, request engine.PrepareRequest) (e
 	if err := validatePrepareContext(request.ActionName, request.TaskID); err != nil {
 		return engine.Preparation{}, err
 	}
+	if err := workspace.ValidateCacheMounts(request.Container.Caches, request.Caches); err != nil {
+		return engine.Preparation{}, err
+	}
 	if strings.TrimSpace(request.Container.Image) == "" {
 		return engine.Preparation{}, fault.New(fault.InvalidInput, "container image is empty")
 	}
@@ -189,6 +192,28 @@ func (a *Adapter) Prepare(ctx context.Context, request engine.PrepareRequest) (e
 		secretNames = append(secretNames, declared.Name)
 	}
 
+	var caches []preparedCache
+	if len(request.Caches) > 0 {
+		resolvedCacheClaim := ""
+		if a.cacheClaimName != "" {
+			// Explicitly non-authoritative: if the shared cache PVC is missing,
+			// evicted, or terminating, degrade cleanly to emptyDir rather than
+			// failing preparation or execution.
+			if cacheClaim, claimErr := a.cluster.GetClaim(ctx, a.namespace, a.cacheClaimName); claimErr == nil &&
+				cacheClaim.Namespace == a.namespace && cacheClaim.DeletionTimestamp == nil {
+				resolvedCacheClaim = a.cacheClaimName
+			}
+		}
+		caches = make([]preparedCache, len(request.Caches))
+		for index, cache := range request.Caches {
+			caches[index] = preparedCache{
+				name:      cache.Name,
+				key:       cache.Key,
+				claimName: resolvedCacheClaim,
+			}
+		}
+	}
+
 	prepared := preparedWorkload{
 		identity:   request.Identity,
 		digest:     digest,
@@ -209,6 +234,7 @@ func (a *Adapter) Prepare(ctx context.Context, request engine.PrepareRequest) (e
 		caSecret:        plan.CASecret,
 		gitEnv:          gitEnv,
 		outputDir:       outputDir,
+		caches:          caches,
 		secretNames:     secretNames,
 		resources:       resources,
 	}

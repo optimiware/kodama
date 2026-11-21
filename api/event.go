@@ -31,6 +31,7 @@ func EventTypes() []string {
 		"observation.custom",
 		"execution.cleanup",
 		"pipeline.start_refused",
+		"model.budget_exceeded",
 	}
 }
 
