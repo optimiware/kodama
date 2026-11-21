@@ -49,6 +49,9 @@ const (
 	// tombstoneDirectoryName holds durable removal markers outside the removed
 	// identity resource root.
 	tombstoneDirectoryName = "tombstones"
+	// cachesDirectoryName holds non-authoritative project-scoped cache
+	// directories outside both workload roots and disposable workspaces.
+	cachesDirectoryName = "caches"
 )
 
 // groupStateKind is the persisted spawn state of one stable identity.
@@ -77,6 +80,7 @@ type manifest struct {
 	Commands    []string              `json:"commands"`
 	Env         []string              `json:"env"`
 	SecretNames []id.SecretName       `json:"secret_names,omitempty"`
+	Caches      []CacheMount          `json:"caches,omitempty"`
 	Digest      string                `json:"digest"`
 }
 
@@ -397,7 +401,31 @@ func snapshotDigest(request engine.PrepareRequest, env []string, materialization
 		writeDigestString(digest, "task")
 		writeDigestString(digest, string(request.Task))
 	}
+	if len(request.Caches) > 0 {
+		writeDigestString(digest, "caches")
+		for _, cache := range request.Caches {
+			writeDigestString(digest, cache.Name)
+			writeDigestString(digest, cache.Key)
+		}
+	}
 	return hex.EncodeToString(digest.Sum(nil))
+}
+
+// CacheDir returns the confined non-authoritative host cache directory for one
+// tenant/project-scoped cache key under root/caches/<key>.
+func CacheDir(root, key string) (string, error) {
+	if !filepath.IsAbs(root) {
+		return "", fault.New(fault.InvalidInput, "cache root must be absolute")
+	}
+	if key == "" || strings.ContainsAny(key, "/\\") || key == "." || key == ".." {
+		return "", fault.New(fault.InvalidInput, "cache key is invalid")
+	}
+	cleanRoot := filepath.Clean(root)
+	dir := filepath.Join(cleanRoot, cachesDirectoryName, key)
+	if !pathWithin(cleanRoot, dir) || dir == cleanRoot {
+		return "", fault.New(fault.Forbidden, "cache directory escapes adapter root")
+	}
+	return dir, nil
 }
 
 // writeDigestString length-prefixes one value so concatenation is unambiguous.

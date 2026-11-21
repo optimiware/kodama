@@ -71,7 +71,11 @@ type llmProxyDependencies struct {
 	Lookup         secret.NameLookup
 	Cipher         secret.EnvelopeCipher
 	Store          store.Executor
+	Scanner        store.Scanner
+	BudgetTracker  *gateway.BudgetTracker
 	NewUsageID     func() (gateway.UsageID, error)
+	NewEventID     func() (id.EventID, error)
+	OnBudgetEvent  func(tenancy.Scope)
 	Clock          Clock
 	Transport      http.RoundTripper
 	WatchInterval  time.Duration
@@ -104,6 +108,7 @@ type llmProxyHandler struct {
 	executions    gateway.ExecutionReader
 	secrets       secret.Resolver
 	store         store.Executor
+	budgets       *gateway.BudgetTracker
 	newUsageID    func() (gateway.UsageID, error)
 	client        *http.Client
 	clock         Clock
@@ -211,6 +216,15 @@ func newLLMProxyHandler(deps llmProxyDependencies) (http.Handler, func(context.C
 		watchInterval = defaultLLMProxyWatchInterval
 	}
 
+	budgets := deps.BudgetTracker
+	if budgets == nil {
+		var budgetErr error
+		budgets, budgetErr = newSharedBudgetTracker(deps.Config, deps.Store, deps.Scanner, deps.Clock, deps.NewEventID, deps.OnBudgetEvent)
+		if budgetErr != nil {
+			return nil, nil, budgetErr
+		}
+	}
+
 	return &llmProxyHandler{
 		providers:     providers,
 		principals:    deps.Principals,
@@ -218,6 +232,7 @@ func newLLMProxyHandler(deps llmProxyDependencies) (http.Handler, func(context.C
 		executions:    executions,
 		secrets:       secrets,
 		store:         deps.Store,
+		budgets:       budgets,
 		newUsageID:    deps.NewUsageID,
 		client:        client,
 		clock:         deps.Clock,
@@ -319,6 +334,29 @@ func (handler *llmProxyHandler) ServeHTTP(writer http.ResponseWriter, request *h
 		return
 	}
 
+	trackUsage := request.Method == http.MethodPost && handler.store != nil && handler.newUsageID != nil
+	var requestedModel string
+	if request.Method == http.MethodPost {
+		requestedModel = extractRequestedModel(body)
+		if handler.budgets != nil {
+			modelLabel, upstreamModel := formatProxyUsageModels(provider.name, requestedModel, "")
+			releaseBudget, budgetErr := handler.budgets.CheckAndAcquire(ctx, gateway.BudgetCheckRequest{
+				Scope:         scope,
+				PrincipalID:   admitted.Principal.ID,
+				ExecutionID:   admitted.ExecutionID,
+				ActionID:      admitted.ActionID,
+				Model:         modelLabel,
+				UpstreamModel: upstreamModel,
+			})
+			if budgetErr != nil {
+				writeHTTPError(writer, budgetErr)
+				return
+			}
+			defer releaseBudget()
+		}
+		body = ensureOpenAIStreamIncludeUsage(upstreamPath, body)
+	}
+
 	providerSecret, err := handler.resolveProviderSecret(ctx, scope, provider.secretName)
 	if err != nil {
 		writeHTTPError(writer, err)
@@ -373,12 +411,6 @@ func (handler *llmProxyHandler) ServeHTTP(writer http.ResponseWriter, request *h
 	}
 	if outbound.Header.Get("anthropic-version") == "" && provider.anthropicVersion != "" {
 		outbound.Header.Set("anthropic-version", provider.anthropicVersion)
-	}
-
-	trackUsage := request.Method == http.MethodPost && handler.store != nil && handler.newUsageID != nil
-	var requestedModel string
-	if trackUsage {
-		requestedModel = extractRequestedModel(body)
 	}
 
 	response, err := handler.client.Do(outbound)
@@ -553,6 +585,7 @@ func (handler *llmProxyHandler) recordUsage(
 		Scope:         scope,
 		PrincipalID:   admitted.Principal.ID,
 		ExecutionID:   admitted.ExecutionID,
+		ActionID:      admitted.ActionID,
 		Model:         modelLabel,
 		UpstreamModel: upstreamModel,
 		Outcome:       outcome,

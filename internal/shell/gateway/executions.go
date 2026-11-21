@@ -31,7 +31,10 @@ type Option func(*options) error
 
 // options is the resolved optional composition of one enabled gateway.
 type options struct {
-	executions ExecutionReader
+	executions   ExecutionReader
+	budgetReader BudgetReader
+	budgetEvents BudgetEventRecorder
+	budgets      *BudgetTracker
 }
 
 // WithExecutionReader injects the current admitted-execution read seam. The
@@ -42,6 +45,40 @@ func WithExecutionReader(reader ExecutionReader) Option {
 			return fault.New(fault.InvalidInput, "model gateway execution reader option is nil")
 		}
 		resolved.executions = reader
+		return nil
+	}
+}
+
+// WithBudgetReader injects the execution/task budget and model_usage reader.
+func WithBudgetReader(reader BudgetReader) Option {
+	return func(resolved *options) error {
+		if reader == nil {
+			return fault.New(fault.InvalidInput, "model gateway budget reader option is nil")
+		}
+		resolved.budgetReader = reader
+		return nil
+	}
+}
+
+// WithBudgetEventRecorder injects the attributable budget_exceeded event recorder.
+func WithBudgetEventRecorder(recorder BudgetEventRecorder) Option {
+	return func(resolved *options) error {
+		if recorder == nil {
+			return fault.New(fault.InvalidInput, "model gateway budget event recorder option is nil")
+		}
+		resolved.budgetEvents = recorder
+		return nil
+	}
+}
+
+// WithBudgetTracker injects a shared BudgetTracker (for example shared between
+// the non-streaming model gateway and the streaming /llm/{provider}/* proxy).
+func WithBudgetTracker(tracker *BudgetTracker) Option {
+	return func(resolved *options) error {
+		if tracker == nil {
+			return fault.New(fault.InvalidInput, "model gateway budget tracker option is nil")
+		}
+		resolved.budgets = tracker
 		return nil
 	}
 }

@@ -47,6 +47,15 @@ const (
 	SpawnUncertain SpawnOutcome = "uncertain"
 )
 
+// CacheMount is one non-authoritative writable dependency cache directory
+// provisioned for a process workload.
+type CacheMount struct {
+	Name      string `json:"name"`
+	Key       string `json:"key"`
+	MountPath string `json:"mount_path"`
+	HostPath  string `json:"host_path"`
+}
+
 // SpawnRequest is one complete, confined process-group launch request. It
 // carries no secret material: secrets are only mounted as files.
 type SpawnRequest struct {
@@ -58,6 +67,7 @@ type SpawnRequest struct {
 	Root       string
 	StdoutPath string
 	StderrPath string
+	Caches     []CacheMount
 }
 
 // SpawnResult is the executor's structured spawn outcome.

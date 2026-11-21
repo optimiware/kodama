@@ -120,6 +120,11 @@ type Config struct {
 	// ImagePullSecrets names the tenant-local pull Secrets the Job references.
 	// An empty list renders no imagePullSecrets field.
 	ImagePullSecrets []string
+	// CacheClaimName optionally names a tenant-local PersistentVolumeClaim used
+	// to back declared non-authoritative container caches via subPath isolation
+	// keyed by (tenant_id, project_id, cache_name). When empty or absent at
+	// Prepare time, caches cleanly degrade to emptyDir volumes.
+	CacheClaimName string
 	// Clock is optional; nil means a real clock.
 	Clock Clock
 }
@@ -185,6 +190,9 @@ type Volume struct {
 	// EmptyDir requests pod-local storage. MemoryBytes > 0 selects a bounded tmpfs.
 	EmptyDir    bool
 	MemoryBytes int64
+	// SubPath optionally selects a scoped subdirectory within ClaimName (used
+	// for tenant/project-isolated non-authoritative dependency caches).
+	SubPath string
 }
 
 // JobSpec is the generated Job pod template.
@@ -364,6 +372,12 @@ type Cluster interface {
 // identity and the activation declaration. It is keyed by WorkloadID so a retry
 // inside the same process cannot rebind the workload to a changed identity or
 // declaration.
+type preparedCache struct {
+	name      string
+	key       string
+	claimName string
+}
+
 type preparedWorkload struct {
 	identity        engine.EffectIdentity
 	digest          string
@@ -381,6 +395,7 @@ type preparedWorkload struct {
 	caSecret        string
 	gitEnv          []string
 	outputDir       string
+	caches          []preparedCache
 	resources       Resources
 }
 
@@ -406,6 +421,7 @@ type Adapter struct {
 	cleanup          CleanupPolicy
 	workloadCA       WorkloadCAConfig
 	imagePullSecrets []string
+	cacheClaimName   string
 	clock            Clock
 
 	mu       sync.Mutex
@@ -492,6 +508,9 @@ func New(config Config) (*Adapter, error) {
 	if err := validateImagePullSecretNames(config.ImagePullSecrets); err != nil {
 		return nil, err
 	}
+	if config.CacheClaimName != "" && !validDNS1123Subdomain(config.CacheClaimName) {
+		return nil, fault.New(fault.InvalidInput, "kubernetes adapter cache claim name is not a DNS-1123 subdomain")
+	}
 	if err := validateToolbox(config.ToolboxImage, config.GitURL); err != nil {
 		return nil, err
 	}
@@ -510,6 +529,7 @@ func New(config Config) (*Adapter, error) {
 		cleanup:          config.Cleanup,
 		workloadCA:       config.WorkloadCA,
 		imagePullSecrets: append([]string(nil), config.ImagePullSecrets...),
+		cacheClaimName:   config.CacheClaimName,
 		clock:            clock,
 		prepared:         map[id.WorkloadID]preparedWorkload{},
 		locks:            map[id.WorkspaceID]*workspaceLock{},

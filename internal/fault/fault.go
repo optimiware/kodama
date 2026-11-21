@@ -32,6 +32,8 @@ const (
 	ChangedIdempotencyContent Class = "changed_idempotency_content"
 	// DeadlineExpired reports work refused at or past its deadline.
 	DeadlineExpired Class = "deadline_expired"
+	// BudgetExceeded reports an LLM token or cost budget limit reached or exceeded.
+	BudgetExceeded Class = "budget_exceeded"
 	// UnsupportedCapability reports admitted work the selected adapter cannot run.
 	UnsupportedCapability Class = "unsupported_capability"
 	// DependencyUnavailable reports an unavailable external dependency.
@@ -50,6 +52,7 @@ const (
 	CodeVersionConflict           Code = "version_conflict"
 	CodeChangedIdempotencyContent Code = "changed_idempotency_content"
 	CodeDeadlineExpired           Code = "deadline_expired"
+	CodeBudgetExceeded            Code = "budget_exceeded"
 	CodeUnsupportedCapability     Code = "unsupported_capability"
 	CodeDependencyUnavailable     Code = "dependency_unavailable"
 	CodeUncertainExternalEffect   Code = "uncertain_external_effect"
@@ -71,6 +74,7 @@ var classCodes = []classCode{
 	{VersionConflict, CodeVersionConflict},
 	{ChangedIdempotencyContent, CodeChangedIdempotencyContent},
 	{DeadlineExpired, CodeDeadlineExpired},
+	{BudgetExceeded, CodeBudgetExceeded},
 	{UnsupportedCapability, CodeUnsupportedCapability},
 	{DependencyUnavailable, CodeDependencyUnavailable},
 	{UncertainExternalEffect, CodeUncertainExternalEffect},

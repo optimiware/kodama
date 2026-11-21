@@ -200,6 +200,14 @@ func (a *Adapter) preparationDigest(request engine.PrepareRequest, materializati
 		writeDigestString(digest, request.Container.Resources.Memory)
 		writeDigestString(digest, request.Container.Resources.CPU)
 	}
+	if len(request.Caches) > 0 {
+		writeDigestString(digest, "caches:present")
+		writeDigestCount(digest, len(request.Caches))
+		for _, cache := range request.Caches {
+			writeDigestString(digest, cache.Name)
+			writeDigestString(digest, cache.Key)
+		}
+	}
 	writeDigestString(digest, a.kodemaURL)
 	writeDigestCount(digest, len(materialization.Files))
 	for _, file := range materialization.Files {
@@ -429,6 +437,26 @@ func (a *Adapter) jobManifest(prepared preparedWorkload, identity engine.EffectI
 			volumes = append(volumes, Volume{Name: "previous-outputs", MountPath: workspace.OutputRoot, ConfigMapName: prepared.configMap, ReadOnly: true, Items: previousOutputs})
 		}
 		volumes = append(volumes, Volume{Name: "action-outputs", MountPath: prepared.outputDir, EmptyDir: true, MemoryBytes: workspace.OutputDirectoryBytes})
+	}
+	for _, cache := range prepared.caches {
+		volName := "cache-" + cache.key[:16]
+		mountPath := workspace.CacheRoot + "/" + cache.name
+		if cache.claimName != "" {
+			volumes = append(volumes, Volume{
+				Name:      volName,
+				MountPath: mountPath,
+				ClaimName: cache.claimName,
+				SubPath:   cache.key,
+				ReadOnly:  false,
+			})
+		} else {
+			volumes = append(volumes, Volume{
+				Name:      volName,
+				MountPath: mountPath,
+				EmptyDir:  true,
+				ReadOnly:  false,
+			})
+		}
 	}
 	command := []string{script.ShellPath, "-ec", prepared.container.script}
 	if prepared.toolboxImage != "" {

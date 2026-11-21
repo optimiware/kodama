@@ -65,6 +65,9 @@ const (
 	// TypePipelineStartRefused reports a permanent refusal of an automatic
 	// push start. It is a Shell decision fact, never an execution observation.
 	TypePipelineStartRefused Type = "pipeline.start_refused"
+	// TypeModelBudgetExceeded reports an LLM invocation refused because an
+	// execution, action, or task token/cost budget was reached or exceeded.
+	TypeModelBudgetExceeded Type = "model.budget_exceeded"
 )
 
 var types = [...]Type{
@@ -87,6 +90,7 @@ var types = [...]Type{
 	TypeCustomObservation,
 	TypeCleanup,
 	TypePipelineStartRefused,
+	TypeModelBudgetExceeded,
 }
 
 // Types returns every event type in declaration order.

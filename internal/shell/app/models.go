@@ -45,6 +45,8 @@ type modelGatewayDependencies struct {
 	Lookup         secret.NameLookup
 	Cipher         secret.EnvelopeCipher
 	Store          store.Executor
+	Scanner        store.Scanner
+	BudgetTracker  *gateway.BudgetTracker
 	IDs            *bridges.IDs
 	Clock          Clock
 	Transport      http.RoundTripper
@@ -122,6 +124,18 @@ func newConfiguredModels(deps modelGatewayDependencies) (opsapp.ModelInvocation,
 	if transport == nil {
 		transport, stop = deps.Config.transportFor()
 	}
+	gatewayOptions := []gateway.Option{gateway.WithExecutionReader(executions)}
+	budgetTracker := deps.BudgetTracker
+	if budgetTracker == nil {
+		var budgetErr error
+		budgetTracker, budgetErr = newSharedBudgetTracker(deps.Config, deps.Store, deps.Scanner, deps.Clock, deps.IDs.NewEventID, nil)
+		if budgetErr != nil {
+			return nil, nil, budgetErr
+		}
+	}
+	if budgetTracker != nil {
+		gatewayOptions = append(gatewayOptions, gateway.WithBudgetTracker(budgetTracker))
+	}
 	instance, err := gateway.New(deps.Config.gatewayConfig(), gateway.Dependencies{
 		Principals: deps.Credentials,
 		Authorizer: deps.Authorizer,
@@ -135,7 +149,7 @@ func newConfiguredModels(deps modelGatewayDependencies) (opsapp.ModelInvocation,
 		Transport: transport,
 		Clock:     deps.Clock,
 		NewID:     deps.IDs.NewUsageID,
-	}, gateway.WithExecutionReader(executions))
+	}, gatewayOptions...)
 	// Every dependency and configuration field gateway.New validates was
 	// checked above, so this error is unreachable; there is no adopted-resource
 	// cleanup path to take here. A later startup failure is stopped through the

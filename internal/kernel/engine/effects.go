@@ -362,12 +362,20 @@ func (e *Engine) prepareRequest(execution kernel.Execution, index int) PrepareRe
 		container = action.Container.Definition
 	}
 	container.Env = mergeEnv(pipeline.Env, container.Env)
+	var caches []CacheMount
+	if len(container.Caches) > 0 {
+		caches = make([]CacheMount, len(container.Caches))
+		for i, name := range container.Caches {
+			caches[i] = CacheMount{Name: name}
+		}
+	}
 	return PrepareRequest{
 		Identity:    effectIdentity(execution.ID, action),
 		WorkspaceID: execution.WorkspaceID,
 		ActionName:  action.Name,
 		TaskID:      execution.Snapshot.TaskID(),
 		Container:   container,
+		Caches:      caches,
 		Inputs:      inputs,
 		Outputs:     outputs,
 		Task:        task,

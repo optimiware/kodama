@@ -337,6 +337,9 @@ func (a *Adapter) Prepare(ctx context.Context, request engine.PrepareRequest) (e
 	if err := validatePrepareContext(request.ActionName, request.TaskID); err != nil {
 		return engine.Preparation{}, err
 	}
+	if err := workspace.ValidateCacheMounts(request.Container.Caches, request.Caches); err != nil {
+		return engine.Preparation{}, err
+	}
 	memoryBytes, cpuMillicores, err := a.resolveResources(request.Container.Resources)
 	if err != nil {
 		return engine.Preparation{}, err

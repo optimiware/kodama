@@ -67,6 +67,13 @@ type preparedEnvVar struct {
 	Value string     `json:"value"`
 }
 
+// preparedCache is one tenant/project-scoped non-authoritative cache mount
+// persisted with the preparation.
+type preparedCache struct {
+	Name string `json:"name"`
+	Key  string `json:"key"`
+}
+
 // preparationRecord is the durable evidence that one workload was completely
 // prepared. It is written last, so its presence authorizes a start and its
 // absence (a partial or unsafe preparation) never does.
@@ -95,6 +102,7 @@ type preparationRecord struct {
 	Resources     *definition.Resources `json:"resources,omitempty"`
 	MemoryBytes   int64                 `json:"memory_bytes,omitempty"`
 	CPUMillicores int64                 `json:"cpu_millicores,omitempty"`
+	Caches        []preparedCache       `json:"caches,omitempty"`
 }
 
 // workloadRoot returns the per-identity adapter root.
@@ -315,6 +323,13 @@ func (a *Adapter) preparationRecordFor(request engine.PrepareRequest, files []pr
 		copied := *request.Container.Resources
 		resources = &copied
 	}
+	var caches []preparedCache
+	if len(request.Caches) > 0 {
+		caches = make([]preparedCache, len(request.Caches))
+		for index, cache := range request.Caches {
+			caches[index] = preparedCache{Name: cache.Name, Key: cache.Key}
+		}
+	}
 	return preparationRecord{
 		WorkspaceID: request.WorkspaceID,
 		ActionName:  request.ActionName,
@@ -333,6 +348,7 @@ func (a *Adapter) preparationRecordFor(request engine.PrepareRequest, files []pr
 		Resources:     resources,
 		MemoryBytes:   memoryBytes,
 		CPUMillicores: cpuMillicores,
+		Caches:        caches,
 	}
 }
 
@@ -429,6 +445,22 @@ func (a *Adapter) containerSpec(prepared preparationRecord, identity engine.Effe
 			SizeBytes:   workspace.OutputDirectoryBytes,
 		})
 	}
+	for _, cache := range prepared.Caches {
+		mountPath, err := workspace.CachePath(cache.Name)
+		if err != nil {
+			return ContainerSpec{}, err
+		}
+		cacheVol, err := CacheVolumeName(cache.Key)
+		if err != nil {
+			return ContainerSpec{}, err
+		}
+		mounts = append(mounts, Mount{
+			Type:        "volume",
+			Source:      cacheVol,
+			Destination: mountPath,
+			ReadOnly:    false,
+		})
+	}
 	memoryBytes := prepared.MemoryBytes
 	if memoryBytes <= 0 {
 		memoryBytes = a.resources.DefaultMemoryBytes
@@ -471,6 +503,13 @@ func mountPoints(record preparationRecord) ([]string, error) {
 			return nil, err
 		}
 		points = append(points, outputs)
+	}
+	for _, cache := range record.Caches {
+		mountPath, err := workspace.CachePath(cache.Name)
+		if err != nil {
+			return nil, err
+		}
+		points = append(points, mountPath)
 	}
 	return points, nil
 }

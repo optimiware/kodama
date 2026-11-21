@@ -20,6 +20,7 @@ var httpStatuses = []struct {
 	{CodeDeadlineExpired, 408},
 	{CodeVersionConflict, 409},
 	{CodeChangedIdempotencyContent, 422},
+	{CodeBudgetExceeded, 429},
 	{CodeInternalFailure, 500},
 	{CodeUnsupportedCapability, 501},
 	{CodeUncertainExternalEffect, 502},

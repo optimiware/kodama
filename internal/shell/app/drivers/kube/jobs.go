@@ -86,6 +86,7 @@ type resourcesBody struct {
 type volumeMountBody struct {
 	Name      string `json:"name"`
 	MountPath string `json:"mountPath"`
+	SubPath   string `json:"subPath,omitempty"`
 	ReadOnly  bool   `json:"readOnly,omitempty"`
 }
 
@@ -177,6 +178,9 @@ func buildJobManifest(job runtimekube.Job) (jobManifestBody, error) {
 	mounts := make([]volumeMountBody, 0, len(job.Spec.Volumes))
 	volumes := make([]volumeBody, 0, len(job.Spec.Volumes))
 	for _, volume := range job.Spec.Volumes {
+		if err := validateVolumeSubPath(volume.SubPath); err != nil {
+			return jobManifestBody{}, err
+		}
 		source, err := buildVolume(volume)
 		if err != nil {
 			return jobManifestBody{}, err
@@ -186,6 +190,7 @@ func buildJobManifest(job runtimekube.Job) (jobManifestBody, error) {
 		mounts = append(mounts, volumeMountBody{
 			Name:      volume.Name,
 			MountPath: volume.MountPath,
+			SubPath:   volume.SubPath,
 			ReadOnly:  volume.ReadOnly,
 		})
 	}
@@ -306,6 +311,27 @@ func validImagePullSecretName(name string) bool {
 		}
 	}
 	return true
+}
+
+// validateVolumeSubPath checks that an optional volume subPath is a safe
+// relative path: when set, it must have no leading/trailing whitespace, no
+// leading slash, no backslashes, and no empty, "." or ".." path segments.
+func validateVolumeSubPath(subPath string) error {
+	if subPath == "" {
+		return nil
+	}
+	if strings.TrimSpace(subPath) != subPath {
+		return fault.New(fault.InvalidInput, "kubernetes volume subPath must not have leading or trailing whitespace")
+	}
+	if strings.HasPrefix(subPath, "/") || strings.Contains(subPath, "\\") {
+		return fault.New(fault.InvalidInput, "kubernetes volume subPath must be a safe relative path")
+	}
+	for _, segment := range strings.Split(subPath, "/") {
+		if segment == "" || segment == "." || segment == ".." {
+			return fault.New(fault.InvalidInput, "kubernetes volume subPath must not contain empty or relative segments")
+		}
+	}
+	return nil
 }
 
 // buildVolume maps one seam volume to exactly one source.

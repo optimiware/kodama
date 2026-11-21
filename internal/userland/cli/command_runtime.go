@@ -23,6 +23,7 @@ import (
 type CommandDeps struct {
 	Login                  LoginRuntime
 	HTTP                   http.RoundTripper
+	HarnessHTTP            http.RoundTripper
 	HomeDir                func() (string, error)
 	CommandPath            string
 	ExplicitCredentialFile bool
@@ -31,6 +32,7 @@ type CommandDeps struct {
 	GitConfig              func(ctx context.Context, args []string) error
 	GitRun                 func(ctx context.Context, dir string, args []string) (string, error)
 	Env                    func(string) string
+	Environ                func() []string
 }
 
 // LoginRuntime is the injected production collaborator set for the

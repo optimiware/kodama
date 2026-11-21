@@ -63,23 +63,43 @@ var errTrustedConfigTrailing = errors.New("trailing content after the document")
 type modelsFile struct {
 	Models      []modelFile         `json:"models"`
 	Providers   []modelProviderFile `json:"providers"`
+	Budgets     *budgetsFile        `json:"budgets,omitempty"`
 	SecretRules []secretRuleFile    `json:"secret_rules"`
+}
+
+type budgetsFile struct {
+	DefaultExecution *budgetLimitsFile  `json:"default_execution,omitempty"`
+	DefaultTask      *budgetLimitsFile  `json:"default_task,omitempty"`
+	Pricing          []modelPricingFile `json:"pricing,omitempty"`
+}
+
+type budgetLimitsFile struct {
+	MaxTokens  int64   `json:"max_tokens,omitempty"`
+	MaxCostUSD float64 `json:"max_cost_usd,omitempty"`
+}
+
+type modelPricingFile struct {
+	Model                     string  `json:"model"`
+	InputUSDPerMillionTokens  float64 `json:"input_usd_per_million_tokens"`
+	OutputUSDPerMillionTokens float64 `json:"output_usd_per_million_tokens"`
 }
 
 // modelFile is one configured model entry.
 type modelFile struct {
-	TenantID            string `json:"tenant_id"`
-	ProjectID           string `json:"project_id"`
-	Model               string `json:"model"`
-	UpstreamModel       string `json:"upstream_model"`
-	Endpoint            string `json:"endpoint"`
-	SecretName          string `json:"secret_name"`
-	MaxRequestBytes     int    `json:"max_request_bytes"`
-	MaxResponseBytes    int    `json:"max_response_bytes"`
-	MaxCompletionTokens int    `json:"max_completion_tokens"`
-	Timeout             string `json:"timeout"`
-	RecordContent       bool   `json:"record_content"`
-	ContentRetention    string `json:"content_retention"`
+	TenantID                  string  `json:"tenant_id"`
+	ProjectID                 string  `json:"project_id"`
+	Model                     string  `json:"model"`
+	UpstreamModel             string  `json:"upstream_model"`
+	Endpoint                  string  `json:"endpoint"`
+	SecretName                string  `json:"secret_name"`
+	MaxRequestBytes           int     `json:"max_request_bytes"`
+	MaxResponseBytes          int     `json:"max_response_bytes"`
+	MaxCompletionTokens       int     `json:"max_completion_tokens"`
+	Timeout                   string  `json:"timeout"`
+	RecordContent             bool    `json:"record_content"`
+	ContentRetention          string  `json:"content_retention"`
+	InputUSDPerMillionTokens  float64 `json:"input_usd_per_million_tokens,omitempty"`
+	OutputUSDPerMillionTokens float64 `json:"output_usd_per_million_tokens,omitempty"`
 }
 
 // modelProviderFile is one configured streaming LLM proxy provider entry.
@@ -203,16 +223,18 @@ func LoadModelsConfigFile(path string, profile Profile) (*ModelsConfig, error) {
 				TenantID:  id.TenantID(entry.TenantID),
 				ProjectID: id.ProjectID(entry.ProjectID),
 			},
-			Model:               entry.Model,
-			UpstreamModel:       entry.UpstreamModel,
-			Endpoint:            entry.Endpoint,
-			SecretName:          id.SecretName(entry.SecretName),
-			MaxRequestBytes:     entry.MaxRequestBytes,
-			MaxResponseBytes:    entry.MaxResponseBytes,
-			MaxCompletionTokens: entry.MaxCompletionTokens,
-			Timeout:             timeout,
-			RecordContent:       entry.RecordContent,
-			ContentRetention:    retention,
+			Model:                     entry.Model,
+			UpstreamModel:             entry.UpstreamModel,
+			Endpoint:                  entry.Endpoint,
+			SecretName:                id.SecretName(entry.SecretName),
+			MaxRequestBytes:           entry.MaxRequestBytes,
+			MaxResponseBytes:          entry.MaxResponseBytes,
+			MaxCompletionTokens:       entry.MaxCompletionTokens,
+			Timeout:                   timeout,
+			RecordContent:             entry.RecordContent,
+			ContentRetention:          retention,
+			InputUSDPerMillionTokens:  entry.InputUSDPerMillionTokens,
+			OutputUSDPerMillionTokens: entry.OutputUSDPerMillionTokens,
 		})
 	}
 	for index, entry := range file.Providers {
@@ -235,6 +257,27 @@ func LoadModelsConfigFile(path string, profile Profile) (*ModelsConfig, error) {
 			MaxRequestBytes:  entry.MaxRequestBytes,
 			Timeout:          timeout,
 		})
+	}
+	if file.Budgets != nil {
+		if file.Budgets.DefaultExecution != nil {
+			config.Budgets.DefaultExecution = gateway.BudgetLimits{
+				MaxTokens:  file.Budgets.DefaultExecution.MaxTokens,
+				MaxCostUSD: file.Budgets.DefaultExecution.MaxCostUSD,
+			}
+		}
+		if file.Budgets.DefaultTask != nil {
+			config.Budgets.DefaultTask = gateway.BudgetLimits{
+				MaxTokens:  file.Budgets.DefaultTask.MaxTokens,
+				MaxCostUSD: file.Budgets.DefaultTask.MaxCostUSD,
+			}
+		}
+		for _, pricing := range file.Budgets.Pricing {
+			config.Budgets.Pricing = append(config.Budgets.Pricing, gateway.ModelPricing{
+				Model:                     pricing.Model,
+				InputUSDPerMillionTokens:  pricing.InputUSDPerMillionTokens,
+				OutputUSDPerMillionTokens: pricing.OutputUSDPerMillionTokens,
+			})
+		}
 	}
 	config.SecretRules = trustedSecretRules(file.SecretRules)
 	if err := config.validate(profile); err != nil {

@@ -263,6 +263,7 @@ type kubeAdapterView struct {
 	memoryLimit     string
 	jobTTLSeconds   int
 	workloadCA      string
+	cacheClaimName  string
 	namespace       string
 	tenant          string
 	kodemaURL       string
@@ -312,6 +313,7 @@ func inspectKubeAdapter(t *testing.T, adapter any) kubeAdapterView {
 		memoryLimit:     policy.FieldByName("MemoryLimit").String(),
 		jobTTLSeconds:   int(policy.FieldByName("JobTTLSeconds").Int()),
 		workloadCA:      element.FieldByName("workloadCA").FieldByName("SecretName").String(),
+		cacheClaimName:  element.FieldByName("cacheClaimName").String(),
 		namespace:       element.FieldByName("namespace").String(),
 		tenant:          element.FieldByName("tenant").String(),
 		kodemaURL:       element.FieldByName("kodemaURL").String(),
@@ -365,6 +367,7 @@ func TestBuildProductionMapsEveryEnvironmentSettingToItsOwnField(t *testing.T) {
 		"KODEMA_WORKLOAD_MEMORY_REQUEST":     "memory-request-sentinel",
 		"KODEMA_WORKLOAD_MEMORY_LIMIT":       "memory-limit-sentinel",
 		"KODEMA_WORKLOAD_CA_SECRET":          "workload-ca-sentinel",
+		"KODEMA_WORKLOAD_CACHE_CLAIM":        "workload-cache-sentinel",
 		"KUBERNETES_SERVICE_HOST":            "kubernetes-service-host-sentinel",
 		"KUBERNETES_SERVICE_PORT":            "6443",
 		"KODEMA_TLS_DIR":                     getenv("KODEMA_TLS_DIR"),
@@ -492,6 +495,7 @@ func TestBuildProductionMapsEveryEnvironmentSettingToItsOwnField(t *testing.T) {
 		memoryLimit:     "memory-limit-sentinel",
 		jobTTLSeconds:   600,
 		workloadCA:      "workload-ca-sentinel",
+		cacheClaimName:  "workload-cache-sentinel",
 		namespace:       "namespace-sentinel",
 		tenant:          "tenant-sentinel",
 		kodemaURL:       options.PublicURL,

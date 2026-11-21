@@ -15,6 +15,7 @@ func expectedCodes() map[Class]Code {
 		VersionConflict:           CodeVersionConflict,
 		ChangedIdempotencyContent: CodeChangedIdempotencyContent,
 		DeadlineExpired:           CodeDeadlineExpired,
+		BudgetExceeded:            CodeBudgetExceeded,
 		UnsupportedCapability:     CodeUnsupportedCapability,
 		DependencyUnavailable:     CodeDependencyUnavailable,
 		UncertainExternalEffect:   CodeUncertainExternalEffect,
