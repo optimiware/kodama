@@ -16,6 +16,7 @@ import (
 	"github.com/optimiware/kodema/internal/shell/authorize"
 	"github.com/optimiware/kodema/internal/shell/event"
 	shellExecution "github.com/optimiware/kodema/internal/shell/execution"
+	"github.com/optimiware/kodema/internal/shell/gateway"
 	"github.com/optimiware/kodema/internal/shell/inbox"
 	shellLog "github.com/optimiware/kodema/internal/shell/log"
 	"github.com/optimiware/kodema/internal/shell/pipeline"
@@ -498,6 +499,7 @@ func wireApp(ctx context.Context, builder *builder, environment *environment) (*
 	// configuration returns the disabled port without touching any dependency.
 	// The composition adopts the provider transport and stops it at shutdown.
 	var sharedModelTransport http.RoundTripper
+	var sharedBudgetTracker *gateway.BudgetTracker
 	if cfg.Models != nil {
 		if err := cfg.Models.validate(cfg.Profile); err != nil {
 			return nil, err
@@ -505,6 +507,10 @@ func wireApp(ctx context.Context, builder *builder, environment *environment) (*
 		var stopModels func(context.Context) error
 		sharedModelTransport, stopModels = cfg.Models.transportFor()
 		builder.addStop("model-gateway-transport", stopModels)
+		sharedBudgetTracker, err = newSharedBudgetTracker(cfg.Models, environment.store, environment.scanner, clock, ids.NewEventID, eventHub.notify)
+		if err != nil {
+			return nil, err
+		}
 	}
 	modelInvocation, _, err := newConfiguredModels(modelGatewayDependencies{
 		Config:         cfg.Models,
@@ -517,6 +523,8 @@ func wireApp(ctx context.Context, builder *builder, environment *environment) (*
 		Lookup:         secretLookup,
 		Cipher:         environment.cipher,
 		Store:          environment.store,
+		Scanner:        environment.scanner,
+		BudgetTracker:  sharedBudgetTracker,
 		IDs:            ids,
 		Clock:          clock,
 		Transport:      sharedModelTransport,
@@ -534,7 +542,11 @@ func wireApp(ctx context.Context, builder *builder, environment *environment) (*
 		Lookup:         secretLookup,
 		Cipher:         environment.cipher,
 		Store:          environment.store,
+		Scanner:        environment.scanner,
+		BudgetTracker:  sharedBudgetTracker,
 		NewUsageID:     ids.NewUsageID,
+		NewEventID:     ids.NewEventID,
+		OnBudgetEvent:  eventHub.notify,
 		Clock:          clock,
 		Transport:      sharedModelTransport,
 	})

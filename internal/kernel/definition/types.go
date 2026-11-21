@@ -57,6 +57,13 @@ type Resources struct {
 	CPU    string `json:"cpu,omitempty"`
 }
 
+// Budget declares optional bounded LLM token and USD spend limits on a
+// pipeline or container action. Zero fields mean no limit on that dimension.
+type Budget struct {
+	MaxTokens  int64   `json:"max_tokens,omitempty"`
+	MaxCostUSD float64 `json:"max_cost_usd,omitempty"`
+}
+
 // Container is a validated container action declaration. Images are pinned to
 // immutable digests before admission; secrets are names only, never values.
 type Container struct {
@@ -65,7 +72,9 @@ type Container struct {
 	Env       []EnvVar        `json:"env"`
 	Secrets   []id.SecretName `json:"secrets"`
 	Outputs   []id.OutputKey  `json:"outputs"`
+	Caches    []string        `json:"caches,omitempty"`
 	Resources *Resources      `json:"resources,omitempty"`
+	Budget    *Budget         `json:"budget,omitempty"`
 }
 
 // Request is a validated request action declaration. Assignment is an opaque
@@ -90,14 +99,21 @@ type Action struct {
 type Pipeline struct {
 	Inputs  []id.InputKey `json:"inputs"`
 	Env     []EnvVar      `json:"env"`
+	Budget  *Budget       `json:"budget,omitempty"`
 	Actions []Action      `json:"actions"`
 }
 
 // clone returns a deep copy so callers cannot mutate admitted values.
 func (p Pipeline) clone() Pipeline {
+	var budget *Budget
+	if p.Budget != nil {
+		copied := *p.Budget
+		budget = &copied
+	}
 	out := Pipeline{
 		Inputs:  append([]id.InputKey(nil), p.Inputs...),
 		Env:     append([]EnvVar(nil), p.Env...),
+		Budget:  budget,
 		Actions: make([]Action, len(p.Actions)),
 	}
 	for index, action := range p.Actions {
@@ -114,9 +130,14 @@ func (a Action) clone() Action {
 		container.Env = append([]EnvVar(nil), a.Container.Env...)
 		container.Secrets = append([]id.SecretName(nil), a.Container.Secrets...)
 		container.Outputs = append([]id.OutputKey(nil), a.Container.Outputs...)
+		container.Caches = append([]string(nil), a.Container.Caches...)
 		if a.Container.Resources != nil {
 			resources := *a.Container.Resources
 			container.Resources = &resources
+		}
+		if a.Container.Budget != nil {
+			budget := *a.Container.Budget
+			container.Budget = &budget
 		}
 		out.Container = &container
 	}

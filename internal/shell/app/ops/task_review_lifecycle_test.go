@@ -369,6 +369,9 @@ func TestCompletesTaskFalseAndExplicitTaskCompleteLifecycle(t *testing.T) {
 		t.Fatalf("task.cancel: %v", err)
 	}
 	_, err = h.invokeVersion(t, testToken, "task.complete", `{}`, csOverride.LifecycleVersion+2, map[string]string{"task": csOverride.TaskID})
+	if class, ok := fault.ClassOf(err); !ok || class != fault.VersionConflict {
+		t.Fatalf("task.complete on cancelled task err = %v; want version_conflict", err)
+	}
 	// 5. Per-start completes_task: false override MUST survive task.ask -> task.reply
 	// on a pipeline whose YAML omits completes_task (default true).
 	csReplyRaw, err := invokeKey(t, h, testToken, "task.create_and_start", "cs-ask-reply-no-complete", jsonBody(t, map[string]any{

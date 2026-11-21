@@ -487,25 +487,25 @@ func TestMigrationsDefaultEventPublishSequence(t *testing.T) {
 	}
 }
 
-func TestMigration0007PreservesBaselineAndAppliesAdditiveChanges(t *testing.T) {
+func TestMigration0008PreservesBaselineAndAppliesAdditiveChanges(t *testing.T) {
 	migrations := Migrations()
-	if len(migrations) != 7 {
-		t.Fatalf("Migrations() count = %d; want 7", len(migrations))
+	if len(migrations) != 8 {
+		t.Fatalf("Migrations() count = %d; want 8", len(migrations))
 	}
-	if migrations[6].Name != "0007_task_review_lifecycle.sql" {
-		t.Fatalf("migration 7 name = %q; want 0007_task_review_lifecycle.sql", migrations[6].Name)
+	if migrations[7].Name != "0008_task_review_lifecycle.sql" {
+		t.Fatalf("migration 8 name = %q; want 0008_task_review_lifecycle.sql", migrations[7].Name)
 	}
-	// Baseline 0002..0004 stay frozen without 0007 additions so existing v0.6.0
+	// Baseline 0002..0004 stay frozen without 0008 additions so existing v0.6.0
 	// databases do not observe a rewritten migration checksum.
 	baselineTables := normalizeSQL(migrations[1].SQL)
 	if strings.Contains(baselineTables, "parent_id") {
-		t.Error("0002_tables.sql must stay frozen without parent_id (belongs in 0007)")
+		t.Error("0002_tables.sql must stay frozen without parent_id (belongs in 0008)")
 	}
 	baselineConstraints := normalizeSQL(migrations[2].SQL)
 	if strings.Contains(baselineConstraints, "'revise'") || strings.Contains(baselineConstraints, "tasks_parent") {
-		t.Error("0003_constraints.sql must stay frozen without 0007 constraints")
+		t.Error("0003_constraints.sql must stay frozen without 0008 constraints")
 	}
-	mig7 := normalizeSQL(migrations[6].SQL)
+	mig8 := normalizeSQL(migrations[7].SQL)
 	for _, want := range []string{
 		"alter table tasks add column parent_id text",
 		"constraint tasks_parent foreign key (tenant_id, project_id, parent_id) references tasks (tenant_id, project_id, id)",
@@ -514,8 +514,8 @@ func TestMigration0007PreservesBaselineAndAppliesAdditiveChanges(t *testing.T) {
 		"alter table actions drop constraint actions_request_decision",
 		"constraint actions_request_decision check (request_decision is null or request_decision in ('pass', 'revise', 'fail'))",
 	} {
-		if !strings.Contains(mig7, want) {
-			t.Errorf("0007_task_review_lifecycle.sql missing %q:\n%s", want, migrations[6].SQL)
+		if !strings.Contains(mig8, want) {
+			t.Errorf("0008_task_review_lifecycle.sql missing %q:\n%s", want, migrations[7].SQL)
 		}
 	}
 }

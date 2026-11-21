@@ -1178,6 +1178,7 @@ func SchemaDesign() Schema {
 					column("project_id", "text", false),
 					column("principal_id", "text", false),
 					column("execution_id", "text", true),
+					column("action_id", "text", true),
 					column("model", "text", false),
 					column("upstream_model", "text", false),
 					column("outcome", "text", false),
@@ -1192,6 +1193,7 @@ func SchemaDesign() Schema {
 					foreignKey("model_usage_tenant", []string{"tenant_id"}, "tenants", []string{"id"}),
 					foreignKey("model_usage_project", []string{"tenant_id", "project_id"}, "projects", []string{"tenant_id", "id"}),
 					foreignKey("model_usage_execution", []string{"tenant_id", "project_id", "execution_id"}, "executions", []string{"tenant_id", "project_id", "id"}),
+					foreignKey("model_usage_action", []string{"tenant_id", "project_id", "action_id"}, "actions", []string{"tenant_id", "project_id", "id"}),
 				},
 				Unique: []UniqueConstraint{
 					unique("model_usage_scope_id", false, "tenant_id", "project_id", "id"),

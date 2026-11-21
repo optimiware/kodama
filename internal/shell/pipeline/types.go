@@ -208,6 +208,7 @@ type SnapshotInput struct {
 	YAML          []byte
 	Inputs        map[id.InputKey]string
 	Env           []definition.EnvVar
+	Budget        *definition.Budget
 	Images        []PinnedImage
 	SecretNames   []id.SecretName
 	Requirements  []string
@@ -235,6 +236,7 @@ type Snapshot struct {
 	YAMLSHA256    [32]byte               `json:"yaml_sha256"`
 	Inputs        map[id.InputKey]string `json:"inputs,omitempty"`
 	Env           []definition.EnvVar    `json:"env,omitempty"`
+	Budget        *definition.Budget     `json:"budget,omitempty"`
 	Images        []PinnedImage          `json:"images,omitempty"`
 	SecretNames   []id.SecretName        `json:"secret_names,omitempty"`
 	Requirements  []string               `json:"requirements,omitempty"`
@@ -274,11 +276,20 @@ func NewSnapshot(input SnapshotInput) (Snapshot, error) {
 			return Snapshot{}, fault.New(fault.InvalidInput, "snapshot runtime requirement is empty")
 		}
 	}
+	if err := definition.ValidateBudget(input.Budget); err != nil {
+		return Snapshot{}, err
+	}
+	var budget *definition.Budget
+	if input.Budget != nil {
+		copied := *input.Budget
+		budget = &copied
+	}
 	yaml := append([]byte(nil), input.YAML...)
 	return Snapshot{
 		YAMLSHA256:    sha256.Sum256(yaml),
 		Inputs:        cloneInputs(input.Inputs),
 		Env:           cloneEnv(input.Env),
+		Budget:        budget,
 		Images:        append([]PinnedImage(nil), input.Images...),
 		SecretNames:   append([]id.SecretName(nil), input.SecretNames...),
 		Requirements:  append([]string(nil), input.Requirements...),

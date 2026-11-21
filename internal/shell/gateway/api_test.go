@@ -391,6 +391,7 @@ func TestUsageRecordUnitWritesSQLNullForAbsentExecution(t *testing.T) {
 	}
 
 	record.ExecutionID = testExecution
+	record.ActionID = testAction
 	unit, err = record.Unit()
 	if err != nil {
 		t.Fatalf("UsageRecord.Unit(execution): %v", err)
@@ -399,6 +400,10 @@ func TestUsageRecordUnitWritesSQLNullForAbsentExecution(t *testing.T) {
 	value, present = singleInsert(t, unit).Values["execution_id"]
 	if text, ok := value.(string); !present || !ok || text != string(testExecution) {
 		t.Errorf("execution_id = %#v (%T, present=%v); want the text %q", value, value, present, testExecution)
+	}
+	actValue, actPresent := singleInsert(t, unit).Values["action_id"]
+	if text, ok := actValue.(string); !actPresent || !ok || text != string(testAction) {
+		t.Errorf("action_id = %#v (%T, present=%v); want the text %q", actValue, actValue, actPresent, testAction)
 	}
 }
 

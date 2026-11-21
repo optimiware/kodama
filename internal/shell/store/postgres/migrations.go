@@ -34,11 +34,11 @@ func Migrations() []Migration {
 	return migrations
 }
 
-// buildMigrations renders the baseline schema from the declaration data and
-// appends subsequent incremental migrations. The six baseline migrations are
+// buildMigrations renders the baseline schema (0001..0006) plus incremental
+// migrations appended after the baseline. Baseline migrations 0001..0006 are
 // frozen at the v0.6.0 schema shape so existing databases never observe a
-// rewritten migration checksum; later schema additions live in numbered
-// migrations 0007+.
+// rewritten migration checksum; post-baseline schema additions live in
+// sequentially numbered migrations 0007+.
 func buildMigrations() []Migration {
 	design := baselineSchemaDesign()
 	tables := migrationTableOrder(design.Tables)
@@ -49,18 +49,36 @@ func buildMigrations() []Migration {
 		{Name: "0004_indexes.sql", SQL: renderIndexesMigration(tables)},
 		{Name: "0005_row_level_security.sql", SQL: renderSecurityMigration(design)},
 		{Name: "0006_privileges.sql", SQL: renderPrivilegesMigration(design)},
-		{Name: "0007_task_review_lifecycle.sql", SQL: renderTaskReviewLifecycleMigration()},
+		{Name: "0007_model_usage_action_id.sql", SQL: renderModelUsageActionIDMigration()},
+		{Name: "0008_task_review_lifecycle.sql", SQL: renderTaskReviewLifecycleMigration()},
 	}
 }
 
 // baselineSchemaDesign returns the frozen 0001..0006 baseline declaration
-// prior to migration 0007 so baseline migration checksums stay immutable.
+// prior to incremental migrations 0007+ so baseline checksums stay immutable.
 func baselineSchemaDesign() store.Schema {
 	design := store.SchemaDesign()
 	tables := make([]store.Table, len(design.Tables))
 	copy(tables, design.Tables)
 	for index := range tables {
 		switch tables[index].Name {
+		case store.ModelUsageTable:
+			cols := make([]store.Column, 0, len(tables[index].Columns))
+			for _, col := range tables[index].Columns {
+				if col.Name == "action_id" {
+					continue
+				}
+				cols = append(cols, col)
+			}
+			fks := make([]store.ForeignKey, 0, len(tables[index].ForeignKeys))
+			for _, fk := range tables[index].ForeignKeys {
+				if fk.Name == "model_usage_action" {
+					continue
+				}
+				fks = append(fks, fk)
+			}
+			tables[index].Columns = cols
+			tables[index].ForeignKeys = fks
 		case "tasks":
 			columns := make([]store.Column, 0, len(tables[index].Columns))
 			for _, col := range tables[index].Columns {
@@ -109,11 +127,22 @@ func baselineSchemaDesign() store.Schema {
 	return design
 }
 
-// renderTaskReviewLifecycleMigration adds optional task parent hierarchy
-// (scoped composite FK + non-self check + index) and extends request decisions
-// to support the 3-way pass|revise|fail vocabulary.
+// renderModelUsageActionIDMigration renders incremental migration 0007 adding
+// nullable action_id attribution and its composite ownership foreign key to
+// model_usage for per-action LLM budget accounting.
+func renderModelUsageActionIDMigration() string {
+	var builder strings.Builder
+	builder.WriteString("-- Migration 0007: nullable action_id attribution column on model_usage.\n")
+	builder.WriteString("ALTER TABLE model_usage ADD COLUMN action_id TEXT;\n")
+	builder.WriteString("ALTER TABLE model_usage ADD CONSTRAINT model_usage_action FOREIGN KEY (tenant_id, project_id, action_id) REFERENCES actions (tenant_id, project_id, id);\n")
+	return builder.String()
+}
+
+// renderTaskReviewLifecycleMigration renders incremental migration 0008 adding
+// optional task parent hierarchy (scoped composite FK + non-self check + index)
+// and extending request decisions to support the 3-way pass|revise|fail vocabulary.
 func renderTaskReviewLifecycleMigration() string {
-	return "-- Migration 0007: task parent hierarchy and 3-way request decisions.\n" +
+	return "-- Migration 0008: task parent hierarchy and 3-way request decisions.\n" +
 		"ALTER TABLE tasks ADD COLUMN parent_id TEXT;\n" +
 		"ALTER TABLE tasks ADD CONSTRAINT tasks_parent FOREIGN KEY (tenant_id, project_id, parent_id) REFERENCES tasks (tenant_id, project_id, id);\n" +
 		"ALTER TABLE tasks ADD CONSTRAINT tasks_no_self_parent CHECK (parent_id IS NULL OR parent_id <> id);\n" +

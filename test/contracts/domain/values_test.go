@@ -627,6 +627,7 @@ func TestEventEnvelopeAndAuditBounds(t *testing.T) {
 		event.TypeCustomObservation,
 		event.TypeCleanup,
 		event.TypePipelineStartRefused,
+		event.TypeModelBudgetExceeded,
 	}
 	for _, want := range required {
 		if !want.Valid() {

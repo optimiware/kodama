@@ -37,6 +37,29 @@ func (a *Adapter) Prepare(ctx context.Context, request engine.PrepareRequest) (e
 	if err := validatePrepareContext(request.ActionName, request.TaskID); err != nil {
 		return engine.Preparation{}, err
 	}
+	if err := workspace.ValidateCacheMounts(request.Container.Caches, request.Caches); err != nil {
+		return engine.Preparation{}, err
+	}
+	var caches []CacheMount
+	if len(request.Caches) > 0 {
+		caches = make([]CacheMount, len(request.Caches))
+		for index, cache := range request.Caches {
+			mountPath, err := workspace.CachePath(cache.Name)
+			if err != nil {
+				return engine.Preparation{}, err
+			}
+			hostDir, err := CacheDir(a.root, cache.Key)
+			if err != nil {
+				return engine.Preparation{}, err
+			}
+			caches[index] = CacheMount{
+				Name:      cache.Name,
+				Key:       cache.Key,
+				MountPath: mountPath,
+				HostPath:  hostDir,
+			}
+		}
+	}
 	renderedScript, err := prepareScript(request.Container.Commands)
 	if err != nil {
 		return engine.Preparation{}, err
@@ -97,6 +120,12 @@ func (a *Adapter) Prepare(ctx context.Context, request engine.PrepareRequest) (e
 	if err := a.materialize(ctx, resourceRoot, materialization, renderedScript); err != nil {
 		return engine.Preparation{}, err
 	}
+	for _, cache := range caches {
+		// Non-authoritative: create empty cache dir if absent/evicted.
+		if err := a.ensureConfinedDir(ctx, cache.HostPath); err != nil {
+			return engine.Preparation{}, err
+		}
+	}
 	secretNames := make([]id.SecretName, 0, len(materialization.Secrets))
 	for _, secret := range materialization.Secrets {
 		secretNames = append(secretNames, secret.Name)
@@ -111,6 +140,7 @@ func (a *Adapter) Prepare(ctx context.Context, request engine.PrepareRequest) (e
 		Commands:    append([]string(nil), request.Container.Commands...),
 		Env:         env,
 		SecretNames: secretNames,
+		Caches:      caches,
 		Digest:      digest,
 	}
 	if err := a.writeManifest(ctx, resourceRoot, loaded); err != nil {
@@ -299,6 +329,13 @@ func (a *Adapter) Start(ctx context.Context, request engine.StartRequest) (engin
 		return unknown("spawn intent could not be persisted", err)
 	}
 
+	for _, cache := range loaded.Caches {
+		// Non-authoritative: if evicted between Prepare and Start, recreate empty.
+		if err := a.ensureConfinedDir(ctx, cache.HostPath); err != nil {
+			return unknown("cache directory could not be initialized", err)
+		}
+	}
+
 	result, spawnErr := a.executor.Spawn(ctx, SpawnRequest{
 		Identity:   request.Identity,
 		Group:      group,
@@ -308,6 +345,7 @@ func (a *Adapter) Start(ctx context.Context, request engine.StartRequest) (engin
 		Root:       resourceRoot,
 		StdoutPath: stdoutPath(resourceRoot),
 		StderrPath: stderrPath(resourceRoot),
+		Caches:     append([]CacheMount(nil), loaded.Caches...),
 	})
 
 	switch {

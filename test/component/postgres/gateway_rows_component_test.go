@@ -39,7 +39,7 @@ func TestGatewayUsageAndContentRowsOnPostgreSQL(t *testing.T) {
 	}
 	shard.RequireGoldenRow(t, ctx, runtime, scope, "model_usage", map[string]any{"id": "usage-1"}, map[string]any{
 		"id": "usage-1", "tenant_id": "tenant-1", "project_id": "project-1",
-		"principal_id": "principal-1", "execution_id": "execution-usage",
+		"principal_id": "principal-1", "execution_id": "execution-usage", "action_id": pgtest.NullValue,
 		"model": "model-a", "upstream_model": "upstream-a", "outcome": "succeeded",
 		"usage_known": true, "prompt_tokens": int64(0), "completion_tokens": int64(0),
 		"total_tokens": int64(0), "recorded_at": pgtest.FixtureTime, "version": int64(1),
@@ -96,7 +96,7 @@ func TestGatewayUsageRowWithoutExecutionStoresNullOnPostgreSQL(t *testing.T) {
 	}
 	shard.RequireGoldenRow(t, ctx, runtime, scope, "model_usage", map[string]any{"id": "usage-no-execution"}, map[string]any{
 		"id": "usage-no-execution", "tenant_id": "tenant-1", "project_id": "project-1",
-		"principal_id": "principal-1", "execution_id": pgtest.NullValue,
+		"principal_id": "principal-1", "execution_id": pgtest.NullValue, "action_id": pgtest.NullValue,
 		"model": "model-a", "upstream_model": "upstream-a", "outcome": "failed",
 		"usage_known": false, "prompt_tokens": int64(0), "completion_tokens": int64(0),
 		"total_tokens": int64(0), "recorded_at": pgtest.FixtureTime, "version": int64(1),

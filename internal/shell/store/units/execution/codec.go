@@ -124,6 +124,7 @@ func definitionSnapshot(admitted snapshotdoc.Admitted) (*definition.Snapshot, er
 		Pipeline: definition.Pipeline{
 			Inputs:  keys,
 			Env:     append([]definition.EnvVar(nil), snapshot.Env...),
+			Budget:  snapshot.Budget,
 			Actions: actions,
 		},
 		YAML:       snapshot.YAMLBytes(),

@@ -88,3 +88,27 @@ func TestBaselineRendersEveryDeclaredSystemPolicy(t *testing.T) {
 		t.Errorf("0005 renders %d system-role policies; the declaration has %d", got, want)
 	}
 }
+
+// TestIncrementalMigration0007PreservesBaseline proves model_usage.action_id
+// and model_usage_action are emitted exclusively in incremental migration 0007
+// so frozen baseline migrations 0001..0006 keep their exact SQL and checksums.
+func TestIncrementalMigration0007PreservesBaseline(t *testing.T) {
+	m0002 := migrationByName(t, "0002_tables.sql").SQL
+	m0003 := migrationByName(t, "0003_constraints.sql").SQL
+	m0007 := migrationByName(t, "0007_model_usage_action_id.sql").SQL
+
+	// Baseline 0002 model_usage CREATE TABLE must not contain action_id.
+	block := createBlock(t, normalizeSQL(m0002), "model_usage")
+	if strings.Contains(block, "action_id") {
+		t.Errorf("0002_tables.sql model_usage block was modified to include action_id: %s", block)
+	}
+	if strings.Contains(m0003, "model_usage_action") {
+		t.Errorf("0003_constraints.sql was modified to include model_usage_action")
+	}
+	if !strings.Contains(m0007, "ALTER TABLE model_usage ADD COLUMN action_id TEXT;") {
+		t.Errorf("0007_model_usage_action_id.sql missing ADD COLUMN action_id: %s", m0007)
+	}
+	if !strings.Contains(m0007, "ALTER TABLE model_usage ADD CONSTRAINT model_usage_action FOREIGN KEY (tenant_id, project_id, action_id) REFERENCES actions (tenant_id, project_id, id);") {
+		t.Errorf("0007_model_usage_action_id.sql missing model_usage_action FK: %s", m0007)
+	}
+}

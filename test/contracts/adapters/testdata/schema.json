@@ -413,6 +413,11 @@
           "nullable": true
         },
         {
+          "name": "action_id",
+          "type": "text",
+          "nullable": true
+        },
+        {
           "name": "model",
           "type": "text",
           "nullable": false

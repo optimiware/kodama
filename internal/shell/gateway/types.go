@@ -16,6 +16,7 @@ package gateway
 
 import (
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -111,17 +112,19 @@ const (
 // secret resolved per call. RecordContent opts raw request/response bytes into
 // authorized retention; ContentRetention zero uses DefaultContentRetention.
 type ModelConfig struct {
-	Scope               tenancy.Scope
-	Model               string
-	UpstreamModel       string
-	Endpoint            string
-	SecretName          id.SecretName
-	MaxRequestBytes     int
-	MaxResponseBytes    int
-	MaxCompletionTokens int
-	Timeout             time.Duration
-	RecordContent       bool
-	ContentRetention    time.Duration
+	Scope                     tenancy.Scope
+	Model                     string
+	UpstreamModel             string
+	Endpoint                  string
+	SecretName                id.SecretName
+	MaxRequestBytes           int
+	MaxResponseBytes          int
+	MaxCompletionTokens       int
+	Timeout                   time.Duration
+	RecordContent             bool
+	ContentRetention          time.Duration
+	InputUSDPerMillionTokens  float64
+	OutputUSDPerMillionTokens float64
 }
 
 // Validate checks one configured model: a project scope, the configured and
@@ -161,6 +164,12 @@ func (model ModelConfig) Validate() error {
 	}
 	if model.ContentRetention < 0 {
 		return fault.New(fault.InvalidInput, "configured model content retention is negative")
+	}
+	if math.IsNaN(model.InputUSDPerMillionTokens) || math.IsInf(model.InputUSDPerMillionTokens, 0) || model.InputUSDPerMillionTokens < 0 {
+		return fault.New(fault.InvalidInput, "configured model input_usd_per_million_tokens must be finite and non-negative")
+	}
+	if math.IsNaN(model.OutputUSDPerMillionTokens) || math.IsInf(model.OutputUSDPerMillionTokens, 0) || model.OutputUSDPerMillionTokens < 0 {
+		return fault.New(fault.InvalidInput, "configured model output_usd_per_million_tokens must be finite and non-negative")
 	}
 	return nil
 }
@@ -211,6 +220,7 @@ func validateSecretReference(scope tenancy.Scope, name id.SecretName) error {
 type Config struct {
 	Enabled bool
 	Models  []ModelConfig
+	Budgets BudgetConfig
 }
 
 // Validate checks an enabled configuration: at least one configured model and
@@ -218,6 +228,9 @@ type Config struct {
 func (config Config) Validate() error {
 	if !config.Enabled {
 		return nil
+	}
+	if err := config.Budgets.Validate(); err != nil {
+		return err
 	}
 	if len(config.Models) == 0 {
 		return fault.New(fault.InvalidInput, "enabled model gateway has no configured models")
@@ -258,13 +271,14 @@ type ContentRecord struct {
 // UsageRecord is one attributable model-usage row. UsageKnown distinguishes a
 // validated count from an honest unknown, and Usage carries the provider's
 // validated counts only when UsageKnown is true. The row targets the
-// model_usage table; ExecutionID is empty for a non-execution caller, so the
-// persisted execution_id is nullable.
+// model_usage table; ExecutionID and ActionID are empty for a non-execution
+// caller, so the persisted execution_id and action_id are nullable.
 type UsageRecord struct {
 	ID            UsageID
 	Scope         tenancy.Scope
 	PrincipalID   id.PrincipalID
 	ExecutionID   id.ExecutionID
+	ActionID      id.ActionID
 	Model         string
 	UpstreamModel string
 	Outcome       UsageOutcome
@@ -275,7 +289,7 @@ type UsageRecord struct {
 
 // Unit builds the one-row usage commit unit. It carries no receipt, lock,
 // audit row or event because model.invoke has receipt policy none. An empty
-// ExecutionID is written as SQL NULL, never as an empty string.
+// ExecutionID or ActionID is written as SQL NULL, never as an empty string.
 func (record UsageRecord) Unit() (store.Unit, error) {
 	if err := record.validate(); err != nil {
 		return store.Unit{}, err
@@ -283,6 +297,10 @@ func (record UsageRecord) Unit() (store.Unit, error) {
 	var executionID any
 	if record.ExecutionID != "" {
 		executionID = string(record.ExecutionID)
+	}
+	var actionID any
+	if record.ActionID != "" {
+		actionID = string(record.ActionID)
 	}
 	return store.Unit{
 		Writes: []store.Write{{
@@ -292,6 +310,7 @@ func (record UsageRecord) Unit() (store.Unit, error) {
 			Values: map[string]any{
 				"principal_id":      string(record.PrincipalID),
 				"execution_id":      executionID,
+				"action_id":         actionID,
 				"model":             record.Model,
 				"upstream_model":    record.UpstreamModel,
 				"outcome":           string(record.Outcome),
@@ -328,6 +347,11 @@ func (record UsageRecord) validate() error {
 	if record.ExecutionID != "" {
 		if _, err := id.ParseExecutionID(string(record.ExecutionID)); err != nil {
 			return fault.Wrap(fault.InvalidInput, "usage record execution id is invalid", err)
+		}
+	}
+	if record.ActionID != "" {
+		if _, err := id.ParseActionID(string(record.ActionID)); err != nil {
+			return fault.Wrap(fault.InvalidInput, "usage record action id is invalid", err)
 		}
 	}
 	if record.Model == "" {

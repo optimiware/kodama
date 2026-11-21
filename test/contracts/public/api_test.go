@@ -458,8 +458,8 @@ func TestRouteMatch(t *testing.T) {
 func TestPublicErrorCodesMatchDomain(t *testing.T) {
 	domainCodes := fault.Codes()
 	publicCodes := api.ErrorCodes()
-	if len(publicCodes) != len(domainCodes) || len(publicCodes) != 11 {
-		t.Fatalf("public codes = %v (%d); want the 11 domain fault codes %v", publicCodes, len(publicCodes), domainCodes)
+	if len(publicCodes) != len(domainCodes) || len(publicCodes) != 12 {
+		t.Fatalf("public codes = %v (%d); want the 12 domain fault codes %v", publicCodes, len(publicCodes), domainCodes)
 	}
 	domain := make(map[string]bool, len(domainCodes))
 	for _, code := range domainCodes {
@@ -634,6 +634,7 @@ func TestMCPOperationMapping(t *testing.T) {
 		api.CodeUnsupportedCapability:     -32012,
 		api.CodeDependencyUnavailable:     -32013,
 		api.CodeUncertainExternalEffect:   -32014,
+		api.CodeBudgetExceeded:            -32015,
 		api.CodeInternalFailure:           -32603,
 	}
 	used := make(map[int]string, len(wantMCPCodes))

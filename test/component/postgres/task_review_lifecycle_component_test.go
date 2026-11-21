@@ -285,10 +285,10 @@ func TestTaskParentIDConstraintsAndRefusalsOnPostgreSQL(t *testing.T) {
 	pgtest.RequireSQLState(t, err, "23514", "tasks_no_self_parent CHECK rejects parent_id = id")
 }
 
-// TestMigration0007IncrementalUpgradeFromBaselineOnPostgreSQL proves an
+// TestMigration0008IncrementalUpgradeFromBaselineOnPostgreSQL proves an
 // existing database migrated through frozen baseline 0001..0006 with live rows
-// upgrades cleanly when 0007_task_review_lifecycle.sql is applied incrementally.
-func TestMigration0007IncrementalUpgradeFromBaselineOnPostgreSQL(t *testing.T) {
+// upgrades cleanly when 0007 and 0008_task_review_lifecycle.sql are applied incrementally.
+func TestMigration0008IncrementalUpgradeFromBaselineOnPostgreSQL(t *testing.T) {
 	ctx := context.Background()
 	shard := pgtest.Start(t)
 	runner := pgtest.NewMigrationRunner(shard)
@@ -303,7 +303,7 @@ func TestMigration0007IncrementalUpgradeFromBaselineOnPostgreSQL(t *testing.T) {
 		t.Fatalf("baseline applied = %+v; want 6 migrations ending at 0006_privileges.sql", baseline)
 	}
 
-	// 2. Seed pre-0007 rows on the baseline schema.
+	// 2. Seed pre-0008 rows on the baseline schema.
 	shard.SeedScope(ctx, "tenant-1", "project-1")
 	if _, err := pgtest.ExecSQL(ctx, shard.Admin(),
 		`INSERT INTO tasks (id, tenant_id, project_id, content_version, lifecycle_version, state, initiator_id, title, created_at)
@@ -313,19 +313,19 @@ func TestMigration0007IncrementalUpgradeFromBaselineOnPostgreSQL(t *testing.T) {
 	}
 	_, actionID := seedRunningRequest(ctx, t, shard, scope)
 
-	// Confirm the baseline actions_request_decision constraint rejects 'revise' before 0007.
+	// Confirm the baseline actions_request_decision constraint rejects 'revise' before 0008.
 	_, err = pgtest.ExecSQL(ctx, shard.Admin(),
 		`UPDATE actions SET request_decision = 'revise', request_actor = 'principal-1', request_resolved_at = now() WHERE id = $1`,
 		string(actionID))
-	pgtest.RequireSQLState(t, err, "23514", "pre-0007 actions_request_decision rejects revise")
+	pgtest.RequireSQLState(t, err, "23514", "pre-0008 actions_request_decision rejects revise")
 
-	// 3. Apply 0007 incrementally on top of the existing 0001..0006 database.
+	// 3. Apply incremental 0007..0008 on top of the existing 0001..0006 database.
 	upgraded, err := runner.Apply(ctx, 0)
 	if err != nil {
-		t.Fatalf("apply incremental 0007: %v", err)
+		t.Fatalf("apply incremental 0007..0008: %v", err)
 	}
-	if len(upgraded) != 1 || upgraded[0].Name != "0007_task_review_lifecycle.sql" {
-		t.Fatalf("upgraded = %+v; want only 0007_task_review_lifecycle.sql", upgraded)
+	if len(upgraded) != 2 || upgraded[0].Name != "0007_model_usage_action_id.sql" || upgraded[1].Name != "0008_task_review_lifecycle.sql" {
+		t.Fatalf("upgraded = %+v; want [0007_model_usage_action_id.sql, 0008_task_review_lifecycle.sql]", upgraded)
 	}
 	again, err := runner.Apply(ctx, 0)
 	if err != nil || len(again) != 0 {

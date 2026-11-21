@@ -43,6 +43,7 @@ import (
 	"github.com/optimiware/kodema/internal/shell/store"
 	"github.com/optimiware/kodema/internal/shell/tenancy"
 	"github.com/optimiware/kodema/internal/shell/token"
+	"github.com/optimiware/kodema/internal/shell/workspace"
 )
 
 // activationCredentialOperation is the receipt operation identity of one
@@ -181,6 +182,13 @@ func (materializer *activationMaterializer) prepare(ctx context.Context, request
 		return request, err
 	}
 	request.Credential = credential
+	if len(request.Container.Caches) > 0 {
+		caches, err := workspace.BuildCacheMounts(scope, request.Container.Caches)
+		if err != nil {
+			return request, err
+		}
+		request.Caches = caches
+	}
 	if materializer.models != nil && materializer.models.enabledForScope(scope) && materializer.workloadURL != "" {
 		request.Container.Env = injectModelProxyEnv(
 			request.Container.Env,

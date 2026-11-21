@@ -68,6 +68,7 @@ func TestUsageUnitExecutionIdentityVectors(t *testing.T) {
 			want := map[string]any{
 				"principal_id":      "principal-1",
 				"execution_id":      vector.want,
+				"action_id":         nil,
 				"model":             "configured-model",
 				"upstream_model":    "upstream-model",
 				"outcome":           "succeeded",
@@ -99,6 +100,13 @@ func TestUsageUnitRefusesAnInvalidExecutionIdentity(t *testing.T) {
 	for _, execution := range []id.ExecutionID{" ", "execution 1", id.ExecutionID(strings.Repeat("e", id.MaxIDLength+1))} {
 		if _, err := usageRecord(execution).Unit(); err == nil {
 			t.Errorf("UsageRecord.Unit() accepted the invalid execution id %q", execution)
+		}
+	}
+	for _, action := range []id.ActionID{" ", "action 1", id.ActionID(strings.Repeat("a", id.MaxIDLength+1))} {
+		rec := usageRecord("execution-1")
+		rec.ActionID = action
+		if _, err := rec.Unit(); err == nil {
+			t.Errorf("UsageRecord.Unit() accepted the invalid action id %q", action)
 		}
 	}
 }
