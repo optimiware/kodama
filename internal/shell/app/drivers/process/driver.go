@@ -745,7 +745,8 @@ func ensureConfinedCacheRoot(root string) (string, error) {
 }
 
 func cacheEnvVarName(cacheName string) string {
-	return "KODEMA_CACHE_" + strings.ToUpper(strings.ReplaceAll(cacheName, "-", "_"))
+	sanitized := strings.NewReplacer("-", "_", ".", "_").Replace(cacheName)
+	return "KODEMA_CACHE_" + strings.ToUpper(sanitized)
 }
 
 func mergeEnvOverrides(base []string, overrides []string) []string {

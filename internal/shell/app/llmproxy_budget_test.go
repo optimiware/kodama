@@ -688,6 +688,10 @@ func TestLLMProxy_OpenAIStreamingInjectsIncludeUsageAndEnforcesBudget(t *testing
 	if !strings.Contains(string(preserved), `"foo":"bar"`) || !strings.Contains(string(preserved), `"include_usage":true`) {
 		t.Fatalf("existing stream_options keys not preserved: %s", string(preserved))
 	}
+	overridden := ensureOpenAIStreamIncludeUsage("/v1/chat/completions", []byte(`{"stream":true,"stream_options":{"include_usage":false,"foo":"bar"}}`))
+	if !strings.Contains(string(overridden), `"foo":"bar"`) || !strings.Contains(string(overridden), `"include_usage":true`) {
+		t.Fatalf("explicit include_usage=false was not overridden to true: %s", string(overridden))
+	}
 }
 
 func TestBudgetTracker_PersistsAcrossControlPlaneRestart(t *testing.T) {

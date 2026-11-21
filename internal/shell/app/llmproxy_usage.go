@@ -314,7 +314,7 @@ func ensureOpenAIStreamIncludeUsage(upstreamPath string, body []byte) []byte {
 		if err := json.Unmarshal(rawOpts, &opts); err != nil || opts == nil {
 			return body
 		}
-		if existing, ok := opts["include_usage"]; ok && !bytes.Equal(bytes.TrimSpace(existing), []byte("null")) {
+		if existing, ok := opts["include_usage"]; ok && bytes.Equal(bytes.TrimSpace(existing), []byte("true")) {
 			return body
 		}
 		opts["include_usage"] = json.RawMessage("true")
