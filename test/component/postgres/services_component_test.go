@@ -1674,6 +1674,25 @@ func TestObservedTaskCompleteOnPostgreSQL(t *testing.T) {
 		"question_asked_by": pgtest.NullValue, "question_at": pgtest.NullValue,
 		"created_at": pgtest.FixtureTime,
 	})
+	env.shard.RequireGoldenRow(t, ctx, env.runtime, env.scope, "receipts", map[string]any{"id": "receipt-3"},
+		serviceReceiptRow(t, "receipt-3", "task.complete", "task-complete-1", pgtest.GoldenJSONOf(completed), "", nil))
+	env.shard.RequireGoldenRow(t, ctx, env.runtime, env.scope, "audit", map[string]any{"id": "event-5"}, map[string]any{
+		"id": "event-5", "tenant_id": "tenant-1", "project_id": "project-1",
+		"actor": "principal-1", "operation": "task.complete", "at": pgtest.FixtureTime, "detail": "all stages passed",
+	})
+	env.shard.RequireGoldenRow(t, ctx, env.runtime, env.scope, "events", map[string]any{"id": "event-6"}, map[string]any{
+		"id": "event-6", "tenant_id": "tenant-1", "project_id": "project-1",
+		"type": "task.completed", "report_type": pgtest.NullValue,
+		"subject_id": string(child.TaskID), "subject_version": int64(2),
+		"source_kind": "shell", "source_principal": "principal-1",
+		"correlation_id": pgtest.NullValue, "causation_id": pgtest.NullValue,
+		"at": pgtest.FixtureTime,
+		"data": pgtest.GoldenJSONOf(map[string]any{
+			"parent_id": string(parent.TaskID),
+			"reason":    "all stages passed",
+		}),
+		"publish_state": "pending", "publish_sequence": pgtest.GoldenDBSequence(),
+	})
 	completeObserver.Finish(map[string]int{"tasks": 1, "receipts": 1, "audit": 1, "events": 1})
 	saved := env.ids.snapshot()
 	replayObserver := env.shard.ObserveUnit(t, "task", "complete.replay")

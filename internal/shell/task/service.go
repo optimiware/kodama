@@ -931,6 +931,18 @@ func (service *Service) Reply(ctx context.Context, command ReplyCommand) (ReplyR
 	if err != nil {
 		return ReplyResult{}, err
 	}
+	var predecessor ExecutionView
+	var hasPredecessor bool
+	var completesTask *bool
+	if current.CurrentExecution != "" {
+		predecessor, hasPredecessor, err = service.predecessor(ctx, command.Scope, current.CurrentExecution)
+		if err != nil {
+			return ReplyResult{}, err
+		}
+		if hasPredecessor {
+			completesTask = cloneOptionalBool(predecessor.CompletesTask)
+		}
+	}
 	admitted, err := service.admission.Admit(ctx, pipeline.AdmitRequest{
 		Scope:      command.Scope,
 		Definition: pipeline.Definition{ID: current.SelectedPipeline},
@@ -943,6 +955,7 @@ func (service *Service) Reply(ctx context.Context, command ReplyCommand) (ReplyR
 			Conversation: conversation,
 			Metadata:     marshalMetadata(current.Metadata),
 		},
+		CompletesTask:  completesTask,
 		DefaultTimeout: service.defaultTimeout,
 	})
 	if err != nil {
@@ -956,12 +969,8 @@ func (service *Service) Reply(ctx context.Context, command ReplyCommand) (ReplyR
 	}
 	dispatch := current.CurrentExecution == ""
 	if current.CurrentExecution != "" {
-		predecessor, found, err := service.predecessor(ctx, command.Scope, current.CurrentExecution)
-		if err != nil {
-			return ReplyResult{}, err
-		}
-		dispatch = found && predecessor.StopEvidence.IsConfirmed()
-		if found {
+		dispatch = hasPredecessor && predecessor.StopEvidence.IsConfirmed()
+		if hasPredecessor {
 			authority = append(authority, newAuthorityRead(operation, requires, authorize.CheckExecutionVersion, command.Scope, command.Actor.ID, string(predecessor.ID), predecessor.Version))
 		}
 	}

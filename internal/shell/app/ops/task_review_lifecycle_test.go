@@ -145,16 +145,51 @@ func TestCompletesTaskFalseAndExplicitTaskCompleteLifecycle(t *testing.T) {
 		t.Fatalf("pipeline.apply edit: %v", err)
 	}
 
-	// While execution is queued/running (nonterminal), task.complete must refuse!
+	// While execution is queued (nonterminal), task.complete must refuse!
 	_, err = h.invokeVersion(t, testToken, "task.complete", jsonBody(t, map[string]any{
-		"reason": "too early",
+		"reason": "too early queued",
 	}), cs.LifecycleVersion, map[string]string{"task": cs.TaskID})
 	if class, ok := fault.ClassOf(err); !ok || class != fault.VersionConflict {
 		t.Fatalf("task.complete while queued err = %v; want version_conflict", err)
 	}
 
-	// Succeed the execution and run Progress: task MUST remain open!
-	completeSingleContainerExecution(t, h, scope, id.ExecutionID(cs.ExecutionID), 0)
+	// Activate action 0 so the execution is running (nonterminal); task.complete must still refuse!
+	eng := storeexecution.NewEngine(h.store.Controller())
+	preCS, err := h.execs.Load(context.Background(), scope, id.ExecutionID(cs.ExecutionID))
+	if err != nil {
+		t.Fatalf("Load execution %s: %v", cs.ExecutionID, err)
+	}
+	_, actCS, err := flow.Reduce(preCS, flow.ActivateFact{ExecutionID: preCS.ID, ActionID: preCS.Actions[0].ID, At: fixedNow})
+	if err != nil {
+		t.Fatalf("activate %s: %v", cs.ExecutionID, err)
+	}
+	if _, err := eng.Commit(context.Background(), *actCS); err != nil {
+		t.Fatalf("commit activate %s: %v", cs.ExecutionID, err)
+	}
+	_, err = h.invokeVersion(t, testToken, "task.complete", jsonBody(t, map[string]any{
+		"reason": "too early running",
+	}), cs.LifecycleVersion, map[string]string{"task": cs.TaskID})
+	if class, ok := fault.ClassOf(err); !ok || class != fault.VersionConflict {
+		t.Fatalf("task.complete while running err = %v; want version_conflict", err)
+	}
+
+	// Succeed the running execution and run Progress: task MUST remain open!
+	preCS, err = h.execs.Load(context.Background(), scope, id.ExecutionID(cs.ExecutionID))
+	if err != nil {
+		t.Fatalf("reload %s: %v", cs.ExecutionID, err)
+	}
+	_, doneCS, err := flow.Reduce(preCS, flow.ObserveFact{
+		ExecutionID: preCS.ID,
+		ActionID:    preCS.Actions[0].ID,
+		Observation: kernel.ExitedObservation(0, kernel.ConfirmedStop("exited")),
+		At:          fixedNow.Add(time.Minute),
+	})
+	if err != nil {
+		t.Fatalf("observe %s: %v", cs.ExecutionID, err)
+	}
+	if _, err := eng.Commit(context.Background(), *doneCS); err != nil {
+		t.Fatalf("commit observe %s: %v", cs.ExecutionID, err)
+	}
 	progress, err := h.taskService.Progress(context.Background(), task.ProgressCommand{
 		Scope:       scope,
 		TaskID:      id.TaskID(cs.TaskID),
@@ -179,11 +214,40 @@ func TestCompletesTaskFalseAndExplicitTaskCompleteLifecycle(t *testing.T) {
 		t.Fatalf("task after completes_task=false success = state:%q ver:%d; want open/%d", read.State, read.LifecycleVersion, cs.LifecycleVersion)
 	}
 
-	// 2. Authorization checks for task.complete: Viewer, Reviewer, Admin denied; Operator allowed.
-	for _, tok := range []string{"token-viewer", "token-reviewer", "token-admin"} {
+	// 2. Authorization checks for task.complete: Viewer, Reviewer, Admin, non-member,
+	// and execution principals denied; Operator allowed.
+	h.principals.principals["token-nonmember"] = identity.Principal{
+		ID:      "nonmember-1",
+		Kind:    identity.KindHuman,
+		Scope:   scope,
+		Roles:   []tenancy.Role{tenancy.RoleOperator},
+		Enabled: true,
+		Version: 1,
+	}
+	execPrincipal := identity.Principal{
+		ID:          "exec-principal-1",
+		Kind:        identity.KindExecution,
+		Scope:       scope,
+		ExecutionID: id.ExecutionID(cs.ExecutionID),
+		Enabled:     true,
+		Version:     1,
+	}
+	h.principals.principals["token-execution"] = execPrincipal
+	h.facts.install(id.ExecutionID(cs.ExecutionID), authorize.AdmittedExecution{
+		Principal:   execPrincipal,
+		ExecutionID: id.ExecutionID(cs.ExecutionID),
+	})
+	for _, tok := range []string{"token-viewer", "token-reviewer", "token-admin", "token-execution"} {
 		_, err := h.invokeVersion(t, tok, "task.complete", `{}`, read.LifecycleVersion, map[string]string{"task": cs.TaskID})
 		if class, ok := fault.ClassOf(err); !ok || class != fault.Forbidden {
 			t.Fatalf("task.complete with %s err = %v; want forbidden", tok, err)
+		}
+	}
+	// Non-members of the task's project (no membership row in scope, or member of another project) are refused.
+	for _, tok := range []string{"token-nonmember", "token-engineer-b"} {
+		_, err := h.invokeVersion(t, tok, "task.complete", `{}`, read.LifecycleVersion, map[string]string{"task": cs.TaskID})
+		if class, ok := fault.ClassOf(err); !ok || (class != fault.Forbidden && class != fault.NotFound) {
+			t.Fatalf("task.complete with %s err = %v; want forbidden or not_found", tok, err)
 		}
 	}
 
@@ -305,8 +369,83 @@ func TestCompletesTaskFalseAndExplicitTaskCompleteLifecycle(t *testing.T) {
 		t.Fatalf("task.cancel: %v", err)
 	}
 	_, err = h.invokeVersion(t, testToken, "task.complete", `{}`, csOverride.LifecycleVersion+2, map[string]string{"task": csOverride.TaskID})
-	if class, ok := fault.ClassOf(err); !ok || class != fault.VersionConflict {
-		t.Fatalf("task.complete on cancelled task err = %v; want version_conflict", err)
+	// 5. Per-start completes_task: false override MUST survive task.ask -> task.reply
+	// on a pipeline whose YAML omits completes_task (default true).
+	csReplyRaw, err := invokeKey(t, h, testToken, "task.create_and_start", "cs-ask-reply-no-complete", jsonBody(t, map[string]any{
+		"title":          "Ask-reply preserves completes_task=false",
+		"pipeline_id":    defaultPipeID,
+		"inputs":         map[string]string{"repository": "shop/web"},
+		"completes_task": &falseVal,
+	}), nil, map[string]string{"project": testProject})
+	if err != nil {
+		t.Fatalf("create_and_start for ask/reply: %v", err)
+	}
+	var csReply api.TaskCreateAndStartResult
+	decodeResult(t, csReplyRaw, &csReply)
+
+	askRaw, err := invokeKey(t, h, testToken, "task.ask", "ask-preserve-no-complete", jsonBody(t, map[string]any{
+		"question":   "Which deployment target?",
+		"assignment": "role/engineer",
+	}), &csReply.LifecycleVersion, map[string]string{"task": csReply.TaskID})
+	if err != nil {
+		t.Fatalf("task.ask for completes_task preservation: %v", err)
+	}
+	var asked api.TaskAskResult
+	decodeResult(t, askRaw, &asked)
+
+	// Mark the paused/cancelled predecessor execution's cleanup complete so the
+	// confirmed-stop barrier allows the resumed execution to activate.
+	cleanupRows, err := h.store.Query(context.Background(), scope, store.ScanQuery{
+		Table:  "cleanup",
+		Equals: map[string]any{"execution_id": csReply.ExecutionID},
+		Limit:  5,
+	})
+	if err != nil || len(cleanupRows.Rows) != 1 {
+		t.Fatalf("cleanup rows for asked execution = %d (err=%v); want 1", len(cleanupRows.Rows), err)
+	}
+	if _, err := h.store.Execute(context.Background(), scope, store.Unit{
+		Writes: []store.Write{{
+			Table:  "cleanup",
+			ID:     cleanupRows.Rows[0].Values["id"].(string),
+			Values: map[string]any{"state": string(kernel.CleanupComplete)},
+		}},
+	}); err != nil {
+		t.Fatalf("complete cleanup for asked execution: %v", err)
+	}
+
+	replyRaw, err := invokeKey(t, h, testToken, "task.reply", "reply-preserve-no-complete", jsonBody(t, map[string]any{
+		"question_id":               asked.QuestionID,
+		"expected_question_version": asked.QuestionVersion,
+		"answer":                    "staging",
+	}), &asked.LifecycleVersion, map[string]string{"task": csReply.TaskID})
+	if err != nil {
+		t.Fatalf("task.reply for completes_task preservation: %v", err)
+	}
+	var replied api.TaskReplyResult
+	decodeResult(t, replyRaw, &replied)
+
+	// Succeed the resumed execution and run Progress: task MUST remain open!
+	completeSingleContainerExecution(t, h, scope, id.ExecutionID(replied.ExecutionID), 0)
+	progAfterReply, err := h.taskService.Progress(context.Background(), task.ProgressCommand{
+		Scope:       scope,
+		TaskID:      id.TaskID(csReply.TaskID),
+		ExecutionID: id.ExecutionID(replied.ExecutionID),
+		Outcome:     task.ProgressSucceeded,
+	})
+	if err != nil {
+		t.Fatalf("Progress after ask/reply: %v", err)
+	}
+	if progAfterReply.State != task.StateOpen || progAfterReply.Applied {
+		t.Fatalf("Progress after ask/reply with per-start completes_task=false = %+v; want open/not-applied", progAfterReply)
+	}
+	readAfterReplyRaw, err := h.invoke(t, testToken, "task.read", `{}`, map[string]string{"task": csReply.TaskID})
+	if err != nil {
+		t.Fatalf("task.read after ask/reply: %v", err)
+	}
+	var readAfterReply api.TaskReadResult
+	decodeResult(t, readAfterReplyRaw, &readAfterReply)
+	if readAfterReply.State != "open" {
+		t.Fatalf("task state after ask/reply + succeeded execution = %q; want open", readAfterReply.State)
 	}
 }
 
@@ -367,17 +506,60 @@ func TestReviseDecisionAppendsFeedbackAndSkipsOperatorFailureInbox(t *testing.T)
 	preA, _ = h.execs.Load(context.Background(), scope, id.ExecutionID(taskA.ExecutionID))
 
 	// Reviewer resolves with decision: "revise" and feedback note + declared output.
-	revRes, err := h.invokeVersion(t, "token-reviewer", "execution.request.resolve", jsonBody(t, map[string]any{
+	revBody := jsonBody(t, map[string]any{
 		"expected_action_version": preA.Actions[0].Version,
 		"decision":                "revise",
 		"note":                    "Please split the handler and add nil checks",
 		"outputs":                 map[string]string{"feedback": "split handler"},
-	}), preA.Version, map[string]string{"execution": taskA.ExecutionID, "action": string(preA.Actions[0].ID)})
+	})
+	revParams := map[string]string{"execution": taskA.ExecutionID, "action": string(preA.Actions[0].ID)}
+	revRes, err := h.invokeVersion(t, "token-reviewer", "execution.request.resolve", revBody, preA.Version, revParams)
 	if err != nil {
 		t.Fatalf("resolve revise: %v", err)
 	}
 	var resolved api.ExecutionRequestResolveResult
 	decodeResult(t, revRes, &resolved)
+
+	// Idempotent replay of the identical revise resolution MUST return the identical
+	// result and MUST NOT append a duplicate task_messages row.
+	replayRevRes, err := h.invokeVersion(t, "token-reviewer", "execution.request.resolve", revBody, preA.Version, revParams)
+	if err != nil {
+		t.Fatalf("resolve revise idempotent replay: %v", err)
+	}
+	var replayedResolved api.ExecutionRequestResolveResult
+	decodeResult(t, replayRevRes, &replayedResolved)
+	if replayedResolved != resolved {
+		t.Fatalf("replayed revise result = %+v; want %+v", replayedResolved, resolved)
+	}
+	msgRows, err := h.store.Query(context.Background(), scope, store.ScanQuery{
+		Table:  "task_messages",
+		Equals: map[string]any{"task_id": taskA.TaskID},
+		Limit:  10,
+	})
+	if err != nil || len(msgRows.Rows) != 1 {
+		t.Fatalf("task_messages rows after revise replay = %d (err=%v); want exactly 1", len(msgRows.Rows), err)
+	}
+
+	// Conflicting retry of revise (different note/outputs) MUST be refused with
+	// changed_idempotency_content and leave task_messages unchanged.
+	conflictBody := jsonBody(t, map[string]any{
+		"expected_action_version": preA.Actions[0].Version,
+		"decision":                "revise",
+		"note":                    "Changed revision note",
+		"outputs":                 map[string]string{"feedback": "different"},
+	})
+	_, err = h.invokeVersion(t, "token-reviewer", "execution.request.resolve", conflictBody, preA.Version, revParams)
+	if class, ok := fault.ClassOf(err); !ok || class != fault.ChangedIdempotencyContent {
+		t.Fatalf("conflicting revise retry err = %v; want changed_idempotency_content", err)
+	}
+	msgRowsAfterConflict, err := h.store.Query(context.Background(), scope, store.ScanQuery{
+		Table:  "task_messages",
+		Equals: map[string]any{"task_id": taskA.TaskID},
+		Limit:  10,
+	})
+	if err != nil || len(msgRowsAfterConflict.Rows) != 1 {
+		t.Fatalf("task_messages rows after conflicting revise = %d (err=%v); want 1", len(msgRowsAfterConflict.Rows), err)
+	}
 
 	// Inspect execution A: failed with reason needs_revision, decision=revise, NO downstream outputs promoted.
 	inspRaw, err := h.invoke(t, testToken, "execution.inspect", `{}`, map[string]string{"execution": taskA.ExecutionID})
@@ -524,6 +706,46 @@ func TestReviseDecisionAppendsFeedbackAndSkipsOperatorFailureInbox(t *testing.T)
 	if !seenFailed[taskC.TaskID] {
 		t.Fatalf("fail-decision task %s missing from operator failure inbox: %+v", taskC.TaskID, opInbox.Items)
 	}
+
+	// Revise with empty note and empty outputs falls back cleanly to "Revision requested"
+	// and appends exactly one message.
+	taskEmptyRaw, err := invokeKey(t, h, testToken, "task.create_and_start", "cs-empty-revise", jsonBody(t, map[string]any{
+		"title":       "Empty revise fallback task",
+		"pipeline_id": reviewPipeID,
+		"inputs":      map[string]string{"repository": "shop/web"},
+	}), nil, map[string]string{"project": testProject})
+	if err != nil {
+		t.Fatalf("create task empty revise: %v", err)
+	}
+	var taskEmpty api.TaskCreateAndStartResult
+	decodeResult(t, taskEmptyRaw, &taskEmpty)
+	preEmpty, err := h.execs.Load(context.Background(), scope, id.ExecutionID(taskEmpty.ExecutionID))
+	if err != nil {
+		t.Fatalf("Load task empty exec: %v", err)
+	}
+	_, actEmpty, err := flow.Reduce(preEmpty, flow.ActivateFact{ExecutionID: preEmpty.ID, ActionID: preEmpty.Actions[0].ID, At: fixedNow})
+	if err != nil {
+		t.Fatalf("activate empty revise: %v", err)
+	}
+	if _, err := eng.Commit(context.Background(), *actEmpty); err != nil {
+		t.Fatalf("commit empty revise activate: %v", err)
+	}
+	preEmpty, _ = h.execs.Load(context.Background(), scope, id.ExecutionID(taskEmpty.ExecutionID))
+	if _, err := invokeKey(t, h, "token-reviewer", "execution.request.resolve", "resolve-empty-revise", jsonBody(t, map[string]any{
+		"expected_action_version": preEmpty.Actions[0].Version,
+		"decision":                "revise",
+	}), &preEmpty.Version, map[string]string{"execution": taskEmpty.ExecutionID, "action": string(preEmpty.Actions[0].ID)}); err != nil {
+		t.Fatalf("resolve empty revise: %v", err)
+	}
+	readEmptyRaw, err := h.invoke(t, testToken, "task.read", `{}`, map[string]string{"task": taskEmpty.TaskID})
+	if err != nil {
+		t.Fatalf("task.read empty revise: %v", err)
+	}
+	var readEmpty api.TaskReadResult
+	decodeResult(t, readEmptyRaw, &readEmpty)
+	if len(readEmpty.Messages) != 1 || readEmpty.Messages[0].Body != "Revision requested" || readEmpty.Messages[0].Author != string(reviewer.ID) {
+		t.Fatalf("empty revise messages = %+v; want 1 fallback message 'Revision requested' by %q", readEmpty.Messages, reviewer.ID)
+	}
 }
 
 func TestTaskParentIDValidationFilteringEventsAndSpecMaterialization(t *testing.T) {
@@ -594,6 +816,74 @@ func TestTaskParentIDValidationFilteringEventsAndSpecMaterialization(t *testing.
 	}), map[string]string{"project": testProject})
 	if class, ok := fault.ClassOf(err); !ok || class != fault.NotFound {
 		t.Fatalf("cross-project parent_id err = %v; want not_found", err)
+	}
+
+	// Cross-tenant parent_id is refused with not_found!
+	otherTenantScope := tenancy.Scope{TenantID: "tenant-other", ProjectID: "proj-other-tenant"}
+	if _, err := h.store.Execute(context.Background(), tenancy.Scope{TenantID: otherTenantScope.TenantID}, store.Unit{
+		Writes: []store.Write{
+			{
+				Table:  "tenants",
+				ID:     string(otherTenantScope.TenantID),
+				Insert: true,
+				Values: map[string]any{
+					"name":           "Other Tenant",
+					"version":        int64(1),
+					"derivation_key": []byte(`{}`),
+					"created_at":     fixedNow,
+				},
+			},
+			{
+				Table:  "projects",
+				ID:     string(otherTenantScope.ProjectID),
+				Insert: true,
+				Values: map[string]any{
+					"name":       "Other Tenant Project",
+					"version":    int64(1),
+					"created_at": fixedNow,
+				},
+			},
+		},
+	}); err != nil {
+		t.Fatalf("seed other tenant/project: %v", err)
+	}
+	otherTenantPrincipalID := id.PrincipalID("user-other-tenant")
+	h.seedMembership(t, otherTenantScope, "mem-other-tenant", otherTenantPrincipalID, 1, tenancy.RoleEngineer)
+	h.principals.principals["token-other-tenant"] = identity.Principal{
+		ID:      otherTenantPrincipalID,
+		Kind:    identity.KindHuman,
+		Scope:   otherTenantScope,
+		Roles:   []tenancy.Role{tenancy.RoleEngineer},
+		Enabled: true,
+		Version: 1,
+	}
+	crossTenantParentRaw, err := h.invoke(t, "token-other-tenant", "task.create", jsonBody(t, map[string]any{
+		"title": "Other tenant parent",
+	}), map[string]string{"project": string(otherTenantScope.ProjectID)})
+	if err != nil {
+		t.Fatalf("create cross-tenant parent: %v", err)
+	}
+	var crossTenantParent api.TaskCreateResult
+	decodeResult(t, crossTenantParentRaw, &crossTenantParent)
+	_, err = h.invoke(t, testToken, "task.create", jsonBody(t, map[string]any{
+		"title":     "Cross-tenant child",
+		"parent_id": crossTenantParent.TaskID,
+	}), map[string]string{"project": testProject})
+	if class, ok := fault.ClassOf(err); !ok || class != fault.NotFound {
+		t.Fatalf("cross-tenant parent_id err = %v; want not_found", err)
+	}
+
+	// Self-parent (parent_id == task_id) is refused with invalid_input at the adapter/store unit layer!
+	_, err = h.tasks.Create(context.Background(), task.CreateUnit{
+		Owner:     scope,
+		TaskID:    "task-self-parent",
+		ParentID:  "task-self-parent",
+		Title:     "Self parent task",
+		Initiator: testEngineer,
+		At:        fixedNow,
+	})
+	if class, ok := fault.ClassOf(err); !ok || class != fault.InvalidInput {
+		t.Fatalf("self-parent CreateUnit err = %v; want invalid_input", err)
 	}
 
 	// Create child 1 via task.create.

@@ -211,6 +211,15 @@ func (s *Store) Resolve(ctx context.Context, unit request.ResolveUnit) (request.
 			}
 			if taskID != "" {
 				if _, existErr := s.executor.Read(ctx, scope, tableTasks, taskID); existErr == nil {
+					// Lock tasks[taskID] explicitly so planLocks orders it (rank 6)
+					// ahead of executions[execID] (rank 8), preventing a PostgreSQL
+					// 40P01 lock-order deadlock against concurrent task.cancel /
+					// task.ask / task.restart when the task_messages FK acquires
+					// FOR KEY SHARE on tasks[taskID].
+					plan.locks = append(plan.locks, store.Lock{
+						Table: tableTasks,
+						IDs:   []string{taskID},
+					})
 					body := reviseFeedbackBody(unit.Note, unit.Response)
 					plan.writes = append(plan.writes, store.Write{
 						Table:  tableTaskMessages,
