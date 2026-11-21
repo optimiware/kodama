@@ -6,6 +6,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -30,6 +32,9 @@ import (
 //     independent row (Existed=false).
 //  5. Immutability at the PostgreSQL role layer: kodema_runtime cannot UPDATE
 //     or DELETE rows in kv_objects (SQLSTATE 42501 insufficient_privilege).
+//  6. Concurrent identical kv.put calls converge cleanly on PostgreSQL:
+//     0 errors, exactly 1 Existed=false, and N-1 Existed=true preserving the
+//     winner's metadata.
 func TestMigration0009KVStoreUpgradeRLSAndRoundTripOnPostgreSQL(t *testing.T) {
 	ctx := context.Background()
 	shard := pgtest.Start(t)
@@ -86,7 +91,7 @@ func TestMigration0009KVStoreUpgradeRLSAndRoundTripOnPostgreSQL(t *testing.T) {
 	engB := seedHuman(scopeB, "mem-kv-b", "human-kv-b", tenancy.RoleEngineer)
 	engT2 := seedHuman(scopeOtherTenant, "mem-kv-t2", "human-kv-t2", tenancy.RoleEngineer)
 
-	runtime := shard.Runtime(4)
+	runtime := shard.Runtime(16)
 	t.Cleanup(runtime.Close)
 	pgStore := storepg.New(runtime)
 	ids := &integrationIDs{}
@@ -194,4 +199,84 @@ func TestMigration0009KVStoreUpgradeRLSAndRoundTripOnPostgreSQL(t *testing.T) {
 	})
 	_ = tx.Rollback(ctx)
 	pgtest.RequireSQLState(t, deleteErr, "42501", "kodema_runtime cannot DELETE from kv_objects")
+
+	// 6. Concurrent identical kv.put race on PostgreSQL: N concurrent goroutines
+	// putting identical bytes must produce 0 errors, exactly 1 Existed=false,
+	// and N-1 Existed=true, all preserving the single winner's metadata.
+	const workers = 12
+	raceActors := make([]identity.Principal, workers)
+	for i := range workers {
+		raceActors[i] = seedHuman(
+			scopeA,
+			fmt.Sprintf("mem-kv-race-%d", i),
+			id.PrincipalID(fmt.Sprintf("human-kv-race-%d", i)),
+			tenancy.RoleEngineer,
+		)
+	}
+	racePayload := []byte("concurrent identical kv.put race payload on PostgreSQL")
+	wantRaceKey := kv.KeyFor(racePayload)
+
+	type raceOutcome struct {
+		res kv.PutResult
+		err error
+	}
+	outcomes := make([]raceOutcome, workers)
+	ready := make(chan struct{}, workers)
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	for i := range workers {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			ready <- struct{}{}
+			<-start
+			res, err := kvSvc.Put(ctx, kv.PutCommand{
+				Scope:       scopeA,
+				Actor:       raceActors[idx],
+				Data:        racePayload,
+				ContentType: fmt.Sprintf("text/plain; charset=utf-8; worker=%d", idx),
+			})
+			outcomes[idx] = raceOutcome{res: res, err: err}
+		}(i)
+	}
+	for range workers {
+		<-ready
+	}
+	close(start)
+	wg.Wait()
+
+	var created, existed int
+	var winner kv.Metadata
+	for i, out := range outcomes {
+		if out.err != nil {
+			t.Fatalf("concurrent Postgres kv.Put worker %d failed: %v%s", i, out.err, pgtest.CauseText(out.err))
+		}
+		if out.res.Metadata.Key != wantRaceKey {
+			t.Fatalf("worker %d key = %s; want %s", i, out.res.Metadata.Key, wantRaceKey)
+		}
+		if out.res.Existed {
+			existed++
+		} else {
+			created++
+			winner = out.res.Metadata
+		}
+	}
+	if created != 1 || existed != workers-1 {
+		t.Fatalf("concurrent Postgres kv.Put outcomes: existed=false count=%d, existed=true count=%d; want 1 and %d",
+			created, existed, workers-1)
+	}
+	for i, out := range outcomes {
+		if out.res.Metadata.CreatedBy != winner.CreatedBy ||
+			out.res.Metadata.ContentType != winner.ContentType ||
+			!out.res.Metadata.CreatedAt.Equal(winner.CreatedAt) {
+			t.Fatalf("worker %d metadata = %+v; want winner %+v", i, out.res.Metadata, winner)
+		}
+	}
+	gotRace, err := kvSvc.Get(ctx, kv.GetCommand{Scope: scopeA, Actor: engA, Key: wantRaceKey})
+	if err != nil {
+		t.Fatalf("kv.Get after concurrent Postgres puts: %v%s", err, pgtest.CauseText(err))
+	}
+	if !bytes.Equal(gotRace.Data, racePayload) {
+		t.Fatalf("kv.Get payload mismatch after concurrent Postgres puts")
+	}
 }

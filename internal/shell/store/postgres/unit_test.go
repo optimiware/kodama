@@ -696,6 +696,108 @@ func TestExecuteUnitLostResponseReplaysCommittedResult(t *testing.T) {
 	}
 }
 
+func TestExecuteUnitKVObjectsImmutabilityAndUniqueConflict(t *testing.T) {
+	const rowID = "kv-row-1"
+	const key = "kv:sha256:0000000000000000000000000000000000000000000000000000000000000000"
+	kvInsert := store.Write{
+		Table:  store.KVObjectsTable,
+		ID:     rowID,
+		Insert: true,
+		Values: map[string]any{
+			"key":          key,
+			"content_type": "text/plain; charset=utf-8",
+			"size_bytes":   int64(4),
+			"data":         []byte("test"),
+			"created_by":   testPrincipalID,
+			"created_at":   testTime(),
+		},
+	}
+
+	t.Run("update and delete refused before transaction", func(t *testing.T) {
+		for _, tc := range []struct {
+			name  string
+			write store.Write
+		}{
+			{
+				name: "update",
+				write: store.Write{
+					Table:  store.KVObjectsTable,
+					ID:     rowID,
+					Expect: map[string]any{"key": key},
+					Values: map[string]any{"content_type": "application/octet-stream"},
+				},
+			},
+			{
+				name: "delete",
+				write: store.Write{
+					Table:  store.KVObjectsTable,
+					ID:     rowID,
+					Delete: true,
+					Expect: map[string]any{"key": key},
+				},
+			},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				db := newFakeDB()
+				_, err := ExecuteUnit(context.Background(), New(db), testProjectScope(), store.Unit{
+					Writes: []store.Write{tc.write},
+				})
+				assertFaultClass(t, err, fault.InvalidInput)
+				if got := db.beginCount(); got != 0 {
+					t.Fatalf("refused kv_objects %s opened %d transactions; want 0", tc.name, got)
+				}
+			})
+		}
+	})
+
+	t.Run("insert 23505 maps to version_conflict", func(t *testing.T) {
+		db := newFakeDB()
+		db.script.setExec(func(sql string, args []any) (store.Result, error) {
+			if strings.HasPrefix(strings.ToLower(strings.TrimSpace(sql)), "insert into kv_objects") {
+				return store.Result{}, sqlStateTestError("23505")
+			}
+			return store.Result{RowsAffected: 1}, nil
+		})
+		_, err := ExecuteUnit(context.Background(), New(db), testProjectScope(), store.Unit{
+			Writes: []store.Write{kvInsert},
+		})
+		assertFaultClass(t, err, fault.VersionConflict)
+		conn := db.conn(t)
+		if conn.commits != 0 || conn.rollbacks != 1 {
+			t.Fatalf("kv_objects 23505 terminal calls: commits=%d rollbacks=%d; want one rollback", conn.commits, conn.rollbacks)
+		}
+	})
+
+	t.Run("commit 23505 maps to version_conflict", func(t *testing.T) {
+		db := newFakeDB()
+		db.script.commitErr = sqlStateTestError("23505")
+		_, err := ExecuteUnit(context.Background(), New(db), testProjectScope(), store.Unit{
+			Writes: []store.Write{kvInsert},
+		})
+		assertFaultClass(t, err, fault.VersionConflict)
+		if conn := db.conn(t); conn.rollbacks == 0 {
+			t.Fatal("kv_objects commit 23505 left transaction without rollback")
+		}
+	})
+
+	t.Run("non-23505 insert error passes through unchanged", func(t *testing.T) {
+		db := newFakeDB()
+		rawErr := sqlStateTestError("42501")
+		db.script.setExec(func(sql string, args []any) (store.Result, error) {
+			if strings.HasPrefix(strings.ToLower(strings.TrimSpace(sql)), "insert into kv_objects") {
+				return store.Result{}, rawErr
+			}
+			return store.Result{RowsAffected: 1}, nil
+		})
+		_, err := ExecuteUnit(context.Background(), New(db), testProjectScope(), store.Unit{
+			Writes: []store.Write{kvInsert},
+		})
+		if !errors.Is(err, rawErr) {
+			t.Fatalf("non-23505 error = %v; want %v", err, rawErr)
+		}
+	})
+}
+
 func TestWriteRowRefusesReservedColumnsAndBadVersions(t *testing.T) {
 	db := newFakeDB()
 	connector := New(db)

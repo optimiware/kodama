@@ -7,9 +7,11 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -548,5 +550,121 @@ func TestKVEndToEndWorkloadToDownstreamAnd16MiBPayload(t *testing.T) {
 	edge.ServeHTTP(rec2, req2)
 	if rec2.Code != http.StatusBadRequest {
 		t.Fatalf("non-KV >1 MiB HTTP status = %d; want 400", rec2.Code)
+	}
+}
+
+func TestKVConcurrentPutRaceConvergence(t *testing.T) {
+	const workers = 16
+	h := newHarness(t)
+	scope := tenancy.Scope{TenantID: testTenant, ProjectID: testProject}
+
+	tokens := make([]string, workers)
+	for i := range workers {
+		principalID := id.PrincipalID(fmt.Sprintf("kv-race-eng-%d", i))
+		tok := fmt.Sprintf("tok-kv-race-%d", i)
+		principal := identity.Principal{
+			ID:      principalID,
+			Kind:    identity.KindHuman,
+			Scope:   scope,
+			Roles:   []tenancy.Role{tenancy.RoleEngineer},
+			Enabled: true,
+			Version: 1,
+		}
+		h.seedMembership(t, scope, fmt.Sprintf("m-kv-race-%d", i), principalID, 1, tenancy.RoleEngineer)
+		h.principals.principals[tok] = principal
+		tokens[i] = tok
+	}
+	h.buildRouter(t)
+
+	for round := range 3 {
+		payload := fmt.Sprintf("concurrent identical kv payload round-%d", round)
+		sum := sha256.Sum256([]byte(payload))
+		wantKey := "kv:sha256:" + hex.EncodeToString(sum[:])
+
+		type outcome struct {
+			res api.Result
+			err error
+		}
+		outcomes := make([]outcome, workers)
+		ready := make(chan struct{}, workers)
+		start := make(chan struct{})
+		var wg sync.WaitGroup
+
+		for i := range workers {
+			body := jsonBody(t, map[string]any{
+				"text":         payload,
+				"content_type": fmt.Sprintf("text/plain; charset=utf-8; worker=%d", i),
+			})
+			wg.Add(1)
+			go func(idx int, input string) {
+				defer wg.Done()
+				ready <- struct{}{}
+				<-start
+				res, err := h.router.Invoke(context.Background(), ops.Invocation{
+					Operation:  "kv.put",
+					Credential: tokens[idx],
+					Request:    api.Request{Input: json.RawMessage(input)},
+					Params:     map[string]string{"project": testProject},
+				})
+				outcomes[idx] = outcome{res: res, err: err}
+			}(i, body)
+		}
+
+		for range workers {
+			<-ready
+		}
+		close(start)
+		wg.Wait()
+
+		var created, existed int
+		var winner api.KVPutResult
+		var winnerIdx int
+		for i, out := range outcomes {
+			if out.err != nil {
+				t.Fatalf("round %d worker %d kv.put failed: %v", round, i, out.err)
+			}
+			var decoded api.KVPutResult
+			decodeResult(t, out.res, &decoded)
+			if decoded.Key != wantKey {
+				t.Fatalf("round %d worker %d key = %q; want %q", round, i, decoded.Key, wantKey)
+			}
+			if decoded.SizeBytes != int64(len(payload)) {
+				t.Fatalf("round %d worker %d size = %d; want %d", round, i, decoded.SizeBytes, len(payload))
+			}
+			if decoded.Existed {
+				existed++
+			} else {
+				created++
+				winner = decoded
+				winnerIdx = i
+			}
+		}
+		if created != 1 || existed != workers-1 {
+			t.Fatalf("round %d race outcomes: existed=false count=%d, existed=true count=%d; want 1 and %d",
+				round, created, existed, workers-1)
+		}
+		for i, out := range outcomes {
+			var decoded api.KVPutResult
+			decodeResult(t, out.res, &decoded)
+			if decoded.ContentType != winner.ContentType || !decoded.CreatedAt.Equal(winner.CreatedAt) {
+				t.Fatalf("round %d worker %d metadata = (%q, %v); want winner (%q, %v)",
+					round, i, decoded.ContentType, decoded.CreatedAt, winner.ContentType, winner.CreatedAt)
+			}
+		}
+
+		gotRaw, err := h.invoke(t, tokens[0], "kv.get", `{}`, map[string]string{"project": testProject, "key": wantKey})
+		if err != nil {
+			t.Fatalf("round %d kv.get after concurrent puts: %v", round, err)
+		}
+		var got api.KVGetResult
+		decodeResult(t, gotRaw, &got)
+		if got.Text == nil || *got.Text != payload {
+			t.Fatalf("round %d kv.get text = %v; want %q", round, got.Text, payload)
+		}
+		wantWinnerID := fmt.Sprintf("kv-race-eng-%d", winnerIdx)
+		if got.CreatedBy != wantWinnerID || got.ContentType != winner.ContentType {
+			t.Fatalf("round %d kv.get metadata = (%q, %q); want (%q, %q)",
+				round, got.CreatedBy, got.ContentType, wantWinnerID, winner.ContentType)
+		}
 	}
 }

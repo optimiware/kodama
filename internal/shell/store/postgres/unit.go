@@ -176,6 +176,9 @@ func ExecuteUnit(ctx context.Context, connector store.ScopedConnection, scope te
 		if hasAbsenceInsert(writes) {
 			return store.UnitResult{}, mapAbsenceInsertError(err)
 		}
+		if hasKVObjectInsert(writes) {
+			return store.UnitResult{}, mapUniqueViolationError(err, "kv object already exists")
+		}
 		return store.UnitResult{}, err
 	}
 	return store.UnitResult{Replayed: false, Receipt: record}, nil
@@ -187,6 +190,18 @@ func ExecuteUnit(ctx context.Context, connector store.ScopedConnection, scope te
 func hasAbsenceInsert(writes []plannedWrite) bool {
 	for _, write := range writes {
 		if write.advisory != nil {
+			return true
+		}
+	}
+	return false
+}
+
+// hasKVObjectInsert reports whether the unit inserted a write-once kv_objects
+// row. A concurrent identical put surfaces SQLSTATE 23505, which maps to
+// version_conflict consistently with the memory adapter.
+func hasKVObjectInsert(writes []plannedWrite) bool {
+	for _, write := range writes {
+		if write.insert && write.table == store.KVObjectsTable {
 			return true
 		}
 	}

@@ -422,6 +422,59 @@ func TestTenantScopedReceiptIdentityReplays(t *testing.T) {
 	}
 }
 
+func TestExecuteEnforcesKVObjectsWriteOnceImmutability(t *testing.T) {
+	s := New()
+	scope := projectScope()
+	const rowID = "kv-row-1"
+	const key = "kv:sha256:0000000000000000000000000000000000000000000000000000000000000000"
+	payload := []byte("immutable kv value")
+
+	// INSERT succeeds.
+	mustExecute(t, s, scope, store.Unit{
+		Writes: []store.Write{{
+			Table:  store.KVObjectsTable,
+			ID:     rowID,
+			Insert: true,
+			Values: map[string]any{
+				"key":          key,
+				"content_type": "text/plain; charset=utf-8",
+				"size_bytes":   int64(len(payload)),
+				"data":         payload,
+				"created_by":   testPrincipalID,
+				"created_at":   fixedTime(),
+			},
+		}},
+	})
+
+	// UPDATE is refused with invalid_input before any effect.
+	_, err := s.Execute(context.Background(), scope, store.Unit{
+		Writes: []store.Write{{
+			Table:  store.KVObjectsTable,
+			ID:     rowID,
+			Expect: map[string]any{"key": key},
+			Values: map[string]any{"content_type": "application/octet-stream"},
+		}},
+	})
+	assertFault(t, err, fault.InvalidInput)
+
+	// DELETE is refused with invalid_input before any effect.
+	_, err = s.Execute(context.Background(), scope, store.Unit{
+		Writes: []store.Write{{
+			Table:  store.KVObjectsTable,
+			ID:     rowID,
+			Delete: true,
+			Expect: map[string]any{"key": key},
+		}},
+	})
+	assertFault(t, err, fault.InvalidInput)
+
+	// The originally inserted row remains untouched.
+	row := mustSnapshot(t, s, scope, store.KVObjectsTable, rowID)
+	if got := rowString(t, row, "content_type"); got != "text/plain; charset=utf-8" {
+		t.Fatalf("kv_objects content_type after refused mutations = %q; want text/plain; charset=utf-8", got)
+	}
+}
+
 func TestExecuteRefusesInvalidUnitsBeforeAnyEffect(t *testing.T) {
 	badEvent := defaultEvent(projectScope(), "event-1", event.TypeTaskCreated, testTaskID)
 	badEvent.Type = "bogus"

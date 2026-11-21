@@ -119,6 +119,8 @@ func (unit Unit) Validate() error {
 //   - the events table carries committed publication intent: only the
 //     publisher's acknowledgement moves publish_state, and only under an
 //     explicit expected-column guard;
+//   - kv_objects is write-once immutable: only inserts are permitted, so any
+//     update or delete is refused before any effect;
 //   - a delete or update of a versioned row carries its expected version, a
 //     table without a version column carries an explicit column guard instead,
 //     and an insert carries no expected version;
@@ -138,6 +140,9 @@ func ValidateWrite(write Write) error {
 	}
 	if write.Insert && write.Delete {
 		return fault.New(fault.InvalidInput, "a write cannot be both an insert and a delete")
+	}
+	if write.Table == KVObjectsTable && !write.Insert {
+		return fault.New(fault.InvalidInput, "kv_objects is write-once immutable and does not allow updates or deletes")
 	}
 	if write.Delete {
 		if len(write.Values) > 0 {

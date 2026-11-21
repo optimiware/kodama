@@ -273,9 +273,9 @@ func writeFixedError(writer http.ResponseWriter, status int, publicError api.Err
 }
 
 // readRequest reads exactly one request body bounded by the matched operation's
-// api.MaxEnvelopeBytes bound (2 MiB for the three YAML-carrying operations, the
-// declared 1 MiB otherwise). A body over the bound is an invalid_input refusal
-// before decoding.
+// api.MaxEnvelopeBytes bound (24 MiB for kv.put, 2 MiB for the three
+// YAML-carrying operations, and the declared 1 MiB otherwise). A body over the
+// bound is an invalid_input refusal before decoding.
 func readRequest(request *http.Request, bound int) ([]byte, error) {
 	if request.Body == nil {
 		return nil, nil

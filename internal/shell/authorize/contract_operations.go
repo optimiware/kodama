@@ -347,7 +347,7 @@ var registry = []Operation{
 		[]AuthorityCheck{CheckMembership, CheckExecutionRunning, CheckActionDeadline}, ReceiptNone, withClasses(mutationErrors(), fault.DeadlineExpired))),
 	withAnyEnabledService(operation("kv.get", FamilyKV, ScopeProject,
 		allHumanRoles(), nil, ExecProjectKV,
-		[]AuthorityCheck{CheckMembership}, ReceiptNone, readErrors())),
+		[]AuthorityCheck{CheckMembership, CheckExecutionRunning, CheckActionDeadline}, ReceiptNone, withClasses(readErrors(), fault.DeadlineExpired))),
 }
 
 var registryByName = func() map[OperationName]Operation {

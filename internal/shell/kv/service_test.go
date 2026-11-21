@@ -40,9 +40,10 @@ func (s *seqIDs) NewEventID() (id.EventID, error) {
 // fakeStore is a minimal capability-local Executor + Scanner fake so
 // internal/shell/kv unit tests stay free of concrete adapter imports.
 type fakeStore struct {
-	mu   sync.Mutex
-	now  func() time.Time
-	rows map[string]map[string]map[string]any // table -> id -> row values
+	mu            sync.Mutex
+	now           func() time.Time
+	rows          map[string]map[string]map[string]any // table -> id -> row values
+	beforeExecute func(scope tenancy.Scope, unit store.Unit)
 }
 
 func newFakeStore(now func() time.Time) *fakeStore {
@@ -113,6 +114,13 @@ func (s *fakeStore) Query(_ context.Context, scope tenancy.Scope, query store.Sc
 
 func (s *fakeStore) Execute(_ context.Context, scope tenancy.Scope, unit store.Unit) (store.UnitResult, error) {
 	s.mu.Lock()
+	hook := s.beforeExecute
+	s.mu.Unlock()
+	if hook != nil {
+		hook(scope, unit)
+	}
+
+	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, lock := range unit.Locks {
 		if lock.ExpectAbsent {
@@ -134,6 +142,18 @@ func (s *fakeStore) Execute(_ context.Context, scope tenancy.Scope, unit store.U
 			values, ok := s.visible(scope, lock.Table, rowID, lock.TenantWide)
 			if !ok {
 				return store.UnitResult{}, fault.New(fault.VersionConflict, "locked row missing")
+			}
+			if lock.ExpectVersion != 0 {
+				var current uint64
+				switch v := values["version"].(type) {
+				case int64:
+					current = uint64(v)
+				case uint64:
+					current = v
+				}
+				if current != lock.ExpectVersion {
+					return store.UnitResult{}, fault.New(fault.VersionConflict, "locked row version mismatch")
+				}
 			}
 			if lock.Deadline != nil {
 				stamp, ok := values[lock.Deadline.Column].(time.Time)
@@ -558,4 +578,188 @@ func TestAuthorizationMatrix(t *testing.T) {
 			t.Errorf("Get as %s class = %v (%v); want %s", tc.name, class, err, tc.wantClass)
 		}
 	}
+}
+
+type funcClock func() time.Time
+
+func (c funcClock) Now() time.Time { return c() }
+
+func TestPutRaceConvergence(t *testing.T) {
+	t.Run("concurrent identical writer converges preserving original metadata", func(t *testing.T) {
+		ctx := context.Background()
+		t1 := time.Date(2026, 11, 21, 12, 0, 0, 0, time.UTC)
+		t2 := t1.Add(5 * time.Minute)
+		var clockMu sync.Mutex
+		current := t2
+		clock := funcClock(func() time.Time {
+			clockMu.Lock()
+			defer clockMu.Unlock()
+			return current
+		})
+		fs := newFakeStore(clock)
+		svc, err := kv.NewService(kv.Config{
+			Clock:    clock,
+			IDs:      &seqIDs{},
+			Executor: fs,
+			Scanner:  fs,
+		})
+		if err != nil {
+			t.Fatalf("kv.NewService: %v", err)
+		}
+		f := &kvFixture{
+			now:   t1,
+			store: fs,
+			svc:   svc,
+			scope: tenancy.Scope{TenantID: "tenant-a", ProjectID: "project-a"},
+		}
+		winner := f.seedHuman(t, f.scope, "mem-winner", "human-winner", tenancy.RoleEngineer)
+		loser := f.seedHuman(t, f.scope, "mem-loser", "human-loser", tenancy.RoleEngineer)
+
+		payload := []byte("deterministic race payload")
+		wantKey := kv.KeyFor(payload)
+
+		// Right before loser's kv_objects insert executes (after loser already
+		// passed readExisting -> NotFound), winner commits the identical bytes
+		// at t1 with a distinct content type.
+		injected := false
+		fs.beforeExecute = func(_ tenancy.Scope, unit store.Unit) {
+			if injected || len(unit.Writes) == 0 || unit.Writes[0].Table != store.KVObjectsTable {
+				return
+			}
+			injected = true
+			clockMu.Lock()
+			current = t1
+			clockMu.Unlock()
+			winRes, winErr := svc.Put(ctx, kv.PutCommand{
+				Scope:       f.scope,
+				Actor:       winner,
+				Data:        payload,
+				ContentType: "text/markdown; charset=utf-8",
+			})
+			clockMu.Lock()
+			current = t2
+			clockMu.Unlock()
+			if winErr != nil {
+				t.Errorf("winner concurrent Put failed: %v", winErr)
+			}
+			if winRes.Existed {
+				t.Errorf("winner concurrent Put reported Existed=true; want false")
+			}
+		}
+
+		res, err := svc.Put(ctx, kv.PutCommand{
+			Scope:       f.scope,
+			Actor:       loser,
+			Data:        payload,
+			ContentType: "application/octet-stream",
+		})
+		if err != nil {
+			t.Fatalf("loser Put failed instead of converging: %v", err)
+		}
+		if !injected {
+			t.Fatal("expected race hook to fire")
+		}
+		if !res.Existed {
+			t.Fatalf("converged Put Existed = false; want true")
+		}
+		if res.Metadata.Key != wantKey {
+			t.Fatalf("converged Key = %s; want %s", res.Metadata.Key, wantKey)
+		}
+		if res.Metadata.CreatedBy != winner.ID {
+			t.Fatalf("converged CreatedBy = %s; want original %s", res.Metadata.CreatedBy, winner.ID)
+		}
+		if !res.Metadata.CreatedAt.Equal(t1) {
+			t.Fatalf("converged CreatedAt = %v; want original %v", res.Metadata.CreatedAt, t1)
+		}
+		if res.Metadata.ContentType != "text/markdown; charset=utf-8" {
+			t.Fatalf("converged ContentType = %q; want original text/markdown; charset=utf-8", res.Metadata.ContentType)
+		}
+	})
+
+	t.Run("revoked caller hitting conflict still receives forbidden", func(t *testing.T) {
+		ctx := context.Background()
+		f := newKVFixture(t)
+		winner := f.seedHuman(t, f.scope, "mem-winner", "human-winner", tenancy.RoleEngineer)
+		revoked := f.seedHuman(t, f.scope, "mem-revoked", "human-revoked", tenancy.RoleEngineer)
+
+		payload := []byte("revoked caller race payload")
+		injected := false
+		f.store.beforeExecute = func(_ tenancy.Scope, unit store.Unit) {
+			if injected || len(unit.Writes) == 0 || unit.Writes[0].Table != store.KVObjectsTable {
+				return
+			}
+			injected = true
+			// Winner commits the identical object, and simultaneously the
+			// racing caller's membership is revoked before its insert runs.
+			if _, err := f.svc.Put(ctx, kv.PutCommand{
+				Scope:       f.scope,
+				Actor:       winner,
+				Data:        payload,
+				ContentType: "text/plain; charset=utf-8",
+			}); err != nil {
+				t.Errorf("winner Put failed: %v", err)
+			}
+			f.store.mu.Lock()
+			delete(f.store.rows["memberships"], "mem-revoked")
+			f.store.mu.Unlock()
+		}
+
+		if _, err := f.svc.Put(ctx, kv.PutCommand{
+			Scope: f.scope,
+			Actor: revoked,
+			Data:  payload,
+		}); err == nil {
+			t.Fatal("revoked caller Put converged instead of returning forbidden")
+		} else if class, ok := fault.ClassOf(err); !ok || class != fault.Forbidden {
+			t.Fatalf("revoked caller Put class = %v (%v); want forbidden", class, err)
+		}
+		if !injected {
+			t.Fatal("expected race hook to fire")
+		}
+	})
+
+	t.Run("unrelated version conflict with key still absent returns version_conflict", func(t *testing.T) {
+		ctx := context.Background()
+		f := newKVFixture(t)
+		eng := f.seedHuman(t, f.scope, "mem-eng", "human-eng", tenancy.RoleEngineer)
+
+		payload := []byte("unrelated conflict payload")
+		injected := false
+		f.store.beforeExecute = func(_ tenancy.Scope, unit store.Unit) {
+			if injected || len(unit.Writes) == 0 || unit.Writes[0].Table != store.KVObjectsTable {
+				return
+			}
+			injected = true
+			// Bump the locked membership row's version without inserting any KV
+			// object so Execute fails with VersionConflict while the key stays
+			// absent.
+			f.store.mu.Lock()
+			f.store.rows["memberships"]["mem-eng"]["version"] = int64(2)
+			f.store.mu.Unlock()
+		}
+
+		if _, err := f.svc.Put(ctx, kv.PutCommand{
+			Scope: f.scope,
+			Actor: eng,
+			Data:  payload,
+		}); err == nil {
+			t.Fatal("unrelated VersionConflict Put succeeded; want version_conflict")
+		} else if class, ok := fault.ClassOf(err); !ok || class != fault.VersionConflict {
+			t.Fatalf("unrelated VersionConflict Put class = %v (%v); want version_conflict", class, err)
+		}
+		if !injected {
+			t.Fatal("expected race hook to fire")
+		}
+
+		// Confirm the key is still absent.
+		if _, err := f.svc.Get(ctx, kv.GetCommand{
+			Scope: f.scope,
+			Actor: eng,
+			Key:   kv.KeyFor(payload),
+		}); err == nil {
+			t.Fatal("key unexpectedly exists after unrelated VersionConflict")
+		} else if class, ok := fault.ClassOf(err); !ok || class != fault.NotFound {
+			t.Fatalf("Get after unrelated VersionConflict class = %v; want not_found", class)
+		}
+	})
 }

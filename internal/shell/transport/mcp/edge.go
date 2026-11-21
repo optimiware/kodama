@@ -78,9 +78,10 @@ func NewEdge(config Config) (*Edge, error) {
 
 // Handle decodes one bounded MCP message and returns the encoded JSON-RPC
 // response, or nil for a valid JSON-RPC notification. A tools/call message uses
-// the YAML-aware decoder: a hard 2 MiB cap before decoding and then the named
-// operation's api.MaxEnvelopeBytes bound. Every other method keeps the declared
-// 1 MiB bound.
+// the operation-aware decoder: a hard api.MaxKVRequestBytes (24 MiB) cap before
+// decoding and then the named operation's api.MaxEnvelopeBytes bound (24 MiB
+// for kv.put, 2 MiB for the three YAML-carrying operations, and 1 MiB
+// otherwise). Every other method keeps the declared 1 MiB bound.
 func (edge *Edge) Handle(ctx context.Context, credential string, body []byte) []byte {
 	if len(body) > api.MaxKVRequestBytes {
 		return encodeError(nil, api.CodeInvalidInput, "MCP request exceeds the maximum allowed size")

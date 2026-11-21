@@ -3,7 +3,6 @@ package kv
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
@@ -229,6 +228,3 @@ func isVersionConflict(err error) bool {
 	class, ok := fault.ClassOf(err)
 	return ok && class == fault.VersionConflict
 }
-
-// errRaceResolved is an internal sentinel unused externally; kept for clarity.
-var _ = errors.Is

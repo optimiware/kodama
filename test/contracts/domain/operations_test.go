@@ -333,7 +333,7 @@ func expectedOperations() []expectedOperation {
 			checks(authorize.CheckMembership, authorize.CheckExecutionRunning, authorize.CheckActionDeadline), authorize.ReceiptNone, append(mutationErrors(), fault.DeadlineExpired))),
 		anySvc(eop("kv.get", authorize.FamilyKV, authorize.ScopeProject,
 			allHumans, roles(), authorize.ExecProjectKV,
-			checks(authorize.CheckMembership), authorize.ReceiptNone, readErrors())),
+			checks(authorize.CheckMembership, authorize.CheckExecutionRunning, authorize.CheckActionDeadline), authorize.ReceiptNone, append(readErrors(), fault.DeadlineExpired))),
 	}
 }
 

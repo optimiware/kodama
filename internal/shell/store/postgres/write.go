@@ -376,6 +376,9 @@ func applyWriteWith(ctx context.Context, tx store.Transaction, planned plannedWr
 		if planned.advisory != nil {
 			return mapAbsenceInsertError(err)
 		}
+		if planned.insert && planned.table == store.KVObjectsTable {
+			return mapUniqueViolationError(err, "kv object already exists")
+		}
 		return err
 	}
 	if planned.insert {

@@ -195,12 +195,19 @@ type sqlStateError interface {
 // mapAbsenceInsertError maps a PostgreSQL unique-key violation (SQLSTATE 23505)
 // to the version_conflict class. Every other cause travels unchanged.
 func mapAbsenceInsertError(err error) error {
+	return mapUniqueViolationError(err, "the registered unique key already exists")
+}
+
+// mapUniqueViolationError maps a PostgreSQL unique-key violation (SQLSTATE
+// 23505) to the version_conflict class with the given message. Every other
+// cause travels unchanged.
+func mapUniqueViolationError(err error, message string) error {
 	if err == nil {
 		return nil
 	}
 	var state sqlStateError
 	if errors.As(err, &state) && state.SQLState() == "23505" {
-		return faultConflict("the registered unique key already exists")
+		return faultConflict(message)
 	}
 	return err
 }
