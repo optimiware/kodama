@@ -35,6 +35,7 @@ type Config struct {
 	Principals authorize.CurrentPrincipal
 	Bindings   BindingReader
 	Evidence   EvidenceReader
+	Decisions  DecisionReader
 	Membership authorize.MembershipReader
 	Records    RecordPort
 	Clock      Clock
@@ -44,10 +45,11 @@ type Config struct {
 // Attempt is one verification request. The calling service is already
 // authenticated by the caller's transport boundary; Service is that verified
 // service principal. Credential is the independently supplied actor
-// credential. Approval is the optional human role approval to match. ActionID
-// is the current running action identity: it is the action-deadline
-// authority-read target and the recorded verification action, never an
-// approval-matching key.
+// credential. Approval is the optional human role approval to match. DecisionID
+// is the optional cross-execution approval decision identity to verify instead
+// of same-execution request history. ActionID is the current running action
+// identity: it is the action-deadline authority-read target and the recorded
+// verification action, never an approval-matching key.
 type Attempt struct {
 	Scope      tenancy.Scope
 	Service    identity.Principal
@@ -56,6 +58,7 @@ type Attempt struct {
 	Operation  resource.Operation
 	Subject    Subject
 	Approval   request.Assignment
+	DecisionID id.DecisionID
 	ActionID   id.ActionID
 }
 
@@ -67,6 +70,7 @@ type Verifier struct {
 	principals authorize.CurrentPrincipal
 	bindings   BindingReader
 	evidence   EvidenceReader
+	decisions  DecisionReader
 	membership authorize.MembershipReader
 	records    RecordPort
 	clock      Clock
@@ -93,6 +97,7 @@ func New(config Config) (*Verifier, error) {
 		principals: config.Principals,
 		bindings:   config.Bindings,
 		evidence:   config.Evidence,
+		decisions:  config.Decisions,
 		membership: config.Membership,
 		records:    config.Records,
 		clock:      config.Clock,
@@ -133,8 +138,10 @@ func (verifier *Verifier) Verify(ctx context.Context, input Attempt) (Record, er
 		return Record{}, err
 	}
 
+	now := verifier.clock.Now()
 	var refusal error
 	var membershipTargets []authorize.AuthorityTarget
+	var decisionVersion uint64
 	approved := false
 	if err := authorizeActor(input, actor); err != nil {
 		refusal = err
@@ -146,25 +153,48 @@ func (verifier *Verifier) Verify(ctx context.Context, input Attempt) (Record, er
 		actor.Roles = roles
 		membershipTargets = targets
 	} else if input.Approval != (request.Assignment{}) {
-		// ActionID is the current action, passed only as context for the
-		// adapter's authority read. It is not an approval-matching key:
-		// S05 §4 approval evidence is an earlier succeeded request in the
-		// same execution, so it normally carries a different action id.
-		evidence, err := verifier.evidence.ReadEvidence(ctx, EvidenceQuery{
-			Scope:       input.Scope,
-			ExecutionID: actor.ExecutionID,
-			ActionID:    input.ActionID,
-			Assignment:  input.Approval,
-			Operation:   string(input.Operation),
-			ResourceID:  input.ResourceID,
-			Subject:     input.Subject,
-		})
-		if err != nil {
-			return Record{}, err
-		}
-		approved = matchesApproval(input, actor, evidence)
-		if !approved {
-			refusal = fault.New(fault.Forbidden, "no matching approval evidence")
+		if input.DecisionID != "" {
+			if verifier.decisions == nil {
+				approved = false
+				refusal = fault.New(fault.Forbidden, "no matching approval evidence")
+			} else {
+				decisionCtx, err := verifier.decisions.ReadDecision(ctx, DecisionQuery{
+					Scope:      input.Scope,
+					DecisionID: input.DecisionID,
+					Actor:      actor,
+					Now:        now,
+				})
+				if err != nil {
+					return Record{}, err
+				}
+				approved = matchesDecisionApproval(input, actor, decisionCtx, now)
+				if approved {
+					decisionVersion = decisionCtx.Decision.Version
+				} else {
+					refusal = fault.New(fault.Forbidden, "no matching approval evidence")
+				}
+			}
+		} else {
+			// ActionID is the current action, passed only as context for the
+			// adapter's authority read. It is not an approval-matching key:
+			// S05 §4 approval evidence is an earlier succeeded request in the
+			// same execution, so it normally carries a different action id.
+			evidence, err := verifier.evidence.ReadEvidence(ctx, EvidenceQuery{
+				Scope:       input.Scope,
+				ExecutionID: actor.ExecutionID,
+				ActionID:    input.ActionID,
+				Assignment:  input.Approval,
+				Operation:   string(input.Operation),
+				ResourceID:  input.ResourceID,
+				Subject:     input.Subject,
+			})
+			if err != nil {
+				return Record{}, err
+			}
+			approved = matchesApproval(input, actor, evidence)
+			if !approved {
+				refusal = fault.New(fault.Forbidden, "no matching approval evidence")
+			}
 		}
 	}
 
@@ -192,14 +222,16 @@ func (verifier *Verifier) Verify(ctx context.Context, input Attempt) (Record, er
 		Operation:         string(input.Operation),
 		Subject:           input.Subject,
 		RequestedApproval: input.Approval,
+		DecisionID:        input.DecisionID,
 		Result:            result,
 		Approved:          approved,
-		At:                verifier.clock.Now(),
+		At:                now,
 	}
 	unit := RecordUnit{
-		Owner:     input.Scope,
-		Record:    record,
-		Authority: authorityReads(input, actor, binding, membershipTargets),
+		Owner:           input.Scope,
+		Record:          record,
+		DecisionVersion: decisionVersion,
+		Authority:       authorityReads(input, actor, binding, membershipTargets),
 	}
 	committed, err := verifier.records.Record(ctx, unit)
 	if err != nil {
@@ -244,6 +276,9 @@ func validateAttempt(input Attempt) error {
 		if input.Approval != (request.Assignment{}) {
 			return fault.New(fault.InvalidInput, "git.read verification does not accept an approval")
 		}
+		if input.DecisionID != "" {
+			return fault.New(fault.InvalidInput, "git.read verification does not accept a decision_id")
+		}
 	}
 	if err := input.Service.Validate(); err != nil {
 		return err
@@ -257,6 +292,14 @@ func validateAttempt(input Attempt) error {
 		}
 		if input.Approval.Kind != request.AssignmentRole {
 			return fault.New(fault.InvalidInput, "requested approval must be a human role assignment")
+		}
+	}
+	if input.DecisionID != "" {
+		if _, err := id.ParseDecisionID(string(input.DecisionID)); err != nil {
+			return fault.Wrap(fault.InvalidInput, "decision_id is invalid", err)
+		}
+		if input.Approval == (request.Assignment{}) {
+			return fault.New(fault.InvalidInput, "decision_id requires an approval")
 		}
 	}
 	return nil
@@ -289,8 +332,11 @@ func authorizeCallingService(input Attempt, binding resource.Binding) error {
 }
 
 // authorizeActor checks the current actor state and, when approval is
-// requested, that the actor is an eligible execution. Humans and services may
-// authenticate but can never carry execution approval evidence.
+// requested, that the actor is eligible to carry approval evidence. Without a
+// decision_id, only an execution actor may carry same-execution approval
+// evidence. With a decision_id, an execution actor or an enabled service
+// account may present a cross-execution approval decision (subject to strict
+// task/assignment verification); humans never carry approval evidence.
 func authorizeActor(input Attempt, actor identity.Principal) error {
 	if !actor.Enabled {
 		return fault.New(fault.Forbidden, "actor is currently disabled")
@@ -298,8 +344,16 @@ func authorizeActor(input Attempt, actor identity.Principal) error {
 	if !scopeContains(actor.Scope, input.Scope) {
 		return fault.New(fault.Forbidden, "actor is outside the verification scope")
 	}
-	if input.Approval != (request.Assignment{}) && actor.Kind != identity.KindExecution {
-		return fault.New(fault.Forbidden, "approval evidence requires an execution actor")
+	if input.Approval != (request.Assignment{}) {
+		if input.DecisionID == "" {
+			if actor.Kind != identity.KindExecution {
+				return fault.New(fault.Forbidden, "approval evidence requires an execution actor")
+			}
+		} else {
+			if actor.Kind != identity.KindExecution && actor.Kind != identity.KindService {
+				return fault.New(fault.Forbidden, "approval evidence requires an execution actor")
+			}
+		}
 	}
 	return nil
 }
@@ -359,6 +413,67 @@ func matchesApproval(input Attempt, actor identity.Principal, evidence []Evidenc
 		return true
 	}
 	return false
+}
+
+// matchesDecisionApproval verifies a cross-execution approval decision ID
+// strictly (fail-closed on any mismatch): exact scope, unrevoked, unexpired,
+// exact role assignment, exact operation/resource/subject match, non-cancelled
+// task, and actor authorization (same execution, same task for executions, or
+// active assigned service request on that execution/task for service accounts).
+func matchesDecisionApproval(input Attempt, actor identity.Principal, decisionCtx DecisionContext, now time.Time) bool {
+	if !decisionCtx.Found {
+		return false
+	}
+	decision := decisionCtx.Decision
+	if decision.ID != input.DecisionID {
+		return false
+	}
+	if decision.Scope != input.Scope {
+		return false
+	}
+	if !decision.RevokedAt.IsZero() {
+		return false
+	}
+	if decision.ExpiresAt.IsZero() || !now.Before(decision.ExpiresAt) {
+		return false
+	}
+	if !decision.Assignment.Valid() || decision.Assignment.Kind != request.AssignmentRole {
+		return false
+	}
+	if decision.Assignment != input.Approval {
+		return false
+	}
+	if decision.Operation != string(input.Operation) {
+		return false
+	}
+	if decision.ResourceID != input.ResourceID {
+		return false
+	}
+	if !subjectMatchesApproval(input.Operation, input.Subject, decision.Subject) {
+		return false
+	}
+	if decision.TaskID != "" {
+		if decisionCtx.TaskState == "" || decisionCtx.TaskState == "cancelled" {
+			return false
+		}
+	}
+	switch actor.Kind {
+	case identity.KindExecution:
+		if actor.ExecutionID == "" {
+			return false
+		}
+		if decision.ExecutionID == actor.ExecutionID {
+			return true
+		}
+		return decision.TaskID != "" && decisionCtx.ActorTaskID != "" && decisionCtx.ActorTaskID == decision.TaskID
+	case identity.KindService:
+		if !actor.Enabled || !scopeContains(actor.Scope, input.Scope) {
+			return false
+		}
+		return decisionCtx.ServiceAssigned
+	default:
+		return false
+	}
 }
 
 // subjectMatchesApproval applies SubjectMatches and additionally treats Git's

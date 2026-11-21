@@ -39,3 +39,9 @@ type BindingReader interface {
 type EvidenceReader interface {
 	ReadEvidence(context.Context, EvidenceQuery) ([]Evidence, error)
 }
+
+// DecisionReader reads one persisted immutable approval decision and the
+// current task/actor authorization linkage facts inside the verification scope.
+type DecisionReader interface {
+	ReadDecision(context.Context, DecisionQuery) (DecisionContext, error)
+}

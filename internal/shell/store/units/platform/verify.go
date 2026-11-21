@@ -16,7 +16,9 @@ import (
 	"github.com/optimiware/kodema/internal/shell/receipt"
 	"github.com/optimiware/kodema/internal/shell/request"
 	"github.com/optimiware/kodema/internal/shell/resource"
+	"github.com/optimiware/kodema/internal/shell/service"
 	"github.com/optimiware/kodema/internal/shell/store"
+	"github.com/optimiware/kodema/internal/shell/tenancy"
 	"github.com/optimiware/kodema/internal/shell/verify"
 )
 
@@ -69,6 +71,13 @@ func (adapter *RecordAdapter) Record(ctx context.Context, unit verify.RecordUnit
 	if err != nil {
 		return verify.RecordResult{}, err
 	}
+	if unit.Record.Approved && unit.Record.DecisionID != "" && unit.DecisionVersion > 0 {
+		locks = append(locks, store.Lock{
+			Table:         approvalDecisionsTable,
+			IDs:           []string{string(unit.Record.DecisionID)},
+			ExpectVersion: unit.DecisionVersion,
+		})
+	}
 	result, err := adapter.executor.Execute(ctx, unit.Owner, store.Unit{
 		Locks: locks,
 		Writes: []store.Write{{
@@ -117,6 +126,7 @@ func verificationRowValues(record verify.Record) (map[string]any, error) {
 		operationColumn:      record.Operation,
 		subjectColumn:        subject,
 		requestedApprovalCol: approval,
+		decisionIDColumn:     nullableIdentity(string(record.DecisionID)),
 		resultColumn:         string(record.Result),
 		approvedColumn:       record.Approved,
 		createdAtColumn:      record.At,
@@ -475,4 +485,295 @@ func optionalAssignment(assignment request.Assignment) any {
 		return nil
 	}
 	return assignment
+}
+
+// DecisionReader is the store-backed verify.DecisionReader.
+//
+// It reads one persisted immutable approval decision in the verification scope
+// together with the current task state and actor linkage facts (the calling
+// execution's task_id, or whether a service actor currently holds an active
+// unexpired running request action on the decision's execution or task).
+type DecisionReader struct {
+	executor store.Executor
+	scanner  store.Scanner
+}
+
+// NewDecisionReader builds the approval-decision reader.
+func NewDecisionReader(executor store.Executor, scanner store.Scanner) (*DecisionReader, error) {
+	if executor == nil || scanner == nil {
+		return nil, fault.New(fault.InvalidInput, "decision reader requires an executor and a scanner")
+	}
+	return &DecisionReader{executor: executor, scanner: scanner}, nil
+}
+
+var _ verify.DecisionReader = (*DecisionReader)(nil)
+
+// ReadDecision reads one persisted approval decision and actor linkage facts
+// strictly inside query.Scope. Missing or foreign-scope decisions return
+// Found=false with nil error so the verifier fails closed without an existence
+// oracle.
+func (reader *DecisionReader) ReadDecision(ctx context.Context, query verify.DecisionQuery) (verify.DecisionContext, error) {
+	if err := ctx.Err(); err != nil {
+		return verify.DecisionContext{}, err
+	}
+	if err := query.Validate(); err != nil {
+		return verify.DecisionContext{}, err
+	}
+	row, err := reader.executor.Read(ctx, query.Scope, approvalDecisionsTable, string(query.DecisionID))
+	if err != nil {
+		if class, ok := fault.ClassOf(err); ok && class == fault.NotFound {
+			return verify.DecisionContext{Found: false}, nil
+		}
+		return verify.DecisionContext{}, err
+	}
+	decision, err := decodeApprovalDecisionRow(row, query.Scope)
+	if err != nil {
+		return verify.DecisionContext{}, err
+	}
+	result := verify.DecisionContext{
+		Found:    true,
+		Decision: decision,
+	}
+	if decision.TaskID != "" {
+		taskRow, err := reader.executor.Read(ctx, query.Scope, tasksTable, string(decision.TaskID))
+		if err != nil {
+			if class, ok := fault.ClassOf(err); !ok || class != fault.NotFound {
+				return verify.DecisionContext{}, err
+			}
+		} else {
+			state, err := textValue(taskRow, stateColumn)
+			if err != nil {
+				return verify.DecisionContext{}, err
+			}
+			result.TaskState = state
+		}
+	}
+	switch query.Actor.Kind {
+	case identity.KindExecution:
+		if query.Actor.ExecutionID != "" {
+			execRow, err := reader.executor.Read(ctx, query.Scope, executionsTable, string(query.Actor.ExecutionID))
+			if err != nil {
+				if class, ok := fault.ClassOf(err); !ok || class != fault.NotFound {
+					return verify.DecisionContext{}, err
+				}
+			} else {
+				taskID, err := nullableTextValue(execRow, taskIDColumn)
+				if err != nil {
+					return verify.DecisionContext{}, err
+				}
+				result.ActorTaskID = id.TaskID(taskID)
+			}
+		}
+	case identity.KindService:
+		assigned, err := reader.isServiceAssignedToDecision(ctx, query, decision)
+		if err != nil {
+			return verify.DecisionContext{}, err
+		}
+		result.ServiceAssigned = assigned
+	}
+	return result, nil
+}
+
+func decodeApprovalDecisionRow(row store.Row, scope tenancy.Scope) (verify.ApprovalDecision, error) {
+	tenantID, err := textValue(row, tenantIDColumn)
+	if err != nil {
+		return verify.ApprovalDecision{}, err
+	}
+	projectID, err := textValue(row, projectIDColumn)
+	if err != nil {
+		return verify.ApprovalDecision{}, err
+	}
+	rowScope := tenancy.Scope{TenantID: id.TenantID(tenantID), ProjectID: id.ProjectID(projectID)}
+	if rowScope != scope {
+		return verify.ApprovalDecision{}, fault.New(fault.Forbidden, "approval decision row is outside the read scope")
+	}
+	decisionID, err := textValue(row, idColumn)
+	if err != nil {
+		return verify.ApprovalDecision{}, err
+	}
+	taskID, err := nullableTextValue(row, taskIDColumn)
+	if err != nil {
+		return verify.ApprovalDecision{}, err
+	}
+	executionID, err := textValue(row, executionIDColumn)
+	if err != nil {
+		return verify.ApprovalDecision{}, err
+	}
+	actionID, err := textValue(row, actionIDColumn)
+	if err != nil {
+		return verify.ApprovalDecision{}, err
+	}
+	assignmentText, err := textValue(row, decisionAssignmentCol)
+	if err != nil {
+		return verify.ApprovalDecision{}, err
+	}
+	assignment, err := request.ParseAssignment(assignmentText)
+	if err != nil {
+		return verify.ApprovalDecision{}, fault.Wrap(fault.InternalFailure, "stored approval decision assignment is invalid", err)
+	}
+	operation, err := nullableTextValue(row, operationColumn)
+	if err != nil {
+		return verify.ApprovalDecision{}, err
+	}
+	resourceID, err := nullableTextValue(row, resourceIDColumn)
+	if err != nil {
+		return verify.ApprovalDecision{}, err
+	}
+	subjectBytes, err := bytesValue(row, subjectColumn)
+	if err != nil {
+		return verify.ApprovalDecision{}, err
+	}
+	_, subject, err := decodeStoredSubject(subjectBytes)
+	if err != nil {
+		return verify.ApprovalDecision{}, err
+	}
+	approver, err := textValue(row, approverColumn)
+	if err != nil {
+		return verify.ApprovalDecision{}, err
+	}
+	resolvedAt, err := timeValue(row, resolvedAtColumn)
+	if err != nil {
+		return verify.ApprovalDecision{}, err
+	}
+	expiresAt, err := timeValue(row, expiresAtColumn)
+	if err != nil {
+		return verify.ApprovalDecision{}, err
+	}
+	revokedAt, err := nullableTimeValue(row, revokedAtColumn)
+	if err != nil {
+		return verify.ApprovalDecision{}, err
+	}
+	revokedReason, err := nullableTextValue(row, revokedReasonColumn)
+	if err != nil {
+		return verify.ApprovalDecision{}, err
+	}
+	version, err := nullableUintValue(row, versionColumn)
+	if err != nil {
+		return verify.ApprovalDecision{}, err
+	}
+	return verify.ApprovalDecision{
+		ID:            id.DecisionID(decisionID),
+		Scope:         rowScope,
+		TaskID:        id.TaskID(taskID),
+		ExecutionID:   id.ExecutionID(executionID),
+		ActionID:      id.ActionID(actionID),
+		Assignment:    assignment,
+		Operation:     operation,
+		ResourceID:    resource.ResourceID(resourceID),
+		Subject:       subject,
+		Approver:      id.PrincipalID(approver),
+		ResolvedAt:    resolvedAt,
+		ExpiresAt:     expiresAt,
+		RevokedAt:     revokedAt,
+		RevokedReason: revokedReason,
+		Version:       version,
+	}, nil
+}
+
+// isServiceAssignedToDecision reports whether the service actor currently owns
+// an active, unexpired running `request: service/<actor.ID>` action in
+// query.Scope on either decision.ExecutionID or any running execution belonging
+// to decision.TaskID.
+func (reader *DecisionReader) isServiceAssignedToDecision(ctx context.Context, query verify.DecisionQuery, decision verify.ApprovalDecision) (bool, error) {
+	if query.Actor.ID == "" {
+		return false, nil
+	}
+	candidateExecutions := make(map[string]struct{})
+	if decision.ExecutionID != "" {
+		execRow, err := reader.executor.Read(ctx, query.Scope, executionsTable, string(decision.ExecutionID))
+		if err != nil {
+			if class, ok := fault.ClassOf(err); !ok || class != fault.NotFound {
+				return false, err
+			}
+		} else {
+			state, err := textValue(execRow, stateColumn)
+			if err != nil {
+				return false, err
+			}
+			if state == runningExecutionState {
+				candidateExecutions[string(decision.ExecutionID)] = struct{}{}
+			}
+		}
+	}
+	if decision.TaskID != "" {
+		cursor := ""
+		for {
+			page, err := reader.scanner.Query(ctx, query.Scope, store.ScanQuery{
+				Table: executionsTable,
+				Equals: map[string]any{
+					taskIDColumn: string(decision.TaskID),
+					stateColumn:  runningExecutionState,
+				},
+				OrderBy: []store.Order{{Column: idColumn}},
+				After:   cursor,
+				Limit:   store.MaxQueryLimit,
+			})
+			if err != nil {
+				return false, err
+			}
+			for _, row := range page.Rows {
+				execID, err := textValue(row, idColumn)
+				if err != nil {
+					return false, err
+				}
+				candidateExecutions[execID] = struct{}{}
+			}
+			if !page.HasMore {
+				break
+			}
+			cursor = page.Next
+		}
+	}
+	wantAssignment := request.Assignment{
+		Kind:      request.AssignmentService,
+		ServiceID: service.ServiceID(query.Actor.ID),
+	}
+	for execID := range candidateExecutions {
+		cursor := ""
+		for {
+			page, err := reader.scanner.Query(ctx, query.Scope, store.ScanQuery{
+				Table: actionsTable,
+				Equals: map[string]any{
+					executionIDColumn: execID,
+					"kind":            requestActionKind,
+					stateColumn:       runningActionState,
+				},
+				OrderBy: []store.Order{{Column: idColumn}},
+				After:   cursor,
+				Limit:   store.MaxQueryLimit,
+			})
+			if err != nil {
+				return false, err
+			}
+			for _, row := range page.Rows {
+				assignmentBytes, err := bytesValue(row, assignmentColumn)
+				if err != nil {
+					return false, err
+				}
+				if len(assignmentBytes) == 0 {
+					continue
+				}
+				var assignment request.Assignment
+				if err := decodeJSON(assignmentBytes, &assignment, assignmentColumn); err != nil {
+					return false, err
+				}
+				if assignment != wantAssignment {
+					continue
+				}
+				deadline, err := nullableTimeValue(row, deadlineColumn)
+				if err != nil {
+					return false, err
+				}
+				if !deadline.IsZero() && !query.Now.IsZero() && !query.Now.Before(deadline) {
+					continue
+				}
+				return true, nil
+			}
+			if !page.HasMore {
+				break
+			}
+			cursor = page.Next
+		}
+	}
+	return false, nil
 }

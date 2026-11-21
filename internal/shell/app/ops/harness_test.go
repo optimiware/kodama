@@ -88,6 +88,13 @@ func (source *sequenceIDs) NewReceiptID() (id.ReceiptID, error) {
 	return id.ReceiptID(source.bump("receipt")), nil
 }
 
+func (source *sequenceIDs) NewDecisionID() (id.DecisionID, error) {
+	source.mu.Lock()
+	defer source.mu.Unlock()
+	source.next++
+	return id.DecisionID(fmt.Sprintf("dec_%d", source.next)), nil
+}
+
 func (source *sequenceIDs) NewRowID() (string, error) {
 	source.mu.Lock()
 	defer source.mu.Unlock()
@@ -569,6 +576,7 @@ func newHarness(t *testing.T) *harness {
 		Principals: verifierPrincipals,
 		Bindings:   bindingReader,
 		Evidence:   mustEvidenceReader(t, instance),
+		Decisions:  mustDecisionReader(t, instance),
 		Records:    mustRecordAdapter(t, instance),
 		Clock:      clock,
 		NewID:      func() (verify.VerificationID, error) { return ids.NewVerificationID() },
@@ -889,6 +897,15 @@ func mustEvidenceReader(t *testing.T, scanner store.Scanner) *platform.EvidenceR
 	reader, err := platform.NewEvidenceReader(scanner)
 	if err != nil {
 		t.Fatalf("platform.NewEvidenceReader: %v", err)
+	}
+	return reader
+}
+
+func mustDecisionReader(t *testing.T, instance *memory.Store) *platform.DecisionReader {
+	t.Helper()
+	reader, err := platform.NewDecisionReader(instance, instance)
+	if err != nil {
+		t.Fatalf("platform.NewDecisionReader: %v", err)
 	}
 	return reader
 }

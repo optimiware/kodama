@@ -51,6 +51,7 @@ func buildMigrations() []Migration {
 		{Name: "0006_privileges.sql", SQL: renderPrivilegesMigration(design)},
 		{Name: "0007_model_usage_action_id.sql", SQL: renderModelUsageActionIDMigration()},
 		{Name: "0008_task_review_lifecycle.sql", SQL: renderTaskReviewLifecycleMigration()},
+		{Name: "0009_approval_decisions.sql", SQL: renderApprovalDecisionsMigration()},
 	}
 }
 
@@ -58,8 +59,13 @@ func buildMigrations() []Migration {
 // prior to incremental migrations 0007+ so baseline checksums stay immutable.
 func baselineSchemaDesign() store.Schema {
 	design := store.SchemaDesign()
-	tables := make([]store.Table, len(design.Tables))
-	copy(tables, design.Tables)
+	tables := make([]store.Table, 0, len(design.Tables))
+	for _, table := range design.Tables {
+		if table.Name == store.ApprovalDecisionsTable {
+			continue
+		}
+		tables = append(tables, table)
+	}
 	for index := range tables {
 		switch tables[index].Name {
 		case store.ModelUsageTable:
@@ -79,6 +85,15 @@ func baselineSchemaDesign() store.Schema {
 			}
 			tables[index].Columns = cols
 			tables[index].ForeignKeys = fks
+		case "verifications":
+			cols := make([]store.Column, 0, len(tables[index].Columns))
+			for _, col := range tables[index].Columns {
+				if col.Name == "decision_id" {
+					continue
+				}
+				cols = append(cols, col)
+			}
+			tables[index].Columns = cols
 		case "tasks":
 			columns := make([]store.Column, 0, len(tables[index].Columns))
 			for _, col := range tables[index].Columns {
@@ -149,6 +164,74 @@ func renderTaskReviewLifecycleMigration() string {
 		"CREATE INDEX tasks_scope_parent ON tasks (tenant_id, project_id, parent_id);\n" +
 		"ALTER TABLE actions DROP CONSTRAINT actions_request_decision;\n" +
 		"ALTER TABLE actions ADD CONSTRAINT actions_request_decision CHECK (request_decision IS NULL OR request_decision IN ('pass', 'revise', 'fail'));\n"
+}
+
+// renderApprovalDecisionsMigration renders incremental migration 0009 adding
+// the immutable cross-execution approval_decisions table (with composite
+// ownership FKs, uniqueness, checks, indexes, forced RLS, owner and runtime
+// privileges) and nullable verifications.decision_id provenance column.
+func renderApprovalDecisionsMigration() string {
+	design := store.SchemaDesign()
+	var table store.Table
+	found := false
+	for _, candidate := range design.Tables {
+		if candidate.Name == store.ApprovalDecisionsTable {
+			table = candidate
+			found = true
+			break
+		}
+	}
+	if !found {
+		panic("postgres: approval_decisions table missing from schema design")
+	}
+	var builder strings.Builder
+	builder.WriteString("-- Migration 0009: immutable cross-execution approval decisions and verification decision provenance.\n")
+	builder.WriteString(renderCreateTable(table))
+	for _, u := range table.Unique {
+		nulls := ""
+		if u.NullsNotDistinct {
+			nulls = " NULLS NOT DISTINCT"
+		}
+		builder.WriteString(fmt.Sprintf(
+			"ALTER TABLE %s ADD CONSTRAINT %s UNIQUE%s (%s);\n",
+			table.Name, u.Name, nulls, strings.Join(u.Columns, ", "),
+		))
+	}
+	for _, key := range table.ForeignKeys {
+		builder.WriteString(fmt.Sprintf(
+			"ALTER TABLE %s ADD CONSTRAINT %s FOREIGN KEY (%s) REFERENCES %s (%s);\n",
+			table.Name, key.Name,
+			strings.Join(key.Columns, ", "), key.References,
+			strings.Join(key.ReferencedColumns, ", "),
+		))
+	}
+	for _, chk := range table.Checks {
+		builder.WriteString(fmt.Sprintf(
+			"ALTER TABLE %s ADD CONSTRAINT %s CHECK (%s);\n",
+			table.Name, chk.Name, chk.Expression,
+		))
+	}
+	for _, idx := range table.Indexes {
+		u := ""
+		if idx.Unique {
+			u = "UNIQUE "
+		}
+		builder.WriteString(fmt.Sprintf(
+			"CREATE %sINDEX %s ON %s (%s)",
+			u, idx.Name, table.Name, strings.Join(idx.Columns, ", "),
+		))
+		if idx.Predicate != "" {
+			builder.WriteString(" WHERE " + idx.Predicate)
+		}
+		builder.WriteString(";\n")
+	}
+	builder.WriteString(fmt.Sprintf("ALTER TABLE %s ENABLE ROW LEVEL SECURITY;\n", table.Name))
+	builder.WriteString(fmt.Sprintf("ALTER TABLE %s FORCE ROW LEVEL SECURITY;\n", table.Name))
+	builder.WriteString(renderPolicy(table) + "\n")
+	builder.WriteString(fmt.Sprintf("ALTER TABLE %s OWNER TO %s;\n", table.Name, design.OwnerRole))
+	builder.WriteString(fmt.Sprintf("GRANT SELECT, INSERT, UPDATE, DELETE ON %s TO %s;\n", table.Name, design.RuntimeRole))
+	builder.WriteString("ALTER TABLE verifications ADD COLUMN decision_id TEXT;\n")
+	return builder.String()
 }
 
 // migrationTableOrder returns the schema tables so every referenced table is

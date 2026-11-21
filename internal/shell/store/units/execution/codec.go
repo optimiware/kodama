@@ -21,16 +21,17 @@ import (
 
 // Table names come only from the declared schema design.
 const (
-	tableExecutions   = "executions"
-	tableActions      = "actions"
-	tableCleanup      = "cleanup"
-	tablePipelines    = "pipelines"
-	tableTasks        = "tasks"
-	tableTaskMessages = "task_messages"
-	tableServices     = "services"
-	tableBindings     = "resource_bindings"
-	tableMemberships  = "memberships"
-	tableResources    = "resources"
+	tableExecutions        = "executions"
+	tableActions           = "actions"
+	tableCleanup           = "cleanup"
+	tablePipelines         = "pipelines"
+	tableTasks             = "tasks"
+	tableTaskMessages      = "task_messages"
+	tableServices          = "services"
+	tableBindings          = "resource_bindings"
+	tableMemberships       = "memberships"
+	tableResources         = "resources"
+	tableApprovalDecisions = store.ApprovalDecisionsTable
 )
 
 // answerMetaMagic distinguishes a structured answer metadata envelope (carrying

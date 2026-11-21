@@ -8,10 +8,11 @@ type VerifyRequest struct {
 	Operation       string  `json:"operation"`
 	Subject         Subject `json:"subject"`
 	Approval        string  `json:"approval,omitempty"`
+	DecisionID      string  `json:"decision_id,omitempty"`
 }
 
 // Validate checks the bounded credential, resource, resource operation, typed
-// subject and optional role approval.
+// subject, optional role approval and optional cross-execution decision ID.
 func (request VerifyRequest) Validate() error {
 	if request.ActorCredential == "" {
 		return invalid("actor_credential is empty")
@@ -34,12 +35,23 @@ func (request VerifyRequest) Validate() error {
 		if request.Approval != "" {
 			return invalid("git.read verification does not accept an approval")
 		}
+		if request.DecisionID != "" {
+			return invalid("git.read verification does not accept a decision_id")
+		}
 	}
 	if err := request.Subject.Validate(); err != nil {
 		return err
 	}
 	if !validApproval(request.Approval) {
 		return invalid("approval %q must be role/<role>", request.Approval)
+	}
+	if request.DecisionID != "" {
+		if !validID(request.DecisionID) {
+			return invalid("decision_id is invalid")
+		}
+		if request.Approval == "" {
+			return invalid("decision_id requires an approval")
+		}
 	}
 	return nil
 }

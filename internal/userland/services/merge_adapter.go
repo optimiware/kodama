@@ -34,8 +34,9 @@ func (adapter *Adapter) considerMerge(ctx context.Context, scanned api.InboxItem
 			ExecutionID: id.ExecutionID(scanned.ExecutionID),
 			ActionID:    id.ActionID(scanned.ActionID),
 		},
-		Base:      subject.Base,
-		Candidate: subject.Candidate,
+		Base:       subject.Base,
+		Candidate:  subject.Candidate,
+		DecisionID: subject.DecisionID,
 	}
 	if err := request.Validate(); err != nil {
 		return err

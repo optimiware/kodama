@@ -2,6 +2,8 @@ package request
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"reflect"
@@ -45,6 +47,13 @@ func NewService(config Config) (*Service, error) {
 	case config.Resolutions == nil:
 		return nil, fault.New(fault.InternalFailure, "request service requires a resolution port")
 	}
+	decisionTTL := config.DecisionTTL
+	if decisionTTL < 0 || decisionTTL > MaxDecisionTTL {
+		return nil, fault.New(fault.InvalidInput, fmt.Sprintf("request decision TTL %v is outside 0..%v", decisionTTL, MaxDecisionTTL))
+	}
+	if decisionTTL == 0 {
+		decisionTTL = DefaultDecisionTTL
+	}
 	return &Service{
 		clock:       config.Clock,
 		ids:         config.IDs,
@@ -54,6 +63,7 @@ func NewService(config Config) (*Service, error) {
 		activations: config.Activations,
 		resolutions: config.Resolutions,
 		refHeads:    config.RefHeads,
+		decisionTTL: decisionTTL,
 	}, nil
 }
 
@@ -677,11 +687,55 @@ func (s *Service) Resolve(ctx context.Context, command ResolveCommand) (ResolveR
 	if err != nil {
 		return ResolveResult{}, err
 	}
+	var approvalDecision *ApprovalDecision
+	if !answered && command.Decision == DecisionPass && assignment.Kind == AssignmentRole {
+		decisionID, err := s.newDecisionID(command.ExecutionID, command.ActionID, record.ID)
+		if err != nil {
+			return ResolveResult{}, err
+		}
+		fields := action.Request.Subject.Fields()
+		operation, _ := literalField(fields, "operation")
+		resourceID, _ := literalField(fields, "resource")
+		var taskID id.TaskID
+		if current.Snapshot != nil {
+			taskID = current.Snapshot.TaskID()
+		}
+		approvalDecision = &ApprovalDecision{
+			ID:          decisionID,
+			Scope:       command.Scope,
+			TaskID:      taskID,
+			ExecutionID: command.ExecutionID,
+			ActionID:    command.ActionID,
+			Assignment:  assignment,
+			Operation:   operation,
+			ResourceID:  resourceID,
+			Subject:     *action.Request.Subject,
+			Approver:    command.Actor.ID,
+			ResolvedAt:  at,
+			ExpiresAt:   at.Add(s.decisionTTL),
+		}
+	}
 	envelope, err := s.buildEvent(
 		event.TypeRequestResolved, command.Scope, string(command.ExecutionID),
 		action.Version+1, command.Actor.ID, at,
 	)
 	if err != nil {
+		return ResolveResult{}, err
+	}
+	resolvedData := requestResolvedEventData{
+		ActionID: command.ActionID,
+		Decision: command.Decision,
+		Actor:    command.Actor.ID,
+	}
+	if approvalDecision != nil {
+		resolvedData.DecisionID = approvalDecision.ID
+	}
+	encodedEventData, err := json.Marshal(resolvedData)
+	if err != nil {
+		return ResolveResult{}, fault.Wrap(fault.InternalFailure, "request resolved event data could not be encoded", err)
+	}
+	envelope.Data = encodedEventData
+	if err := envelope.Validate(); err != nil {
 		return ResolveResult{}, err
 	}
 	// The owner emits request.resolved; a first settlement appends the projected
@@ -712,6 +766,7 @@ func (s *Service) Resolve(ctx context.Context, command ResolveCommand) (ResolveR
 		Assignment:               assignment,
 		At:                       at,
 		IdempotencyKey:           idempotencyKey,
+		ApprovalDecision:         approvalDecision,
 		Commit:                   commit,
 		Receipt:                  record,
 		Audit:                    []event.Audit{audit},
@@ -730,4 +785,33 @@ func (s *Service) Resolve(ctx context.Context, command ResolveCommand) (ResolveR
 		return ResolveResult{}, err
 	}
 	return s.resolutions.Resolve(ctx, unit)
+}
+
+// requestResolvedEventData is the bounded JSON payload emitted on
+// request.resolved events so SSE/NATS watchers and service adapters observe
+// the committed decision and optional immutable approval decision ID.
+type requestResolvedEventData struct {
+	ActionID   id.ActionID    `json:"action_id"`
+	Decision   Decision       `json:"decision"`
+	Actor      id.PrincipalID `json:"actor"`
+	DecisionID id.DecisionID  `json:"decision_id,omitempty"`
+}
+
+// newDecisionID allocates one validated immutable approval decision identity.
+// When the injected IDSource implements DecisionIDSource (production and full
+// test harnesses), it delegates directly; otherwise it derives a deterministic
+// dec_<hex> identity from the execution, action and receipt identities.
+func (s *Service) newDecisionID(executionID id.ExecutionID, actionID id.ActionID, receiptID id.ReceiptID) (id.DecisionID, error) {
+	if source, ok := s.ids.(DecisionIDSource); ok {
+		decisionID, err := source.NewDecisionID()
+		if err != nil {
+			return "", err
+		}
+		if _, err := id.ParseDecisionID(string(decisionID)); err != nil {
+			return "", fault.Wrap(fault.InternalFailure, "decision identity allocator returned an invalid id", err)
+		}
+		return decisionID, nil
+	}
+	sum := sha256.Sum256([]byte("approval-decision:" + string(executionID) + ":" + string(actionID) + ":" + string(receiptID)))
+	return id.DecisionID("dec_" + hex.EncodeToString(sum[:16])), nil
 }

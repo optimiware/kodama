@@ -139,12 +139,13 @@ func TestUniqueRulesAreDerivedFromTheDeclaredSchema(t *testing.T) {
 	sort.Strings(partial)
 	wantChecked := []string{
 		"actions_execution_index", "actions_execution_name",
+		"approval_decisions_scope_action",
 		"memberships_scope_principal", "pipelines_scope_name", "projects_tenant_name",
 		"resource_bindings_scope_resource_service", "secrets_scope_name", "services_scope_name",
 	}
 	wantPublication := []string{"events_publish_sequence", "receipts_identity"}
 	wantImplied := []string{
-		"actions_scope_id", "content_records_scope_id", "event_consumptions_scope_id",
+		"actions_scope_id", "approval_decisions_scope_id", "content_records_scope_id", "event_consumptions_scope_id",
 		"executions_scope_id", "model_usage_scope_id", "pipelines_scope_id",
 		"projects_tenant_id", "resource_bindings_scope_id", "resources_scope_id",
 		"services_tenant_id", "tasks_scope_id",

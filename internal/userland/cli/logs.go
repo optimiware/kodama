@@ -28,6 +28,7 @@ type inspectedAction struct {
 	Assignment  string                     `json:"assignment,omitempty"`
 	Stop        *api.ExecutionStopEvidence `json:"stop,omitempty"`
 	Decision    string                     `json:"decision,omitempty"`
+	DecisionID  string                     `json:"decision_id,omitempty"`
 	Actor       string                     `json:"actor,omitempty"`
 	AnsweredAt  *time.Time                 `json:"answered_at,omitempty"`
 	Note        string                     `json:"note,omitempty"`

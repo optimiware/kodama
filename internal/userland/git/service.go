@@ -117,6 +117,9 @@ type UpdateRequest struct {
 	// `option approve-rebase.<ref> = disjoint` verification.
 	ApprovedBase      string
 	ApprovedCandidate string
+	// DecisionID optionally identifies an immutable cross-execution approval
+	// decision supplied via Git push option (`kodema.decision_id`).
+	DecisionID string
 	// ActorCredential is the forwarded actor credential. It is used only for
 	// verification and is never persisted.
 	ActorCredential string
@@ -528,10 +531,10 @@ func (service *Service) prepareLocked(ctx context.Context, request UpdateRequest
 			Cause:         ErrPolicyDenied,
 		})
 	}
-	if guarded && (!identity.Execution || !approved) {
+	if guarded && (!approvalEligible(identity, request.DecisionID) || !approved) {
 		category := "approval_mismatch"
 		clientMessage := fmt.Sprintf("approval subject mismatch or missing role/%s approval", approvalRole)
-		if !identity.Execution {
+		if !approvalEligible(identity, request.DecisionID) {
 			category = "approval_required"
 			clientMessage = fmt.Sprintf("protected ref requires role/%s approval", approvalRole)
 		}
@@ -569,7 +572,7 @@ func (service *Service) prepareLocked(ctx context.Context, request UpdateRequest
 		if err != nil {
 			return JournalEntry{}, err
 		}
-		if !effectIdentity.Execution || effectActorID != actorID {
+		if !approvalEligible(effectIdentity, request.DecisionID) || effectActorID != actorID {
 			return service.refuse(ctx, request, verificationID, &RefusalError{
 				Category:      "approval_required",
 				ClientMessage: fmt.Sprintf("protected ref requires role/%s approval", approvalRole),
@@ -1003,6 +1006,9 @@ func (service *Service) verifyActorSubject(
 	}
 	if requireApproval {
 		verify.Approval = "role/" + approvalRole
+		if request.DecisionID != "" {
+			verify.DecisionID = request.DecisionID
+		}
 	}
 	if err := verify.Validate(); err != nil {
 		return Identity{}, "", "", false, err
@@ -1261,6 +1267,11 @@ func validateUpdateRequest(request UpdateRequest) error {
 			return fmt.Errorf("approved candidate %q is not a valid 40-hex commit oid", request.ApprovedCandidate)
 		}
 	}
+	if request.DecisionID != "" {
+		if _, err := id.ParseDecisionID(request.DecisionID); err != nil {
+			return fmt.Errorf("decision id %q is invalid", request.DecisionID)
+		}
+	}
 	if !validJournalID(request.SourceEventID) {
 		return fmt.Errorf("source event id %q is invalid", request.SourceEventID)
 	}
@@ -1274,6 +1285,18 @@ func validateUpdateRequest(request UpdateRequest) error {
 		return fmt.Errorf("actor credential is %d bytes; at most %d are allowed", len(request.ActorCredential), api.MaxCredentialBytes)
 	}
 	return nil
+}
+
+// approvalEligible reports whether the verified local identity is allowed to
+// satisfy an approval-guarded ref update. Executions are always eligible (with
+// same-execution evidence or a cross-execution decision ID); service accounts
+// are eligible only when presenting a verified cross-execution decision ID.
+// Humans can never push directly to an approval-guarded ref.
+func approvalEligible(identity Identity, decisionID string) bool {
+	if identity.Execution {
+		return true
+	}
+	return identity.ServiceID != "" && decisionID != ""
 }
 
 // sameUpdateContent reports whether a durable entry describes the same attempt

@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/optimiware/kodema/api"
+	"github.com/optimiware/kodema/internal/id"
 	"github.com/optimiware/kodema/internal/shell/event"
 	shellrequest "github.com/optimiware/kodema/internal/shell/request"
 	"github.com/optimiware/kodema/internal/shell/resource"
@@ -42,6 +43,7 @@ func verifyHandlers(deps Dependencies) map[authorizeOperation]ops.Handler {
 				Operation:  resource.Operation(request.Operation),
 				Subject:    verifySubject(request.Subject),
 				Approval:   approval,
+				DecisionID: id.DecisionID(request.DecisionID),
 				ActionID:   actionID,
 			})
 			if err != nil {

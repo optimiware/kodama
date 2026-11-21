@@ -153,6 +153,9 @@ func (s *Store) Resolve(ctx context.Context, unit request.ResolveUnit) (request.
 		ActionVersion:    unit.ExpectedActionVersion + 1,
 		Decision:         unit.Decision,
 	}
+	if unit.ApprovalDecision != nil {
+		result.DecisionID = unit.ApprovalDecision.ID
+	}
 	record, err := resultReceipt(unit.Receipt, result)
 	if err != nil {
 		return request.ResolveResult{}, err
@@ -198,6 +201,64 @@ func (s *Store) Resolve(ctx context.Context, unit request.ResolveUnit) (request.
 		return request.ResolveResult{}, err
 	}
 	plan.locks = append(plan.locks, authority...)
+
+	// When a human role/<role> request action resolves as pass, atomically
+	// persist the immutable approval decision record in the same commit unit.
+	if unit.ApprovalDecision != nil {
+		decision := *unit.ApprovalDecision
+		taskID := string(decision.TaskID)
+		execRow, readErr := s.executor.Read(ctx, scope, tableExecutions, string(unit.ExecutionID))
+		if readErr == nil {
+			dbTaskID, taskErr := rowString(execRow.Values, "task_id")
+			if taskErr != nil {
+				return request.ResolveResult{}, taskErr
+			}
+			if dbTaskID != "" {
+				taskID = dbTaskID
+			}
+		} else if class, ok := fault.ClassOf(readErr); !ok || class != fault.NotFound {
+			return request.ResolveResult{}, readErr
+		}
+		if taskID != "" {
+			if _, existErr := s.executor.Read(ctx, scope, tableTasks, taskID); existErr == nil {
+				// Lock tasks[taskID] explicitly so planLocks orders it (rank 6)
+				// ahead of executions[execID] (rank 8), preventing a PostgreSQL
+				// 40P01 lock-order deadlock against concurrent task.cancel /
+				// task.ask / task.restart when the approval_decisions_task FK
+				// acquires FOR KEY SHARE on tasks[taskID].
+				plan.locks = append(plan.locks, store.Lock{
+					Table: tableTasks,
+					IDs:   []string{taskID},
+				})
+			} else if class, ok := fault.ClassOf(existErr); !ok || class != fault.NotFound {
+				return request.ResolveResult{}, existErr
+			}
+		}
+		encodedSubject, err := encodeJSON(decision.Subject)
+		if err != nil {
+			return request.ResolveResult{}, err
+		}
+		plan.writes = append(plan.writes, store.Write{
+			Table:  tableApprovalDecisions,
+			ID:     string(decision.ID),
+			Insert: true,
+			Values: map[string]any{
+				"task_id":        nullableText(taskID),
+				"execution_id":   string(decision.ExecutionID),
+				"action_id":      string(decision.ActionID),
+				"assignment":     decision.Assignment.String(),
+				"operation":      nullableText(decision.Operation),
+				"resource_id":    nullableText(decision.ResourceID),
+				"subject":        encodedSubject,
+				"approver":       string(decision.Approver),
+				"resolved_at":    decision.ResolvedAt,
+				"expires_at":     decision.ExpiresAt,
+				"revoked_at":     nil,
+				"revoked_reason": nil,
+				"version":        int64(1),
+			},
+		})
+	}
 
 	// When a request action on a task-associated execution resolves as revise,
 	// atomically append the reviewer's feedback to the task's conversation

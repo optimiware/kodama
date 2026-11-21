@@ -193,6 +193,7 @@ type Record struct {
 	Operation         string              `json:"operation"`
 	Subject           Subject             `json:"subject"`
 	RequestedApproval request.Assignment  `json:"requested_approval,omitempty"`
+	DecisionID        id.DecisionID       `json:"decision_id,omitempty"`
 	Result            Result              `json:"result"`
 	Approved          bool                `json:"approved"`
 	At                time.Time           `json:"at"`
@@ -328,17 +329,71 @@ type Evidence struct {
 	ResolvedAt  time.Time           `json:"resolved_at"`
 }
 
+// ApprovalDecision is one durable persisted human-role approval decision used
+// for cross-execution approval verification.
+type ApprovalDecision struct {
+	ID            id.DecisionID       `json:"id"`
+	Scope         tenancy.Scope       `json:"scope"`
+	TaskID        id.TaskID           `json:"task_id,omitempty"`
+	ExecutionID   id.ExecutionID      `json:"execution_id"`
+	ActionID      id.ActionID         `json:"action_id"`
+	Assignment    request.Assignment  `json:"assignment"`
+	Operation     string              `json:"operation"`
+	ResourceID    resource.ResourceID `json:"resource_id"`
+	Subject       Subject             `json:"subject"`
+	Approver      id.PrincipalID      `json:"approver"`
+	ResolvedAt    time.Time           `json:"resolved_at"`
+	ExpiresAt     time.Time           `json:"expires_at"`
+	RevokedAt     time.Time           `json:"revoked_at,omitempty"`
+	RevokedReason string              `json:"revoked_reason,omitempty"`
+	Version       uint64              `json:"version,omitempty"`
+}
+
+// DecisionQuery asks for one persisted approval decision and current task/actor
+// linkage facts inside the verification scope.
+type DecisionQuery struct {
+	Scope      tenancy.Scope      `json:"scope"`
+	DecisionID id.DecisionID      `json:"decision_id"`
+	Actor      identity.Principal `json:"actor"`
+	Now        time.Time          `json:"now"`
+}
+
+// Validate checks the scope and decision identity.
+func (query DecisionQuery) Validate() error {
+	if err := query.Scope.Validate(); err != nil {
+		return err
+	}
+	if !query.Scope.ProjectScoped() {
+		return fault.New(fault.InvalidInput, "decision query scope must be project-scoped")
+	}
+	if _, err := id.ParseDecisionID(string(query.DecisionID)); err != nil {
+		return fault.Wrap(fault.InvalidInput, "decision query decision id is invalid", err)
+	}
+	return nil
+}
+
+// DecisionContext carries one persisted approval decision together with the
+// current task state and actor linkage facts needed for authorization.
+type DecisionContext struct {
+	Found           bool             `json:"found"`
+	Decision        ApprovalDecision `json:"decision"`
+	TaskState       string           `json:"task_state,omitempty"`
+	ActorTaskID     id.TaskID        `json:"actor_task_id,omitempty"`
+	ServiceAssigned bool             `json:"service_assigned,omitempty"`
+}
+
 // RecordUnit is the complete atomic verification-record creation commit unit.
 // The verifier creates a durable verification fact through this unit instead of
 // a private substitute. The forwarded actor credential is never part of it.
 type RecordUnit struct {
-	Owner      tenancy.Scope             `json:"owner"`
-	Record     Record                    `json:"record"`
-	Receipt    receipt.Record            `json:"receipt"`
-	Audit      []event.Audit             `json:"audit"`
-	Events     []event.Envelope          `json:"events"`
-	Authority  []authorize.AuthorityRead `json:"authority"`
-	PostCommit []event.PostCommitEffect  `json:"post_commit"`
+	Owner           tenancy.Scope             `json:"owner"`
+	Record          Record                    `json:"record"`
+	DecisionVersion uint64                    `json:"decision_version,omitempty"`
+	Receipt         receipt.Record            `json:"receipt"`
+	Audit           []event.Audit             `json:"audit"`
+	Events          []event.Envelope          `json:"events"`
+	Authority       []authorize.AuthorityRead `json:"authority"`
+	PostCommit      []event.PostCommitEffect  `json:"post_commit"`
 }
 
 // RecordResult is the committed verification-record result.

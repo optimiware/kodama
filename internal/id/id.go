@@ -54,6 +54,9 @@ type WorkloadID string
 // WorkspaceID identifies one retained execution workspace.
 type WorkspaceID string
 
+// DecisionID identifies one immutable persisted approval decision.
+type DecisionID string
+
 // validID reports whether value is a bounded, ASCII identity payload.
 func validID(value string) bool {
 	if value == "" || len(value) > MaxIDLength {
@@ -167,4 +170,12 @@ func ParseWorkspaceID(value string) (WorkspaceID, error) {
 		return "", invalidID("workspace id", value)
 	}
 	return WorkspaceID(value), nil
+}
+
+// ParseDecisionID validates and converts an approval decision identity.
+func ParseDecisionID(value string) (DecisionID, error) {
+	if !validID(value) {
+		return "", invalidID("decision id", value)
+	}
+	return DecisionID(value), nil
 }

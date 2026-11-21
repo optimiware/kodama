@@ -509,7 +509,62 @@ func (s *Store) Inspect(ctx context.Context, scope tenancy.Scope, executionID id
 	if err != nil {
 		return execution.View{}, err
 	}
-	return view(scope, row, aggregate, admitted, assignments)
+	decisionIDs, err := s.approvalDecisionIDs(ctx, scope, aggregate)
+	if err != nil {
+		return execution.View{}, err
+	}
+	return view(scope, row, aggregate, admitted, assignments, decisionIDs)
+}
+
+// approvalDecisionIDs reads any persisted immutable approval decision IDs for
+// passed request actions of one execution. It returns nil without scanning when
+// no action in the execution is a passed request.
+func (s *Store) approvalDecisionIDs(ctx context.Context, scope tenancy.Scope, aggregate kernel.Execution) (map[id.ActionID]id.DecisionID, error) {
+	if s.scanner == nil {
+		return nil, nil
+	}
+	hasPassedRequest := false
+	for _, action := range aggregate.Actions {
+		if action.Kind == definition.ActionKindRequest && action.Request != nil &&
+			action.Request.Answer != nil && action.Request.Answer.Decision == kernel.DecisionPass {
+			hasPassedRequest = true
+			break
+		}
+	}
+	if !hasPassedRequest {
+		return nil, nil
+	}
+	decisions := make(map[id.ActionID]id.DecisionID)
+	cursor := ""
+	for {
+		page, err := s.scanner.Query(ctx, scope, store.ScanQuery{
+			Table:   tableApprovalDecisions,
+			Equals:  map[string]any{"execution_id": string(aggregate.ID)},
+			OrderBy: []store.Order{{Column: "id"}},
+			After:   cursor,
+			Limit:   store.MaxQueryLimit,
+		})
+		if err != nil {
+			return nil, err
+		}
+		for _, row := range page.Rows {
+			decisionID, err := rowString(row.Values, "id")
+			if err != nil {
+				return nil, err
+			}
+			actionID, err := rowString(row.Values, "action_id")
+			if err != nil {
+				return nil, err
+			}
+			if decisionID != "" && actionID != "" {
+				decisions[id.ActionID(actionID)] = id.DecisionID(decisionID)
+			}
+		}
+		if !page.HasMore {
+			return decisions, nil
+		}
+		cursor = page.Next
+	}
 }
 
 // List returns one stable scoped execution page. The scanner applies the scope
@@ -555,7 +610,11 @@ func (s *Store) List(ctx context.Context, scope tenancy.Scope, filter execution.
 		if err != nil {
 			return execution.Page{}, err
 		}
-		projection, err := view(scope, row, aggregate, admitted, assignments)
+		decisionIDs, err := s.approvalDecisionIDs(ctx, scope, aggregate)
+		if err != nil {
+			return execution.Page{}, err
+		}
+		projection, err := view(scope, row, aggregate, admitted, assignments, decisionIDs)
 		if err != nil {
 			return execution.Page{}, err
 		}
@@ -570,7 +629,7 @@ func (s *Store) List(ctx context.Context, scope tenancy.Scope, filter execution.
 // view projects one kernel aggregate into the credential-free inspection view.
 // assignments carries the exact persisted request assignment of every request
 // action, so a responder never needs a second read.
-func view(scope tenancy.Scope, row store.Row, aggregate kernel.Execution, admitted snapshotdoc.Admitted, assignments map[id.ActionID]request.Assignment) (execution.View, error) {
+func view(scope tenancy.Scope, row store.Row, aggregate kernel.Execution, admitted snapshotdoc.Admitted, assignments map[id.ActionID]request.Assignment, decisionIDs map[id.ActionID]id.DecisionID) (execution.View, error) {
 	pipelineID, err := rowString(row.Values, "pipeline_id")
 	if err != nil {
 		return execution.View{}, err
@@ -639,6 +698,7 @@ func view(scope tenancy.Scope, row store.Row, aggregate kernel.Execution, admitt
 			actionView.Assignment = assignments[action.ID]
 			if action.Request.Answer != nil {
 				actionView.Decision = string(action.Request.Answer.Decision)
+				actionView.DecisionID = decisionIDs[action.ID]
 				actionView.Actor = action.Request.Answer.Actor
 				actionView.AnsweredAt = action.Request.Answer.At
 				actionView.Note = action.Request.Answer.Note

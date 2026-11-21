@@ -138,6 +138,10 @@ func verificationFromRow(row store.Row, scope tenancy.Scope) (verify.Record, err
 			return verify.Record{}, err
 		}
 	}
+	decisionText, err := rowNullableString(row, "decision_id")
+	if err != nil {
+		return verify.Record{}, err
+	}
 	actor, err := verificationActor(row, rowScope, id.ExecutionID(executionText))
 	if err != nil {
 		return verify.Record{}, err
@@ -154,6 +158,7 @@ func verificationFromRow(row store.Row, scope tenancy.Scope) (verify.Record, err
 		Operation:         operation,
 		Subject:           subject,
 		RequestedApproval: approval,
+		DecisionID:        id.DecisionID(decisionText),
 		Result:            result,
 		Approved:          approved,
 		At:                at,

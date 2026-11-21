@@ -153,7 +153,12 @@ func TestSchemaPersistsDomainFacts(t *testing.T) {
 		{"event durable publication intent", []columnRef{{"events", "publish_state"}}},
 		{"event durable publication cursor", []columnRef{{"events", "publish_sequence"}}},
 		{"verification requested approval", []columnRef{{"verifications", "requested_approval"}}},
+		{"verification decision id", []columnRef{{"verifications", "decision_id"}}},
 		{"verification approved result", []columnRef{{"verifications", "approved"}}},
+		{"approval decision assignment", []columnRef{{"approval_decisions", "assignment"}}},
+		{"approval decision subject", []columnRef{{"approval_decisions", "subject"}}},
+		{"approval decision expiry", []columnRef{{"approval_decisions", "expires_at"}}},
+		{"approval decision revocation", []columnRef{{"approval_decisions", "revoked_at"}, {"approval_decisions", "revoked_reason"}}},
 	}
 	for _, fact := range facts {
 		checkColumnRefs(t, schema, fact.name, fact.refs)

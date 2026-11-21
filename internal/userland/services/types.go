@@ -309,10 +309,11 @@ type MergeRequest struct {
 	Assignment MergeAssignment `json:"assignment"`
 	Base       string          `json:"base"`
 	Candidate  string          `json:"candidate"`
+	DecisionID id.DecisionID   `json:"decision_id,omitempty"`
 }
 
-// Validate checks the key, the exact assignment identity and both exact
-// revisions.
+// Validate checks the key, the exact assignment identity, both exact revisions
+// and the optional approval decision identity.
 func (request MergeRequest) Validate() error {
 	if err := request.Key.Validate(); err != nil {
 		return err
@@ -326,16 +327,23 @@ func (request MergeRequest) Validate() error {
 	if request.Candidate == "" {
 		return fmt.Errorf("merge request candidate is empty")
 	}
+	if request.DecisionID != "" {
+		if _, err := id.ParseDecisionID(string(request.DecisionID)); err != nil {
+			return fmt.Errorf("merge request decision id %q is invalid: %w", request.DecisionID, err)
+		}
+	}
 	return nil
 }
 
-// The typed merge-assignment subject field names. A merge request carries
-// exactly these four string fields; any other shape is a malformed mapping.
+// The typed merge-assignment subject field names. A merge request carries the
+// four required string fields plus an optional approval decision_id; any other
+// shape is a malformed mapping.
 const (
 	MergeFieldRepository = "repository"
 	MergeFieldRef        = "ref"
 	MergeFieldBase       = "base"
 	MergeFieldCandidate  = "candidate"
+	MergeFieldDecisionID = "decision_id"
 )
 
 // The declared merge observation names a response may request. The adapter
@@ -348,26 +356,29 @@ const (
 
 // MergeSubject is the typed mapping of one merge-assignment request subject.
 type MergeSubject struct {
-	Key       MergeKey
-	Base      string
-	Candidate string
+	Key        MergeKey
+	Base       string
+	Candidate  string
+	DecisionID id.DecisionID
 }
 
 // ParseMergeSubject decodes the exact typed merge subject. The mapping is
-// strict: all four string fields must be present exactly once with a non-empty
-// value, and the repository/ref/base/candidate must be valid. Everything else
-// is a malformed mapping and is refused before any effect.
+// strict: the four required string fields (repository, ref, base, candidate)
+// must be present exactly once with a non-empty value, an optional decision_id
+// string field may be present once with a valid decision ID, and every value
+// must be valid. Everything else is a malformed mapping and is refused before
+// any effect.
 func ParseMergeSubject(subject *api.Subject) (MergeSubject, error) {
 	if subject == nil {
 		return MergeSubject{}, fmt.Errorf("merge request subject is missing")
 	}
-	if len(subject.Fields) != 4 {
-		return MergeSubject{}, fmt.Errorf("merge request subject has %d fields; want exactly %d", len(subject.Fields), 4)
+	if len(subject.Fields) < 4 || len(subject.Fields) > 5 {
+		return MergeSubject{}, fmt.Errorf("merge request subject has %d fields; want 4 or 5", len(subject.Fields))
 	}
-	values := make(map[string]string, 4)
+	values := make(map[string]string, len(subject.Fields))
 	for _, field := range subject.Fields {
 		switch field.Name {
-		case MergeFieldRepository, MergeFieldRef, MergeFieldBase, MergeFieldCandidate:
+		case MergeFieldRepository, MergeFieldRef, MergeFieldBase, MergeFieldCandidate, MergeFieldDecisionID:
 		default:
 			return MergeSubject{}, fmt.Errorf("merge request subject carries unknown field %q", field.Name)
 		}
@@ -382,13 +393,22 @@ func ParseMergeSubject(subject *api.Subject) (MergeSubject, error) {
 		}
 		values[field.Name] = field.Value
 	}
+	var decisionID id.DecisionID
+	if rawDecisionID, ok := values[MergeFieldDecisionID]; ok {
+		parsed, err := id.ParseDecisionID(rawDecisionID)
+		if err != nil {
+			return MergeSubject{}, fmt.Errorf("merge request subject decision_id %q is invalid: %w", rawDecisionID, err)
+		}
+		decisionID = parsed
+	}
 	mapped := MergeSubject{
 		Key: MergeKey{
 			Repository: values[MergeFieldRepository],
 			Ref:        values[MergeFieldRef],
 		},
-		Base:      values[MergeFieldBase],
-		Candidate: values[MergeFieldCandidate],
+		Base:       values[MergeFieldBase],
+		Candidate:  values[MergeFieldCandidate],
+		DecisionID: decisionID,
 	}
 	if mapped.Key.Repository == "" || mapped.Key.Ref == "" {
 		return MergeSubject{}, fmt.Errorf("merge request subject is missing its repository or ref")
@@ -456,6 +476,7 @@ type MergeOperation struct {
 	OperationID id.OperationID `json:"operation_id"`
 	Base        string         `json:"base"`
 	Candidate   string         `json:"candidate"`
+	DecisionID  id.DecisionID  `json:"decision_id,omitempty"`
 }
 
 // MergeObservation is one observed effect outcome. It reports only what the

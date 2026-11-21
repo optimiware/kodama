@@ -69,6 +69,7 @@ type ExecutionAction struct {
 	Assignment     string                 `json:"assignment,omitempty"`
 	Stop           *ExecutionStopEvidence `json:"stop,omitempty"`
 	Decision       string                 `json:"decision,omitempty"`
+	DecisionID     string                 `json:"decision_id,omitempty" schema:"id"`
 	Actor          string                 `json:"actor,omitempty" schema:"id"`
 	AnsweredAt     *time.Time             `json:"answered_at,omitempty"`
 	Note           string                 `json:"note,omitempty"`
@@ -179,8 +180,16 @@ func (action ExecutionAction) Validate() error {
 		if err := validateNote(action.Note); err != nil {
 			return err
 		}
-	} else if action.Actor != "" || action.AnsweredAt != nil || action.Note != "" {
-		return invalid("request decision actor/time/note is present without a decision")
+		if action.DecisionID != "" {
+			if !validID(action.DecisionID) {
+				return invalid("request decision_id is invalid")
+			}
+			if action.Decision != "pass" {
+				return invalid("request decision_id is only valid for pass decisions")
+			}
+		}
+	} else if action.Actor != "" || action.AnsweredAt != nil || action.Note != "" || action.DecisionID != "" {
+		return invalid("request decision actor/time/note/decision_id is present without a decision")
 	}
 	return nil
 }
@@ -672,12 +681,16 @@ func (request ExecutionRequestResolveRequest) Validate() error {
 type ExecutionRequestResolveResult struct {
 	ExecutionVersion uint64 `json:"execution_version" schema:"version"`
 	ActionVersion    uint64 `json:"action_version" schema:"version"`
+	DecisionID       string `json:"decision_id,omitempty" schema:"id"`
 }
 
-// Validate checks both committed versions.
+// Validate checks both committed versions and optional decision identity.
 func (result ExecutionRequestResolveResult) Validate() error {
 	if result.ExecutionVersion == 0 || result.ActionVersion == 0 {
 		return invalid("execution and action versions must be positive")
+	}
+	if result.DecisionID != "" && !validID(result.DecisionID) {
+		return invalid("decision_id is invalid")
 	}
 	return nil
 }
