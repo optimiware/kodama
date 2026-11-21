@@ -262,6 +262,7 @@ func newServiceEnvOnShard(t *testing.T, shard *pgtest.Shard, hook func()) *servi
 		Asks:           taskAdapter,
 		Replies:        taskAdapter,
 		Cancels:        taskAdapter,
+		Completes:      taskAdapter,
 		Progress:       taskAdapter,
 		DefaultTimeout: 5 * time.Minute,
 	})
@@ -372,6 +373,7 @@ func TestRealTaskLifecycleOnPostgreSQL(t *testing.T) {
 	}
 	env.shard.RequireGoldenRow(t, ctx, env.runtime, env.scope, "tasks", map[string]any{"id": string(created.TaskID)}, map[string]any{
 		"id": string(created.TaskID), "tenant_id": "tenant-1", "project_id": "project-1",
+		"parent_id":       pgtest.NullValue,
 		"content_version": int64(1), "lifecycle_version": int64(2), "state": "open",
 		"pipeline_id": string(applied.PipelineID), "current_execution_id": string(started.ExecutionID),
 		"initiator_id": "principal-1", "title": "Fix the build", "description": pgtest.NullValue,
@@ -463,6 +465,7 @@ func TestRealTaskLifecycleOnPostgreSQL(t *testing.T) {
 		}
 		env.shard.RequireGoldenRow(t, ctx, env.runtime, env.scope, "tasks", map[string]any{"id": string(created.TaskID)}, map[string]any{
 			"id": string(created.TaskID), "tenant_id": "tenant-1", "project_id": "project-1",
+			"parent_id":       pgtest.NullValue,
 			"content_version": int64(1), "lifecycle_version": lifecycle, "state": state,
 			"pipeline_id": string(applied.PipelineID), "current_execution_id": current,
 			"initiator_id": "principal-1", "title": "Fix the build", "description": pgtest.NullValue,
@@ -769,6 +772,7 @@ func TestTaskCreateAndEditsPersistOnPostgreSQL(t *testing.T) {
 	}
 	shardGolden("tasks", map[string]any{"id": string(created.TaskID)}, map[string]any{
 		"id": string(created.TaskID), "tenant_id": "tenant-1", "project_id": "project-1",
+		"parent_id":       pgtest.NullValue,
 		"content_version": int64(1), "lifecycle_version": int64(1), "state": "open",
 		"pipeline_id": string(applied.PipelineID), "current_execution_id": pgtest.NullValue,
 		"initiator_id": "principal-1", "title": "Original title", "description": "Original description",
@@ -812,6 +816,7 @@ func TestTaskCreateAndEditsPersistOnPostgreSQL(t *testing.T) {
 	}
 	shardGolden("tasks", map[string]any{"id": string(created.TaskID)}, map[string]any{
 		"id": string(created.TaskID), "tenant_id": "tenant-1", "project_id": "project-1",
+		"parent_id":       pgtest.NullValue,
 		"content_version": int64(2), "lifecycle_version": int64(1), "state": "open",
 		"pipeline_id": string(applied.PipelineID), "current_execution_id": pgtest.NullValue,
 		"initiator_id": "principal-1", "title": "Edited title", "description": "Edited description",
@@ -861,6 +866,7 @@ func TestTaskCreateAndEditsPersistOnPostgreSQL(t *testing.T) {
 		`SELECT author_id, body, refs::text FROM task_messages WHERE task_id = $1`, string(created.TaskID))
 	shardGolden("tasks", map[string]any{"id": string(created.TaskID)}, map[string]any{
 		"id": string(created.TaskID), "tenant_id": "tenant-1", "project_id": "project-1",
+		"parent_id":       pgtest.NullValue,
 		"content_version": int64(3), "lifecycle_version": int64(1), "state": "open",
 		"pipeline_id": string(applied.PipelineID), "current_execution_id": pgtest.NullValue,
 		"initiator_id": "principal-1", "title": "Edited title", "description": "Edited description",
@@ -908,6 +914,7 @@ func TestTaskCreateAndEditsPersistOnPostgreSQL(t *testing.T) {
 	}
 	shardGolden("tasks", map[string]any{"id": string(created.TaskID)}, map[string]any{
 		"id": string(created.TaskID), "tenant_id": "tenant-1", "project_id": "project-1",
+		"parent_id":       pgtest.NullValue,
 		"content_version": int64(4), "lifecycle_version": int64(1), "state": "open",
 		"pipeline_id": string(applied.PipelineID), "current_execution_id": pgtest.NullValue,
 		"initiator_id": "principal-1", "title": "No metadata", "description": pgtest.NullValue,
@@ -1201,6 +1208,7 @@ func TestObservedTaskSelectPipelineOnPostgreSQL(t *testing.T) {
 	}
 	env.shard.RequireGoldenRow(t, ctx, env.runtime, env.scope, "tasks", map[string]any{"id": string(created.TaskID)}, map[string]any{
 		"id": string(created.TaskID), "tenant_id": "tenant-1", "project_id": "project-1",
+		"parent_id":       pgtest.NullValue,
 		"content_version": int64(1), "lifecycle_version": int64(2), "state": "open",
 		"pipeline_id": string(applied.PipelineID), "current_execution_id": pgtest.NullValue,
 		"initiator_id": "principal-1", "title": "Select", "description": pgtest.NullValue,
@@ -1256,6 +1264,7 @@ func TestObservedTaskCreateAndStartOnPostgreSQL(t *testing.T) {
 	}
 	env.shard.RequireGoldenRow(t, ctx, env.runtime, env.scope, "tasks", map[string]any{"id": string(created.TaskID)}, map[string]any{
 		"id": string(created.TaskID), "tenant_id": "tenant-1", "project_id": "project-1",
+		"parent_id":       pgtest.NullValue,
 		"content_version": int64(1), "lifecycle_version": int64(2), "state": "open",
 		"pipeline_id": string(applied.PipelineID), "current_execution_id": string(created.ExecutionID),
 		"initiator_id": "principal-1", "title": "Create and start", "description": pgtest.NullValue,
@@ -1545,6 +1554,7 @@ func TestObservedTaskProgressOnPostgreSQL(t *testing.T) {
 	taskRow := func(taskID id.TaskID, title, state string, lifecycle int64, executionID id.ExecutionID) map[string]any {
 		return map[string]any{
 			"id": string(taskID), "tenant_id": "tenant-1", "project_id": "project-1",
+			"parent_id":       pgtest.NullValue,
 			"content_version": int64(1), "lifecycle_version": lifecycle, "state": state,
 			"pipeline_id": string(applied.PipelineID), "current_execution_id": string(executionID),
 			"initiator_id": "principal-1", "title": title, "description": pgtest.NullValue,
@@ -1621,4 +1631,60 @@ func TestObservedTaskProgressOnPostgreSQL(t *testing.T) {
 	env.shard.RequireGoldenRow(t, ctx, env.runtime, env.scope, "tasks", map[string]any{"id": string(other.TaskID)},
 		taskRow(other.TaskID, "Other task", "open", 2, otherStarted.ExecutionID))
 	wrongObserver.Finish(map[string]int{})
+}
+
+// TestObservedTaskCompleteOnPostgreSQL observes the explicit task.complete
+// commit unit, its idempotent replay, and parent_id persistence on PostgreSQL.
+func TestObservedTaskCompleteOnPostgreSQL(t *testing.T) {
+	ctx := context.Background()
+	env := newServiceEnv(t)
+	actor := env.actor()
+	parent, err := env.task.Create(ctx, task.CreateCommand{
+		Actor: actor, Scope: env.scope, Title: "Parent epic",
+		CallerKey: "task-create-parent", Content: integrationContent("task-create-parent"),
+	})
+	if err != nil {
+		t.Fatalf("parent task create: %v%s", err, pgtest.CauseText(err))
+	}
+	child, err := env.task.Create(ctx, task.CreateCommand{
+		Actor: actor, Scope: env.scope, ParentID: parent.TaskID, Title: "Child task",
+		CallerKey: "task-create-child", Content: integrationContent("task-create-child"),
+	})
+	if err != nil {
+		t.Fatalf("child task create: %v%s", err, pgtest.CauseText(err))
+	}
+	completeObserver := env.shard.ObserveUnit(t, "task", "complete")
+	completed, err := env.task.Complete(ctx, task.CompleteCommand{
+		Actor: actor, Scope: env.scope, TaskID: child.TaskID, ExpectedLifecycleVersion: 1,
+		Reason: "all stages passed", CallerKey: "task-complete-1", Content: integrationContent("task-complete-1"),
+	})
+	if err != nil || completed.LifecycleVersion != 2 {
+		t.Fatalf("task complete: %v (version=%d)", err, completed.LifecycleVersion)
+	}
+	env.shard.RequireGoldenRow(t, ctx, env.runtime, env.scope, "tasks", map[string]any{"id": string(child.TaskID)}, map[string]any{
+		"id": string(child.TaskID), "tenant_id": "tenant-1", "project_id": "project-1",
+		"parent_id":       string(parent.TaskID),
+		"content_version": int64(1), "lifecycle_version": int64(2), "state": "done",
+		"pipeline_id": pgtest.NullValue, "current_execution_id": pgtest.NullValue,
+		"initiator_id": "principal-1", "title": "Child task", "description": pgtest.NullValue,
+		"metadata": pgtest.NullValue, "inputs": pgtest.NullValue,
+		"execution_history": pgtest.NullValue, "question_id": pgtest.NullValue,
+		"question_body": pgtest.NullValue, "question_assignment": pgtest.NullValue,
+		"question_references": pgtest.NullValue, "question_version": pgtest.NullValue,
+		"question_asked_by": pgtest.NullValue, "question_at": pgtest.NullValue,
+		"created_at": pgtest.FixtureTime,
+	})
+	completeObserver.Finish(map[string]int{"tasks": 1, "receipts": 1, "audit": 1, "events": 1})
+	saved := env.ids.snapshot()
+	replayObserver := env.shard.ObserveUnit(t, "task", "complete.replay")
+	completedAgain, err := env.task.Complete(ctx, task.CompleteCommand{
+		Actor: actor, Scope: env.scope, TaskID: child.TaskID, ExpectedLifecycleVersion: 1,
+		Reason: "all stages passed", CallerKey: "task-complete-1", Content: integrationContent("task-complete-1"),
+	})
+	if err != nil {
+		t.Fatalf("task complete replay: %v%s", err, pgtest.CauseText(err))
+	}
+	requireReplayOf(t, "task complete replay", completed, completedAgain)
+	replayObserver.Finish(map[string]int{})
+	env.ids.restore(saved)
 }

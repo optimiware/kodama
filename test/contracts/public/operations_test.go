@@ -134,6 +134,7 @@ var operationCases = []operationCase{
 	{operation: "task.ask", request: api.TaskAskRequest{}, result: api.TaskAskResult{}, enums: []enumProbe{{"assignment", `"role/owner"`}}},
 	{operation: "task.reply", request: api.TaskReplyRequest{}, result: api.TaskReplyResult{}, identifiers: []string{"question_id"}},
 	{operation: "task.cancel", request: api.TaskCancelRequest{}, result: api.TaskCancelResult{}},
+	{operation: "task.complete", request: api.TaskCompleteRequest{}, result: api.TaskCompleteResult{}},
 	{operation: "task.history", request: api.TaskHistoryRequest{}, result: api.TaskHistoryResult{}},
 	{operation: "task.inbox", request: api.TaskInboxRequest{}, result: api.TaskInboxResult{}, enums: []enumProbe{{"kinds", `["everything"]`}}},
 

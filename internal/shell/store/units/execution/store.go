@@ -109,6 +109,32 @@ func (s *Store) Load(ctx context.Context, scope tenancy.Scope, executionID id.Ex
 	return loadAggregate(ctx, source, executionID)
 }
 
+// LoadWithAdmitted returns both the scoped kernel execution aggregate and its
+// decoded admitted snapshot document so callers (such as task execution
+// readers) can observe admission-time settings like CompletesTask without
+// re-reading the execution row.
+func (s *Store) LoadWithAdmitted(ctx context.Context, scope tenancy.Scope, executionID id.ExecutionID) (kernel.Execution, snapshotdoc.Admitted, error) {
+	if err := ctx.Err(); err != nil {
+		return kernel.Execution{}, snapshotdoc.Admitted{}, err
+	}
+	if err := scope.Validate(); err != nil {
+		return kernel.Execution{}, snapshotdoc.Admitted{}, err
+	}
+	if _, err := id.ParseExecutionID(string(executionID)); err != nil {
+		return kernel.Execution{}, snapshotdoc.Admitted{}, fault.Wrap(fault.InvalidInput, "execution id is invalid", err)
+	}
+	source := scopedSource{executor: s.executor, scanner: s.scanner, scope: scope}
+	row, err := source.read(ctx, tableExecutions, string(executionID))
+	if err != nil {
+		return kernel.Execution{}, snapshotdoc.Admitted{}, err
+	}
+	aggregate, admitted, _, err := aggregateFromRowWithAdmitted(ctx, source, row)
+	if err != nil {
+		return kernel.Execution{}, snapshotdoc.Admitted{}, err
+	}
+	return aggregate, admitted, nil
+}
+
 // loadAggregate rebuilds one kernel execution from its relational rows and the
 // immutable admitted snapshot document.
 func loadAggregate(ctx context.Context, source aggregateSource, executionID id.ExecutionID) (kernel.Execution, error) {
@@ -381,9 +407,10 @@ func decodeAction(values map[string]any, definitions []definition.Action, worksp
 				At:         at,
 				Provenance: provenance,
 			}
-			// A failed answer keeps its response inspectable but never
-			// promotes it to settled downstream outputs.
-			if kernel.Decision(decision) == kernel.DecisionFail {
+			// A non-passing answer (fail or revise) keeps its response
+			// inspectable on Answer.Outputs but never promotes it to settled
+			// downstream outputs.
+			if kernel.Decision(decision) != kernel.DecisionPass {
 				action.Outputs = nil
 			}
 		}

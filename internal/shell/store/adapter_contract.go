@@ -878,7 +878,7 @@ func SchemaDesign() Schema {
 					check("actions_state", "state IN ('pending', 'running', 'succeeded', 'failed', 'cancelled')"),
 					check("actions_kind", "kind IN ('container', 'request')"),
 					check("actions_launch_state", "launch_state IN ('not_issued', 'issued', 'unknown', 'retiring')"),
-					check("actions_request_decision", "request_decision IS NULL OR request_decision IN ('pass', 'fail')"),
+					check("actions_request_decision", "request_decision IS NULL OR request_decision IN ('pass', 'revise', 'fail')"),
 					check("actions_request_resolution_pair", "(request_decision IS NULL) = (request_actor IS NULL) AND (request_decision IS NULL) = (request_resolved_at IS NULL)"),
 				},
 				Indexes: []Index{
@@ -895,6 +895,7 @@ func SchemaDesign() Schema {
 					column("id", "text", false),
 					column("tenant_id", "text", false),
 					column("project_id", "text", false),
+					column("parent_id", "text", true),
 					column("content_version", "bigint", false),
 					column("lifecycle_version", "bigint", false),
 					column("state", "text", false),
@@ -918,6 +919,7 @@ func SchemaDesign() Schema {
 				ForeignKeys: []ForeignKey{
 					foreignKey("tasks_tenant", []string{"tenant_id"}, "tenants", []string{"id"}),
 					foreignKey("tasks_project", []string{"tenant_id", "project_id"}, "projects", []string{"tenant_id", "id"}),
+					foreignKey("tasks_parent", []string{"tenant_id", "project_id", "parent_id"}, "tasks", []string{"tenant_id", "project_id", "id"}),
 				},
 				Unique: []UniqueConstraint{
 					unique("tasks_scope_id", false, "tenant_id", "project_id", "id"),
@@ -925,9 +927,11 @@ func SchemaDesign() Schema {
 				Checks: []Check{
 					check("tasks_state", "state IN ('open', 'waiting', 'done', 'cancelled')"),
 					check("tasks_question_pair", "(question_id IS NULL) = (question_version IS NULL)"),
+					check("tasks_no_self_parent", "parent_id IS NULL OR parent_id <> id"),
 				},
 				Indexes: []Index{
 					index("tasks_scope_state", false, "", "tenant_id", "project_id", "state"),
+					index("tasks_scope_parent", false, "", "tenant_id", "project_id", "parent_id"),
 				},
 				RowLevelSecurity:      true,
 				ForceRowLevelSecurity: true,

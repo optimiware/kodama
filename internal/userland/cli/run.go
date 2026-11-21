@@ -98,6 +98,8 @@ func RunWithDeps(ctx context.Context, config Config, args []string, ports Ports,
 		return runApprove(ctx, config, args[1:], ports, deps)
 	case "reject":
 		return runReject(ctx, config, args[1:], ports, deps)
+	case "revise":
+		return runRevise(ctx, config, args[1:], ports, deps)
 	case "task":
 		return runTask(ctx, config, args[1:], ports, deps)
 	case "service":

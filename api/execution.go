@@ -793,7 +793,7 @@ func validActionKind(kind string) bool {
 }
 
 // requestDecisions is the request decision vocabulary.
-var requestDecisions = []string{"pass", "fail"}
+var requestDecisions = []string{"pass", "revise", "fail"}
 
 // validDecision reports whether decision is a declared request decision.
 func validDecision(decision string) bool {

@@ -57,6 +57,9 @@ func taskHandlers(deps Dependencies) map[authorizeOperation]ops.Handler {
 			if request.Status != "" {
 				equals["state"] = request.Status
 			}
+			if request.ParentID != "" {
+				equals["parent_id"] = request.ParentID
+			}
 			page := pageOrDefault(request.Page)
 			committed, err := scanner.Query(ctx, call.Scope, store.ScanQuery{
 				Table:   "tasks",
@@ -71,6 +74,10 @@ func taskHandlers(deps Dependencies) map[authorizeOperation]ops.Handler {
 			tasks := make([]api.TaskSummaryView, 0, len(committed.Rows))
 			for _, row := range committed.Rows {
 				taskID, err := scanRowString(row, "id")
+				if err != nil {
+					return api.Result{}, err
+				}
+				parentID, err := scanRowNullableString(row, "parent_id")
 				if err != nil {
 					return api.Result{}, err
 				}
@@ -100,6 +107,7 @@ func taskHandlers(deps Dependencies) map[authorizeOperation]ops.Handler {
 				}
 				tasks = append(tasks, api.TaskSummaryView{
 					TaskID:           taskID,
+					ParentID:         parentID,
 					Title:            title,
 					State:            state,
 					SelectedPipeline: selectedPipeline,
@@ -223,6 +231,7 @@ func taskHandlers(deps Dependencies) map[authorizeOperation]ops.Handler {
 				ExpectedLifecycleVersion: version,
 				PipelineID:               pipelineIDOf(request.PipelineID),
 				Inputs:                   inputsOf(request.Inputs),
+				CompletesTask:            request.CompletesTask,
 				CallerKey:                call.Request.IdempotencyKey,
 				Content:                  receiptContent(call, request),
 			})
@@ -251,6 +260,7 @@ func taskHandlers(deps Dependencies) map[authorizeOperation]ops.Handler {
 				Reason:                   request.Reason,
 				PipelineID:               pipelineIDOf(request.PipelineID),
 				Inputs:                   inputsOf(request.Inputs),
+				CompletesTask:            request.CompletesTask,
 				CallerKey:                call.Request.IdempotencyKey,
 				Content:                  receiptContent(call, request),
 			})
@@ -368,6 +378,29 @@ func taskHandlers(deps Dependencies) map[authorizeOperation]ops.Handler {
 				return api.Result{}, err
 			}
 			return respond(call, api.TaskCancelResult{LifecycleVersion: committed.LifecycleVersion})
+		}),
+		"task.complete": handlerFunc(func(ctx context.Context, call ops.AuthorizedCall) (api.Result, error) {
+			request, err := decodeRequest[api.TaskCompleteRequest](call)
+			if err != nil {
+				return api.Result{}, err
+			}
+			version, err := requiredVersion(call)
+			if err != nil {
+				return api.Result{}, err
+			}
+			committed, err := deps.Tasks.Complete(ctx, task.CompleteCommand{
+				Actor:                    call.Principal,
+				Scope:                    call.Scope,
+				TaskID:                   id.TaskID(request.TaskID),
+				ExpectedLifecycleVersion: version,
+				Reason:                   request.Reason,
+				CallerKey:                call.Request.IdempotencyKey,
+				Content:                  receiptContent(call, request),
+			})
+			if err != nil {
+				return api.Result{}, err
+			}
+			return respond(call, api.TaskCompleteResult{LifecycleVersion: committed.LifecycleVersion})
 		}),
 		"task.history": handlerFunc(func(ctx context.Context, call ops.AuthorizedCall) (api.Result, error) {
 			request, err := decodeRequest[api.TaskHistoryRequest](call)
@@ -515,16 +548,18 @@ func createTask(ctx context.Context, deps Dependencies, call ops.AuthorizedCall,
 			return api.Result{}, err
 		}
 		committed, err := deps.Tasks.Create(ctx, task.CreateCommand{
-			Actor:       call.Principal,
-			Scope:       call.Scope,
-			Title:       request.Title,
-			Description: request.Description,
-			Metadata:    mustMetadata(request.Metadata),
-			PipelineID:  pipelineIDOf(request.PipelineID),
-			Inputs:      inputsOf(request.Inputs),
-			Start:       true,
-			CallerKey:   call.Request.IdempotencyKey,
-			Content:     receiptContent(call, request),
+			Actor:         call.Principal,
+			Scope:         call.Scope,
+			ParentID:      id.TaskID(request.ParentID),
+			Title:         request.Title,
+			Description:   request.Description,
+			Metadata:      mustMetadata(request.Metadata),
+			PipelineID:    pipelineIDOf(request.PipelineID),
+			Inputs:        inputsOf(request.Inputs),
+			Start:         true,
+			CompletesTask: request.CompletesTask,
+			CallerKey:     call.Request.IdempotencyKey,
+			Content:       receiptContent(call, request),
 		})
 		if err != nil {
 			return api.Result{}, err
@@ -542,6 +577,7 @@ func createTask(ctx context.Context, deps Dependencies, call ops.AuthorizedCall,
 	committed, err := deps.Tasks.Create(ctx, task.CreateCommand{
 		Actor:       call.Principal,
 		Scope:       call.Scope,
+		ParentID:    id.TaskID(request.ParentID),
 		Title:       request.Title,
 		Description: request.Description,
 		Metadata:    mustMetadata(request.Metadata),
@@ -580,6 +616,7 @@ func currentLifecycleVersion(ctx context.Context, deps Dependencies, call ops.Au
 func taskReadResult(current task.Task) api.TaskReadResult {
 	result := api.TaskReadResult{
 		TaskID:           string(current.ID),
+		ParentID:         string(current.ParentID),
 		Title:            current.Title,
 		Description:      current.Description,
 		State:            string(current.State),

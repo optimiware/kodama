@@ -189,6 +189,7 @@ type TaskOperations interface {
 	Ask(context.Context, task.AskCommand) (task.AskResult, error)
 	Reply(context.Context, task.ReplyCommand) (task.ReplyResult, error)
 	Cancel(context.Context, task.CancelCommand) (task.CancelResult, error)
+	Complete(context.Context, task.CompleteCommand) (task.CompleteResult, error)
 	History(context.Context, task.HistoryCommand) (task.HistoryPage, error)
 	Read(context.Context, task.ReadCommand) (task.Task, error)
 }

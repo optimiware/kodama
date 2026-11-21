@@ -2,6 +2,7 @@ package work
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"slices"
 	"strings"
@@ -345,6 +346,71 @@ func TestInboxUnknownAssignmentKindIsInvisible(t *testing.T) {
 	}
 	if len(page.Items) != 0 {
 		t.Fatalf("an unknown assignment kind leaked items: %+v", page.Items)
+	}
+}
+
+func TestInboxExcludesDomainRejectionsFromOperatorFailedTasks(t *testing.T) {
+	fixture := newFixture(t)
+	scope := testScope()
+
+	seedFailed := func(taskID id.TaskID, execID id.ExecutionID, at time.Time, failure *kernel.Failure) {
+		t.Helper()
+		var failureBytes any
+		if failure != nil {
+			encoded, err := json.Marshal(failure)
+			if err != nil {
+				t.Fatalf("marshal failure: %v", err)
+			}
+			failureBytes = encoded
+		}
+		fixture.seedTaskRow(t, scope, taskID, string(task.StateOpen), execID, 2)
+		if _, err := fixture.store.Execute(context.Background(), scope, store.Unit{
+			Writes: []store.Write{{
+				Table:  "executions",
+				ID:     string(execID),
+				Insert: true,
+				Values: map[string]any{
+					"task_id":      string(taskID),
+					"principal_id": "exec-principal-" + string(execID),
+					"state":        string(kernel.ExecutionFailed),
+					"version":      int64(2),
+					"yaml_sha256":  []byte("0123456789abcdef0123456789abcdef"),
+					"snapshot":     []byte(`{}`),
+					"failure":      failureBytes,
+					"created_at":   at,
+				},
+			}},
+		}); err != nil {
+			t.Fatalf("seed failed execution %s: %v", execID, err)
+		}
+	}
+
+	// Domain rejections: MUST NOT appear in operator failure inbox.
+	seedFailed("task-revise", "exec-revise", testNow.Add(time.Minute), &kernel.Failure{
+		Kind: kernel.FailureRuntime, Reason: kernel.FailureReasonNeedsRevision, Detail: "Add tests",
+	})
+	seedFailed("task-budget", "exec-budget", testNow.Add(2*time.Minute), &kernel.Failure{
+		Kind: kernel.FailureRuntime, Reason: kernel.FailureReasonBudgetExceeded, Detail: "Token budget exceeded",
+	})
+
+	// System failures: MUST appear in operator failure inbox.
+	seedFailed("task-exit", "exec-exit", testNow.Add(3*time.Minute), &kernel.Failure{
+		Kind: kernel.FailureRuntime, Reason: "workload_exited", Detail: "exit 1",
+	})
+	seedFailed("task-oom", "exec-oom", testNow.Add(4*time.Minute), &kernel.Failure{
+		Kind: kernel.FailureRuntime, Reason: "oom_killed", Detail: "OOMKilled",
+	})
+	seedFailed("task-timeout", "exec-timeout", testNow.Add(5*time.Minute), &kernel.Failure{
+		Kind: kernel.FailureTimeout, Reason: "deadline_reached", Detail: "timed out",
+	})
+	seedFailed("task-fail-decision", "exec-fail-decision", testNow.Add(6*time.Minute), &kernel.Failure{
+		Kind: kernel.FailureRuntime, Reason: "answer_rejected", Detail: "rejected",
+	})
+
+	got := collectFailedTaskIDs(t, fixture, operator(), []inbox.Kind{inbox.KindFailedTask}, 10)
+	want := []id.TaskID{"task-exit", "task-oom", "task-timeout", "task-fail-decision"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("operator failed_task inbox = %v; want %v", got, want)
 	}
 }
 

@@ -379,6 +379,7 @@ func newRealServiceEnvConfigured(t *testing.T, admission func(*fixture, tenancy.
 		Asks:           recordingAskPort{inner: taskPorts, ports: ports},
 		Replies:        recordingReplyPort{inner: taskPorts, ports: ports},
 		Cancels:        recordingCancelPort{inner: taskPorts, ports: ports},
+		Completes:      taskPorts,
 		Progress:       taskPorts,
 		DefaultTimeout: 5 * time.Minute,
 	})

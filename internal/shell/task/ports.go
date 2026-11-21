@@ -28,6 +28,11 @@ type CancelPort interface {
 	Cancel(context.Context, CancelUnit) (CancelResult, error)
 }
 
+// CompletePort applies one complete explicit-task-completion commit unit.
+type CompletePort interface {
+	Complete(context.Context, CompleteUnit) (CompleteResult, error)
+}
+
 // ExecutionAggregateReader loads the current execution aggregate a task
 // operation must reduce before it writes. It is the consumer-owned read seam
 // the task service uses to build the Kernel cancel fact (`flow.CancelFact`)

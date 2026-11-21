@@ -45,7 +45,7 @@ func (reader *ExecutionReader) Get(ctx context.Context, scope tenancy.Scope, exe
 	if _, err := id.ParseExecutionID(string(executionID)); err != nil {
 		return task.ExecutionView{}, err
 	}
-	execution, err := reader.store.Load(ctx, scope, executionID)
+	execution, admitted, err := reader.store.LoadWithAdmitted(ctx, scope, executionID)
 	if err != nil {
 		return task.ExecutionView{}, err
 	}
@@ -56,6 +56,7 @@ func (reader *ExecutionReader) Get(ctx context.Context, scope tenancy.Scope, exe
 		// The execution store owns the one persisted stop-evidence derivation,
 		// so the task service's dispatch decision and the Shell predecessor
 		// barrier used by queued discovery and activation cannot drift.
-		StopEvidence: executionstore.StopEvidence(execution),
+		StopEvidence:  executionstore.StopEvidence(execution),
+		CompletesTask: admitted.Snapshot.CompletesTask,
 	}, nil
 }

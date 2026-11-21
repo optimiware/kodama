@@ -122,6 +122,7 @@ func executionLock(identity id.ExecutionID, version uint64) store.Lock {
 
 // taskColumns is the decoded durable task conversation.
 type taskColumns struct {
+	parentID         id.TaskID
 	contentVersion   uint64
 	lifecycleVersion uint64
 	state            task.State
@@ -150,6 +151,7 @@ func (adapter *Task) readTaskRow(ctx context.Context, scope tenancy.Scope, ident
 // decodeTaskColumns decodes the durable columns of one tasks row.
 func decodeTaskColumns(row store.Row) (taskColumns, error) {
 	columns := taskColumns{
+		parentID:         id.TaskID(textValue(row, "parent_id")),
 		contentVersion:   versionValue(row, "content_version"),
 		lifecycleVersion: versionValue(row, "lifecycle_version"),
 		state:            task.State(textValue(row, "state")),
@@ -200,6 +202,7 @@ func decodeTaskColumns(row store.Row) (taskColumns, error) {
 func taskValue(identity id.TaskID, scope tenancy.Scope, columns taskColumns, messages []task.Message) task.Task {
 	return task.Task{
 		ID:               identity,
+		ParentID:         columns.parentID,
 		Scope:            scope,
 		Title:            columns.title,
 		Description:      columns.description,
@@ -423,6 +426,14 @@ func (adapter *Task) Create(ctx context.Context, unit task.CreateUnit) (task.Cre
 	if err := requireNonEmpty("task initiator", string(unit.Initiator)); err != nil {
 		return task.CreateResult{}, err
 	}
+	if unit.ParentID != "" {
+		if _, err := id.ParseTaskID(string(unit.ParentID)); err != nil {
+			return task.CreateResult{}, fault.Wrap(fault.InvalidInput, "parent task id is invalid", err)
+		}
+		if unit.ParentID == unit.TaskID {
+			return task.CreateResult{}, fault.New(fault.InvalidInput, "task cannot be its own parent")
+		}
+	}
 	if unit.At.IsZero() {
 		return task.CreateResult{}, fault.New(fault.InvalidInput, "task creation time is zero")
 	}
@@ -501,6 +512,14 @@ func creationWrites(unit task.CreateUnit) ([]store.Write, []store.Lock, error) {
 		"title":             unit.Title,
 		"created_at":        unit.At,
 	}
+	var locks []store.Lock
+	if unit.ParentID != "" {
+		values["parent_id"] = string(unit.ParentID)
+		// Pin the parent task row in the exact same (tenant_id, project_id)
+		// scope so both memory and postgres refuse missing or cross-scope
+		// parent links atomically.
+		locks = append(locks, store.Lock{Table: "tasks", IDs: []string{string(unit.ParentID)}})
+	}
 	if unit.Description != "" {
 		values["description"] = unit.Description
 	}
@@ -522,7 +541,6 @@ func creationWrites(unit task.CreateUnit) ([]store.Write, []store.Lock, error) {
 		values["inputs"] = encoded
 	}
 	writes := []store.Write{{Table: "tasks", ID: string(unit.TaskID), Insert: true, Values: values}}
-	var locks []store.Lock
 	if unit.Start == nil {
 		if unit.SelectedPipeline != "" {
 			// No foreign key backs tasks.pipeline_id, so the unit pins the
@@ -1155,6 +1173,103 @@ func (adapter *Task) Cancel(ctx context.Context, unit task.CancelUnit) (task.Can
 	replayed, isReplay, err := replay[task.CancelResult](committed)
 	if err != nil {
 		return task.CancelResult{}, err
+	}
+	if isReplay {
+		replayed.Replayed = true
+		return replayed, nil
+	}
+	return result, nil
+}
+
+// Complete applies one complete explicit-task-completion commit unit,
+// transitioning an open task with no nonterminal current execution to done.
+func (adapter *Task) Complete(ctx context.Context, unit task.CompleteUnit) (task.CompleteResult, error) {
+	if err := validProjectScope(unit.Owner); err != nil {
+		return task.CompleteResult{}, err
+	}
+	if err := requireNonEmpty("task id", string(unit.TaskID)); err != nil {
+		return task.CompleteResult{}, err
+	}
+	if unit.ExpectedLifecycleVersion == 0 {
+		return task.CompleteResult{}, fault.New(fault.InvalidInput, "complete requires an expected lifecycle version")
+	}
+	if err := validateReceipt(unit.Receipt); err != nil {
+		return task.CompleteResult{}, err
+	}
+	result := task.CompleteResult{LifecycleVersion: unit.ExpectedLifecycleVersion + 1}
+	record, err := withResult(unit.Receipt, result)
+	if err != nil {
+		return task.CompleteResult{}, err
+	}
+	replaying, err := adapter.committedReceipt(ctx, unit.Owner, unit.Receipt.Key)
+	if err != nil {
+		return task.CompleteResult{}, err
+	}
+	lockExpect := map[string]any{
+		"state":             string(task.StateOpen),
+		"lifecycle_version": int64(unit.ExpectedLifecycleVersion),
+	}
+	writeExpect := map[string]any{
+		"state":             string(task.StateOpen),
+		"lifecycle_version": int64(unit.ExpectedLifecycleVersion),
+	}
+	locks := []store.Lock{taskLock(unit.TaskID, lockExpect)}
+	if !replaying {
+		row, err := adapter.readTaskRow(ctx, unit.Owner, unit.TaskID)
+		if err != nil {
+			return task.CompleteResult{}, err
+		}
+		columns, err := decodeTaskColumns(row)
+		if err != nil {
+			return task.CompleteResult{}, err
+		}
+		if columns.state != task.StateOpen {
+			replaying, err = adapter.committedReceipt(ctx, unit.Owner, unit.Receipt.Key)
+			if err != nil {
+				return task.CompleteResult{}, err
+			}
+			if !replaying {
+				return task.CompleteResult{}, fault.New(fault.VersionConflict, fmt.Sprintf("task state %q does not permit complete", columns.state))
+			}
+		} else if columns.currentExecution != "" {
+			execRow, err := readRow(ctx, adapter.executor, unit.Owner, "executions", string(columns.currentExecution))
+			if err != nil {
+				if class, ok := fault.ClassOf(err); !ok || class != fault.NotFound {
+					return task.CompleteResult{}, err
+				}
+			} else {
+				execState := kernel.ExecutionState(textValue(execRow, "state"))
+				if !execState.Terminal() {
+					return task.CompleteResult{}, fault.New(fault.VersionConflict, fmt.Sprintf("cannot complete task while current execution %q is %q", columns.currentExecution, execState))
+				}
+				if unit.ExpectedExecutionVersion != 0 {
+					locks = append(locks, executionLock(columns.currentExecution, unit.ExpectedExecutionVersion))
+				}
+			}
+		}
+	}
+	writes := []store.Write{taskWrite(unit.TaskID, writeExpect, map[string]any{
+		"state":             string(task.StateDone),
+		"lifecycle_version": int64(unit.ExpectedLifecycleVersion + 1),
+	})}
+	authority, err := authorityLocks(ctx, adapter.executor, adapter.scanner, unit.Authority, authorityContext{TaskID: unit.TaskID})
+	if err != nil {
+		return task.CompleteResult{}, err
+	}
+	locks = append(locks, authority...)
+	committed, err := execute(ctx, adapter.executor, unit.Owner, store.Unit{
+		Locks:   locks,
+		Writes:  writes,
+		Receipt: &record,
+		Audit:   unit.Audit,
+		Events:  unit.Events,
+	})
+	if err != nil {
+		return task.CompleteResult{}, err
+	}
+	replayed, isReplay, err := replay[task.CompleteResult](committed)
+	if err != nil {
+		return task.CompleteResult{}, err
 	}
 	if isReplay {
 		replayed.Replayed = true

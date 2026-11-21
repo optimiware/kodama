@@ -108,6 +108,7 @@ func newTestEnv(t *testing.T) *testEnv {
 		Asks:           env.ports,
 		Replies:        env.ports,
 		Cancels:        env.ports,
+		Completes:      env.ports,
 		Progress:       env.ports,
 		DefaultTimeout: 5 * time.Minute,
 	}
@@ -137,6 +138,7 @@ func TestNewServiceRefusesMissingDependency(t *testing.T) {
 		Asks:           &fakePorts{},
 		Replies:        &fakePorts{},
 		Cancels:        &fakePorts{},
+		Completes:      &fakePorts{},
 		Progress:       &fakePorts{},
 		DefaultTimeout: 5 * time.Minute,
 	}
@@ -160,6 +162,7 @@ func TestNewServiceRefusesMissingDependency(t *testing.T) {
 		"asks":       func(config *task.ServiceConfig) { config.Asks = nil },
 		"replies":    func(config *task.ServiceConfig) { config.Replies = nil },
 		"cancels":    func(config *task.ServiceConfig) { config.Cancels = nil },
+		"completes":  func(config *task.ServiceConfig) { config.Completes = nil },
 		"progress":   func(config *task.ServiceConfig) { config.Progress = nil },
 		"timeout":    func(config *task.ServiceConfig) { config.DefaultTimeout = 0 },
 	}

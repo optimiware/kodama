@@ -116,9 +116,10 @@ func Decode(data []byte, limits Limits) (definition.Pipeline, error) {
 // admission-only declaration detail (typed input specifications and the
 // optional push trigger).
 type parsedDocument struct {
-	pipeline definition.Pipeline
-	inputs   []InputSpec
-	push     *PushTrigger
+	pipeline      definition.Pipeline
+	inputs        []InputSpec
+	push          *PushTrigger
+	completesTask *bool
 }
 
 func invalidInputf(format string, args ...any) error {
@@ -304,7 +305,7 @@ func parsePipeline(root *yaml.Node) (parsedDocument, error) {
 	if err != nil {
 		return parsedDocument{}, err
 	}
-	var inputsNode, envNode, actionsNode, onNode, repositoryNode, serviceNode *yaml.Node
+	var inputsNode, envNode, actionsNode, onNode, repositoryNode, serviceNode, completesTaskNode *yaml.Node
 	for _, entry := range entries {
 		switch entry.key {
 		case "inputs":
@@ -319,6 +320,8 @@ func parsePipeline(root *yaml.Node) (parsedDocument, error) {
 			serviceNode = entry.value
 		case "on":
 			onNode = entry.value
+		case "completes_task":
+			completesTaskNode = entry.value
 		default:
 			return parsedDocument{}, invalidInputf("pipeline has unknown field %q", entry.key)
 		}
@@ -386,10 +389,20 @@ func parsePipeline(root *yaml.Node) (parsedDocument, error) {
 		}
 	}
 
+	var completesTask *bool
+	if completesTaskNode != nil {
+		value, err := boolValue(completesTaskNode, "completes_task")
+		if err != nil {
+			return parsedDocument{}, err
+		}
+		completesTask = &value
+	}
+
 	parsed := parsedDocument{
-		pipeline: definition.Pipeline{Inputs: inputs, Env: env, Actions: actions},
-		inputs:   specs,
-		push:     push,
+		pipeline:      definition.Pipeline{Inputs: inputs, Env: env, Actions: actions},
+		inputs:        specs,
+		push:          push,
+		completesTask: completesTask,
 	}
 	if err := validateDefinition(parsed.pipeline); err != nil {
 		return parsedDocument{}, err

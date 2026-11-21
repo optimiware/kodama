@@ -426,6 +426,12 @@ func (adapter *Inbox) failedTaskItems(ctx context.Context, scope tenancy.Scope, 
 		if textValue(execution, "state") != string(kernel.ExecutionFailed) {
 			continue
 		}
+		// Domain rejections (e.g. reviewer revise / needs_revision, or budget
+		// caps) stay in the engineering/agent loop and must not escalate to
+		// role/operator's system-failure inbox.
+		if isDomainRejectionExecution(execution) {
+			continue
+		}
 		item := inbox.Item{
 			Kind:    inbox.KindFailedTask,
 			TaskID:  id.TaskID(textValue(row, "id")),
@@ -435,6 +441,21 @@ func (adapter *Inbox) failedTaskItems(ctx context.Context, scope tenancy.Scope, 
 		entries = append(entries, inboxEntry{item: item, identity: string(item.TaskID)})
 	}
 	return entries, nil
+}
+
+// isDomainRejectionExecution reports whether a failed execution row carries a
+// domain-rejection diagnostic (such as needs_revision or budget_exceeded)
+// rather than a system/infrastructure failure.
+func isDomainRejectionExecution(execution store.Row) bool {
+	raw := bytesValue(execution, "failure")
+	if len(raw) == 0 {
+		return false
+	}
+	var failure kernel.Failure
+	if err := json.Unmarshal(raw, &failure); err != nil {
+		return false
+	}
+	return failure.IsDomainRejection()
 }
 
 // assignedTo reports whether one immutable assignment selects the principal.

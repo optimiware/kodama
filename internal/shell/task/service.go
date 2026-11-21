@@ -2,6 +2,7 @@ package task
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"maps"
 	"time"
@@ -49,6 +50,7 @@ type Service struct {
 	asks           AskPort
 	replies        ReplyPort
 	cancels        CancelPort
+	completes      CompletePort
 	progress       ProgressPort
 	defaultTimeout time.Duration
 }
@@ -61,7 +63,7 @@ func NewService(config ServiceConfig) (*Service, error) {
 		config.Admission == nil ||
 		config.Creates == nil || config.Edits == nil || config.Starts == nil ||
 		config.Asks == nil || config.Replies == nil || config.Cancels == nil ||
-		config.Progress == nil || config.DefaultTimeout <= 0 {
+		config.Completes == nil || config.Progress == nil || config.DefaultTimeout <= 0 {
 		return nil, fault.New(fault.InternalFailure, "task service requires clock, ids, authorizer, authority, principals, pipelines, reader, executions, aggregates, admission, every commit port and a positive default timeout")
 	}
 	return &Service{
@@ -81,6 +83,7 @@ func NewService(config ServiceConfig) (*Service, error) {
 		asks:           config.Asks,
 		replies:        config.Replies,
 		cancels:        config.Cancels,
+		completes:      config.Completes,
 		progress:       config.Progress,
 		defaultTimeout: config.DefaultTimeout,
 	}, nil
@@ -102,6 +105,11 @@ func (service *Service) Create(ctx context.Context, command CreateCommand) (Crea
 	if _, err := service.confirmActor(ctx, command.Actor, operation); err != nil {
 		return CreateResult{}, err
 	}
+	if command.ParentID != "" {
+		if _, err := id.ParseTaskID(string(command.ParentID)); err != nil {
+			return CreateResult{}, fault.Wrap(fault.InvalidInput, "parent_id is invalid", err)
+		}
+	}
 	if err := validateTitle(command.Title); err != nil {
 		return CreateResult{}, err
 	}
@@ -119,6 +127,15 @@ func (service *Service) Create(ctx context.Context, command CreateCommand) (Crea
 	membership := newAuthorityRead(operation, requires, authorize.CheckMembership, command.Scope, command.Actor.ID, "", 0)
 	if err := service.confirm(ctx, []authorize.AuthorityRead{membership}); err != nil {
 		return CreateResult{}, err
+	}
+	if command.ParentID != "" {
+		parent, err := service.reader.Get(ctx, command.Scope, command.ParentID)
+		if err != nil {
+			return CreateResult{}, err
+		}
+		if parent.Scope != command.Scope {
+			return CreateResult{}, fault.New(fault.NotFound, "parent task is not present in this scope")
+		}
 	}
 	// A plain create admits nothing, so it never reads the pipeline through
 	// admission. No foreign key backs tasks.pipeline_id, so the scoped read is
@@ -141,14 +158,18 @@ func (service *Service) Create(ctx context.Context, command CreateCommand) (Crea
 	if err != nil {
 		return CreateResult{}, err
 	}
+	if command.ParentID != "" && command.ParentID == taskID {
+		return CreateResult{}, fault.New(fault.InvalidInput, "task cannot be its own parent")
+	}
 	now := service.clock.Now()
-	created, err := service.newEvent(event.TypeTaskCreated, command.Actor.ID, now, command.Scope, string(taskID), 1)
+	created, err := service.newTaskEvent(event.TypeTaskCreated, command.Actor.ID, now, command.Scope, string(taskID), 1, command.ParentID, "")
 	if err != nil {
 		return CreateResult{}, err
 	}
 	unit := CreateUnit{
 		Owner:            command.Scope,
 		TaskID:           taskID,
+		ParentID:         command.ParentID,
 		Title:            command.Title,
 		Description:      command.Description,
 		Metadata:         metadata,
@@ -177,6 +198,7 @@ func (service *Service) Create(ctx context.Context, command CreateCommand) (Crea
 			Inputs:     cloneInputs(command.Inputs),
 			Task: pipeline.TaskContext{
 				TaskID:      taskID,
+				ParentID:    command.ParentID,
 				Title:       command.Title,
 				Description: command.Description,
 				// A brand-new task has zero messages, so its admitted
@@ -185,6 +207,7 @@ func (service *Service) Create(ctx context.Context, command CreateCommand) (Crea
 				Conversation: []byte(emptyConversationJSON),
 				Metadata:     cloneBytes(command.Metadata),
 			},
+			CompletesTask:  cloneOptionalBool(command.CompletesTask),
 			DefaultTimeout: service.defaultTimeout,
 		})
 		if err != nil {
@@ -421,11 +444,13 @@ func (service *Service) Start(ctx context.Context, command StartCommand) (StartR
 		Inputs:     cloneInputs(targetInputs),
 		Task: pipeline.TaskContext{
 			TaskID:       current.ID,
+			ParentID:     current.ParentID,
 			Title:        current.Title,
 			Description:  current.Description,
 			Conversation: conversation,
 			Metadata:     marshalMetadata(current.Metadata),
 		},
+		CompletesTask:  cloneOptionalBool(command.CompletesTask),
 		DefaultTimeout: service.defaultTimeout,
 	})
 	if err != nil {
@@ -637,11 +662,13 @@ func (service *Service) Restart(ctx context.Context, command RestartCommand) (Re
 		Inputs:     cloneInputs(targetInputs),
 		Task: pipeline.TaskContext{
 			TaskID:       current.ID,
+			ParentID:     current.ParentID,
 			Title:        current.Title,
 			Description:  current.Description,
 			Conversation: conversation,
 			Metadata:     marshalMetadata(current.Metadata),
 		},
+		CompletesTask:  cloneOptionalBool(command.CompletesTask),
 		DefaultTimeout: service.defaultTimeout,
 	})
 	if err != nil {
@@ -807,7 +834,7 @@ func (service *Service) Ask(ctx context.Context, command AskCommand) (AskResult,
 	if err != nil {
 		return AskResult{}, err
 	}
-	questionEvent, err := service.newEvent(event.TypeTaskQuestion, command.Actor.ID, now, command.Scope, string(command.TaskID), command.ExpectedLifecycleVersion+1)
+	questionEvent, err := service.newTaskEvent(event.TypeTaskQuestion, command.Actor.ID, now, command.Scope, string(command.TaskID), command.ExpectedLifecycleVersion+1, current.ParentID, "")
 	if err != nil {
 		return AskResult{}, err
 	}
@@ -910,6 +937,7 @@ func (service *Service) Reply(ctx context.Context, command ReplyCommand) (ReplyR
 		Inputs:     cloneInputs(current.Inputs),
 		Task: pipeline.TaskContext{
 			TaskID:       current.ID,
+			ParentID:     current.ParentID,
 			Title:        current.Title,
 			Description:  current.Description,
 			Conversation: conversation,
@@ -942,7 +970,7 @@ func (service *Service) Reply(ctx context.Context, command ReplyCommand) (ReplyR
 	if err != nil {
 		return ReplyResult{}, err
 	}
-	replied, err := service.newEvent(event.TypeTaskReply, command.Actor.ID, now, command.Scope, string(command.TaskID), command.ExpectedLifecycleVersion+1)
+	replied, err := service.newTaskEvent(event.TypeTaskReply, command.Actor.ID, now, command.Scope, string(command.TaskID), command.ExpectedLifecycleVersion+1, current.ParentID, "")
 	if err != nil {
 		return ReplyResult{}, err
 	}
@@ -1037,7 +1065,7 @@ func (service *Service) Cancel(ctx context.Context, command CancelCommand) (Canc
 	if err != nil {
 		return CancelResult{}, err
 	}
-	cancelled, err := service.newEvent(event.TypeTaskCancelled, command.Actor.ID, now, command.Scope, string(command.TaskID), command.ExpectedLifecycleVersion+1)
+	cancelled, err := service.newTaskEvent(event.TypeTaskCancelled, command.Actor.ID, now, command.Scope, string(command.TaskID), command.ExpectedLifecycleVersion+1, current.ParentID, "")
 	if err != nil {
 		return CancelResult{}, err
 	}
@@ -1056,8 +1084,94 @@ func (service *Service) Cancel(ctx context.Context, command CancelCommand) (Canc
 	return service.cancels.Cancel(ctx, unit)
 }
 
+// Complete authorizes and commits an explicit transition of an open task to
+// done. Waiting and cancelled tasks are refused; a task with an active
+// nonterminal (queued or running) current execution is also refused so active
+// workloads are never orphaned. An already-done task still reaches the
+// receipt-first port so an idempotent retry converges cleanly while a fresh
+// call against a done task is refused with version_conflict.
+func (service *Service) Complete(ctx context.Context, command CompleteCommand) (CompleteResult, error) {
+	const operation authorize.OperationName = "task.complete"
+	if err := validateProjectScope(command.Scope); err != nil {
+		return CompleteResult{}, err
+	}
+	if !utf8.ValidString(command.Reason) {
+		return CompleteResult{}, fault.New(fault.InvalidInput, "complete reason is not valid UTF-8")
+	}
+	if len(command.Reason) > maxRestartReasonBytes {
+		return CompleteResult{}, fault.New(fault.InvalidInput, fmt.Sprintf("complete reason is %d bytes; at most %d are allowed", len(command.Reason), maxRestartReasonBytes))
+	}
+	if err := service.authorize(ctx, command.Actor, operation, command.Scope); err != nil {
+		return CompleteResult{}, err
+	}
+	if _, err := service.confirmActor(ctx, command.Actor, operation); err != nil {
+		return CompleteResult{}, err
+	}
+	current, err := service.reader.Get(ctx, command.Scope, command.TaskID)
+	if err != nil {
+		return CompleteResult{}, err
+	}
+	if current.Scope != command.Scope {
+		return CompleteResult{}, fault.New(fault.NotFound, "task is not present in this scope")
+	}
+	switch current.State {
+	case StateOpen, StateDone:
+		// A done task may be a lost-response retry of this exact complete call:
+		// let the receipt-first port replay an equal retry or refuse a fresh
+		// call with version_conflict.
+	default:
+		return CompleteResult{}, fault.New(fault.VersionConflict, fmt.Sprintf("task state %q does not permit complete", current.State))
+	}
+	requires, err := registryRequires(operation)
+	if err != nil {
+		return CompleteResult{}, err
+	}
+	membership := newAuthorityRead(operation, requires, authorize.CheckMembership, command.Scope, command.Actor.ID, "", 0)
+	if err := service.confirm(ctx, []authorize.AuthorityRead{membership}); err != nil {
+		return CompleteResult{}, err
+	}
+	now := service.clock.Now()
+	predecessor, known, err := service.predecessor(ctx, command.Scope, current.CurrentExecution)
+	if err != nil {
+		return CompleteResult{}, err
+	}
+	if current.State == StateOpen && known && !predecessor.State.Terminal() {
+		return CompleteResult{}, fault.New(fault.VersionConflict, fmt.Sprintf("cannot complete task while current execution %q is %q", predecessor.ID, predecessor.State))
+	}
+	authority := []authorize.AuthorityRead{
+		membership,
+		newAuthorityRead(operation, requires, authorize.CheckTaskVersion, command.Scope, command.Actor.ID, "", command.ExpectedLifecycleVersion),
+	}
+	unit := CompleteUnit{
+		Owner:                    command.Scope,
+		TaskID:                   command.TaskID,
+		ExpectedLifecycleVersion: command.ExpectedLifecycleVersion,
+		Reason:                   command.Reason,
+	}
+	if known {
+		unit.ExpectedExecutionVersion = predecessor.Version
+		authority = append(authority, newAuthorityRead(operation, requires, authorize.CheckExecutionVersion, command.Scope, command.Actor.ID, string(current.CurrentExecution), predecessor.Version))
+	}
+	record, audit, err := service.operationRecord(command.Scope, command.Actor.ID, string(operation), command.CallerKey, command.Content, now, "", nil)
+	if err != nil {
+		return CompleteResult{}, err
+	}
+	audit.Detail = command.Reason
+	completed, err := service.newTaskEvent(event.TypeTaskCompleted, command.Actor.ID, now, command.Scope, string(command.TaskID), command.ExpectedLifecycleVersion+1, current.ParentID, command.Reason)
+	if err != nil {
+		return CompleteResult{}, err
+	}
+	unit.Receipt = record
+	unit.Audit = []event.Audit{audit}
+	unit.Events = []event.Envelope{completed}
+	unit.Authority = authority
+	unit.PostCommit = []event.PostCommitEffect{{Kind: event.PostPublishEvent}}
+	return service.completes.Complete(ctx, unit)
+}
+
 // Progress applies one current-only execution observation. Only a success of
-// the task's current execution while the task is open completes it; every
+// the task's current execution while the task is open completes it (when the
+// execution's admitted snapshot has completes_task enabled, the default); every
 // other observation is reported without a write.
 func (service *Service) Progress(ctx context.Context, command ProgressCommand) (ProgressStatus, error) {
 	if err := validateProjectScope(command.Scope); err != nil {
@@ -1084,6 +1198,11 @@ func (service *Service) Progress(ctx context.Context, command ProgressCommand) (
 		current.CurrentExecution != "" &&
 		current.CurrentExecution == command.ExecutionID
 	if !currentOnly {
+		return ProgressStatus{State: current.State}, nil
+	}
+	if view, known, err := service.predecessor(ctx, command.Scope, command.ExecutionID); err != nil {
+		return ProgressStatus{}, err
+	} else if known && !view.CompletesTaskOnSuccess() {
 		return ProgressStatus{State: current.State}, nil
 	}
 	result, err := service.progress.Apply(ctx, ProgressUnit{
@@ -1413,6 +1532,37 @@ func (service *Service) operationRecord(scope tenancy.Scope, principal id.Princi
 		return receipt.Record{}, event.Audit{}, err
 	}
 	return record, event.Audit{ID: auditID, Scope: scope, Actor: principal, Operation: operation, At: at}, nil
+}
+
+type taskEventData struct {
+	ParentID id.TaskID `json:"parent_id,omitempty"`
+	Reason   string    `json:"reason,omitempty"`
+}
+
+func (service *Service) newTaskEvent(eventType event.Type, actor id.PrincipalID, at time.Time, scope tenancy.Scope, subjectID string, subjectVersion uint64, parentID id.TaskID, reason string) (event.Envelope, error) {
+	envelope, err := service.newEvent(eventType, actor, at, scope, subjectID, subjectVersion)
+	if err != nil {
+		return event.Envelope{}, err
+	}
+	if parentID != "" || reason != "" {
+		encoded, err := json.Marshal(taskEventData{
+			ParentID: parentID,
+			Reason:   reason,
+		})
+		if err != nil {
+			return event.Envelope{}, fault.Wrap(fault.InternalFailure, "task event payload could not be encoded", err)
+		}
+		envelope.Data = encoded
+	}
+	return envelope, nil
+}
+
+func cloneOptionalBool(value *bool) *bool {
+	if value == nil {
+		return nil
+	}
+	copied := *value
+	return &copied
 }
 
 func (service *Service) newEvent(eventType event.Type, actor id.PrincipalID, at time.Time, scope tenancy.Scope, subjectID string, subjectVersion uint64) (event.Envelope, error) {

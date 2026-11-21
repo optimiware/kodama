@@ -125,13 +125,15 @@ type Decision string
 const (
 	// DecisionPass succeeds the request action.
 	DecisionPass Decision = "pass"
+	// DecisionRevise rejects the request action as a domain revision request.
+	DecisionRevise Decision = "revise"
 	// DecisionFail fails the request action.
 	DecisionFail Decision = "fail"
 )
 
 // Valid reports whether the decision is one of the declared decisions.
 func (d Decision) Valid() bool {
-	return d == DecisionPass || d == DecisionFail
+	return d == DecisionPass || d == DecisionRevise || d == DecisionFail
 }
 
 // StopState distinguishes confirmed termination from a still-pending barrier.
@@ -661,6 +663,27 @@ func (k FailureKind) Valid() bool {
 	return false
 }
 
+// Well-known domain-rejection failure reasons. These settle an execution as
+// failed in the linear Kernel without classifying the outcome as a system
+// failure for operator escalation.
+const (
+	// FailureReasonNeedsRevision marks a request action settled with a revise decision.
+	FailureReasonNeedsRevision = "needs_revision"
+	// FailureReasonBudgetExceeded marks an execution stopped by a configured budget limit.
+	FailureReasonBudgetExceeded = "budget_exceeded"
+)
+
+// IsDomainRejectionReason reports whether a machine-readable failure reason
+// code classifies as a domain rejection rather than a system failure.
+func IsDomainRejectionReason(reason string) bool {
+	switch reason {
+	case FailureReasonNeedsRevision, FailureReasonBudgetExceeded:
+		return true
+	default:
+		return false
+	}
+}
+
 // Failure is the typed terminal diagnostic of a failed action or execution.
 // Reason is a bounded machine-readable code; Detail is operator-facing text.
 // Neither replaces the retained stop/observation/cleanup evidence.
@@ -668,6 +691,15 @@ type Failure struct {
 	Kind   FailureKind `json:"kind"`
 	Reason string      `json:"reason,omitempty"`
 	Detail string      `json:"detail,omitempty"`
+}
+
+// IsDomainRejection reports whether the failure represents a domain-level
+// rejection rather than a system or infrastructure failure.
+func (f *Failure) IsDomainRejection() bool {
+	if f == nil {
+		return false
+	}
+	return IsDomainRejectionReason(f.Reason)
 }
 
 // Execution is one durable execution aggregate.

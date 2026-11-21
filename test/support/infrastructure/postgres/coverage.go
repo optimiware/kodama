@@ -25,6 +25,7 @@ var unitTypeStates = map[string][]string{
 	"task.AskUnit":                       {"task.ask"},
 	"task.ReplyUnit":                     {"task.reply"},
 	"task.CancelUnit":                    {"task.cancel"},
+	"task.CompleteUnit":                  {"task.complete"},
 	"task.ProgressUnit":                  {"task.progress", "task.progress.stale", "task.progress.wrong_execution"},
 	"execution.StartUnit":                {"execution.start"},
 	"execution.TransitionUnit":           {"execution.transition"},
